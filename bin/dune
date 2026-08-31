@@ -4,4 +4,4 @@
 (executable
  (name main)
  (public_name sinter)
- (libraries sinter_core cmdliner))
+ (libraries sinter_core cmdliner dune-build-info))

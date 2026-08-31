@@ -4,3 +4,18 @@
 (library
  (name sinter_core)
  (public_name sinter.core))
+
+; git_version.ml holds the output of "git describe" for the current
+; state of the checkout. The rule runs on every build; dependents
+; rebuild only when the description changes. Without git (a release
+; archive), the module holds "unknown" and is not used: release
+; builds take their version from the package instead.
+
+(rule
+ (targets git_version.ml)
+ (deps (universe))
+ (action
+  (with-stdout-to
+   git_version.ml
+   (system
+    "printf 'let describe = \"%s\"\\n' \"$(git describe --always --dirty 2>/dev/null || echo unknown)\""))))

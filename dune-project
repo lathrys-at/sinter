@@ -16,4 +16,5 @@
   (ocaml (>= 5.1))
   dune
   (cmdliner (>= 1.3))
+  dune-build-info
   (alcotest :with-test)))

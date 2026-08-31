@@ -3,7 +3,7 @@
 
 # Sinter specification: doctag vocabulary
 
-Status: draft.
+Status: draft. The four specifications share one version; see [docs/versioning.md](../docs/versioning.md).
 
 ## 1. Introduction
 

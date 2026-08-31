@@ -23,6 +23,12 @@ dune build
 dune test
 ```
 
+## Versioning
+
+The specifications in `spec/` share one semantic version, separate
+from the tool's own version. See
+[docs/versioning.md](docs/versioning.md).
+
 ## License
 
 The tool is licensed under Apache-2.0. See the LICENSE file. The
