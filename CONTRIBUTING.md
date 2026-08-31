@@ -25,9 +25,16 @@ no sign-off.
 Coding agents write much of this codebase. That is expected and welcome.
 The human who runs the agent signs off the commit. That human is the
 contributor of record. When an agent wrote a large part of a change, add
-a line to the commit message that names the agent. Example:
-`Assisted-by: Claude Code`. This line keeps the record of authorship in
-the git history. Do not sign off code that you did not review.
+a trailer to the commit message that names the agent. You can use either
+of these two trailers:
+
+- `Assisted-by: Claude Code` — the agent helped; the human is the
+  author.
+- `Co-Authored-By: Claude Code <noreply@anthropic.com>` — the agent is
+  named as a co-author. GitHub shows co-authors next to the commit.
+
+Both keep the record of authorship in the git history. Do not sign off
+code that you did not review.
 
 ## Third-party code
 
