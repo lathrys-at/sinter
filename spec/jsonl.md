@@ -19,34 +19,42 @@ categories are listed in [algebra.md](algebra.md). Ledger entries are
 also JSONL records; they are defined in [ledger.md](ledger.md).
 
 The JSONL is always derived from the repository's text, the ledger,
-and the evidence set. It is never a source of truth.
+and the evidence set. The JSONL is never a source of truth.
 
 ## 2. Canonical form
 
-One fact per line. Each line is a JSON object canonicalized per RFC
-8785 (JCS): keys sorted by UTF-16 code units, no insignificant
-whitespace, strings escaped per JCS, UTF-8 encoding, LF terminated.
+One fact per line. Each line is a JSON object in the canonical form of
+RFC 8785 (JCS). Each line must meet all of these conditions:
+
+- The keys are sorted by UTF-16 code units.
+- The line holds no insignificant whitespace.
+- The strings are escaped as JCS requires.
+- The line is encoded as UTF-8.
+- The line ends with LF.
+
 The schema restricts values so that JCS stays trivial to implement:
 
 - **Value types:** string; integer in `[-(2^53-1), 2^53-1]`; boolean;
   or an array of those. No floats, no nulls, no nested objects. An
   absent value is an omitted key, never `null`.
-- **Strings** that come from file text are NFC-normalized. Ids and
-  paths are used as-is.
+- **Strings:** the scanner normalizes strings that come from file text
+  to Unicode NFC. It does not normalize ids and paths.
 - **Paths** are repository-relative, with forward slashes and no
   leading `./`.
 - **Hashes** are lowercase hex. An extent hash (`xh`) is 64 hex
   characters (SHA-256). A tree key or a git revision is 40 hex
   characters.
 
-A file of facts is sorted by `(kind, path, line, col, id)`. Unlocated
-facts sort after located ones, by `id`. The first line is the `index`
-header (section 10). Two scans of the same inputs — tree, base,
-ledger, evidence, session — produce byte-identical output.
+A fact is **located** when it carries a path and a line span (section
+3); otherwise it is **unlocated**. A file of facts is sorted by
+`(kind, path, line, col, id)`. Unlocated facts sort after located
+facts, by `id`. The first line is the `index` header (section 10). Two
+scans of the same inputs — tree, base, ledger, evidence, session —
+produce byte-identical output.
 
-The schema version is the integer `v` on every line. It is bumped only
-for an incompatible change to a kind's required fields or identity.
-Adding an optional field is not a bump.
+The schema version is the integer `v` on every line. Sinter increases
+`v` only for an incompatible change to a kind's required fields or to
+a kind's identity. A new optional field does not increase `v`.
 
 ## 3. Envelope
 
@@ -70,13 +78,14 @@ Located facts add:
 For a declaration in markdown, this span is the tag line only. The
 extent — the whole section — is carried separately as `xline` and
 `xeline`, so that a tool can highlight the tag without highlighting
-pages of prose.
+the whole section.
 
 Fields marked *derived* below are computed from the ledger, the
-evidence, the session, or the base — not from the file. They are
-present so that consumers need not re-derive them. Derived fields are
-included in conformance comparison, so conformance fixtures ship their
-own ledger and evidence.
+evidence, the session, or the base — not from the file. Sinter emits
+derived fields so that a tool which reads the JSONL does not have to
+compute them again. Derived fields are included in conformance
+comparison, so conformance fixtures ship their own ledger and
+evidence.
 
 ## 4. Node records
 
@@ -109,11 +118,11 @@ Example:
 |---|---|---|
 | `slug` `title` | string | |
 | `scope` | array of string | plan-level globs |
-| `approved` | bool | *derived*: the current commitment set is approved against the last stamp ([ledger.md](ledger.md)) |
+| `approved` | bool | *derived*: the current commitment set is approved against the last stamp ([ledger.md](ledger.md) section 11) |
 | `stamp` | string | *derived* |
 | `active` | bool | *derived* from the session |
-| `live` | bool | *derived*: no `discharged` or `abandoned` ledger entry exists for the plan |
-| `csh` | string | commitment-set hash: SHA-256 over a canonical form with no step names — the sorted `(word, target, effective step scope)` triples plus the plan scope. Free step renames leave it unchanged, so a decline bound to it survives them |
+| `open` | bool | *derived*: the plan is open — the ledger holds no `discharged` entry and no `abandoned` entry for it ([ledger.md](ledger.md) section 10) |
+| `csh` | string | the commitment-set hash. It is SHA-256 over a canonical form that holds no step names: the sorted `(word, target, effective step scope)` triples, plus the plan scope. A step rename therefore does not change `csh`, and a decline bound to `csh` stays live after a step rename |
 | `declined` | bool | *derived* |
 
 **`step`**
@@ -141,9 +150,9 @@ Example:
 
 | field | type | meaning |
 |---|---|---|
-| `name` | string | name of the attached definition, when the pack captured one — qualified (impl, class, or module path) where the language nests |
+| `name` | string | the name of the attached definition, when the pack captured a name. In a language that nests definitions, the name carries the path of the containing impls, classes, or modules |
 | `node` | string | the tree-sitter node type of the attached definition, for example `function_item` |
-| `dline` `deline` | int | span of the attached definition's body — the frame coverage is measured against |
+| `dline` `deline` | int | the span of the attached definition's body. Coverage for this site is measured over this span |
 | `ch` | string | code hash ([vocabulary.md](vocabulary.md) section 6.2) |
 
 ## 5. Edge, ref, and promise records
@@ -162,8 +171,8 @@ Example:
 | `rung` | string | `verifies` only, *derived*: `orphan`, `never-ran`, `failed`, `disconnected`, `unattributed`, or `passing` |
 | `live` | bool | `supersedes` only, *derived* |
 
-Tags inside plan files never produce edge records. They produce
-promise records.
+Tags inside plan files never produce edge records. These tags produce
+promise records instead.
 
 Example:
 
@@ -187,7 +196,7 @@ Example:
 | `target` | string | as written |
 | `met` | bool | *derived* |
 | `by` | string | *derived*: id of the discharging fact, when met |
-| `out_of_scope` | bool | *derived*: residue that would discharge the promise exists only outside the step's scope; `met` stays false |
+| `out_of_scope` | bool | *derived*: `true` when residue that would discharge the promise exists, but every such fact sits outside the step's scope. In this case `met` stays `false`. Residue is defined in [vocabulary.md](vocabulary.md) section 10.2 |
 
 Duplicate promissory tags within one step collapse into one promise
 record.
@@ -198,13 +207,14 @@ record.
 
 | field | type | meaning |
 |---|---|---|
-| `test` | string | test fact id. A run that binds to no test fact is not emitted as a fact; the import step reports it |
-| `status` | string | `pass`, `fail`, `error`, or `skip`. Several artifacts for one test merge to the worst status |
+| `test` | string | test fact id. When a run binds to no test fact, the scanner emits no `run` fact for that run; the import step reports the unbound run instead |
+| `status` | string | `pass`, `fail`, `error`, or `skip`. When several artifacts report one test, the fact carries the worst status among them. The order, from best to worst, is: `pass`, `skip`, `fail`, `error` |
 | `tree` | string | tree key |
 | `sources` | array of string | artifact paths, as imported |
 | `ms` | int | duration, when the artifact reports one |
 
-**`cov`** — unlocated. This is the site-level join, not raw line data.
+**`cov`** — unlocated. A `cov` fact reports coverage for one whole
+site. It does not report coverage for single lines.
 
 | field | type | meaning |
 |---|---|---|
@@ -214,7 +224,7 @@ record.
 | `attributed` | bool | `false` if and only if `test` is `*` |
 | `tree` | string | tree key |
 
-**`judgment`** — unlocated. Written by a judge or an external checker
+**`judgment`** — unlocated. A judge or an external checker writes it
 into the evidence directory, never into the tree.
 
 | field | type | meaning |
@@ -226,11 +236,16 @@ into the evidence directory, never into the tree.
 | `hash` | string | the subject's extent hash (or commitment-set hash) at judgment time. The judgment is live while the hash matches, so unrelated edits do not void it |
 | `reason` | string | one line |
 
-## 7. Ledger-projection, law, ack, hunk, and tombstone records
+## 7. Ledger-projection, rule, gate, ack, hunk, and tombstone records
 
-**`lease`** — unlocated. Projected from the ledger, one per stamped
-plan on another branch that is neither discharged nor abandoned and
-whose branch existed on the remote at the last fetch.
+**`lease`** — unlocated. Sinter projects lease records from the
+ledger. It emits one record for each stamped plan that meets all three
+conditions:
+
+- The plan's stamp was written from a branch other than the current
+  one.
+- The plan is open ([ledger.md](ledger.md) section 10).
+- That branch existed on the remote at the last fetch.
 
 | field | type | meaning |
 |---|---|---|
@@ -262,8 +277,10 @@ only.
 | `triggered` | bool | *derived* |
 | `owed` | int | *derived* obligation count |
 
-**`gate`** — located in the manifest; one record per `(gate, class)`
-pair, with defaults materialized.
+**`gate`** — located in the manifest. Sinter emits one record for each
+`(gate, class)` pair. When the manifest does not set a pair, Sinter
+still emits the record, with the default tier and `default` set to
+`true`.
 
 | field | type | meaning |
 |---|---|---|
@@ -318,16 +335,18 @@ pair, with defaults materialized.
 
 ## 9. Identity
 
-Ids make baseline subtraction, `@ack` targeting, and fingerprints work
-across line shifts. An id is content-derived wherever content exists,
-and positional only as a last resort.
+A fact keeps its id when lines move in the file. Three operations
+depend on this: baseline subtraction ([algebra.md](algebra.md) section
+8.2), `@ack` targeting, and the stable finding identifiers in report
+output. Sinter derives an id from content wherever content exists. It
+uses a position in the file only when no content can name the fact.
 
 | kind | id | notes |
 |---|---|---|
 | `req` `design` `decision` `plan` | `<kind>:<slug>` | |
 | `step` | `step:<plan>/<step>` | |
 | `test` | `test:<name>` | `name` can contain spaces |
-| `site` | `site:<path>#<name>` | fallback `site:<path>@L<line>` is positional and carries `"positional":true` |
+| `site` | `site:<path>#<name>` | the fallback `site:<path>@L<line>` is positional and carries `"positional":true` |
 | edges | `<kind>:<src-id>-><target>` | parse from the right: a target cannot contain `->` |
 | `ref` | `ref:<ns>/<id>` | |
 | `promise` | `promise:<step-id>:<word>:<target>` | parse from the right |
@@ -364,14 +383,15 @@ comparison.
 | `tool` | string | tool version |
 | `mode` | string | `tree` or `diff` |
 
-**`summary`** — the first line of `status --json`.
+**`summary`** — the first line of `status --json`. The finding counts
+use the tiers of the `turn` gate.
 
 | field | type |
 |---|---|
 | `plan` `step` | string; omitted when none |
 | `done` | bool |
 | `steps_done` `steps_total` | int |
-| `block` `warn` | int (finding counts under the turn tier set) |
+| `block` `warn` | int (finding counts, under the `turn` gate's tiers) |
 | `unmapped` | int (hunks) |
 | `owed` | int (rule obligations) |
 | `evidence_fresh` | bool |
@@ -386,9 +406,10 @@ comparison.
 
 A language pack's fixture directory contains a small project, an
 `expected.jsonl` file, a fixture ledger, and real runner and coverage
-artifacts with attribution. Verification scans the fixture with the
-fixture ledger and evidence, drops the header line, and requires byte
-equality with `expected.jsonl`. Because derived fields are included,
-the fixture exercises evidence binding end to end, not only parsing. A
-tool release that changes any derived field's semantics must
-regenerate every pack's fixture.
+artifacts with attribution. The verifier scans the fixture with the
+fixture's own ledger and evidence. It drops the header line from the
+output. It then compares the output with `expected.jsonl`; the two
+must be equal byte for byte. Because derived fields are included, the
+fixture tests the whole path from artifact import to evidence binding,
+not only parsing. A tool release that changes any derived field's
+semantics must regenerate every pack's fixture.

@@ -58,26 +58,30 @@ the same line and on later lines (section 3.2).
 
 ### 3.1 Tag lines and blocks
 
-A **tag line** is a line inside a tag-bearing node that starts with
-`@`, after the comment sigil and indentation are removed. Every such
-line is a tag line, whether or not its word is in this vocabulary.
-Unknown words are not part of this vocabulary and have no meaning here.
-Other toolchains own some tag words, for example `@param` and
-`@returns`; a language pack lists these as its **foreign vocabulary**.
+A **tag line** is found as follows. Take a line inside a tag-bearing
+node. Remove the comment sigil and the indentation before it. The line
+is a tag line when the remaining text starts with `@`.
 
-A **block** is a run of tag lines inside one tag-bearing node, plus the
-trailing prose that follows them (section 3.2).
+Every such line is a tag line, whether or not its word is in this
+vocabulary. Unknown words are not part of this vocabulary and have no
+meaning here. Other toolchains own some tag words, for example
+`@param` and `@returns`. A language pack lists the tag words that
+other toolchains own. That list is the pack's **foreign vocabulary**.
+
+A **block** is a sequence of tag lines inside one tag-bearing node,
+plus the trailing prose that follows those tag lines (section 3.2).
 
 ### 3.2 Descriptions
 
 A tag's **inline description** is the rest of its own line, after the
 target and the revision.
 
-A block's **trailing prose** is the run of lines after the last tag
-line that do not start with `@`. It ends at a blank line or at the end
-of the tag-bearing node. Trailing prose belongs to the block's
-declaration when the block contains one. When the block contains no
-declaration, the trailing prose belongs to the block's first tag.
+A block's **trailing prose** is the sequence of lines that follow the
+last tag line and that do not start with `@`. The sequence ends at a
+blank line or at the end of the tag-bearing node. Trailing prose
+belongs to the block's declaration when the block contains one. When
+the block contains no declaration, the trailing prose belongs to the
+block's first tag.
 
 Descriptions are part of the extent (section 6). Tools use them when
 they compile human-facing documents. Descriptions have no other
@@ -101,8 +105,8 @@ Slugs name declared items. There are three separate slug namespaces:
    share one namespace. A citation never names a kind, so a slug must
    be unique across these three kinds.
 2. **Plans.** Plan slugs have their own namespace. A plan can share
-   its slug with a requirement. Plan slugs are permanent: a dead plan
-   keeps its slug, and no later plan can reuse it.
+   its slug with a requirement. Plan slugs are permanent: a closed
+   plan keeps its slug, and no later plan can reuse it.
 3. **Steps.** Step slugs are scoped to their plan (section 10.3).
 
 Two declarations of one slug in a shared namespace are an error
@@ -142,9 +146,11 @@ On a citation, the revision **pins** the citation to one revision of
 its target. A pinned citation whose target now has a different revision
 is **suspect** (section 9).
 
-When a declaration's extent changes, its revision must increase. The
-new revision must be strictly greater than the revision at the diff
-base (section 9).
+The **diff base** is the git revision that a check compares the
+working tree against ([algebra.md](algebra.md) section 8). When a
+declaration's extent changes, its revision must increase. The new
+revision must be strictly greater than the revision that the
+declaration had at the diff base (section 9).
 
 ## 6. Extent
 
@@ -158,8 +164,8 @@ An item's **extent** is the text that its revision covers.
 
 Two boundary rules apply in markdown:
 
-1. Adjacency never merges. An extent ends where the next declaration
-   begins.
+1. Two extents that touch never merge into one extent. An extent ends
+   where the next declaration begins.
 2. A declaration in a nested section removes that section from the
    enclosing extent.
 
@@ -170,9 +176,9 @@ Prose outside every extent is not governed by any revision.
 The **extent hash** (`xh`) is SHA-256 over the extent's normalized
 text. To normalize, apply these steps in order:
 
-1. Take the extent's content lines. Remove comment sigils (`///`, `#`,
-   `*`) and the indentation before them. Markdown has no sigils; skip
-   this step there.
+1. Take the extent's content lines. In code, remove the comment sigils
+   (`///`, `#`, `*`) and the indentation before each sigil. Markdown
+   has no comment sigils, so in markdown keep the lines as they are.
 2. Remove trailing whitespace from every line.
 3. Use LF as the line ending.
 4. Drop every `@ack` line.
@@ -184,17 +190,21 @@ The same normalization, applied to any block, gives the **block hash**
 that `@ack` pins (section 7.4). One hash function and one rule set
 serve both uses.
 
-The effect of steps 5 and 6: a rename, a bare revision bump with no
-text change, and a re-pin of a citation all leave the hash equal.
-Reformatting a comment also leaves the hash equal. Every other byte
-change changes the hash.
+The effect of steps 5 and 6: three edits do not change the extent
+hash — a rename, a bare revision bump with no other text change, and a
+re-pin of a citation. Reformatting a comment also does not change the
+extent hash. Every other byte change changes the extent hash.
 
 ### 6.2 The code hash
 
 Each code site also carries a **code hash** (`ch`): SHA-256 over the
-attached definition's body, normalized with the same steps. The code
-hash is not part of the extent. Tools use it to detect code that
-changed while its comment did not.
+attached definition's body, normalized with steps 2, 3, and 7 of
+section 6.1. The other steps concern comment sigils and tag lines,
+and a definition body holds neither. Indentation stays, because
+indentation can be significant in code.
+
+The code hash is not part of the extent. Tools use it to detect code
+that changed while its comment did not.
 
 ## 7. The vocabulary
 
@@ -212,9 +222,13 @@ A declaration says: this text defines a thing.
 | `@decision <slug> [vN]` | decision records |
 | `@plan <slug>` | plan files (section 10) |
 
-`@design` differs from `@req` only in purpose and in how strictly it is
-approved. The kind lives on the tag, not on a file path, so these
-documents can live anywhere in the repository.
+`@design` and `@req` differ in two ways only. They differ in purpose:
+a design item describes architecture between the requirements and the
+code. They also differ in the default strictness of their approval
+checks — see the finding classes `unratified-req` and
+`unratified-design` in [algebra.md](algebra.md) section 9. The kind
+lives on the tag, not on a file path, so these documents can live
+anywhere in the repository.
 
 ### 7.2 Citations
 
@@ -238,14 +252,19 @@ The source of a citation depends on its kind:
 - `@refines` and `@supersedes` have the enclosing declaration as their
   source.
 
+A citation is **dangling** when its target does not resolve: no
+declaration has the slug, or the ref's namespace is not declared, or
+the ref's id fails the namespace's pattern.
+
 A `@supersedes` edge whose source and target have different kinds is an
 error. A live `@supersedes` edge retires its target (section 8).
 
 ### 7.3 Status tags
 
-A status tag says: we no longer stand behind this. A status tag has no
-target. It has effect only inside a declaration's extent. Outside an
-extent it is inert. There is no "done" status.
+A status tag records that the authors no longer endorse the
+declaration that carries it. A status tag has no target. It has effect
+only inside a declaration's extent. Outside an extent it is inert.
+There is no "done" status.
 
 | tag | applies to | meaning |
 |---|---|---|
@@ -255,12 +274,13 @@ extent it is inert. There is no "done" status.
 
 ### 7.4 Directives
 
-A directive records a judgment at a site.
+A directive records a judgment in a block.
 
-**`@ack <target> <hash>`** records that a person or an agent accepted a
-finding, or satisfied a rule, for the text as hashed. The grammar:
-`<hash>` is the last token, and `<target>` is everything between `@ack`
-and the hash. The target is one of:
+**`@ack <target> <hash>`** records one judgment about one block of
+text. The judgment is one of two: someone accepted a finding, or
+someone satisfied a rule, for the block as it was when they read it.
+The grammar: `<hash>` is the last token, and `<target>` is everything
+between `@ack` and the hash. The target is one of:
 
 - a finding class, with an optional subject, exactly as the checking
   tool reported it — for example `disendorsed cache-ttl` or
@@ -268,29 +288,31 @@ and the hash. The target is one of:
 - a rule name — for example `ste-docs`.
 
 The hash is the first eight or more hex digits of the block hash
-(section 6.1).
+(section 6.1) at the time of the judgment.
 
 An ack is **live** if and only if both conditions hold:
 
 1. The hash matches the block's current block hash.
-2. The target still names something at this site: a finding of that
-   class (with that subject, when one is given), or an obligation of
-   that rule.
+2. The target still names something in this block: a finding of that
+   class, or an obligation of that rule. When the ack gives a subject,
+   the finding must also have that subject.
 
-Condition 2 is judged against the state before ack subtraction. A
-rule's obligations are computed from its trigger alone, and a finding
-class is computed from its raw definition. So an ack cannot void
-itself by succeeding.
+The checking tool removes acked findings at the end of a check. It
+judges condition 2 against the findings and obligations that exist
+before that removal: it computes a rule's obligations from the rule's
+trigger alone, and a finding class from the class's raw definition. An
+ack therefore cannot make itself void by removing the finding it
+names.
 
 When either condition fails, the ack is **void**. A void ack is itself
 a finding (`stale-ack`). Only some finding classes accept an ack; the
-checking tool defines which (see the query algebra specification,
-[algebra.md](algebra.md)).
+finding-class table in [algebra.md](algebra.md) section 9 marks them.
 
-**`@pin <ref>`** is deferred. It will arm a drift check on external
-content: a human endorses the content's current hash through the
-approval flow, and the tool reports upstream drift until the hash is
-endorsed again.
+**`@pin <ref>`** is deferred. A future version will use it to watch
+external content for changes. A person endorses the content's current
+hash through the approval flow. The tool then reports a finding
+whenever the content's hash differs from the endorsed hash. The
+finding stays until a person endorses the new hash.
 
 ### 7.5 Plan-only tags
 
@@ -304,13 +326,14 @@ endorsed again.
 An item is **in force** if and only if it carries no status tag and no
 live `@supersedes` edge targets it.
 
-A `@supersedes` edge is **live** if and only if its source is itself in
-force and — when the source's kind is approval-gated — the source is
-approved at its current revision (see the ledger specification,
-[ledger.md](ledger.md)). An edge whose source is not approved retires
-nothing yet.
+A `@supersedes` edge is **live** if and only if both conditions hold.
+First: the edge's source is itself in force. Second: when the ledger
+gates the source's kind on approval, the source is approved at its
+current revision. The ledger specification, [ledger.md](ledger.md),
+defines approval. An edge whose source is not approved retires nothing
+yet.
 
-On a `@supersedes` cycle, every member of the cycle is treated as in
+On a `@supersedes` cycle, every member of the cycle counts as in
 force, and the cycle is an error (finding class `cycle`).
 
 ### 8.2 Retirement
@@ -318,8 +341,8 @@ force, and the cycle is an error (finding class `cycle`).
 An item that is not in force is **retired**. Two triggers retire an
 item: a status tag, or a live `@supersedes` edge. Retirement does not
 cascade. A citation of a retired item is a finding (`disendorsed`),
-never an automatic retirement of the citing item. Only a judgment can
-say whether the citing item stands on other grounds.
+never an automatic retirement of the citing item. Only a person can
+decide whether the citing item is still correct for other reasons.
 
 ### 8.3 Decisions are never deleted
 
@@ -330,19 +353,22 @@ old reasoning is the record of why the new decision exists.
 ### 8.4 Historical paths
 
 The manifest can declare paths as **historical**, for example a devlog.
-In historical files, citations resolve and render, but they generate no
-findings.
+In a historical file, a citation still resolves to its target, and
+compiled documents still show it as a link. A citation in a historical
+file generates no findings.
 
 ## 9. Revision discipline
 
-Citations pin revisions by hand; there are no stored fingerprints and
-no write path into governed text. Two rules make this work:
+A person writes every revision pin by hand. Sinter stores no hash of a
+declaration's text outside the repository. Sinter also never writes
+into a governed file. Two rules make this work:
 
 1. **Every extent edit owes a bump.** When a declaration's extent
    changes relative to the diff base and its revision does not
-   increase, that is an error (finding class `rev-owed`). There is no
-   editorial escape hatch: "this edit did not change the meaning" is
-   not accepted, because it cannot be checked.
+   increase, that is an error (finding class `rev-owed`). A writer
+   cannot claim an exception: Sinter does not accept the claim "this
+   edit did not change the meaning", because no tool can check that
+   claim.
 2. **A bump makes pinned citations suspect.** A citation pinned to
    `v2` becomes suspect when its target moves to `v3`. Suspect
    citations are findings until they are re-pinned.
@@ -354,11 +380,15 @@ A bump also removes the item's approval until it is stamped again (see
 
 ### 10.1 What a plan is
 
-A **plan** is a branch-scoped agreement: a set of steps, where each
-step promises tags that will exist when the step is done. A plan file
-is a markdown file under `.plans/`, committed on its branch, and never
-deleted. A plan's life ends by a ledger entry (`discharged` or
-`abandoned`), never by a file event; see [ledger.md](ledger.md).
+A **plan** is an agreement that belongs to one branch. A plan holds a
+set of steps. Each step promises that certain tags will exist in the
+repository when the step is done.
+
+A plan file is a markdown file under `.plans/`, committed on its
+branch, and never deleted. A plan is **open** until the ledger holds a
+`discharged` or `abandoned` entry for it; then it is **closed**. Only
+a ledger entry closes a plan. No change to the plan file — an edit, a
+move, or a deletion — closes a plan. See [ledger.md](ledger.md).
 
 A file is a plan if and only if it lives under `.plans/` and its first
 tag block carries `@plan`. A `@plan` tag anywhere else is an error
@@ -369,12 +399,15 @@ tag block carries `@plan`. A `@plan` tag anywhere else is an error
 Inside a plan file, tags are read as promises, not as facts:
 
 - A promised declaration (`@req x`) means: this step will declare `x`.
-- A promised citation (`@verifies x`) means: this step will produce
-  such a citation, with the properties section 10.5 requires.
+- A promised citation (`@verifies x`) means: this step will produce a
+  `@verifies` citation of `x`. That citation must have the properties
+  that section 10.5 requires.
 
-Tags in plan files never produce declarations or edges. Revisions are
-absent on promises; a promise is checked against the revision that is
-current when it is discharged.
+**Residue** is the set of facts in the tree that a promise asked for:
+the declarations and the edges that discharge it. Tags in plan files
+never produce declarations or edges themselves. Revisions are absent
+on promises; a promise is checked against the revision that is current
+when it is discharged.
 
 ### 10.3 Steps
 
@@ -382,11 +415,17 @@ Every `##` heading that carries at least one plan tag — a `@scope` or a
 promise — is a **step**. A `##` section with no plan tags is prose, not
 a step.
 
-A step's slug is derived from its heading text: lowercase the text,
-collapse every run of non-alphanumeric characters into one hyphen, and
-trim hyphens at both ends. Example: `## Verify against the reqs`
-becomes `verify-against-the-reqs`. Two steps of one plan with the same
-slug are an error (`duplicate`).
+The scanner derives a step's slug from the step's heading text. It
+applies these steps in order:
+
+1. Change every letter to lowercase.
+2. Replace each sequence of non-alphanumeric characters with one
+   hyphen.
+3. Remove hyphens at the start and at the end.
+
+Example: `## Verify against the reqs` becomes
+`verify-against-the-reqs`. Two steps of one plan with the same slug
+are an error (`duplicate`).
 
 Steps are unordered facts. The order of steps in the document is
 advice, not a constraint.
@@ -419,24 +458,26 @@ A promise is **met** as follows:
   inside the step's effective scope at evidence rung `passing`. When
   the manifest sets `evidence.require_attribution = false` (the
   default), rung `unattributed` also meets it. Rungs are defined in
-  [algebra.md](algebra.md).
+  [algebra.md](algebra.md) section 6.7.
 
-Residue that would discharge a promise, but sits outside the step's
-scope, does not discharge it. It is a finding
-(`promise-out-of-scope`).
+Residue that would discharge a promise, but that sits outside the
+step's scope, does not discharge that promise. The scanner reports
+this case as a finding (`promise-out-of-scope`).
 
 A step is **done** if and only if all its promises are met and all
 `@verifies` edges in its scope are at an allowed rung. A step with a
-scope and no promises is a **refactor** step: it is done when its scope
-was touched and existing evidence stays green. A plan is **done** if
-and only if all its steps are done.
+scope and no promises is a **refactor** step. A refactor step is done
+when both conditions hold: a hunk of the diff changes a file inside
+its scope, and every `@verifies` edge in its scope is at an allowed
+rung. A plan is **done** if and only if all its steps are done.
 
 ### 10.6 Amendment
 
 Plans are exempt from revision discipline. A plan is judged by its
 **commitment set** — the promises and scopes per step — never by its
 text. The rules for comparing commitment sets, and for which
-amendments need a new approval, are in [ledger.md](ledger.md).
+amendments need a new approval, are in [ledger.md](ledger.md) section
+11.
 
 ## 11. Rename
 

@@ -8,9 +8,10 @@ Status: draft.
 ## 1. Introduction
 
 The ledger is Sinter's append-only record of judgments about a
-repository: approvals, refusals, and the end of each plan's life. This
-document defines where the ledger lives, how entries are identified,
-each entry kind, and the rules that give entries their meaning.
+repository: approvals, refusals, and the entry that closes each plan.
+This document defines where the ledger lives, how entries are
+identified, each entry kind, and the rules that give entries their
+meaning.
 
 Anyone can implement this specification in any tool. See the
 LICENSE-SPEC file at the repository root. Entries are JSONL records in
@@ -21,11 +22,12 @@ ledger judges are defined in [vocabulary.md](vocabulary.md).
 
 The ledger is a JSONL file, `ledger.jsonl`, in the tree of a dedicated
 git ref: `refs/sinter/ledger`. This ref is not a checkout path. No
-editor or file tool reaches it without git plumbing, which is the
-point: writing the ledger is a deliberate act.
+editor and no file tool reaches the ledger without a git plumbing
+command. Sinter requires this on purpose, so that only a deliberate
+act writes the ledger.
 
 Each write appends lines to the file and commits, with the previous
-tip as the parent. The ref only moves by fast-forward. Every commit's
+tip as the parent. The ref moves by fast-forward only. Every commit's
 ledger file must be a byte-prefix extension of its parent's: old lines
 never change and never move.
 
@@ -41,9 +43,17 @@ ledger can place the ref under `refs/heads/sinter/ledger` instead.
 
 An entry's id is `e-` plus the first twelve hex digits of SHA-256 over
 the entry's canonical bytes with the `id` key absent. Two writers can
-never mint one id for two different entries. So recovery after a lost
-push race is a set union: fetch, re-append the local entries absent
-upstream, in timestamp order, and push again.
+never produce one id for two different entries.
+
+Two writers can push to the ledger ref at the same time, and one of
+the two pushes then fails. Because ids are content-derived, recovery
+from a failed push is a set union. The writer that lost does three
+steps in order:
+
+1. Fetch the ledger ref.
+2. Append again the local entries that the upstream file does not
+   hold, in timestamp order.
+3. Push again.
 
 Ids never repeat within the ledger. Where order matters — for example
 a decline superseded by a later stamp — the `ts` field decides, never
@@ -66,9 +76,9 @@ Every entry carries:
 
 Four writers exist. The approval command writes `stamp` entries, with
 their `stamped-scope` and `stamped-promise` lines. The decline command
-writes `decline`. The abandon command writes `abandoned`. These three
-are human verbs. The fourth writer is the main-branch CI job, which
-writes `discharged` (section 8).
+writes `decline`. The abandon command writes `abandoned`. A person
+runs these three commands. The fourth writer is the CI job on the main
+branch, which writes `discharged` (section 8).
 
 ## 5. `stamp`
 
@@ -88,14 +98,18 @@ bump therefore removes approval until the item is stamped again.
 
 **Revision reservation.** A writer must refuse to write a stamp for
 `(slug, rev)` when the ledger already holds a stamp for that pair with
-a different `xh`. The refusal names the earlier entry and its branch;
-the resolution is a further bump. A stamp with an equal `xh` is
-idempotent and is skipped.
+a different `xh`. The refusal message names the earlier entry and the
+branch that entry was written from. To resolve the refusal, the author
+must increase the declaration's revision again. When the ledger
+already holds a stamp for the same `(slug, rev)` with the same `xh`,
+the writer writes no new entry.
 
 ## 6. `stamped-scope` and `stamped-promise`
 
-A plan stamp embeds the approved commitment set, because a hash cannot
-be diffed against. Two entry kinds carry it.
+A plan stamp holds the approved commitment set as entries, not only as
+a hash. A hash shows only that two sets differ; it does not show which
+promises or scopes differ, and the comparison in section 11 needs that
+detail. Two entry kinds carry the set.
 
 **`stamped-scope`** — one per glob. When `step` is omitted, the glob is
 plan-level.
@@ -126,73 +140,97 @@ A decline records a human refusal, bound to the exact text refused.
 
 A decline is **live** while the subject's current hash equals `hash`
 and no later stamp of the subject exists. A decline is never deleted.
-A later stamp supersedes it in effect — at a different hash, or at the
-same hash when the human overrides their own refusal.
+A later stamp of the subject ends the decline's effect. That later
+stamp can be at a different hash. It can also be at the same hash,
+when the human overrides their own earlier refusal.
 
 ## 8. `discharged`
 
-A discharge records the end of a plan whose promises all became fact.
-The main-branch CI job writes it: on every push to the target branch,
-the job finds in-force plans that are now on that branch, checks each
-against the discharge condition, and appends an entry for each plan
-that meets it.
+A `discharged` entry closes a plan whose promises all produced their
+residue ([vocabulary.md](vocabulary.md) section 10.2).
+
+The CI job on the main branch writes the entry. The job runs on every
+push to the target branch. It finds the open plans that are now on
+that branch. It checks each of those plans against the discharge
+condition below. It appends one entry for each plan that meets the
+condition.
 
 | field | meaning |
 |---|---|
 | `subject` | `plan:<slug>` |
-| `stamp` | the stamp the plan died under |
+| `stamp` | the plan's latest stamp at the time it closed |
 | `merge` | the merge commit |
 | `report` | SHA-256 of the report compiled at discharge |
 
-**The discharge condition.** Every promise of the plan has its
-residue: promised declarations exist; promised edges exist and are
-neither dangling nor suspect; promised `verifies` edges are at rung
-`passing` (or `unattributed` where the manifest allows it) when the
-job imports evidence, and at any rung when it does not. An in-force
-plan on the target branch that fails this condition is the
-`undischarged-plan` finding: someone merged half a plan. The honest
-exits are a stamped shrink of the plan or a revert of the merge.
+**The discharge condition.** A plan meets the condition when all of
+these hold:
 
-The writer is idempotent bookkeeping. The plan's stamps and the tree
-are the evidence, so a lost CI run costs a retry, not truth.
+- Every promised declaration exists.
+- Every promised edge exists, and that edge is neither dangling nor
+  suspect.
+- When the job imports evidence: every promised `verifies` edge is at
+  rung `passing`, or at rung `unattributed` where the manifest allows
+  it.
+- When the job imports no evidence: a promised `verifies` edge can be
+  at any rung. Rung enforcement happened earlier, at the merge gate.
+
+An open plan on the target branch that fails this condition is the
+finding `undischarged-plan`: a person merged a plan whose work is not
+complete. Two corrections remove the finding. The first is a new
+stamp for the plan with a smaller commitment set. The second is a
+revert of the merge commit.
+
+The job's write is idempotent: a second run for the same plan adds no
+second entry. The plan's stamps and the repository tree hold the facts
+that prove discharge. A lost CI run therefore costs one repeat run and
+loses no facts.
 
 ## 9. `abandoned`
 
-An abandonment records that a stamped plan will never merge. It is a
-human verb.
+An `abandoned` entry closes a plan that will never merge. A person
+runs the abandon command; the tool never writes this entry on its own.
 
 | field | meaning |
 |---|---|
 | `subject` | `plan:<slug>` |
 | `reason` | required |
 
-Abandonment ends the plan's lease and every ordering fact that rested
-on it.
+An `abandoned` entry ends the plan's lease. It also releases every
+`blocked-on` promise that depended on that lease.
 
-## 10. Plan death and liveness
+## 10. Open and closed plans
 
-A plan is **live** until the ledger holds a `discharged` or
-`abandoned` entry for it. Death is a ledger fact, never a file event:
-the plan file stays in the tree. A dead plan generates no findings,
-holds no lease, contributes no scope, and is not a candidate for the
-active plan. Plan slugs are permanent; a successor plan needs a new
-slug.
+A plan is **open** until the ledger holds a `discharged` or an
+`abandoned` entry for it. A plan with such an entry is **closed**.
+Only a ledger entry closes a plan. No change to the plan file — an
+edit, a move, or a deletion — closes a plan, and the plan file stays
+in the tree.
 
-Without the ledger ref, every plan reads as live. A consumer should
-say so loudly and suggest fetching the ref.
+A closed plan generates no findings, holds no lease, contributes no
+scope, and is not a candidate for the active plan. Plan slugs are
+permanent; a successor plan needs a new slug.
+
+When the ledger ref is absent, a tool sees no `discharged` and no
+`abandoned` entries, so it treats every plan as open. A tool in this
+state must warn the user that the ledger ref is absent, and must tell
+the user to fetch it.
 
 ## 11. Plan approval: commitment-set comparison
 
-A plan's **commitment set** is the canonical facts of its promises and
-scopes per step. The current set `C` is compared against the stamped
-set `C₀`. The plan is approved if and only if all three clauses hold:
+A plan's **commitment set** is the set of canonical facts about the
+plan: the promises of each step, the scope of each step, and the plan
+scope. The current set `C` is compared against the stamped set `C₀`.
+The plan is approved if and only if all three clauses hold:
 
-1. The multiset of `(word, target)` over all promises is equal.
+1. The multiset of `(word, target)` over all promises is equal in `C`
+   and `C₀`.
 2. The plan scope is contained: `scope(C) ⊆ scope(C₀)`.
-3. For each promise, matched by `(word, target)` — among duplicates,
-   matched by step slug first, then arbitrarily — the effective scope
-   of its step in `C` is contained in the effective scope of its step
-   in `C₀`.
+3. Match each promise in `C` to a promise in `C₀` by `(word,
+   target)`. When several promises share one `(word, target)` pair,
+   first match the pairs whose step slugs are equal; then match the
+   remaining promises in the order of their step slugs, sorted on both
+   sides. For each matched pair, the effective scope of the step in
+   `C` must be contained in the effective scope of the step in `C₀`.
 
 **Glob containment** `G' ⊆ G` is decided structurally and
 conservatively. Every glob in `G'` must satisfy one of:
@@ -202,16 +240,23 @@ conservatively. Every glob in `G'` must satisfy one of:
   `G` matches;
 - it is `<g>/<segments>` for some `<g>/**` in `G`.
 
-Anything the checker cannot prove counts as widening. The rule is
-decidable and deterministic, and it errs toward asking the human,
-which is the correct direction for an approval gate.
+When the checker cannot prove that a glob satisfies one of these three
+cases, the checker treats the new scope as wider than the stamped
+scope. The rule is decidable and deterministic. When it cannot prove
+containment, it asks a person for a new stamp, which is the safe
+result for an approval gate.
 
-The consequences: renaming steps is free, because clause 3 matches by
-promise, not by step name. Reordering steps is free. Splitting a step
-is free when each fragment keeps or narrows its scope. Merging steps
-is free when the merged scope equals the originals', and needs a stamp
-otherwise. Any promise added or removed fails clause 1 and needs a
-stamp.
+An amendment is **free** when the plan stays approved after it and no
+new stamp is needed. The consequences of the three clauses:
+
+- Renaming a step is free, because clause 3 matches by promise and not
+  by step name.
+- Reordering steps is free.
+- Splitting a step is free when each new step keeps or narrows the
+  scope of the original step.
+- Merging steps is free when the merged scope equals the union of the
+  original steps' scopes. Any other merge needs a stamp.
+- Any promise added or removed fails clause 1 and needs a stamp.
 
 ## 12. `pin` (deferred)
 
