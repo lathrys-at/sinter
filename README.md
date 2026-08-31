@@ -8,7 +8,20 @@ agreements. It reads the state of the work from files and from test
 results. It never trusts what an agent reports about its own work.
 
 Sinter is new and under construction. The full design is in
-[docs/design-notes.md](docs/design-notes.md).
+[docs/design-notes.md](docs/design-notes.md). The formats that other
+tools can implement are specified in [spec/](spec/).
+
+## Build
+
+Sinter is written in OCaml. To build it, install
+[opam](https://opam.ocaml.org/) and an OCaml switch (5.1 or newer).
+Then run:
+
+```
+opam install . --deps-only --with-test
+dune build
+dune test
+```
 
 ## License
 

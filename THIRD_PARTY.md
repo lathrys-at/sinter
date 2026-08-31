@@ -8,6 +8,7 @@ components that the design expects.
 
 | component | license | link |
 |---|---|---|
+| cmdliner | ISC | https://github.com/dbuenzli/cmdliner |
 | wasmtime | Apache-2.0 WITH LLVM-exception | https://github.com/bytecodealliance/wasmtime |
 | tree-sitter runtime | MIT | https://github.com/tree-sitter/tree-sitter |
 | jq (only if bundled) | MIT | https://github.com/jqlang/jq |

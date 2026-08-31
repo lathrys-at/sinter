@@ -1,0 +1,7 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 The Sinter Authors
+
+(executable
+ (name main)
+ (public_name sinter)
+ (libraries sinter_core cmdliner))
