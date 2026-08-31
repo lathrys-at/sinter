@@ -10,5 +10,3 @@ each tag, and the rules for targets and revisions.
 
 The specification is not written yet. The source material is in
 [docs/design-notes.md](../docs/design-notes.md), section 3 ("The Graph").
-This file is a placeholder. It exists so that the specification has a
-stable path and a clear license from the start.

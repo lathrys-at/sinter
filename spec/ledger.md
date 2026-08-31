@@ -10,6 +10,4 @@ entry kinds and their fields.
 
 The specification is not written yet. The source material is in
 [docs/design-notes.md](../docs/design-notes.md), sections 6.4 ("Cash-Out:
-Specifications & the Approval Ledger") and 13.7 ("Ledger entries"). This
-file is a placeholder. It exists so that the specification has a stable
-path and a clear license from the start.
+Specifications & the Approval Ledger") and 13.7 ("Ledger entries").

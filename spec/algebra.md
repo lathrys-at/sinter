@@ -10,5 +10,4 @@ each of its functions.
 
 The specification is not written yet. The source material is in
 [docs/design-notes.md](../docs/design-notes.md), sections 9.2 and 12
-("The Query Algebra"). This file is a placeholder. It exists so that the
-specification has a stable path and a clear license from the start.
+("The Query Algebra").

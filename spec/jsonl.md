@@ -10,5 +10,4 @@ form, the envelope, and each record type.
 
 The specification is not written yet. The source material is in
 [docs/design-notes.md](../docs/design-notes.md), section 13 ("JSONL
-Interchange"). This file is a placeholder. It exists so that the
-specification has a stable path and a clear license from the start.
+Interchange").
