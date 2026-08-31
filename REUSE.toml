@@ -1,0 +1,15 @@
+version = 1
+SPDX-PackageName = "sinter"
+SPDX-PackageSupplier = "The Sinter Authors"
+
+[[annotations]]
+path = ["spec/**", "docs/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "The Sinter Authors"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = ["**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "The Sinter Authors"
+SPDX-License-Identifier = "Apache-2.0"
