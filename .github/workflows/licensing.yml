@@ -1,0 +1,100 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 The Sinter Authors
+
+# This workflow runs the four licensing checks:
+# 1. DCO: every commit has a Signed-off-by line.
+# 2. REUSE: the repository passes "reuse lint".
+# 3. Third-party manifest: THIRD_PARTY.md exists and its table is well-formed.
+#    When the build system exists, this check will regenerate the file and
+#    compare it. A difference will then fail the job.
+# 4. Forbidden licenses: the dependency list contains no GPL, AGPL, SSPL,
+#    or unknown entry. LGPL is allowed only for the OCaml runtime, because
+#    of its linking exception.
+
+name: licensing
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  dco:
+    name: DCO sign-off
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check every commit for a Signed-off-by line
+        run: |
+          set -eu
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            range="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          elif [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+            range="${{ github.sha }}"
+          else
+            range="${{ github.event.before }}..${{ github.sha }}"
+          fi
+          bad=0
+          for commit in $(git rev-list --no-merges "$range"); do
+            if ! git show -s --format=%B "$commit" | grep -q '^Signed-off-by: '; then
+              echo "Commit $commit has no Signed-off-by line."
+              bad=1
+            fi
+          done
+          exit "$bad"
+
+  reuse:
+    name: REUSE lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run reuse lint
+        run: pipx run reuse lint
+
+  third-party-manifest:
+    name: Third-party manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that THIRD_PARTY.md exists and is well-formed
+        run: |
+          set -eu
+          test -f THIRD_PARTY.md
+          # Every table row must have a component, a license, and a link.
+          awk -F'|' '
+            /^\|/ && $0 !~ /^\|---/ && $0 !~ /component/ {
+              if (NF < 4) { print "Bad row: " $0; bad = 1 }
+            }
+            END { exit bad }
+          ' THIRD_PARTY.md
+          # TODO: when the build system exists, regenerate THIRD_PARTY.md
+          # here and fail on any difference.
+
+  forbidden-licenses:
+    name: No forbidden licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the dependency list for forbidden licenses
+        run: |
+          set -eu
+          # Read the component and license columns from the table.
+          awk -F'|' '
+            /^\|/ && $0 !~ /^\|---/ && $0 !~ /component/ {
+              c = $2; l = $3
+              gsub(/^ +| +$/, "", c); gsub(/^ +| +$/, "", l)
+              if (l ~ /AGPL|SSPL/ || l ~ /[Uu]nknown/ || l == "") {
+                print "Forbidden or unknown license for " c ": " l; bad = 1
+              } else if (l ~ /LGPL/) {
+                if (c != "OCaml runtime") {
+                  print "LGPL is only allowed for the OCaml runtime, not for " c "."
+                  bad = 1
+                }
+              } else if (l ~ /GPL/) {
+                print "Forbidden license for " c ": " l; bad = 1
+              }
+            }
+            END { exit bad }
+          ' THIRD_PARTY.md
