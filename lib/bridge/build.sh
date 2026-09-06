@@ -7,15 +7,14 @@
 #
 # The arguments, in order:
 #   1. the directory that holds the crate's Cargo.toml
-#   2. the directory to use for cargo's build output, when neither
+#   2. the directory for cargo's build output, when neither
 #      CARGO_TARGET_DIR nor a home directory says where to put it
 #   3. the path to write the static library to
 #   4. the path to write the dune flags file to
 #
-# The flags file holds one s-expression: the list of linker flags,
-# as "cargo rustc --print native-static-libs" reports them. The list
-# differs between macOS and Linux, so we ask the toolchain instead of
-# writing the list down.
+# The flags file holds one s-expression: the linker flags that
+# "cargo rustc --print native-static-libs" reports. The list differs
+# between macOS and Linux.
 
 set -eu
 
@@ -24,22 +23,13 @@ fallback=$2
 archive=$3
 flags=$4
 
-# Cargo's build output must live outside _build. Dune empties a rule's
-# directory before it runs the rule, so a target directory inside
-# _build would start empty every time and cargo would build all 128
-# crates again on every change inside bridge/.
-#
-# One directory serves every checkout on the machine. The crate takes
-# 19 seconds and 900 MB to build from nothing, and Sinter is written
-# in many git worktrees at once, so a directory per checkout would
-# cost that once per worktree. Cargo keys its output by fingerprint,
-# so two checkouts with different dependency versions keep both and
-# neither overwrites the other.
+# Cargo's build output must live outside _build, because dune empties
+# a rule's directory before it runs the rule. One directory serves
+# every checkout on the machine, and cargo keys its content by
+# fingerprint, so two checkouts do not overwrite each other.
 #
 # "dune clean" does not remove this directory. Remove it by hand to
-# build the crate from nothing. A contributor who runs "cargo build"
-# in bridge/ by hand writes bridge/target instead, which is a second
-# copy; set CARGO_TARGET_DIR to this path to share one.
+# build the crate from nothing. CARGO_TARGET_DIR moves it.
 if [ -n "${CARGO_TARGET_DIR:-}" ]; then
   target=$CARGO_TARGET_DIR
 elif [ -n "${XDG_CACHE_HOME:-}" ]; then
@@ -56,9 +46,6 @@ if ! command -v cargo >/dev/null 2>&1; then
   exit 1
 fi
 
-# A build script of wasmtime runs cmake. Without cmake the cargo build
-# fails inside that build script, and the message there does not say
-# what is missing.
 if ! command -v cmake >/dev/null 2>&1; then
   echo "The bridge needs cmake, and cmake is not on the PATH." >&2
   echo "A build script of wasmtime runs it. Install cmake and build again." >&2
@@ -68,8 +55,8 @@ fi
 log=$target/native-static-libs.log
 mkdir -p "$target"
 
-# CI sets CARGO_TERM_COLOR=always, which wraps the note in escape
-# codes. Ask for plain output, and strip any code that remains.
+# CARGO_TERM_COLOR=always wraps the note in escape codes, so ask for
+# plain output and strip any code that is left.
 if ! cargo rustc --release --quiet --color never \
     --manifest-path "$crate/Cargo.toml" \
     --target-dir "$target" -- --print native-static-libs 2>"$log"; then
@@ -79,8 +66,8 @@ fi
 
 cp "$target/release/libsinter_bridge.a" "$archive"
 
-# The C compiler driver already links the C library itself. Naming it
-# again makes the linker warn about a duplicate, so drop it here.
+# The C compiler driver links the C library itself, and naming it a
+# second time makes the linker warn.
 libraries=$(sed 's/\x1b\[[0-9;]*m//g' "$log" |
   sed -n 's/^note: native-static-libs: *//p' | tail -n 1 |
   tr ' ' '\n' | grep -v -e '^-lSystem$' -e '^-lc$' -e '^$' | tr '\n' ' ')

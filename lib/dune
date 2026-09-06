@@ -4,8 +4,7 @@
 (library
  (name sinter_core)
  (public_name sinter.core)
- ; sinter.bridge links a static Rust library and has no bytecode
- ; mode. See lib/bridge/dune.
+ ; sinter.bridge is native only, so this library is native only.
  (modes native)
  (libraries sinter_bridge))
 

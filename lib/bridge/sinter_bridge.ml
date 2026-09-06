@@ -3,8 +3,7 @@
 
 exception Error of string
 
-(* The C stubs raise this exception. Callback.register_exception makes
-   it reachable from C under this name. *)
+(* The C stubs raise this exception. *)
 let () = Callback.register_exception "Sinter_bridge.Error" (Error "")
 
 type engine
@@ -46,9 +45,9 @@ let load engine ~name ~wasm =
     invalid_arg "Sinter_bridge.load: the grammar name holds a NUL byte";
   { engine; handle = language_load engine name wasm }
 
-(* The decoder of the result buffer. bridge/README.md defines the
-   layout. Every integer is unsigned, 32 bits wide, and little-endian.
-   No field is aligned, so every read copies the four bytes. *)
+(* The decoder of the result buffer. Every integer in the buffer is
+   unsigned, 32 bits wide, and little-endian.
+   @cites parser-bridge *)
 
 let magic = "SBR1"
 let header_length = 16
@@ -62,16 +61,13 @@ let check buffer offset count =
   if offset < 0 || count < 0 || offset + count > String.length buffer then
     malformed "a record runs past the end of the buffer"
 
-(* An OCaml int holds 63 bits on a 64-bit machine and 31 bits on a
-   32-bit one. The mask below turns a negative int32 into the unsigned
-   value it stands for, which needs 32 bits. Sinter is built for
-   64-bit machines only. *)
+(* The mask gives the unsigned value of the four bytes. It needs an
+   int of more than 32 bits, so Sinter runs on 64-bit machines only. *)
 let read_int buffer offset =
   check buffer offset 4;
   Int32.to_int (String.get_int32_le buffer offset) land 0xFFFFFFFF
 
-(* Read a length in bytes and then that many bytes. Give the string and
-   the offset of the byte after it. *)
+(* Give the string and the offset of the byte after it. *)
 let read_string buffer offset =
   let length = read_int buffer (offset + 0) in
   check buffer (offset + 4) length;
@@ -113,10 +109,6 @@ let read_capture buffer offset =
     },
     offset )
 
-(* The encoder in the Rust crate and this decoder are two hand-written
-   halves of one format. The magic number catches a buffer that is
-   wholly wrong. This catches one that is subtly wrong: a count that
-   does not match the records, or bytes left over at the end. *)
 let check_whole buffer offset =
   if offset <> String.length buffer then
     malformed

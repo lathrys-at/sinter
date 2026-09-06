@@ -1,15 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Copyright 2026 The Sinter Authors */
 
-/* The C stubs over the parser bridge. Each stub is a thin wrapper: it
-   converts the arguments, calls one function of the bridge, and
-   converts the result. The stubs decode no record. The OCaml module
-   Sinter_bridge decodes the result buffer.
-
-   No function of the bridge allocates on the OCaml heap, and none of
-   them calls back into OCaml. The stubs therefore hold the OCaml
-   runtime lock for the whole call. A long parse blocks the other
-   OCaml threads of the process. */
+/* The stubs hold the OCaml runtime lock for the whole call, so a long
+   parse blocks every other thread of the process. */
 
 #include <string.h>
 
@@ -22,8 +15,6 @@
 
 #include "sinter_bridge.h"
 
-/* Raise Sinter_bridge.Error with the message of the last
-   failure. */
 static void raise_bridge_error(const char *fallback) {
   const char *message = sinter_bridge_last_error();
   const value *exception = caml_named_value("Sinter_bridge.Error");
@@ -36,9 +27,8 @@ static void raise_bridge_error(const char *fallback) {
   caml_raise_with_string(*exception, message);
 }
 
-/* An engine. The pointer is NULL after sinter_bridge_engine_free_stub
-   ran, so that the finalizer does not free the engine a second time
-   and so that a later call reports a clear failure. */
+/* The pointer is NULL once the engine is freed. Nothing frees an
+   engine twice, and a later call fails with a clear message. */
 
 #define Engine_val(v) (*((sinter_bridge_engine **)Data_custom_val(v)))
 
@@ -62,9 +52,8 @@ static sinter_bridge_engine *live_engine(value v) {
   return engine;
 }
 
-/* A language handle. The engine owns the language, so the handle has
-   no finalizer. The OCaml side keeps the engine alive for as long as
-   any handle from that engine is alive. */
+/* The engine owns the language, so the handle has no finalizer. The
+   OCaml side keeps the engine alive while a handle of it lives. */
 
 #define Language_val(v) (*((sinter_bridge_language **)Data_custom_val(v)))
 
@@ -81,10 +70,8 @@ CAMLprim value sinter_bridge_engine_new_stub(value unit) {
   if (engine == NULL) {
     raise_bridge_error("the bridge could not create an engine");
   }
-  /* An engine holds the WebAssembly runtime, so it is expensive in
-     memory that the OCaml heap does not see. Tell the garbage
-     collector how much, so that it frees an unused engine promptly.
-     The number is an estimate, not a measurement. */
+  /* The last argument is the memory outside the OCaml heap that an
+     engine holds. It is an estimate, not a measurement. */
   result = caml_alloc_custom_mem(&engine_operations,
                                  sizeof(sinter_bridge_engine *), 4 << 20);
   Engine_val(result) = engine;
@@ -104,9 +91,8 @@ CAMLprim value sinter_bridge_language_load_stub(value engine, value name,
   CAMLparam3(engine, name, wasm);
   CAMLlocal1(result);
   sinter_bridge_engine *pointer = live_engine(engine);
-  /* An OCaml string is NUL-terminated in memory. The OCaml side
-     rejects a name that holds a NUL byte of its own, so String_val
-     gives a whole C string here. */
+  /* String_val gives a whole C string here. The OCaml side rejects a
+     name that holds a NUL byte. */
   sinter_bridge_language *language = sinter_bridge_language_load(
       pointer, String_val(name), (const uint8_t *)String_val(wasm),
       caml_string_length(wasm));
@@ -131,8 +117,8 @@ CAMLprim value sinter_bridge_run_stub(value engine, value language,
   if (run == NULL) {
     raise_bridge_error("the bridge could not parse the source text");
   }
-  /* Copy the buffer into an OCaml string and free the result at once.
-     No OCaml value then points into memory that the bridge owns. */
+  /* Copy the buffer, then free the result. No OCaml value points into
+     memory that the bridge owns. */
   result = caml_alloc_initialized_string(run->len, (const char *)run->data);
   sinter_bridge_result_free(run);
   CAMLreturn(result);
