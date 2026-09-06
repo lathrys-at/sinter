@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 The Sinter Authors
+
+[package]
+name = "sinter-bridge"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+description = "The C interface that Sinter uses to load tree-sitter grammars from WebAssembly"
+
+[lib]
+name = "sinter_bridge"
+crate-type = ["staticlib"]
+
+[dependencies]
+tree-sitter = { version = "0.25", features = ["wasm"] }
+
+[profile.release]
+opt-level = 2

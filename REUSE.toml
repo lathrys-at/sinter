@@ -13,3 +13,11 @@ path = ["**"]
 precedence = "closest"
 SPDX-FileCopyrightText = "The Sinter Authors"
 SPDX-License-Identifier = "Apache-2.0"
+
+# The prebuilt grammar of tree-sitter-json and its license text. The
+# file NOTICE beside them names the repository and the release tag.
+[[annotations]]
+path = ["test/fixtures/tree-sitter-json/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "2014 Max Brunsfeld"
+SPDX-License-Identifier = "MIT"

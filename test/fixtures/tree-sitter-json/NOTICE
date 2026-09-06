@@ -1,0 +1,6 @@
+The file tree-sitter-json.wasm is the prebuilt grammar of the
+repository https://github.com/tree-sitter/tree-sitter-json, from
+release tag v0.24.8, asset tree-sitter-json.wasm. The license is MIT
+(SPDX-License-Identifier: MIT); the file LICENSE beside this file is
+the license text of that release. The SHA-256 of the wasm file is
+d2119fb98d5912719b13f9458574f8608d2d29dfbe45f6be1f860ea1fe2a2405.

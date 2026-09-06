@@ -1,5 +1,6 @@
 # Build and tool state
 _build/
+bridge/target/
 _opam/
 *.install
 .sinter/
