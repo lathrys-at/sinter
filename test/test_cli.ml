@@ -79,6 +79,30 @@ let a_grammar_that_is_not_wasm_is_an_environment_error () =
     "the message starts with the name of the tool" true
     (String.starts_with ~prefix:"sinter: " text)
 
+let contains needle haystack =
+  let n = String.length needle and h = String.length haystack in
+  let rec search index =
+    index + n <= h
+    && (String.equal (String.sub haystack index n) needle || search (index + 1))
+  in
+  search 0
+
+let the_help_of_parse_names_only_the_codes_it_returns () =
+  let status, text = run "parse --help=plain" in
+  code "the exit code is 0" 0 status;
+  List.iter
+    (fun line ->
+      Alcotest.(check bool)
+        (Printf.sprintf "the help of parse holds %S" line)
+        true (contains line text))
+    [ "EXIT STATUS"; "0   on"; "2   when"; "3   when" ];
+  List.iter
+    (fun line ->
+      Alcotest.(check bool)
+        (Printf.sprintf "the help of parse does not hold %S" line)
+        false (contains line text))
+    [ "1   when"; "4   when" ]
+
 let the_help_lists_the_five_exit_codes () =
   let status, text = run "--help=plain" in
   code "the exit code is 0" 0 status;
@@ -115,4 +139,6 @@ let tests =
       `Quick a_grammar_that_is_not_wasm_is_an_environment_error;
     Alcotest.test_case "the help lists the five exit codes" `Quick
       the_help_lists_the_five_exit_codes;
+    Alcotest.test_case "the help of parse names only the codes it returns"
+      `Quick the_help_of_parse_names_only_the_codes_it_returns;
   ]

@@ -87,14 +87,19 @@ fi
 
 cp "$target/release/libsinter_bridge.a" "$archive"
 
-# The C compiler driver links the C library itself, and naming it a
-# second time makes the linker warn.
-libraries=$(sed 's/\x1b\[[0-9;]*m//g' "$log" |
-  sed -n 's/^note: native-static-libs: *//p' | tail -n 1 |
-  tr ' ' '\n' | grep -v -e '^-lSystem$' -e '^-lc$' -e '^$' | tr '\n' ' ')
-if [ -z "$libraries" ]; then
+# The note names the system libraries that a static link of the crate
+# needs. Print it, so that every build log holds it.
+note=$(sed 's/\x1b\[[0-9;]*m//g' "$log" |
+  sed -n 's/^note: native-static-libs: *//p' | tail -n 1)
+if [ -z "$note" ]; then
   echo "The Rust toolchain reported no native-static-libs line." >&2
   cat "$log" >&2
   exit 1
 fi
+echo "note: native-static-libs: $note" >&2
+
+# The C compiler driver links the C library itself, and naming it a
+# second time makes the linker warn.
+libraries=$(printf '%s' "$note" |
+  tr ' ' '\n' | grep -v -e '^-lSystem$' -e '^-lc$' -e '^$' | tr '\n' ' ')
 printf '(%s)\n' "$libraries" >"$flags"

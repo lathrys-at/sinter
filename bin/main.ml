@@ -25,15 +25,27 @@ let usage_error = 2
 let environment_error = 3
 let refused = 4
 
+let clean_exit =
+  Cmd.Exit.info ~doc:"on success, with no finding to report." clean
+
+let findings_exit =
+  Cmd.Exit.info ~doc:"when the command reports at least one finding." findings
+
+let usage_exit =
+  Cmd.Exit.info ~doc:"when the command line is wrong." usage_error
+
+let environment_exit =
+  Cmd.Exit.info ~doc:"when the command cannot run in this environment."
+    environment_error
+
+let refused_exit = Cmd.Exit.info ~doc:"when the command refuses to act." refused
+
+(* Every command of the tool uses these five codes. *)
 let exits =
-  [
-    Cmd.Exit.info ~doc:"on success, with no finding to report." clean;
-    Cmd.Exit.info ~doc:"when the command reports at least one finding." findings;
-    Cmd.Exit.info ~doc:"when the command line is wrong." usage_error;
-    Cmd.Exit.info ~doc:"when the command cannot run in this environment."
-      environment_error;
-    Cmd.Exit.info ~doc:"when the command refuses to act." refused;
-  ]
+  [ clean_exit; findings_exit; usage_exit; environment_exit; refused_exit ]
+
+(* parse reports captures, not findings, and it asks for no approval. *)
+let parse_exits = [ clean_exit; usage_exit; environment_exit ]
 
 let parse_cmd =
   let doc = "Parse files with a tree-sitter grammar and print the captures" in
@@ -69,7 +81,7 @@ let parse_cmd =
          S-expression instead, one tree per line, and read no query.";
     ]
   in
-  let info = Cmd.info "parse" ~doc ~man ~exits in
+  let info = Cmd.info "parse" ~doc ~man ~exits:parse_exits in
   let grammar =
     let doc =
       "The grammar to parse with: a tree-sitter grammar as $(i,.wasm)."
