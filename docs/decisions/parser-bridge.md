@@ -125,7 +125,7 @@ the pull request that added the bridge:
 | first load, tree-sitter-typescript, module cache warm | 3.3 ms; engine creation 0.5 ms |
 | parse and query, a 214 KB JSON file | 26 ms, 6,300 captures |
 | static link, macOS arm64 | clean; `-liconv -lSystem -lc -lm`, no framework |
-| static link, Linux x86_64 (CI) | clean; the list of system libraries is not measured yet |
+| static link, Linux x86_64 (CI) | clean; `-lgcc_s -lutil -lrt -lpthread -lm -ldl -lc`, from the build log of the `ubuntu-latest` job |
 
 The design's safety claim holds. The import section of
 tree-sitter-json names linear memory, a function table, and two
