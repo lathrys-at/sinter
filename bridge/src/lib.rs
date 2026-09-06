@@ -233,6 +233,10 @@ fn into_result(buffer: Vec<u8>) -> *mut SinterBridgeResult {
 /// Rust aborts the process when a panic tries to leave an
 /// `extern "C"` function, and an aborted process gives the caller no
 /// message and no exit code of its own.
+///
+/// The guard works only while the crate unwinds a panic. A release
+/// profile that sets `panic = "abort"` makes every guard in the crate
+/// dead, and the process aborts again.
 fn guard<T>(failure: T, body: impl FnOnce() -> T) -> T {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
         Ok(value) => value,
