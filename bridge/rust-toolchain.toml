@@ -1,9 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Sinter Authors
 
-# The bridge builds with one pinned Rust toolchain, in CI and on every
-# contributor's machine, so that a new lint in a newer stable release
-# cannot break the build. Bump the version here on purpose.
+# @cites parser-bridge
 [toolchain]
 channel = "1.94.1"
 components = ["rustfmt", "clippy"]
