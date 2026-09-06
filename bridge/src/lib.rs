@@ -18,7 +18,7 @@ use std::ffi::{c_char, CStr, CString};
 use tree_sitter::{wasmtime, Language, Parser, Query, QueryCursor, StreamingIterator, WasmStore};
 
 /// The magic bytes at the start of every result buffer: `SBR1`.
-const MAGIC: u32 = u32::from_le_bytes([b'S', b'B', b'R', b'1']);
+const MAGIC: u32 = u32::from_le_bytes(*b"SBR1");
 
 /// The value of the `kind` field for a buffer of captures.
 const KIND_CAPTURES: u32 = 0;
