@@ -35,6 +35,8 @@ let check_path path =
     fail "the file name is not UTF-8 text: %s" (String.escaped path)
 
 let read_file path =
+  if try Sys.is_directory path with Sys_error _ -> false then
+    fail "%s: is a directory" path;
   let channel =
     try open_in_bin path with Sys_error message -> fail "%s" message
   in
