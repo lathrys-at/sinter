@@ -104,7 +104,11 @@ let parse_cmd =
         try
           Sinter_core.Parse.run ~grammar ~query ~paths stdout;
           `Ok clean
-        with Sinter_core.Parse.Error message ->
+        with
+        | Sinter_core.Parse.Error message
+        | Sys_error message
+        | Invalid_argument message
+        ->
           Printf.eprintf "sinter: %s\n" message;
           `Ok environment_error)
   in

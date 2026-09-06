@@ -141,6 +141,34 @@ let ends_a_span_on_the_line_of_its_last_byte () =
     "the document of a file of three lines ends on line 3" true
     (contains {|"ecol":3,"eline":3|} line)
 
+let reports_a_channel_that_cannot_be_written () =
+  let file = Filename.temp_file "sinter-parse" ".out" in
+  let channel = open_out_bin file in
+  close_out channel;
+  let message =
+    Fun.protect
+      ~finally:(fun () -> Sys.remove file)
+      (fun () ->
+        try
+          Parse.run ~grammar ~query:(Some query) ~paths:[ sample ] channel;
+          "no failure"
+        with Parse.Error message -> message)
+  in
+  Alcotest.(check bool)
+    "the message says the output cannot be written" true
+    (contains "cannot write the output" message)
+
+let rejects_a_file_name_that_is_not_utf_8 () =
+  let message =
+    try
+      ignore (output ~query:(Some query) ~paths:[ "bad\xffname.json" ]);
+      "no failure"
+    with Parse.Error message -> message
+  in
+  Alcotest.(check bool)
+    "the message says the file name is not UTF-8" true
+    (contains "the file name is not UTF-8 text" message)
+
 let names_the_grammar () =
   let check expected path =
     Alcotest.(check string) path expected (Parse.grammar_name path)
@@ -165,5 +193,9 @@ let tests =
       names_the_query_file_when_the_query_fails;
     Alcotest.test_case "ends a span on the line of its last byte" `Quick
       ends_a_span_on_the_line_of_its_last_byte;
+    Alcotest.test_case "reports a channel that cannot be written" `Quick
+      reports_a_channel_that_cannot_be_written;
+    Alcotest.test_case "rejects a file name that is not UTF-8" `Quick
+      rejects_a_file_name_that_is_not_utf_8;
     Alcotest.test_case "names the grammar" `Quick names_the_grammar;
   ]

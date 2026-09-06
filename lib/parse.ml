@@ -8,6 +8,17 @@ let fail format = Printf.ksprintf (fun message -> raise (Error message)) format
 (* Every string in a record is UTF-8, and the text of a capture comes
    from the file.
    @cites json-handling *)
+let is_utf_8 text =
+  let length = String.length text in
+  let rec check offset =
+    offset >= length
+    ||
+    let decoded = String.get_utf_8_uchar text offset in
+    Uchar.utf_decode_is_valid decoded
+    && check (offset + Uchar.utf_decode_length decoded)
+  in
+  check 0
+
 let check_utf_8 path text =
   let length = String.length text in
   let offset = ref 0 in
@@ -17,6 +28,12 @@ let check_utf_8 path text =
       fail "%s: the file is not UTF-8 text, at byte %d" path !offset;
     offset := !offset + Uchar.utf_decode_length decoded
   done
+
+(* The name of a file goes into a record, and every string in a record
+   is UTF-8. *)
+let check_path path =
+  if not (is_utf_8 path) then
+    fail "the file name is not UTF-8 text: %s" (String.escaped path)
 
 let read_file path =
   let channel =
@@ -95,6 +112,7 @@ let tree language ~path =
   of_bridge path (fun () -> Sinter_bridge.tree language ~source)
 
 let run ~grammar ~query ~paths channel =
+  List.iter check_path paths;
   let wasm = read_file grammar in
   let name = grammar_name grammar in
   let engine =
@@ -110,21 +128,28 @@ let run ~grammar ~query ~paths channel =
         with Sinter_bridge.Error message ->
           fail "%s: the grammar does not load: %s" grammar message
       in
-      match query with
-      | None ->
-          List.iter
-            (fun path -> output_string channel (tree language ~path ^ "\n"))
-            paths
-      | Some query_path ->
-          let query = read_source query_path in
-          if String.length (String.trim query) = 0 then
-            fail "%s: the query file is empty" query_path;
-          (* A query that does not compile fails in the same way for
-             every file. Run it once over an empty text, so that the
-             failure names the query file and not a source file. *)
-          of_bridge query_path (fun () ->
-              ignore (Sinter_bridge.captures language ~source:"" ~query));
-          List.iter
-            (fun path ->
-              List.iter (Jsonl.output channel) (captures language ~query ~path))
-            paths)
+      let emit () =
+        match query with
+        | None ->
+            List.iter
+              (fun path -> output_string channel (tree language ~path ^ "\n"))
+              paths
+        | Some query_path ->
+            let query = read_source query_path in
+            if String.length (String.trim query) = 0 then
+              fail "%s: the query file is empty" query_path;
+            (* A query that does not compile fails in the same way for
+               every file. Run it once over an empty text, so that the
+               failure names the query file and not a source file. *)
+            of_bridge query_path (fun () ->
+                ignore (Sinter_bridge.captures language ~source:"" ~query));
+            List.iter
+              (fun path ->
+                List.iter (Jsonl.output channel)
+                  (captures language ~query ~path))
+              paths
+      in
+      try
+        emit ();
+        flush channel
+      with Sys_error message -> fail "cannot write the output: %s" message)

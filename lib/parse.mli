@@ -64,4 +64,5 @@ val run :
     [None], it writes the parse tree of each file as an S-expression, one tree
     per line.
 
-    @raise Error on the first failure. *)
+    @raise Error on the first failure, and on a failure to write to [channel].
+*)
