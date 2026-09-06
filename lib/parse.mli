@@ -2,10 +2,7 @@
 (* Copyright 2026 The Sinter Authors *)
 
 (** Parse source files with a tree-sitter grammar and report what a tree-sitter
-    query captures.
-
-    The [sinter parse] command is a thin wrapper over {!run}. A later server
-    mode calls the same functions. *)
+    query captures. *)
 
 exception Error of string
 (** Something went wrong, and the string says what. The string is fit to show to
@@ -14,7 +11,7 @@ exception Error of string
 val read_file : string -> string
 (** [read_file path] is the whole content of the file at [path].
 
-    @raise Error if the file does not open, or if it is not UTF-8. *)
+    @raise Error if the file does not open, or does not read. *)
 
 val grammar_name : string -> string
 (** [grammar_name path] is the grammar name that the bridge needs, from the name

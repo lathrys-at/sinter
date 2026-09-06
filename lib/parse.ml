@@ -5,10 +5,9 @@ exception Error of string
 
 let fail format = Printf.ksprintf (fun message -> raise (Error message)) format
 
-(* spec/jsonl.md section 2 requires every string in the output to be
-   UTF-8. The text of a capture comes from the file, so a file that is
-   not UTF-8 cannot produce a valid line. Reject such a file here, with
-   a message that names it, instead of failing later in the writer. *)
+(* Every string in a record is UTF-8, and the text of a capture is
+   text of the file.
+   @cites json-handling *)
 let check_utf_8 path text =
   let length = String.length text in
   let offset = ref 0 in
@@ -21,15 +20,13 @@ let check_utf_8 path text =
 
 let read_file path =
   let channel =
-    try open_in_bin path
-    with Sys_error message ->
-      fail "%s: the file does not open: %s" path message
+    try open_in_bin path with Sys_error message -> fail "%s" message
   in
   Fun.protect
     ~finally:(fun () -> close_in_noerr channel)
     (fun () ->
       try really_input_string channel (in_channel_length channel) with
-      | Sys_error message -> fail "%s: the file does not read: %s" path message
+      | Sys_error message -> fail "%s" message
       | End_of_file ->
           fail "%s: the file ended sooner than its length says" path)
 
@@ -44,10 +41,8 @@ let grammar_name path =
   then String.sub underscored length (String.length underscored - length)
   else underscored
 
-(* Section 2 of spec/jsonl.md says the scanner normalizes strings that
-   come from file text to Unicode NFC. The text below is not
-   normalized. Normalizing needs a Unicode library, and the project
-   has none yet. *)
+(* The text of a capture is not normalized to Unicode NFC.
+   @cites json-handling *)
 let record_of_capture ~path (capture : Sinter_bridge.capture) =
   [
     ("path", Jsonl.string path);

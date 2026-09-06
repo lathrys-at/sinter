@@ -3,13 +3,13 @@
 
 open Sinter_core
 
-(* Dune runs the test in the build copy of this directory, so every
-   path below is relative to test/. *)
+(* Dune runs the test in the build copy of test/, so the paths below
+   are relative to that directory. *)
 let grammar = "fixtures/tree-sitter-json/tree-sitter-json.wasm"
 let sample = "fixtures/sample.json"
 let query = "fixtures/sample.scm"
 
-(* Run the parser and give everything it wrote. *)
+(* Everything that one run writes to its channel. *)
 let output ~query ~paths =
   let file = Filename.temp_file "sinter-parse" ".out" in
   let channel = open_out_bin file in
@@ -25,12 +25,10 @@ let output ~query ~paths =
         ~finally:(fun () -> close_in_noerr channel)
         (fun () -> really_input_string channel (in_channel_length channel)))
 
-(* The query in fixtures/sample.scm has two patterns. Pattern 0
-   captures the key and the value of every pair whose value is a
-   string. Pattern 1 captures every number. The four string pairs of
-   fixtures/sample.json give two matches of pattern 0, because the
-   value of "ports" is an array and the value of "debug" is a
-   keyword. *)
+(* Pattern 0 of the query captures the key and the value of a pair
+   whose value is a string. Pattern 1 captures a number. Two pairs of
+   the sample match pattern 0: the value of one other pair is an
+   array, and the value of the last is a keyword. *)
 let expected_captures =
   String.concat ""
     (List.map
