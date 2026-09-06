@@ -89,6 +89,17 @@ let reports_a_file_that_is_not_utf_8 () =
     in
     search 0)
 
+let reports_a_file_that_does_not_exist () =
+  let message =
+    try
+      ignore (output ~query:(Some query) ~paths:[ "no-such-file.json" ]);
+      "no failure"
+    with Parse.Error message -> message
+  in
+  Alcotest.(check string)
+    "the message is the message of the system"
+    "no-such-file.json: No such file or directory" message
+
 let names_the_grammar () =
   let check expected path =
     Alcotest.(check string) path expected (Parse.grammar_name path)
@@ -107,5 +118,7 @@ let tests =
       handles_every_file_in_order;
     Alcotest.test_case "reports a file that is not UTF-8" `Quick
       reports_a_file_that_is_not_utf_8;
+    Alcotest.test_case "reports a file that does not exist" `Quick
+      reports_a_file_that_does_not_exist;
     Alcotest.test_case "names the grammar" `Quick names_the_grammar;
   ]
