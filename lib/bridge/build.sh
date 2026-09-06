@@ -5,7 +5,11 @@
 # Build the Rust bridge crate as a static library, and report the
 # system libraries that a static link of that crate needs.
 #
-# The arguments, in order:
+# With --target-dir as the first argument, the script prints the build
+# directory that it chooses for the crate in the second argument, and
+# does nothing else.
+#
+# The arguments of a build, in order:
 #   1. the directory that holds the crate's Cargo.toml
 #   2. the directory for cargo's build output, when neither
 #      CARGO_TARGET_DIR nor a home directory says where to put it
@@ -18,10 +22,15 @@
 
 set -eu
 
-crate=$1
-fallback=$2
-archive=$3
-flags=$4
+if [ "${1:-}" = "--target-dir" ]; then
+  crate=$2
+  fallback=
+else
+  crate=$1
+  fallback=$2
+  archive=$3
+  flags=$4
+fi
 
 # Cargo's build output must live outside _build, because dune empties
 # a rule's directory before it runs the rule. "dune clean" does not
@@ -53,6 +62,11 @@ else
   key=$(printf '%s' "$root" | cksum | tr -d ' ')
 fi
 target=$base/$key
+
+if [ "${1:-}" = "--target-dir" ]; then
+  printf '%s\n' "$target"
+  exit 0
+fi
 
 if ! command -v cargo >/dev/null 2>&1; then
   echo "The bridge needs the Rust toolchain, and cargo is not on the PATH." >&2

@@ -60,6 +60,18 @@ jobs:
           cache: false
       - name: Install dependencies
         run: opam install . --deps-only --with-test --with-dev-setup --locked
+      # Two checkouts that share one cargo build directory can link
+      # each other's library. Each checkout must get its own.
+      - name: Check that two checkouts do not share a build directory
+        run: |
+          set -eu
+          mkdir -p one/bridge two/bridge
+          one=$(sh lib/bridge/build.sh --target-dir one/bridge)
+          two=$(sh lib/bridge/build.sh --target-dir two/bridge)
+          echo "one: $one"
+          echo "two: $two"
+          test "$one" != "$two"
+          rm -rf one two
       - name: Build
         run: opam exec -- dune build
       - name: Test
