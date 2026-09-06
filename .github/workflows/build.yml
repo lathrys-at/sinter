@@ -33,9 +33,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: _opam
-          key: opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
+          key: opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
-            opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+            opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
       # Installs the toolchain that bridge/rust-toolchain.toml pins.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -77,9 +77,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: _opam
-          key: opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
+          key: opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
-            opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+            opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
       # Installs the toolchain that bridge/rust-toolchain.toml pins.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
