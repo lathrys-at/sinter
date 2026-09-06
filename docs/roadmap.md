@@ -60,9 +60,13 @@ Each one needs a decision record before work starts.
 - **`spec/protocol.md`** — the request and response protocol of
   `serve`, as a fifth specification. Write this specification when the
   shape of the protocol settles.
-- **Issue #2** — a per-kind default location for promised
-  declarations, so that plan steps need not repeat
-  `docs/decisions/**` in their scope.
+- **Issue #2** — a default location for each declaration kind, so
+  that plan steps need not repeat `docs/decisions/**` in their scope.
+  The ruling is made: the manifest gets a table with one default
+  location per kind, and a promised declaration is met inside the
+  step's scope or inside that default location. The specification
+  change is still to write: `spec/vocabulary.md` section 10.5, the
+  manifest reference, and the scope instruction in the `plan` skill.
 - **The `sinter-packs` repository** — the home of the language packs.
   We build and verify the packs there, as the licensing brief
   describes.
