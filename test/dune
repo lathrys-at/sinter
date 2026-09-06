@@ -4,4 +4,6 @@
 (test
  (name test_sinter)
  (modes exe)
+ (deps
+  (glob_files_rec fixtures/*))
  (libraries sinter_core alcotest))
