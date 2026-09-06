@@ -26,12 +26,13 @@ jobs:
       # the lock file. A lock change falls back to the previous switch
       # and installs only the difference. setup-ocaml's own cache is
       # off, because it would restore a switch without dependencies.
+      # Only the switch is cached, not the opam root: a restored root
+      # holds a git clone of opam-repository that opam init cannot
+      # always update.
       - name: Restore the opam switch
         uses: actions/cache@v4
         with:
-          path: |
-            _opam
-            ~/.opam
+          path: _opam
           key: opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
             opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
@@ -75,9 +76,7 @@ jobs:
       - name: Restore the opam switch
         uses: actions/cache@v4
         with:
-          path: |
-            _opam
-            ~/.opam
+          path: _opam
           key: opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
             opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
