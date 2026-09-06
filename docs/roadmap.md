@@ -10,10 +10,9 @@
   - `sinter parse`.
   - `sinter serve` over stdin and stdout.
 - **Manifest reader** — `sinter.toml`, design notes section 14.
-  - A default location per declaration kind (issue #2): a manifest
-    table; a promised declaration is met inside the step's scope or
-    inside that location. Spec change in `spec/vocabulary.md`
-    section 10.5; scope instruction in the `plan` skill.
+  - The `[locations]` table: one default location per declaration
+    kind (issue #2). `spec/vocabulary.md` section 10.5 defines the
+    rule.
 - **Scanner** — the language-pack interface, design notes section 5.2.
   - Markdown pack first: plans and decision records are markdown.
 - **`sinter scan`**
@@ -33,6 +32,9 @@
   - An MCP server over stdio; tools named after the CLI verbs.
   - The decision record answers the "no MCP server" argument in the
     design notes, section 9.1.
+  - A richer Claude Code plugin on top of the server: MCP Apps UI that
+    shows plans, decisions, and other Sinter information to the user
+    inside the client. A desired outcome, not yet designed.
 - **`sinter serve --detach`** — a mode that outlives its caller, on a
   socket, for several clients.
 - **`spec/protocol.md`** — the `serve` request and response protocol,
