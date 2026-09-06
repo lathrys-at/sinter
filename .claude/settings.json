@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "sinter": {
+      "source": {
+        "source": "github",
+        "repo": "lathrys-at/sinter"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "sinter@sinter": true
+  }
+}

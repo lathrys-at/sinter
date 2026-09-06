@@ -23,6 +23,21 @@ dune build
 dune test
 ```
 
+## Skills for Claude Code
+
+This repository is also a Claude Code plugin marketplace. The `sinter`
+plugin holds two skills: `/sinter:plan` turns an approved plan into a
+Sinter plan file under `.plans/`, and `/sinter:decision` writes a
+decision record under `docs/decisions/`. To install the plugin, run
+this inside Claude Code:
+
+```
+/plugin marketplace add lathrys-at/sinter
+/plugin install sinter@sinter
+```
+
+The skills live in [plugins/sinter/skills/](plugins/sinter/skills/).
+
 ## Versioning
 
 The specifications in `spec/` share one semantic version, separate
