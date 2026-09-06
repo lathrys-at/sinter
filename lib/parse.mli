@@ -19,9 +19,11 @@ val grammar_name : string -> string
     hyphen replaced by an underscore and a leading ["tree_sitter_"] removed. The
     name of ["packs/tree-sitter-json.wasm"] is therefore ["json"]. *)
 
-val record_of_capture : path:string -> Sinter_bridge.capture -> Jsonl.record
-(** [record_of_capture ~path capture] is the JSONL record for one capture in the
-    file at [path]. The fields are:
+val record_of_capture :
+  path:string -> source:string -> Sinter_bridge.capture -> Jsonl.record
+(** [record_of_capture ~path ~source capture] is the JSONL record for one
+    capture in the file at [path]. [source] is the text of that file. The fields
+    are:
 
     - [path]: the file, as it was named on the command line
     - [pat]: the index of the pattern in the query, from 0
@@ -31,7 +33,9 @@ val record_of_capture : path:string -> Sinter_bridge.capture -> Jsonl.record
       start of the file. The end is exclusive
     - [line], [col]: the start of the node, from 1. The column counts bytes, not
       characters
-    - [eline], [ecol]: the end of the node, from 1. The column is exclusive
+    - [eline]: the line that holds the last byte of the node, from 1
+    - [ecol]: one byte past the last byte of the node, in the line [eline], from
+      1
     - [text]: the source text of the node *)
 
 val captures :

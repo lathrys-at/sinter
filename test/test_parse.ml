@@ -9,6 +9,14 @@ let grammar = "fixtures/tree-sitter-json/tree-sitter-json.wasm"
 let sample = "fixtures/sample.json"
 let query = "fixtures/sample.scm"
 
+let contains needle haystack =
+  let n = String.length needle and h = String.length haystack in
+  let rec search index =
+    index + n <= h
+    && (String.equal (String.sub haystack index n) needle || search (index + 1))
+  in
+  search 0
+
 (* Everything that one run writes to its channel. *)
 let output ~query ~paths =
   let file = Filename.temp_file "sinter-parse" ".out" in
@@ -79,15 +87,7 @@ let reports_a_file_that_is_not_utf_8 () =
   in
   Alcotest.(check bool)
     "the message says the file is not UTF-8" true
-    (String.length message > 0
-    &&
-    let needle = "is not UTF-8 text" in
-    let rec search index =
-      index + String.length needle <= String.length message
-      && (String.equal (String.sub message index (String.length needle)) needle
-         || search (index + 1))
-    in
-    search 0)
+    (contains "is not UTF-8 text" message)
 
 let reports_a_file_that_does_not_exist () =
   let message =
@@ -118,6 +118,29 @@ let names_the_query_file_when_the_query_fails () =
     "the message names the query file, not the source file" true
     (String.starts_with ~prefix:file message)
 
+(* A record ends on the line that holds its last byte. The document
+   node of this file ends after the last line feed, and tree-sitter
+   puts that end point on a fourth row that the file does not have. *)
+let ends_a_span_on_the_line_of_its_last_byte () =
+  let source = Filename.temp_file "sinter-parse" ".json" in
+  let channel = open_out_bin source in
+  output_string channel "{\n  \"a\": \"b\"\n}\n";
+  close_out channel;
+  let scm = Filename.temp_file "sinter-parse" ".scm" in
+  let channel = open_out_bin scm in
+  output_string channel "(document) @d\n";
+  close_out channel;
+  let line =
+    Fun.protect
+      ~finally:(fun () ->
+        Sys.remove source;
+        Sys.remove scm)
+      (fun () -> output ~query:(Some scm) ~paths:[ source ])
+  in
+  Alcotest.(check bool)
+    "the document of a file of three lines ends on line 3" true
+    (contains {|"ecol":3,"eline":3|} line)
+
 let names_the_grammar () =
   let check expected path =
     Alcotest.(check string) path expected (Parse.grammar_name path)
@@ -140,5 +163,7 @@ let tests =
       reports_a_file_that_does_not_exist;
     Alcotest.test_case "names the query file when the query fails" `Quick
       names_the_query_file_when_the_query_fails;
+    Alcotest.test_case "ends a span on the line of its last byte" `Quick
+      ends_a_span_on_the_line_of_its_last_byte;
     Alcotest.test_case "names the grammar" `Quick names_the_grammar;
   ]

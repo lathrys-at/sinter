@@ -5,8 +5,8 @@ exception Error of string
 
 let fail format = Printf.ksprintf (fun message -> raise (Error message)) format
 
-(* Every string in a record is UTF-8, and the text of a capture is
-   text of the file.
+(* Every string in a record is UTF-8, and the text of a capture comes
+   from the file.
    @cites json-handling *)
 let check_utf_8 path text =
   let length = String.length text in
@@ -41,9 +41,26 @@ let grammar_name path =
   then String.sub underscored length (String.length underscored - length)
   else underscored
 
+(* A record holds an end line that is inclusive and an end column that
+   is exclusive. tree-sitter gives an end point where both are
+   exclusive, so a node that ends at the start of a row ends, for a
+   record, at the end of the row before it. *)
+let end_of_capture source (capture : Sinter_bridge.capture) =
+  if capture.end_column = 0 && capture.end_row > capture.start_row then
+    let line_start =
+      if capture.end_byte < 2 then 0
+      else
+        match String.rindex_from_opt source (capture.end_byte - 2) '\n' with
+        | Some index -> index + 1
+        | None -> 0
+    in
+    (capture.end_row, capture.end_byte - line_start + 1)
+  else (capture.end_row + 1, capture.end_column + 1)
+
 (* The text of a capture is not normalized to Unicode NFC.
    @cites json-handling *)
-let record_of_capture ~path (capture : Sinter_bridge.capture) =
+let record_of_capture ~path ~source (capture : Sinter_bridge.capture) =
+  let end_line, end_column = end_of_capture source capture in
   [
     ("path", Jsonl.string path);
     ("pat", Jsonl.int capture.pattern);
@@ -53,8 +70,8 @@ let record_of_capture ~path (capture : Sinter_bridge.capture) =
     ("eb", Jsonl.int capture.end_byte);
     ("line", Jsonl.int (capture.start_row + 1));
     ("col", Jsonl.int (capture.start_column + 1));
-    ("eline", Jsonl.int (capture.end_row + 1));
-    ("ecol", Jsonl.int (capture.end_column + 1));
+    ("eline", Jsonl.int end_line);
+    ("ecol", Jsonl.int end_column);
     ("text", Jsonl.string capture.text);
   ]
 
@@ -71,7 +88,7 @@ let captures language ~query ~path =
   let found =
     of_bridge path (fun () -> Sinter_bridge.captures language ~source ~query)
   in
-  List.map (record_of_capture ~path) found
+  List.map (record_of_capture ~path ~source) found
 
 let tree language ~path =
   let source = read_source path in

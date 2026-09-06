@@ -58,9 +58,11 @@ let parse_cmd =
         ( "$(b,line), $(b,col)",
           "the start of the node, from 1. The column counts bytes, not \
            characters" );
+      `I ("$(b,eline)", "the line that holds the last byte of the node, from 1");
       `I
-        ( "$(b,eline), $(b,ecol)",
-          "the end of the node, from 1. The column is exclusive" );
+        ( "$(b,ecol)",
+          "one byte past the last byte of the node, in the line $(b,eline), \
+           from 1" );
       `I ("$(b,text)", "the source text of the node");
       `P
         "With $(b,--tree), print the parse tree of each file as an \
