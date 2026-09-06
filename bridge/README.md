@@ -33,11 +33,18 @@ Cranelift compiler. The linked `sinter` binary grows by less, because
 the linker drops what the binary does not call.
 
 `dune build` at the repository root builds the crate as well, through
-a rule in `lib/bridge/dune`. That rule and the command above write to
-the same directory, `bridge/target`, so the two ways of building share
-one set of compiled crates. `bridge/dune` hides that directory from
-dune and `.gitignore` hides it from git. Set `CARGO_TARGET_DIR` to put
-the output somewhere else.
+a rule in `lib/bridge/dune`. That rule does not write `bridge/target`:
+it puts the output in one directory under the user cache, so that
+every checkout on the machine shares one set of compiled crates. The
+crate takes about 19 seconds and 900 MB to build from nothing, and
+Sinter is written in many git worktrees at once, so one directory per
+checkout would pay that cost once per worktree.
+`lib/bridge/build.sh` chooses the directory and says how.
+
+The command above therefore writes a second copy, in `bridge/target`.
+Set `CARGO_TARGET_DIR` to the directory the rule uses to keep one
+copy. Neither directory is removed by `dune clean`; remove one by hand
+to build the crate from nothing.
 
 ## The C interface
 
