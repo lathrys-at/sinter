@@ -102,6 +102,11 @@ let run ~grammar ~query ~paths channel =
           let query = read_source query_path in
           if String.length (String.trim query) = 0 then
             fail "%s: the query file is empty" query_path;
+          (* A query that does not compile fails in the same way for
+             every file. Run it once over an empty text, so that the
+             failure names the query file and not a source file. *)
+          of_bridge query_path (fun () ->
+              ignore (Sinter_bridge.captures language ~source:"" ~query));
           List.iter
             (fun path ->
               List.iter (Jsonl.output channel) (captures language ~query ~path))

@@ -100,6 +100,24 @@ let reports_a_file_that_does_not_exist () =
     "the message is the message of the system"
     "no-such-file.json: No such file or directory" message
 
+let names_the_query_file_when_the_query_fails () =
+  let file = Filename.temp_file "sinter-parse" ".scm" in
+  let channel = open_out_bin file in
+  output_string channel "(no_such_node) @x\n";
+  close_out channel;
+  let message =
+    Fun.protect
+      ~finally:(fun () -> Sys.remove file)
+      (fun () ->
+        try
+          ignore (output ~query:(Some file) ~paths:[ sample ]);
+          "no failure"
+        with Parse.Error message -> message)
+  in
+  Alcotest.(check bool)
+    "the message names the query file, not the source file" true
+    (String.starts_with ~prefix:file message)
+
 let names_the_grammar () =
   let check expected path =
     Alcotest.(check string) path expected (Parse.grammar_name path)
@@ -120,5 +138,7 @@ let tests =
       reports_a_file_that_is_not_utf_8;
     Alcotest.test_case "reports a file that does not exist" `Quick
       reports_a_file_that_does_not_exist;
+    Alcotest.test_case "names the query file when the query fails" `Quick
+      names_the_query_file_when_the_query_fails;
     Alcotest.test_case "names the grammar" `Quick names_the_grammar;
   ]
