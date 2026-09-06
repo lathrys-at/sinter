@@ -35,7 +35,7 @@ fi
 # Cargo's build output must live outside _build, because dune empties
 # a rule's directory before it runs the rule. "dune clean" does not
 # remove it. Remove it by hand to build the crate from nothing.
-# CARGO_TARGET_DIR moves it.
+# CARGO_TARGET_DIR moves the base directory below.
 if [ -n "${CARGO_TARGET_DIR:-}" ]; then
   base=$CARGO_TARGET_DIR
 elif [ -n "${XDG_CACHE_HOME:-}" ]; then

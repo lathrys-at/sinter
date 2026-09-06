@@ -43,7 +43,7 @@ jobs:
           override: true
           toolchain: 1.94.1
           components: rustfmt, clippy
-      # The dune rule that runs cargo writes its build output to
+      # The dune rule that runs cargo writes its build output under
       # ~/.cache/sinter-bridge-build.
       - name: Cache the cargo state
         uses: actions/cache@v4
@@ -65,13 +65,14 @@ jobs:
       - name: Check that two checkouts do not share a build directory
         run: |
           set -eu
-          mkdir -p one/bridge two/bridge
-          one=$(sh lib/bridge/build.sh --target-dir one/bridge)
-          two=$(sh lib/bridge/build.sh --target-dir two/bridge)
+          first=$(mktemp -d)/bridge
+          second=$(mktemp -d)/bridge
+          mkdir -p "$first" "$second"
+          one=$(sh lib/bridge/build.sh --target-dir "$first")
+          two=$(sh lib/bridge/build.sh --target-dir "$second")
           echo "one: $one"
           echo "two: $two"
           test "$one" != "$two"
-          rm -rf one two
       - name: Build
         run: opam exec -- dune build
       - name: Test
