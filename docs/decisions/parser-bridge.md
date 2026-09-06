@@ -47,9 +47,15 @@ must build on macOS and Linux from a clean checkout.
   library. The rule reads the system libraries the link needs from
   `cargo rustc --print native-static-libs`, so no per-platform list is
   written down.
-- Cargo writes its build output to `$XDG_CACHE_HOME/sinter-bridge-build`
-  (or `~/.cache/sinter-bridge-build`), one directory for every checkout
-  on the machine. `CARGO_TARGET_DIR` overrides it.
+- Cargo writes its build output under
+  `$XDG_CACHE_HOME/sinter-bridge-build` (or
+  `~/.cache/sinter-bridge-build`), in a subdirectory of its own for
+  each checkout, named from the path of the crate.
+  `CARGO_TARGET_DIR` moves the parent directory. Two checkouts never
+  share a build directory: cargo decides that a path package is fresh
+  from the times of its source files against the time of the last
+  build in the directory, so a shared directory hands one checkout the
+  library of another.
 - wasmtime's compiled-module cache is on, in wasmtime's default cache
   directory. A grammar is compiled once per machine; later loads read
   the compiled form.
@@ -75,13 +81,19 @@ must build on macOS and Linux from a clean checkout.
 - **The `ctypes` library instead of hand-written stubs** — rejected.
   Six functions do not justify a dependency, and `ctypes` adds startup
   cost that hooks would feel.
-- **Cargo's build output inside `_build`, or one directory per
-  checkout** — rejected after measurement. Dune empties a rule's
-  directory before the rule runs, so a target inside `_build` rebuilt
-  all 128 crates on every edit inside `bridge/`. A directory per
-  checkout costs 19 seconds and 900 MB for each of the many worktrees
-  Sinter is written in; one shared directory builds a fresh clone in
-  under a second.
+- **Cargo's build output inside `_build`** — rejected after
+  measurement. Dune empties a rule's directory before the rule runs,
+  so a target inside `_build` rebuilt all 128 crates on every edit
+  inside `bridge/`.
+- **One build directory for every checkout on the machine** — chosen
+  first, then rejected. It builds a fresh clone in under a second,
+  against the 19 seconds and 900 MB that a first build costs, and
+  Sinter is written in many git worktrees at once. It is unsound:
+  cargo called a second checkout fresh and left the first checkout's
+  `libsinter_bridge.a` in place, so the second checkout linked code
+  that was not in its source tree. Nothing warned. The directory per
+  checkout keeps the registry of downloaded crates shared, which is
+  most of the speed, and pays the compile once per checkout.
 - **No compiled-module cache** — rejected. The design notes assume the
   cache, and the measurement below shows why: without it, seven
   version-1 packs cost about 105 ms of grammar load in every process.

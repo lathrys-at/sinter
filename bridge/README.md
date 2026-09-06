@@ -32,15 +32,15 @@ The static library is about 40 MB. It holds wasmtime and the
 Cranelift compiler.
 
 `dune build` at the repository root builds the crate as well, through
-a rule in `lib/bridge/dune`. That rule writes its output to one
-directory under the user cache, which every checkout on the machine
-shares. `lib/bridge/build.sh` chooses that directory.
+a rule in `lib/bridge/dune`. That rule writes its output under the
+user cache, in a directory of its own for each checkout.
+`lib/bridge/build.sh` chooses the directory and names it from the path
+of the crate. Two checkouts must not share one: cargo would call the
+second checkout fresh and leave the first checkout's library in place.
 
 The command above writes to `bridge/target` instead, so a contributor
-who runs both has two copies of the build. Set `CARGO_TARGET_DIR` to
-the directory the rule uses to keep one copy. `dune clean` removes
-neither directory. To build the crate from nothing, remove one by
-hand.
+who runs both has two copies of the build. `dune clean` removes
+neither. To build the crate from nothing, remove one by hand.
 
 ## The C interface
 
