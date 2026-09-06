@@ -23,6 +23,9 @@ messages, and the tool's own output. The rules:
 - Use a table for facts that a reader can enumerate.
 - Do not add notes that explain why a sentence or a file exists, or
   that restate what a reader can infer from the stated facts.
+- Do not open a document with prose that explains what the document
+  is, what it is not, or how a reader will use it. Start with the
+  content.
 
 We reproduce some text from elsewhere: license texts, the DCO, and
 quoted standards. That text stays exactly as it is in the source.
