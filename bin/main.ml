@@ -18,10 +18,12 @@ let version =
       else if d = "unknown" then "v" ^ Sinter_core.Version.base ^ "-dev"
       else "v" ^ Sinter_core.Version.base ^ "-dev+" ^ d
 
-(* Section 9 of docs/design-notes.md fixes the exit codes of every
-   command: 0 clean, 1 findings present, 2 usage error, 3 environment
-   error, 4 refused. A grammar that does not load, a query that does
-   not parse, and a file that is not text are environment errors. *)
+(* Section 11 of docs/design-notes.md fixes the exit codes of every
+   command, under the conventions that apply to every verb, and
+   section 11.1 repeats them in the help text of sinter: 0 clean, 1
+   findings present, 2 usage error, 3 environment error, 4 refused. A
+   grammar that does not load, a query that does not parse, and a file
+   that is not text are environment errors. *)
 let clean = 0
 let usage_error = 2
 let environment_error = 3

@@ -8,7 +8,7 @@
 # The arguments, in order:
 #   1. the directory that holds the crate's Cargo.toml
 #   2. the directory to use for cargo's build output, when neither
-#      CARGO_TARGET_DIR nor HOME says where to put it
+#      CARGO_TARGET_DIR nor DUNE_SOURCEROOT says where to put it
 #   3. the path to write the static library to
 #   4. the path to write the dune flags file to
 #
@@ -28,12 +28,20 @@ flags=$4
 # directory before it runs the rule, so a target directory inside
 # _build would start empty every time. Cargo would then build all 128
 # crates again on every change inside bridge/, which takes about half
-# a minute. "dune clean" does not remove the directory below; remove
-# it by hand to build the crate from nothing.
+# a minute.
+#
+# The output goes to bridge/target, which is where cargo puts it when
+# a contributor runs "cargo build --release" in bridge/ by hand. One
+# directory therefore serves both ways of building. Dune exports the
+# source root as DUNE_SOURCEROOT. bridge/dune hides that directory
+# from dune and .gitignore hides it from git.
+#
+# "dune clean" does not remove bridge/target. Remove it by hand to
+# build the crate from nothing.
 if [ -n "${CARGO_TARGET_DIR:-}" ]; then
   target=$CARGO_TARGET_DIR
-elif [ -n "${HOME:-}" ]; then
-  target=$HOME/.cache/sinter/bridge-target
+elif [ -n "${DUNE_SOURCEROOT:-}" ]; then
+  target=$DUNE_SOURCEROOT/bridge/target
 else
   target=$fallback
 fi
