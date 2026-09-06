@@ -31,7 +31,9 @@ that person. Avoid these three faults:
 [docs/design-notes.md](docs/design-notes.md) holds the design.
 [spec/](spec/) holds the formats other tools can implement.
 [docs/roadmap.md](docs/roadmap.md) lists the work ahead and the
-directions that are agreed but not designed yet. When the
+directions that are agreed but not designed yet.
+[docs/decisions/](docs/decisions/) holds the decision records; read
+the record before you re-argue a choice. When the
 code and a specification disagree, the specification wins. When a
 specification and the design notes disagree, tell the person you work
 with. The specifications are the newer documents.
