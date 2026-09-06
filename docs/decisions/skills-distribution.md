@@ -69,3 +69,9 @@ tool release needs a new plugin version. Contributors edit the skills
 under `plugins/sinter/skills/`. The file `.claude/settings.json`
 points at the GitHub source. So a fresh session in this repository
 uses the pushed version of the pack, not the working tree.
+
+Claude Code caches an installed plugin by its version. A change to a
+skill reaches users only after the plugin version in
+`plugins/sinter/.claude-plugin/plugin.json` and in
+`.claude-plugin/marketplace.json` increases. So every change to a
+skill bumps the plugin version.
