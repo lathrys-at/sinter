@@ -18,15 +18,22 @@ let version =
       else if d = "unknown" then "v" ^ Sinter_core.Version.base ^ "-dev"
       else "v" ^ Sinter_core.Version.base ^ "-dev+" ^ d
 
-(* Section 11 of docs/design-notes.md fixes the exit codes of every
-   command, under the conventions that apply to every verb, and
-   section 11.1 repeats them in the help text of sinter: 0 clean, 1
-   findings present, 2 usage error, 3 environment error, 4 refused. A
-   grammar that does not load, a query that does not parse, and a file
-   that is not text are environment errors. *)
+(* @cites exit-codes *)
 let clean = 0
+let findings = 1
 let usage_error = 2
 let environment_error = 3
+let refused = 4
+
+let exits =
+  [
+    Cmd.Exit.info ~doc:"on success, with no finding to report." clean;
+    Cmd.Exit.info ~doc:"when the command reports at least one finding." findings;
+    Cmd.Exit.info ~doc:"when the command line is wrong." usage_error;
+    Cmd.Exit.info ~doc:"when the command cannot run in this environment."
+      environment_error;
+    Cmd.Exit.info ~doc:"when the command refuses to act." refused;
+  ]
 
 let parse_cmd =
   let doc = "Parse files with a tree-sitter grammar and print the captures" in
@@ -36,7 +43,8 @@ let parse_cmd =
       `P
         "Load the grammar in GRAMMAR, parse each FILE with it, and run the \
          query in QUERY over each parse tree. Print one capture per line, as \
-         canonical JSONL. See spec/jsonl.md section 2 for the canonical form.";
+         canonical JSONL: an object with sorted keys, on one line, with no \
+         insignificant whitespace.";
       `P "Each line holds these fields:";
       `I ("$(b,path)", "the file, as it was named on the command line");
       `I ("$(b,pat)", "the index of the pattern in the query, from 0");
@@ -59,20 +67,22 @@ let parse_cmd =
          S-expression instead, one tree per line, and read no query.";
     ]
   in
-  let info = Cmd.info "parse" ~doc ~man in
+  let info = Cmd.info "parse" ~doc ~man ~exits in
   let grammar =
     let doc =
       "The grammar to parse with: a tree-sitter grammar as $(i,.wasm)."
     in
     Arg.(
-      required & opt (some file) None & info [ "grammar" ] ~docv:"GRAMMAR" ~doc)
+      required
+      & opt (some string) None
+      & info [ "grammar" ] ~docv:"GRAMMAR" ~doc)
   in
   let query =
     let doc =
       "The query to run: tree-sitter query source as $(i,.scm). This option \
        and $(b,--tree) exclude each other; give one of the two."
     in
-    Arg.(value & opt (some file) None & info [ "query" ] ~docv:"QUERY" ~doc)
+    Arg.(value & opt (some string) None & info [ "query" ] ~docv:"QUERY" ~doc)
   in
   let tree =
     let doc = "Print the parse tree as an S-expression instead of captures." in
@@ -80,7 +90,7 @@ let parse_cmd =
   in
   let paths =
     let doc = "The files to parse." in
-    Arg.(non_empty & pos_all file [] & info [] ~docv:"FILE" ~doc)
+    Arg.(non_empty & pos_all string [] & info [] ~docv:"FILE" ~doc)
   in
   let run grammar query tree paths =
     match (query, tree) with
@@ -100,13 +110,11 @@ let parse_cmd =
 
 let cmd =
   let doc = "plans die into residue; residue is checked" in
-  let info = Cmd.info "sinter" ~version ~doc in
+  let info = Cmd.info "sinter" ~version ~doc ~exits in
   Cmd.group info
     ~default:Term.(ret (const (`Help (`Pager, None))))
     [ parse_cmd ]
 
-(* Cmdliner reports a wrong command line with its own exit code, 124.
-   Map that code to the one the design notes fix. *)
 let () =
   let code = Cmd.eval' ~term_err:usage_error cmd in
   exit (if code = Cmd.Exit.cli_error then usage_error else code)
