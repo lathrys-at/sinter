@@ -126,7 +126,21 @@ fn into_result(buffer: Vec<u8>) -> *mut SinterBridgeResult {
 /// Create an engine. Returns null on failure.
 #[no_mangle]
 pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
-    let wasm_engine = wasmtime::Engine::default();
+    // The compiled-module cache keeps the compiled form of each
+    // grammar in the user's cache directory, in wasmtime's default
+    // location. When no such directory is available, the engine runs
+    // without a cache and compiles every grammar on each load.
+    let mut config = wasmtime::Config::new();
+    if config.cache_config_load_default().is_err() {
+        config = wasmtime::Config::new();
+    }
+    let wasm_engine = match wasmtime::Engine::new(&config) {
+        Ok(engine) => engine,
+        Err(error) => {
+            set_error(format!("cannot create the WebAssembly engine: {error}"));
+            return std::ptr::null_mut();
+        }
+    };
     let store = match WasmStore::new(&wasm_engine) {
         Ok(store) => store,
         Err(error) => {

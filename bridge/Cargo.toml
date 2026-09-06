@@ -15,6 +15,11 @@ crate-type = ["staticlib"]
 
 [dependencies]
 tree-sitter = { version = "0.25", features = ["wasm"] }
+# tree-sitter re-exports wasmtime. This line adds wasmtime's "cache"
+# feature to that same crate: the compiled form of a grammar is kept
+# in the user's cache directory, so a later process loads it without
+# compiling it again.
+wasmtime = { version = "29", default-features = false, features = ["cache", "cranelift", "runtime", "std"] }
 
 [profile.release]
 opt-level = 2
