@@ -181,14 +181,18 @@ fn write_sexp(root: Node, source: &[u8], out: &mut String) {
     // on. The entry says whether that node opened a parenthesis.
     let mut open: Vec<bool> = Vec::new();
     let mut descending = true;
+    // A space separates one node from the node before it. The first
+    // node written takes none.
+    let mut written = false;
     loop {
         if descending {
             let node = cursor.node();
             let visible = node.is_named() || node.is_missing();
             if visible {
-                if !out.is_empty() {
+                if written {
                     out.push(' ');
                 }
+                written = true;
                 if let Some(field) = cursor.field_name() {
                     out.push_str(field);
                     out.push_str(": ");
