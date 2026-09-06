@@ -55,6 +55,16 @@ pub struct SinterBridgeEngine {
     /// address of a language survives a growth of the list.
     #[allow(clippy::vec_box)]
     languages: Vec<Box<SinterBridgeLanguage>>,
+    /// The query that the engine compiled last.
+    query: Option<CompiledQuery>,
+}
+
+/// A compiled query, with the grammar and the text it came from.
+struct CompiledQuery {
+    /// The address of the language handle the query was compiled for.
+    language: usize,
+    text: String,
+    query: Query,
 }
 
 /// A grammar that is loaded into an engine. The engine owns it.
@@ -250,6 +260,7 @@ pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
     Box::into_raw(Box::new(SinterBridgeEngine {
         parser,
         languages: Vec::new(),
+        query: None,
     }))
 }
 
@@ -356,12 +367,13 @@ pub unsafe extern "C" fn sinter_bridge_run(
     // Safety: the caller gives an engine and a language from this
     // bridge, source_len readable bytes at source, and query_len
     // readable bytes at query.
+    let language_key = language as usize;
     let engine = unsafe { &mut *engine };
-    let language = unsafe { &*language };
+    let grammar = unsafe { &*language }.language.clone();
     let source = unsafe { slice_of(source, source_len) };
     let query_bytes = unsafe { slice_of(query, query_len) };
 
-    if let Err(error) = engine.parser.set_language(&language.language) {
+    if let Err(error) = engine.parser.set_language(&grammar) {
         set_error(format!("cannot use the grammar: {error}"));
         return std::ptr::null_mut();
     }
@@ -390,10 +402,32 @@ pub unsafe extern "C" fn sinter_bridge_run(
             return std::ptr::null_mut();
         }
     };
-    let query = match Query::new(&language.language, query_text) {
-        Ok(query) => query,
-        Err(error) => {
-            set_error(format!("cannot read the query: {error}"));
+    // The engine keeps the query it compiled last. One run of
+    // "sinter parse" puts the same query over many files, so the
+    // query is compiled once and not once per file.
+    let hit = engine
+        .query
+        .as_ref()
+        .is_some_and(|c| c.language == language_key && c.text == query_text);
+    if !hit {
+        match Query::new(&grammar, query_text) {
+            Ok(compiled) => {
+                engine.query = Some(CompiledQuery {
+                    language: language_key,
+                    text: query_text.to_owned(),
+                    query: compiled,
+                })
+            }
+            Err(error) => {
+                set_error(format!("cannot read the query: {error}"));
+                return std::ptr::null_mut();
+            }
+        }
+    }
+    let query = match &engine.query {
+        Some(compiled) => &compiled.query,
+        None => {
+            set_error("the engine holds no compiled query");
             return std::ptr::null_mut();
         }
     };
@@ -403,7 +437,7 @@ pub unsafe extern "C" fn sinter_bridge_run(
     put_header(&mut buffer, KIND_CAPTURES);
     let mut count: u32 = 0;
     let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(&query, tree.root_node(), source);
+    let mut matches = cursor.matches(query, tree.root_node(), source);
     while let Some(found) = matches.next() {
         for capture in found.captures {
             let node = capture.node;
@@ -524,26 +558,7 @@ mod tests {
         let query = std::fs::read(root.join("test/fixtures/sample.scm")).unwrap();
         let (kind, bytes) = run(&source, &query);
         assert_eq!(kind, KIND_CAPTURES);
-        let mut at = 8;
-        let count = take_u32(&bytes, &mut at);
-        at += 4;
-        let mut captures = Vec::new();
-        for _ in 0..count {
-            let pattern = take_u32(&bytes, &mut at);
-            for _ in 0..6 {
-                take_u32(&bytes, &mut at);
-            }
-            let name = take_string(&bytes, &mut at);
-            let node_type = take_string(&bytes, &mut at);
-            let text = take_string(&bytes, &mut at);
-            captures.push(Capture {
-                pattern,
-                name,
-                node_type,
-                text,
-            });
-        }
-        assert_eq!(at, bytes.len());
+        let captures = decode_captures(&bytes);
         let found: Vec<(u32, &str, &str, &str)> = captures
             .iter()
             .map(|c| {
@@ -580,6 +595,104 @@ mod tests {
         parser.set_wasm_store(store).unwrap();
         parser.set_language(&language).unwrap();
         parser
+    }
+
+    /// The bytes of the fixture grammar.
+    fn fixture_wasm() -> Vec<u8> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        std::fs::read(root.join("test/fixtures/tree-sitter-json/tree-sitter-json.wasm")).unwrap()
+    }
+
+    /// Read the capture records of a buffer whose kind is 0.
+    fn decode_captures(bytes: &[u8]) -> Vec<Capture> {
+        let mut at = 8;
+        let count = take_u32(bytes, &mut at);
+        at += 4;
+        let mut captures = Vec::new();
+        for _ in 0..count {
+            let pattern = take_u32(bytes, &mut at);
+            for _ in 0..6 {
+                take_u32(bytes, &mut at);
+            }
+            let name = take_string(bytes, &mut at);
+            let node_type = take_string(bytes, &mut at);
+            let text = take_string(bytes, &mut at);
+            captures.push(Capture {
+                pattern,
+                name,
+                node_type,
+                text,
+            });
+        }
+        assert_eq!(at, bytes.len());
+        captures
+    }
+
+    /// One run on an engine that stays alive between calls. Gives the
+    /// texts of the captures, or None when the run failed.
+    fn texts_of(
+        engine: *mut SinterBridgeEngine,
+        language: *mut SinterBridgeLanguage,
+        source: &[u8],
+        query: &[u8],
+    ) -> Option<Vec<String>> {
+        let result = unsafe {
+            sinter_bridge_run(
+                engine,
+                language,
+                source.as_ptr(),
+                source.len(),
+                query.as_ptr(),
+                query.len(),
+            )
+        };
+        if result.is_null() {
+            return None;
+        }
+        let bytes = unsafe { std::slice::from_raw_parts((*result).data, (*result).len) }.to_vec();
+        unsafe { sinter_bridge_result_free(result) };
+        Some(
+            decode_captures(&bytes)
+                .into_iter()
+                .map(|c| c.text)
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn the_engine_compiles_a_query_once_and_notices_a_new_one() {
+        let wasm = fixture_wasm();
+        let engine = sinter_bridge_engine_new();
+        let name = CString::new("json").unwrap();
+        let language = unsafe {
+            sinter_bridge_language_load(engine, name.as_ptr(), wasm.as_ptr(), wasm.len())
+        };
+        let numbers = b"(number) @n";
+        let strings = b"(string_content) @s";
+        let source = b"{\"a\": 1, \"b\": 2}";
+
+        // An empty source compiles the query and captures nothing.
+        // "sinter parse" uses this to report a bad query against the
+        // query file and not against the first source file.
+        assert_eq!(texts_of(engine, language, b"", numbers), Some(vec![]));
+
+        let first = texts_of(engine, language, source, numbers);
+        assert_eq!(first, Some(vec!["1".to_owned(), "2".to_owned()]));
+        // The same query again reads the compiled form.
+        assert_eq!(texts_of(engine, language, source, numbers), first);
+        // Another query replaces it.
+        assert_eq!(
+            texts_of(engine, language, source, strings),
+            Some(vec!["a".to_owned(), "b".to_owned()])
+        );
+        // And the first query is compiled again.
+        assert_eq!(texts_of(engine, language, source, numbers), first);
+        // A query that does not compile fails, and leaves the engine
+        // able to run the query before it.
+        assert_eq!(texts_of(engine, language, source, b"(no_such) @x"), None);
+        assert_eq!(texts_of(engine, language, source, numbers), first);
+
+        unsafe { sinter_bridge_engine_free(engine) };
     }
 
     #[test]
