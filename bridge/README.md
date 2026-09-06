@@ -34,6 +34,18 @@ The static library is about 40 MB, because it holds wasmtime and the
 Cranelift compiler. The linked `sinter` binary grows by less, because
 the linker drops what the binary does not call.
 
+`dune build` at the repository root is the normal way to build the
+crate. That build does not use `bridge/target`: `lib/bridge/build.sh`
+puts cargo's output in `$HOME/.cache/sinter/bridge-target`, so that
+every checkout on one machine shares one set of compiled crates. A
+plain `cargo build` in this directory writes `bridge/target` instead,
+which is a second copy of about 400 MB. To keep one copy, set
+`CARGO_TARGET_DIR` to the same directory:
+
+```
+CARGO_TARGET_DIR=$HOME/.cache/sinter/bridge-target cargo build --release
+```
+
 ## The C interface
 
 [include/sinter_bridge.h](include/sinter_bridge.h) declares six
