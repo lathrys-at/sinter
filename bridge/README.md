@@ -20,9 +20,7 @@ cargo build --release
 ```
 
 The crate builds a static library, `libsinter_bridge.a`. The OCaml
-library `sinter.bridge` in `lib/bridge/` links it. A dune rule runs
-the cargo build, so `dune build` at the repository root builds the
-crate too.
+library `sinter.bridge` in `lib/bridge/` links it.
 
 The build needs `cmake` on the PATH, next to cargo. The crate depends
 on `tree-sitter` with its `wasm` feature, which depends on
@@ -34,17 +32,12 @@ The static library is about 40 MB, because it holds wasmtime and the
 Cranelift compiler. The linked `sinter` binary grows by less, because
 the linker drops what the binary does not call.
 
-`dune build` at the repository root is the normal way to build the
-crate. That build does not use `bridge/target`: `lib/bridge/build.sh`
-puts cargo's output in `$HOME/.cache/sinter/bridge-target`, so that
-every checkout on one machine shares one set of compiled crates. A
-plain `cargo build` in this directory writes `bridge/target` instead,
-which is a second copy of about 400 MB. To keep one copy, set
-`CARGO_TARGET_DIR` to the same directory:
-
-```
-CARGO_TARGET_DIR=$HOME/.cache/sinter/bridge-target cargo build --release
-```
+`dune build` at the repository root builds the crate as well, through
+a rule in `lib/bridge/dune`. That rule and the command above write to
+the same directory, `bridge/target`, so the two ways of building share
+one set of compiled crates. `bridge/dune` hides that directory from
+dune and `.gitignore` hides it from git. Set `CARGO_TARGET_DIR` to put
+the output somewhere else.
 
 ## The C interface
 
