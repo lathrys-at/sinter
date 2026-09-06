@@ -154,10 +154,9 @@ sign off code that you did not review.
   `/sinter:plan` skill. A change to a plan's promises or scopes is an
   amendment. Make it a separate, small pull request, so that the
   maintainer's merge is the approval.
-- A design question that needs the maintainer's ruling becomes a
-  GitHub issue: the observation with evidence, the options with their
-  costs, and one recommendation. Carry out the ruling in a pull
-  request after the maintainer answers.
+- Ask a design question in a GitHub issue, with the options and their
+  costs. The maintainer rules; the ruling is then carried out in a
+  pull request.
 
 ## Pull requests
 
@@ -167,9 +166,8 @@ reviews and merges; merges are squash merges.
 A pull request description is documentation for the people who review
 the change and for the people who read it later. It says what the
 change adds, what it does not do, measurements when there are any,
-and where to look first. It follows the writing rules above, and it
-gets its own editing pass before it is posted. It does not describe
-the process that produced the change.
+and where to look first. It follows the writing rules above. It does
+not describe the process that produced the change.
 
 A review comment names an example of a defect, not its only instance.
 When you address a comment, find and fix every instance of the same
