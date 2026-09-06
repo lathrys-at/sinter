@@ -184,7 +184,7 @@ pub unsafe extern "C" fn sinter_bridge_language_load(
     wasm_len: usize,
 ) -> *mut SinterBridgeLanguage {
     if engine.is_null() || name.is_null() || (wasm.is_null() && wasm_len != 0) {
-        set_error("sinter_bridge_language_load received a null argument");
+        set_error("a required argument is null");
         return std::ptr::null_mut();
     }
     // Safety: the caller gives an engine from sinter_bridge_engine_new,
@@ -202,7 +202,7 @@ pub unsafe extern "C" fn sinter_bridge_language_load(
     let mut store = match engine.parser.take_wasm_store() {
         Some(store) => store,
         None => {
-            set_error("the engine has no WebAssembly store");
+            set_error("the parser bridge did not recover from an earlier failure");
             return std::ptr::null_mut();
         }
     };
@@ -214,7 +214,7 @@ pub unsafe extern "C" fn sinter_bridge_language_load(
     let language = match loaded {
         Ok(language) => language,
         Err(error) => {
-            set_error(format!("cannot load the grammar {name}: {error}"));
+            set_error(error.to_string());
             return std::ptr::null_mut();
         }
     };
@@ -245,11 +245,11 @@ pub unsafe extern "C" fn sinter_bridge_run(
     query_len: usize,
 ) -> *mut SinterBridgeResult {
     if engine.is_null() || language.is_null() || (source.is_null() && source_len != 0) {
-        set_error("sinter_bridge_run received a null argument");
+        set_error("a required argument is null");
         return std::ptr::null_mut();
     }
     if query.is_null() && query_len != 0 {
-        set_error("sinter_bridge_run received a null query");
+        set_error("the query is null, and its length is not 0");
         return std::ptr::null_mut();
     }
     // Safety: the caller gives an engine and a language from this
@@ -267,7 +267,7 @@ pub unsafe extern "C" fn sinter_bridge_run(
     let tree = match engine.parser.parse(source, None) {
         Some(tree) => tree,
         None => {
-            set_error("the parser returned no tree");
+            set_error("the grammar produced no parse tree");
             return std::ptr::null_mut();
         }
     };
