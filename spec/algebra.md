@@ -76,7 +76,7 @@ Notes on individual kinds:
   extent hash.
 
 "Located" facts carry `path`, `line`, `col`, `eline`, and `ecol`. The
-functions `path(…)`, `scope(…)`, `historical`, `ambient`, and
+functions `path(…)`, `scope(…)`, `historical`, `ambient`, `shared`, and
 `acked(…)` return located facts only.
 
 ## 4. Syntax
@@ -122,8 +122,8 @@ Lexical rules:
   parameters are substituted as text before the expression is parsed
   (section 7). A parameter can therefore stand for an expression, a
   kind list, a name, or a glob.
-- **Keywords.** `all`, `active`, `historical`, `ambient`, and `base`
-  are reserved as bare words. A saved definition must not shadow a
+- **Keywords.** `all`, `active`, `historical`, `ambient`, `shared`,
+  and `base` are reserved as bare words. A saved definition must not shadow a
   built-in name.
 
 ## 5. Categories as types
@@ -133,7 +133,7 @@ evaluation:
 
 - `all` → every category. `kind(K)` → the categories of the kinds in
   `K`. A name selector → its kind's category. `path`, `historical`,
-  `ambient`, `acked` → every located category. `changed` → every
+  `ambient`, `shared`, `acked` → every located category. `changed` → every
   category, tombstones and hunks included. `active` → `{node}`.
   `findings` → `{finding}`.
 - `out`, `in` → `{edge}`. `src`, `dst`, `deps`, `rdeps`, `paths` →
@@ -156,7 +156,7 @@ category {node}`.
 
 ## 6. Function reference
 
-There are 45 names. In the tables, `src(e)`, `dst(e)`, and `rev(e)`
+There are 46 names. In the tables, `src(e)`, `dst(e)`, and `rev(e)`
 are fields of an edge; `rev(d)` and `xh(d)` are fields of a
 declaration. "Declaration" means a `req`, `design`, or `decision`.
 
@@ -175,6 +175,7 @@ declaration. "Declaration" means a `req`, `design`, or `decision`.
 | `active` | the active plan and, when the session declares one, the active step; only open plans are candidates; `∅` when no plan is active |
 | `historical` | located facts under a manifest `historical` path |
 | `ambient` | located facts under a manifest `ambient` path, in a plan file, in the manifest, or in the lockfile |
+| `shared` | located facts under a manifest `shared` path: a path that every step of every plan may touch |
 | `acked(t)` | the located facts `f` whose tag-bearing block carries a live `@ack` with target `t`, where `t` applies to `f`. The target applies to `f` when both of these conditions hold: the class name or rule name in `t` matches, and the ack's subject, when the ack gives one, equals `f`'s key. The key of an edge is its `dst` slug. The key of a node is its slug. The key of any other fact is its `id` |
 | `findings(C)` | finding facts whose class is in `C` |
 
@@ -416,7 +417,7 @@ the repository promotes a class past the cap.
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets | tree | · | · | warn, warn, — |
 | `blocked-on` | promise | `blocked(promises(kind(plan)))` — reported in place of `dangling`, with the lease and step named | tree | · | · | off, warn, — |
 | `lease-overlap` | step | *engine*: a step's scope intersects the scope of another branch's lease | tree | · | · | warn, warn, — |
-| `unmapped-work` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient`. The engine also exempts hunks that are wholly mechanical repairs — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
+| `unmapped-work` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient - shared`. The engine also exempts hunks that are wholly mechanical repairs — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
 | `rule-owed` | any | `owed(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's discharge is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
 | `law-touched` | law | `kind(rule\|gate) ^ changed(base)` — cannot be disabled; always reported, never blocks | diff | · | · | warn, warn, warn |
 | `undischarged-plan` | plan | *engine*: an open plan on the target branch that fails the discharge condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |

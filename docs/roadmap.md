@@ -13,6 +13,8 @@
   - The `[locations]` table: one default location per declaration
     kind (issue #2). `spec/vocabulary.md` section 10.5 defines the
     rule.
+  - The `shared` list: paths that every plan step may touch (issue
+    #9). `spec/vocabulary.md` section 10.4 defines the rule.
 - **Scanner** — the language-pack interface, design notes section 5.2.
   - Markdown pack first: plans and decision records are markdown.
 - **`sinter scan`**
