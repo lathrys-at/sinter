@@ -36,7 +36,6 @@ jobs:
           key: opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
             opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
-      # Installs the toolchain that bridge/rust-toolchain.toml pins.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -44,10 +43,8 @@ jobs:
           override: true
           toolchain: 1.94.1
           components: rustfmt, clippy
-      # A dune rule runs cargo. lib/bridge/build.sh puts cargo's build
-      # output in ~/.cache/sinter-bridge-build. The key holds the lock
-      # file, so a change of a Rust dependency starts from an empty
-      # cache.
+      # The dune rule that runs cargo writes its build output to
+      # ~/.cache/sinter-bridge-build.
       - name: Cache the cargo state
         uses: actions/cache@v4
         with:
@@ -80,7 +77,6 @@ jobs:
           key: opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
             opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
-      # Installs the toolchain that bridge/rust-toolchain.toml pins.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -111,7 +107,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Installs the toolchain that bridge/rust-toolchain.toml pins.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
