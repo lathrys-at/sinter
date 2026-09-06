@@ -3,6 +3,7 @@ _build/
 _opam/
 *.install
 .sinter/
+bridge/target/
 
 # macOS
 .DS_Store
