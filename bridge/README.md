@@ -42,6 +42,25 @@ The command above writes to `bridge/target` instead, so a contributor
 who runs both has two copies of the build. `dune clean` removes
 neither. To build the crate from nothing, remove one by hand.
 
+## Checking the build directory rule
+
+Each checkout builds the crate in its own directory. When
+`lib/bridge/build.sh` changes, check the rule by hand; the check is
+not part of CI, because it builds the crate twice from nothing.
+
+1. Unpack the branch into two directories, A and B.
+2. In B, add `#[no_mangle] pub static RB_MARKER: [u8; 16] =
+   *b"RBE2EMARKERXYZZY";` to `bridge/src/lib.rs`, and run `touch` on
+   that file so that B's sources are the newer ones.
+3. Point `CARGO_TARGET_DIR` at one empty directory for both.
+4. Run `dune build` in B, then in A. Use the same command in both;
+   a plain `cargo build` in one of them hides the failure, because the
+   dune rule adds `--print native-static-libs` to the command line,
+   and cargo keeps a separate freshness record for it.
+5. Count the marker in each `_build/default/lib/bridge/libsinter_bridge.a`
+   with `strings -a ... | grep -c XYZZY`. The right answer is 1 in B
+   and 0 in A. With one shared directory it is 1 in both.
+
 ## The C interface
 
 [include/sinter_bridge.h](include/sinter_bridge.h) declares six
