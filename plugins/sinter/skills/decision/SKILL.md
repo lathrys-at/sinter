@@ -7,11 +7,12 @@ argument-hint: "[slug or subject of the decision]"
 
 # Write a decision record
 
-A decision record captures one decision: what the situation was, what
-was chosen, what else was considered, and what follows. Sinter reads
-the record through its `@decision` tag. Rules and later decisions can
-cite it, so the reasoning reaches the moment someone would otherwise
-re-argue it. A decision record is never deleted.
+A decision record captures one decision. The record states four
+things: the situation, the choice, the alternatives, and what follows
+from the choice. The tool reads the record through its `@decision`
+tag. A rule or a later decision can cite the record. A person who
+would otherwise re-argue the decision then finds the reasoning.
+Never delete a decision record.
 
 The tag rules are in `spec/vocabulary.md` of the Sinter repository
 (sections 4, 7.1, and 8.3). The rules below are the parts this skill
@@ -19,11 +20,11 @@ needs.
 
 ## Input
 
-The decision, as the user stated it in conversation or as a plan step
-promised it. If the choice or the alternatives are not clear from the
-conversation, ask before you write. Never invent an alternative that
-was not considered; if none was, ask the user what else could have
-been done.
+The input is the decision. The user states the decision in
+conversation, or a plan step promises it. If the choice or the
+alternatives are not clear from the conversation, ask before you
+write. Never invent an alternative. If the user considered no
+alternative, ask the user what other options existed.
 
 ## Procedure
 
@@ -31,9 +32,9 @@ been done.
 
 Name the subject of the decision in two to four words, lowercase,
 hyphen-separated. The slug must match `[a-z0-9]+(-[a-z0-9]+)*`. The
-slug is permanent: it can never be reused for another decision, and it
-shares a namespace with requirement and design slugs. Confirm the slug
-with the user.
+slug is permanent. You can never reuse it for another decision. The
+slug shares one namespace with requirement slugs and design slugs.
+Confirm the slug with the user.
 
 ### 2. Check for an existing record
 
@@ -41,9 +42,10 @@ Look in `docs/decisions/` for a record on the same subject.
 
 - If none exists, write a new record.
 - If one exists and the new decision replaces it, write a new record
-  with a new slug, and add `@supersedes <old-slug> vN` to its tag
-  block, where `vN` is the old record's current revision (`v1` when
-  the old record shows none). Do not edit or delete the old record.
+  with a new slug. Add `@supersedes <old-slug> vN` to the tag block
+  of the new record. `vN` is the current revision of the old record.
+  Write `v1` when the old record shows no revision. Do not edit or
+  delete the old record.
 - If one exists and the decision is the same, stop and tell the user.
 
 ### 3. Write the record
@@ -82,24 +84,25 @@ harder, what it commits the project to.>
 
 Rules for the tag block:
 
-- It is the first paragraph after the title. `@decision <slug>` is its
-  first line. Write no revision; a new record is `v1`.
+- The tag block is the first paragraph after the title.
+  `@decision <slug>` is its first line. Write no revision. A new
+  record is `v1`.
 - Add one `@cites <slug>` line for each existing record, requirement,
-  or design item the decision rests on, and `@cites <ns>/<id>` for an
-  external ref such as an issue. Add nothing the decision does not
-  rest on.
+  or design item that the decision rests on. Add one
+  `@cites <ns>/<id>` line for each external ref, such as an issue.
+  Add no line for an item that the decision does not rest on.
 - Add `@supersedes <slug> vN` only in the case from step 2.
 - The one-sentence description follows the tag lines, on its own
   line.
 
-"Alternatives considered" is mandatory and must never be empty. It
-is the section that stops re-argument. Each alternative names the
-option and the reason it lost.
+The "Alternatives considered" section is mandatory and must hold at
+least one entry. This section stops re-argument. Each entry names
+one option and the reason that the project did not choose it.
 
 ### 4. Show the result
 
-Print the record. Tell the user the slug, and list the records or
-refs it cites.
+Print the record. Tell the user the slug. List the records and the
+refs that the record cites.
 
 ## Writing rules
 

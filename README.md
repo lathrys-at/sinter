@@ -8,12 +8,12 @@ agreements. It reads the state of the work from files and from test
 results. It never trusts what an agent reports about its own work.
 
 Sinter is new and under construction. The full design is in
-[docs/design-notes.md](docs/design-notes.md). The formats that other
-tools can implement are specified in [spec/](spec/).
+[docs/design-notes.md](docs/design-notes.md). The [spec/](spec/)
+directory specifies the formats that other tools can implement.
 
 ## Build
 
-Sinter is written in OCaml. To build it, install
+We write Sinter in OCaml. To build it, install
 [opam](https://opam.ocaml.org/) and an OCaml switch (5.1 or newer).
 Then run:
 
@@ -26,10 +26,13 @@ dune test
 ## Skills for Claude Code
 
 This repository is also a Claude Code plugin marketplace. The `sinter`
-plugin holds two skills: `/sinter:plan` turns an approved plan into a
-Sinter plan file under `.plans/`, and `/sinter:decision` writes a
-decision record under `docs/decisions/`. To install the plugin, run
-this inside Claude Code:
+plugin holds two skills:
+
+- `/sinter:plan` turns an approved plan into a plan file under
+  `.plans/`.
+- `/sinter:decision` writes a decision record under `docs/decisions/`.
+
+To install the plugin, run these two commands inside Claude Code:
 
 ```
 /plugin marketplace add lathrys-at/sinter
@@ -46,9 +49,9 @@ from the tool's own version. See
 
 ## License
 
-The tool is licensed under Apache-2.0. See the LICENSE file. The
-specifications and the design notes are licensed under CC-BY-4.0. You can
+The tool uses the Apache-2.0 license. See the LICENSE file. The
+specifications and the design notes use the CC-BY-4.0 license. You can
 implement the specifications freely, without permission. See the
-LICENSE-SPEC file. Language packs keep the upstream licenses of their
-grammars. We accept contributions under a Developer Certificate of
+LICENSE-SPEC file. Each language pack keeps the upstream license of its
+grammar. We accept contributions under a Developer Certificate of
 Origin (DCO). See CONTRIBUTING.md.

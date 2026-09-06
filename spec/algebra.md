@@ -7,12 +7,11 @@ Status: draft. The four specifications share one version; see [docs/versioning.m
 
 ## 1. Introduction
 
-The query algebra is the small language that Sinter uses for three
-jobs: it writes queries, it writes rules, and it defines finding
-classes. A query selects a subset of the facts that a scan produced.
-This document defines the universe of facts, the syntax of
-expressions, the type discipline, every function, and the built-in
-finding classes.
+The query algebra is a small language. Sinter uses it for three jobs:
+to write queries, to write rules, and to define finding classes. A
+query selects a subset of the facts that a scan produced. This
+document defines the universe of facts, the syntax of expressions, the
+type discipline, every function, and the built-in finding classes.
 
 Anyone can implement this specification in any tool. See the
 LICENSE-SPEC file at the repository root. The facts themselves are
@@ -37,7 +36,7 @@ Every fact is an immutable record with a `kind` and a stable `id` (see
 
 A query denotes a subset of `U` and nothing else. There are no
 scalars, no tuples, and no new facts. `U` is finite. Every closure is
-a least fixpoint of a monotone step, so every closure terminates.
+a least fixpoint of a monotone function, so every closure terminates.
 
 `U` is a function of `(T, B, L, E, S)`. Two evaluations with the same
 five inputs see the same universe and produce the same output bytes.
@@ -76,9 +75,9 @@ Notes on individual kinds:
   absent from the fact set of `T`. It carries the old id, kind, and
   extent hash.
 
-"Located" facts carry `path`, `line`, `col`, `eline`, and `ecol`. Only
-located facts are returned by `path(…)`, `scope(…)`, `historical`,
-`ambient`, and `acked(…)`.
+"Located" facts carry `path`, `line`, `col`, `eline`, and `ecol`. The
+functions `path(…)`, `scope(…)`, `historical`, `ambient`, and
+`acked(…)` return located facts only.
 
 ## 4. Syntax
 
@@ -129,7 +128,7 @@ Lexical rules:
 
 ## 5. Categories as types
 
-Each expression is assigned a **category set** statically, before
+The tool assigns each expression a **category set** statically, before
 evaluation:
 
 - `all` → every category. `kind(K)` → the categories of the kinds in
@@ -147,12 +146,13 @@ evaluation:
 - `S + T` → the union of the two category sets. `S ^ T` → the
   intersection. `S - T` → the left side's set.
 
-Each function declares which categories it accepts per argument. Facts
-of other categories in an argument are dropped silently: `src(all)` is
-valid and means "the sources of every edge". A static error is raised
-only when an argument's category set does not intersect the accepted
-set. Example: `src(kind(req))` is rejected before evaluation with the
-message `src() accepts edge; argument has category {node}`.
+Each function declares which categories it accepts for each argument.
+The tool silently drops facts of other categories in an argument:
+`src(all)` is valid and means "the sources of every edge". The tool
+raises a static error only when an argument's category set does not
+intersect the accepted set. Example: the tool rejects `src(kind(req))`
+before evaluation with the message `src() accepts edge; argument has
+category {node}`.
 
 ## 6. Function reference
 
@@ -172,10 +172,10 @@ declaration. "Declaration" means a `req`, `design`, or `decision`.
 | `ref(ns/id)` | ref facts matching |
 | `path(g)` | located facts whose `path` matches `g` |
 | `changed(b)` | see section 8; `b` is `base` or a revision |
-| `active` | the active plan and, if declared, the active step; only open plans are candidates; `∅` when no plan is active |
+| `active` | the active plan and, when the session declares one, the active step; only open plans are candidates; `∅` when no plan is active |
 | `historical` | located facts under a manifest `historical` path |
 | `ambient` | located facts under a manifest `ambient` path, in a plan file, in the manifest, or in the lockfile |
-| `acked(t)` | the located facts `f` whose tag-bearing block carries a live `@ack` with target `t`, where `t` applies to `f`. The target applies to `f` when both hold: the class name or rule name in `t` matches, and the ack's subject, when the ack gives one, equals `f`'s key. The key of an edge is its `dst` slug. The key of a node is its slug. The key of any other fact is its `id` |
+| `acked(t)` | the located facts `f` whose tag-bearing block carries a live `@ack` with target `t`, where `t` applies to `f`. The target applies to `f` when both of these conditions hold: the class name or rule name in `t` matches, and the ack's subject, when the ack gives one, equals `f`'s key. The key of an edge is its `dst` slug. The key of a node is its slug. The key of any other fact is its `id` |
 | `findings(C)` | finding facts whose class is in `C` |
 
 ### 6.2 Traversal (one hop, typed)
@@ -190,8 +190,8 @@ declaration. "Declaration" means a `req`, `design`, or `decision`.
 
 ### 6.3 Closures
 
-Closures are least fixpoints. Dangling edges are ignored. Suspect
-edges are followed, because a stale citation is still a citation.
+Closures are least fixpoints. The tool ignores dangling edges. It
+follows suspect edges, because a stale citation is still a citation.
 
 | function | accepts | denotes |
 |---|---|---|
@@ -215,10 +215,10 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 | function | accepts | keeps `f ∈ S` iff |
 |---|---|---|
 | `inforce(S)` | any | For a declaration: `f` carries no status tag and no live `@supersedes` edge targets `f`. The tool computes edge liveness as a fixpoint over the chains of `@supersedes` edges. On a cycle, the tool counts every member of the cycle as in force and reports the `cycle` finding. For a plan, for its steps, and for its promises: the plan is open — the ledger holds no `discharged` entry and no `abandoned` entry for it. The predicate keeps every fact of every other kind |
-| `approved(S)` | any | The predicate keeps `f` when any one of these holds: `f` is a declaration of a gated kind, and the ledger holds a stamp for `f`'s `(slug, rev, xh)`; `f` is a declaration of a kind that the ledger does not gate; `f` is a plan whose current commitment set is approved against the plan's latest stamped set ([ledger.md](ledger.md) section 11); `f` is a step of an approved plan; `f` is a fact of any other kind |
+| `approved(S)` | any | The predicate keeps `f` when any one of these conditions holds: `f` is a declaration of a gated kind, and the ledger holds a stamp for `f`'s `(slug, rev, xh)`; `f` is a declaration of a kind that the ledger does not gate; `f` is a plan whose current commitment set is approved against the plan's latest stamped set ([ledger.md](ledger.md) section 11); `f` is a step of an approved plan; `f` is a fact of any other kind |
 | `bumped(S)` | node | `f` is a declaration absent from the fact set of `B`, or present there with a smaller revision |
 | `declined(S)` | node | `f` is a declaration or a plan with a live decline: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
-| `blocked(P)` | promise | The promise targets a slug that no declaration in `T` declares, and that some lease promises to declare. This case means the two branches are ordered, not that the promise is broken. The tool reports `blocked-on` for it, and not `dangling` |
+| `blocked(P)` | promise | The promise targets a slug that no declaration in `T` declares, and that some lease promises to declare. This case means that the current branch and the lease's branch are ordered, not that the promise is broken. The tool reports `blocked-on` for it, and not `dangling` |
 
 ### 6.6 Edge predicates
 
@@ -230,8 +230,9 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 ### 6.7 Evidence predicates
 
 The evidence predicates partition `kind(verifies)`. Every `verifies`
-edge satisfies exactly one of them, tested in the order below. The
-**rung** of an edge is the name of the predicate it satisfies.
+edge satisfies exactly one of them. The tool tests the predicates in
+the order below. The **rung** of an edge is the name of the predicate
+it satisfies.
 
 Definitions used: `t = src(e)`. `sites(e) = src(in(satisfies,
 dst(e)))` minus test nodes — a test's own `@satisfies` never connects
@@ -245,7 +246,7 @@ tree key of `T`. `cov(t, s)` is the attributed coverage fact for
 | `neverran(E)` | `runs(t) = ∅` |
 | `failed(E)` | some run in `runs(t)` has status `fail`, `error`, or `skip`. A skipped test does not discharge its promise, so `skip` counts as failed here |
 | `disconnected(E)` | Every run passes, and `sites(e) ≠ ∅`, and one of these two holds: attributed coverage for `t` exists and `cov(t, s).hit = 0` for every site `s`; or only aggregate coverage exists and `agg(s).hit = 0` for every site `s`. In both cases the whole run executed no line in the sites, so the test `t` executed no line in the sites either |
-| `unattributed(E)` | All three of these hold: every run passes; `sites(e) ≠ ∅`; no attributed coverage for `t` exists. And one of these two holds: some `agg(s).hit > 0`; or the evidence set holds no coverage data at all |
+| `unattributed(E)` | All three of these conditions hold: every run passes; `sites(e) ≠ ∅`; no attributed coverage for `t` exists. And one of these two conditions holds: some `agg(s).hit > 0`; or the evidence set holds no coverage data at all |
 | `passing(E)` | every run passes, and either `sites(e) = ∅` or some `cov(t, s).hit > 0` |
 
 ### 6.8 Law functions
@@ -286,10 +287,10 @@ expr   = "kind(req|design) ^ inforce(all) - dst(in($e, all))"
 expr   = "kind(design) ^ inforce(all) - approved(all)"
 ```
 
-Invocation is `uncovered(verifies)`, or bare `unstamped-design` for a
-definition without parameters. Parameters are substituted as text for
-`$name` tokens before parsing. The substituted expression is parsed
-and category-checked as a whole.
+A call looks like `uncovered(verifies)`, or bare `unstamped-design`
+for a definition without parameters. The tool substitutes parameters
+as text for `$name` tokens before it parses the expression. It then
+parses and category-checks the substituted expression as a whole.
 
 Definitions can reference other definitions. A cycle among definitions
 is an error when the manifest loads. A definition with a `tiers` field
@@ -297,8 +298,8 @@ is a **finding class**: `check` evaluates it. A finding class can also
 carry the fields `ackable` and `detail`, and the field `fix`, which
 names the mechanical fix that repairs the finding. A definition
 without `tiers` is query-only. There is one table for both, because a
-finding is a definition that someone decided to enforce. Overriding a
-built-in finding's expression is allowed, and the diff that does it
+finding is a definition that someone decided to enforce. A repository
+can override a built-in finding's expression. The diff that does so
 fires the `law-touched` finding.
 
 ## 8. `changed(b)` and diff mode
@@ -306,8 +307,8 @@ fires the `law-touched` finding.
 ### 8.1 `changed(b)`
 
 `changed(b)` is the fact set touched by `git diff b` against the
-working tree. Untracked files count as wholly added. "Touched" is
-defined per category:
+working tree. Untracked files count as wholly added. The table below
+defines "touched" for each category:
 
 | category | `f ∈ changed(b)` iff |
 |---|---|
@@ -319,9 +320,9 @@ defined per category:
 | `edge` | the edge is new, or its line intersects a hunk, or `dst(e)` is a tombstone — a citation whose target vanished is changed even when its bytes are not |
 | `evidence` `ref` | never |
 
-`b` can be `base` (the `--base` value) or a git revision. Evaluating
-`changed(x)` for another revision requires a second fact set for `x`,
-built on demand.
+`b` can be `base` (the `--base` value) or a git revision. To evaluate
+`changed(x)` for another revision, the tool needs a second fact set
+for `x`. It builds that fact set on demand.
 
 ### 8.2 Diff mode
 
@@ -330,12 +331,13 @@ Diff mode is baseline subtraction. `check --diff` reports
 subtraction compares finding identities ([jsonl.md](jsonl.md), section
 "Identity").
 
-`F(b)` is evaluated on the base tree, read from git objects without a
-checkout, with the same ledger and an **empty evidence set**. So at
-the base, every finding that comes from an evidence predicate is
-`never-ran`. A test that was already `disconnected` at the base
-therefore appears as a new finding on the first change that measures
-it. This cost happens once for each such test, and Sinter accepts it.
+The tool evaluates `F(b)` on the base tree. It reads that tree from
+git objects without a checkout. It uses the same ledger and an **empty
+evidence set**. So at the base, every finding that comes from an
+evidence predicate is `never-ran`. A test that was already
+`disconnected` at the base therefore appears as a new finding on the
+first change that measures it. This cost happens once for each such
+test, and Sinter accepts it.
 
 A finding that exists at the base and still exists in the working tree
 is pre-existing; diff mode does not report it. A finding absent at the
@@ -345,28 +347,28 @@ have `F(b) = ∅` by construction and appear in both modes.
 
 ## 9. Built-in finding classes
 
-`check` is the union of the finding classes below. In the table,
-`expr` gives the definition where the class is expressible in the
-algebra. Two components can emit a class directly, without an algebra
-expression: the **scanner**, which parses the files, and the
-**adjudicator**, which compares the working tree with the base tree.
-The mark *engine* means one of these two components emits the class.
-A class carries this mark when it concerns malformed input, or when it
-compares two trees in a way the algebra does not model. Engine
-findings are still ordinary finding facts.
+`check` is the union of the finding classes below. In the table, the
+definition column holds an algebra expression when the class is
+expressible in the algebra. Two components can emit a class directly,
+without an algebra expression: the **scanner**, which parses the
+files, and the **adjudicator**, which compares the working tree with
+the base tree. The mark *engine* means one of these two components
+emits the class. A class carries this mark when it concerns malformed
+input, or when it compares two trees in a way the algebra does not
+model. Engine findings are still ordinary finding facts.
 
 Four global rules apply after evaluation. They are never written into
 definitions:
 
 1. Historical facts generate no findings of any class.
-2. A live `@ack` discharges findings of ackable classes. Liveness is
-   judged before this subtraction.
-3. The classes `never-ran`, `failed`, `disconnected`, and
-   `unattributed` are evaluated only when an evidence set exists for
-   the tree. The tool reports an unmeasured tree as unmeasured; it
+2. A live `@ack` discharges findings of ackable classes. The tool
+   judges liveness before it removes the acked findings.
+3. The tool evaluates the classes `never-ran`, `failed`,
+   `disconnected`, and `unattributed` only when an evidence set exists
+   for the tree. The tool reports an unmeasured tree as unmeasured; it
    must not report these classes as failures there. The `rung` field
-   on edges reads `never-ran` either way; only the finding is
-   withheld.
+   on edges reads `never-ran` either way; the tool withholds only the
+   finding.
 4. Facts that belong to a closed plan — the plan, its steps, its
    promises — generate no findings. A closed plan is a record, not an
    agreement.
@@ -376,13 +378,13 @@ condition the row states. Column `F` marks classes with a mechanical
 fix. The `tiers` column gives each class's default tier at the gates
 `(turn, pr, main)`. A new repository also starts under a **rollout
 cap**: a manifest line that lowers every class to `warn` at every
-gate. The column's defaults apply once the cap is lifted, or once the
-repository promotes a class past the cap.
+gate. The column's defaults apply once someone lifts the cap, or once
+the repository promotes a class past the cap.
 
 | class | subject | definition | mode | A | F | tiers |
 |---|---|---|---|---|---|---|
 | `parse-error` | file | *engine*: a governed file its pack cannot parse; the file's facts are absent | tree | · | · | warn, block, block |
-| `typo-tag` | line | *engine*: an unknown `@word` within Damerau–Levenshtein distance 2 of the vocabulary, the pack's foreign vocabulary exempt | tree | · | F | warn, warn, warn |
+| `typo-tag` | line | *engine*: an unknown `@word` within Damerau–Levenshtein distance 2 of the vocabulary. The pack's foreign vocabulary is exempt | tree | · | F | warn, warn, warn |
 | `bad-target` | tag | *engine*: a slug or ref that fails its pattern, or an undeclared namespace | tree | · | · | block, block, block |
 | `duplicate` | node | *engine*: two declarations of one slug; two plans of one slug (closed plans included); or two steps of one plan with equal slugs | tree | · | · | block, block, block |
 | `bad-scope` | step | *engine*: a step whose `@scope` is not contained in its plan's | tree | · | · | block, block, — |
@@ -398,7 +400,7 @@ repository promotes a class past the cap.
 | `unratified-req` | edge | `in(satisfies\|verifies, kind(req) - approved(all))`. A kind that the ledger does not gate counts as approved, so in a repository that gates no kinds this class reports nothing | tree | · | · | block, block, block |
 | `unratified-design` | edge | `in(satisfies\|verifies, kind(design) - approved(all))` | tree | · | · | warn, warn, warn |
 | `unstamped` | node | `kind(req\|design\|decision) ^ inforce(all) - approved(all)` | tree | · | · | off, warn, warn |
-| `amendment` | plan | `kind(plan) ^ inforce(all) - approved(all)`. The engine writes the difference between the current and the stamped commitment set into the finding's `detail` field | tree | · | · | warn, block, — |
+| `amendment` | plan | `kind(plan) ^ inforce(all) - approved(all)`. The engine writes the difference between the current commitment set and the stamped commitment set into the finding's `detail` field | tree | · | · | warn, block, — |
 | `disendorsed` | edge | `kind(cites) - dangling(all) - in(cites, inforce(all))` — a rule's origin edge included | tree | A | · | warn, block, block |
 | `stale-ack` | ack | *engine*: an `@ack` whose hash no longer matches its block, or whose target names nothing in that block | tree | · | F | block, block, block |
 | `orphan` | edge | `orphan(kind(verifies))` | tree | · | · | block, block, block |
@@ -415,9 +417,9 @@ repository promotes a class past the cap.
 | `blocked-on` | promise | `blocked(promises(kind(plan)))` — reported in place of `dangling`, with the lease and step named | tree | · | · | off, warn, — |
 | `lease-overlap` | step | *engine*: a step's scope intersects the scope of another branch's lease | tree | · | · | warn, warn, — |
 | `unmapped-work` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient`. The engine also exempts hunks that are wholly mechanical repairs — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
-| `rule-owed` | any | `owed(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's discharge is `acked`; a rule's own `tiers` overrides the class's | tree | A* | · | warn, block, block |
+| `rule-owed` | any | `owed(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's discharge is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
 | `law-touched` | law | `kind(rule\|gate) ^ changed(base)` — cannot be disabled; always reported, never blocks | diff | · | · | warn, warn, warn |
-| `undischarged-plan` | plan | *engine*: an open plan on the target branch that fails the discharge condition ([ledger.md](ledger.md) section 8) — merged incomplete | tree | · | · | —, —, block |
+| `undischarged-plan` | plan | *engine*: an open plan on the target branch that fails the discharge condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |
 | `ledger-broken` | ledger | *engine*: ledger verification fails | tree | · | · | —, —, block |
 | `pack-drift` | pack | *engine*: a pinned pack's hash does not match the cache. This is not a gated finding: the tool stops with exit code 3 at every gate | tree | · | · | — |
 
@@ -433,14 +435,15 @@ about the health of the repository's checking machinery.
 - Evaluation is bottom-up over the parse tree. The tool answers
   selectors from per-kind lookup structures. It answers traversals
   from adjacency maps, which it builds once per scan. It computes
-  fixpoints with a worklist. A saved definition is expanded once per
+  fixpoints with a worklist. It expands a saved definition once per
   invocation site.
 - Results print in the order `(kind, path, line, col, id)`. Unlocated
   facts come after located ones, ordered by `id`. Reordering never
   changes the set.
-- Static errors — a category mismatch, an unknown function, a wrong
-  arity, an unknown saved definition, a wrong parameter count — are
-  reported before evaluation and name the offending subexpression.
+- The static errors are a category mismatch, an unknown function, a
+  wrong arity, an unknown saved definition, and a wrong parameter
+  count. The tool reports them before evaluation, and names the
+  offending subexpression.
 - A name selector that matches nothing is not an error. It denotes
   `∅`, because that is what `req(auth-lockout)` should mean on a
   branch where nobody declared `auth-lockout` yet.
@@ -463,5 +466,5 @@ docs/auth.md:12:1: req auth-lockout v2
 docs/auth.md:31:1: req lockout-notify v1
 ```
 
-The first query lists the promises that are not met. The second lists
-the in-force requirements that no test verifies.
+The first query lists the promises that are not met. The second query
+lists the in-force requirements that no test verifies.
