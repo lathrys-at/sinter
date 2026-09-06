@@ -23,7 +23,7 @@ jobs:
     name: DCO sign-off
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Check every commit for a Signed-off-by line
@@ -49,7 +49,7 @@ jobs:
     name: REUSE lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run reuse lint
         run: pipx run reuse lint
 
@@ -57,7 +57,7 @@ jobs:
     name: Third-party manifest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Check that THIRD_PARTY.md exists and is well-formed
         run: |
           set -eu
@@ -76,7 +76,7 @@ jobs:
     name: No forbidden licenses
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Check the dependency list for forbidden licenses
         run: |
           set -eu

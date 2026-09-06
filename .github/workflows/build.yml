@@ -20,21 +20,22 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       # The opam switch, with the project's dependencies installed, is
       # cached under a key that names the platform, the compiler, and
       # the lock file. A lock change falls back to the previous switch
       # and installs only the difference. setup-ocaml's own cache is
       # off, because it would restore a switch without dependencies.
+      # Only the switch is cached, not the opam root: a restored root
+      # holds a git clone of opam-repository that opam init cannot
+      # always update.
       - name: Restore the opam switch
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
-          path: |
-            _opam
-            ~/.opam
-          key: opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
+          path: _opam
+          key: opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
-            opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+            opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: ${{ env.OCAML_VERSION }}
@@ -50,16 +51,14 @@ jobs:
     name: Check formatting
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Restore the opam switch
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
-          path: |
-            _opam
-            ~/.opam
-          key: opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
+          path: _opam
+          key: opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
-            opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+            opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: ${{ env.OCAML_VERSION }}
