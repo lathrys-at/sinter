@@ -24,6 +24,16 @@ library `sinter.bridge` in `lib/bridge/` links it. A dune rule runs
 the cargo build, so `dune build` at the repository root builds the
 crate too.
 
+The build needs `cmake` on the PATH, next to cargo. The crate depends
+on `tree-sitter` with its `wasm` feature, which depends on
+`wasmtime-c-api`. That package's build script runs cmake to install
+the wasmtime C headers. Without cmake the build stops with
+`failed to spawn cmake`.
+
+The static library is about 40 MB, because it holds wasmtime and the
+Cranelift compiler. The linked `sinter` binary grows by less, because
+the linker drops what the binary does not call.
+
 ## The C interface
 
 [include/sinter_bridge.h](include/sinter_bridge.h) declares six
@@ -99,8 +109,22 @@ that many bytes: the parse tree as an S-expression.
 ## The wasm surface of a grammar
 
 A tree-sitter grammar that is compiled to WebAssembly imports nothing
-but the functions that tree-sitter's own runtime supplies. It has no
-WASI imports, so it cannot read a file, open a socket, or read the
-clock. The design notes state this in section 5.2. The file
-`measurements.md` of the parser-bridge work records the import section
-of the fixture grammar.
+but what tree-sitter's own runtime supplies. It has no WASI import, so
+it cannot read a file, open a socket, or read the clock. Section 5.2
+of the design notes states this. Anyone can check it by reading the
+import section of a grammar's wasm file.
+
+The fixture grammar, `test/fixtures/tree-sitter-json/`, imports four
+things and no function at all:
+
+| module | name | kind |
+|---|---|---|
+| `env` | `__memory_base` | global |
+| `env` | `__table_base` | global |
+| `env` | `memory` | memory, minimum 1 page |
+| `env` | `__indirect_function_table` | table, minimum 1 entry |
+
+A larger grammar imports a few functions as well. The grammar of
+tree-sitter-typescript, release v0.23.2, imports the same four things
+and two more: `env.iswspace` and `env.iswalpha`. Both classify
+characters. Neither reads a file, opens a socket, or reads the clock.
