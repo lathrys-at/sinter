@@ -286,7 +286,7 @@ pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
     })
 }
 
-/// Free an engine and every language that was loaded into it.
+/// Free an engine and every language that is loaded into it.
 ///
 /// # Safety
 ///
