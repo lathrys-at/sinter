@@ -1,5 +1,48 @@
 # Contributing to Sinter
 
+## Writing
+
+All text in this repository uses Simplified Technical English
+(ASD-STE100) in the style of Simple English Wikipedia. This applies to
+documentation, specifications, code comments, commit messages, and
+the tool's own output. The rules:
+
+- Write for the people who use Sinter or contribute to it. Assume
+  they do not share your context.
+- Use short sentences: one idea per sentence, about 20 words or
+  fewer.
+- Use the active voice and simple tenses.
+- Use one word for one meaning, and use it the same way every time.
+- Do not invent terms. When a technical term is necessary, define it
+  at first use.
+- Give every pronoun one clear referent. Repeat the noun when in
+  doubt.
+- Give the context before the detail, so that each sentence makes
+  sense on its own.
+- Use a numbered list for a sequence of steps, and a table for facts
+  that a reader can enumerate.
+- Do not add notes that explain why a sentence or a file exists, or
+  that restate what a reader can infer from the stated facts.
+
+Text that we reproduce from elsewhere — license texts, the DCO, and
+quoted standards — stays verbatim.
+
+## Build and check
+
+Install [opam](https://opam.ocaml.org/) and an OCaml switch (5.1 or
+newer). Then, from the repository root:
+
+```
+eval $(opam env)
+opam install . --deps-only --with-test
+dune build
+dune test
+dune fmt
+```
+
+Before you commit, make sure that `dune build @fmt` passes and that
+`reuse lint` passes (`pipx run reuse lint`). CI runs both.
+
 ## Licensing of contributions
 
 Sinter uses two licenses:
