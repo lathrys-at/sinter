@@ -1,12 +1,15 @@
 # Third-party components
 
-This file lists each dependency that ships in the Sinter release binary.
-Each row of the table gives one component, the license of that
-component, and a link.
+This file names the third-party components that a reader of the
+license notices must know: the components that ship in the Sinter
+release binary, and the components that are checked into the
+repository. Each row of a table gives one component, the license of
+that component, and a link.
 
 The parser bridge pins its Rust dependencies in `bridge/Cargo.lock`.
-That file names every crate and its version. The table below gives the
-components whose license terms a reader must know. Some rows are
+That file names every crate and its version, and the tables below do
+not repeat it. The licensing workflow reads the license of every crate
+in that lock file and fails on a forbidden one. Some rows below are
 components that the design expects and the project does not pin yet.
 
 | component | license | link |
