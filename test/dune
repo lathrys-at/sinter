@@ -3,4 +3,5 @@
 
 (test
  (name test_sinter)
+ (modes exe)
  (libraries sinter_core alcotest))

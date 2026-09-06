@@ -1,0 +1,109 @@
+(* SPDX-License-Identifier: Apache-2.0 *)
+(* Copyright 2026 The Sinter Authors *)
+
+exception Error of string
+
+let fail format = Printf.ksprintf (fun message -> raise (Error message)) format
+
+(* spec/jsonl.md section 2 requires every string in the output to be
+   UTF-8. The text of a capture comes from the file, so a file that is
+   not UTF-8 cannot produce a valid line. Reject such a file here, with
+   a message that names it, instead of failing later in the writer. *)
+let check_utf_8 path text =
+  let length = String.length text in
+  let offset = ref 0 in
+  while !offset < length do
+    let decoded = String.get_utf_8_uchar text !offset in
+    if not (Uchar.utf_decode_is_valid decoded) then
+      fail "%s: the file is not UTF-8 text, at byte %d" path !offset;
+    offset := !offset + Uchar.utf_decode_length decoded
+  done
+
+let read_file path =
+  let channel =
+    try open_in_bin path
+    with Sys_error message ->
+      fail "%s: the file does not open: %s" path message
+  in
+  Fun.protect
+    ~finally:(fun () -> close_in_noerr channel)
+    (fun () ->
+      try really_input_string channel (in_channel_length channel) with
+      | Sys_error message -> fail "%s: the file does not read: %s" path message
+      | End_of_file ->
+          fail "%s: the file ended sooner than its length says" path)
+
+let grammar_name path =
+  let base = Filename.remove_extension (Filename.basename path) in
+  let underscored = String.map (fun c -> if c = '-' then '_' else c) base in
+  let prefix = "tree_sitter_" in
+  let length = String.length prefix in
+  if
+    String.length underscored > length
+    && String.equal (String.sub underscored 0 length) prefix
+  then String.sub underscored length (String.length underscored - length)
+  else underscored
+
+let record_of_capture ~path (capture : Sinter_bridge.capture) =
+  [
+    ("path", Jsonl.string path);
+    ("pat", Jsonl.int capture.pattern);
+    ("cap", Jsonl.string capture.name);
+    ("node", Jsonl.string capture.node_type);
+    ("sb", Jsonl.int capture.start_byte);
+    ("eb", Jsonl.int capture.end_byte);
+    ("line", Jsonl.int (capture.start_row + 1));
+    ("col", Jsonl.int (capture.start_column + 1));
+    ("eline", Jsonl.int (capture.end_row + 1));
+    ("ecol", Jsonl.int (capture.end_column + 1));
+    ("text", Jsonl.string capture.text);
+  ]
+
+let read_source path =
+  let source = read_file path in
+  check_utf_8 path source;
+  source
+
+let of_bridge path f =
+  try f () with Sinter_bridge.Error message -> fail "%s: %s" path message
+
+let captures language ~query ~path =
+  let source = read_source path in
+  let found =
+    of_bridge path (fun () -> Sinter_bridge.captures language ~source ~query)
+  in
+  List.map (record_of_capture ~path) found
+
+let tree language ~path =
+  let source = read_source path in
+  of_bridge path (fun () -> Sinter_bridge.tree language ~source)
+
+let run ~grammar ~query ~paths channel =
+  let wasm = read_file grammar in
+  let name = grammar_name grammar in
+  let engine =
+    try Sinter_bridge.create ()
+    with Sinter_bridge.Error message ->
+      fail "the parser bridge does not start: %s" message
+  in
+  Fun.protect
+    ~finally:(fun () -> Sinter_bridge.close engine)
+    (fun () ->
+      let language =
+        try Sinter_bridge.load engine ~name ~wasm
+        with Sinter_bridge.Error message ->
+          fail "%s: the grammar does not load: %s" grammar message
+      in
+      match query with
+      | None ->
+          List.iter
+            (fun path -> output_string channel (tree language ~path ^ "\n"))
+            paths
+      | Some query_path ->
+          let query = read_source query_path in
+          if String.length (String.trim query) = 0 then
+            fail "%s: the query file is empty" query_path;
+          List.iter
+            (fun path ->
+              List.iter (Jsonl.output channel) (captures language ~query ~path))
+            paths)

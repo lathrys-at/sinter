@@ -1,0 +1,45 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 The Sinter Authors
+
+(library
+ (name sinter_bridge)
+ (public_name sinter.bridge)
+ (foreign_stubs
+  (language c)
+  (names bridge_stubs)
+  (extra_deps sinter_bridge.h))
+ (foreign_archives sinter_bridge)
+ (c_library_flags
+  (:include link_flags.sexp))
+ ; The Rust crate builds a static library and no shared library, so
+ ; this library has no bytecode mode. Every library and executable
+ ; that depends on it is therefore native as well.
+ (modes native))
+
+; The Rust crate in bridge/ builds a static library. This rule runs
+; cargo and copies that library here, where (foreign_archives) finds
+; it. The same cargo run reports the system libraries that the static
+; link needs; the script writes them to link_flags.sexp.
+;
+; Cargo writes its own build output to rust-target inside the build
+; directory. "dune clean" therefore discards it and the next build
+; compiles the crate again, which takes several minutes. The cargo
+; package cache in the home directory is not discarded.
+
+(rule
+ (targets libsinter_bridge.a link_flags.sexp)
+ (deps
+  build.sh
+  (source_tree %{workspace_root}/bridge))
+ (action
+  (run
+   ./build.sh
+   %{workspace_root}/bridge
+   rust-target
+   libsinter_bridge.a
+   link_flags.sexp)))
+
+(rule
+ (target sinter_bridge.h)
+ (action
+  (copy %{workspace_root}/bridge/include/sinter_bridge.h sinter_bridge.h)))

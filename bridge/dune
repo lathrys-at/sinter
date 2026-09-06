@@ -1,0 +1,9 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 The Sinter Authors
+
+; Cargo writes its build output to bridge/target. Dune reads no
+; .gitignore file, so this line is what keeps dune out of that
+; directory. Without it, dune copies hundreds of megabytes into
+; _build. The rule that builds the crate is in lib/bridge/dune.
+
+(dirs :standard \ target)
