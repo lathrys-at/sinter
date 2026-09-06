@@ -45,6 +45,6 @@ wire-format version that increases only for an incompatible change.
 
 ## Consequences
 
-Two tag namespaces exist. The Claude Code plugin's version tracks the
-tool's. The first tool release needs a `v0.1.0` tag; from then on,
+Two tag namespaces exist. The Claude Code plugin has its own semantic
+version, and a change to a skill bumps it. The first tool release needs a `v0.1.0` tag; from then on,
 git's own description names untagged builds.
