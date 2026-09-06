@@ -45,3 +45,7 @@
   verified as the licensing brief describes.
 - **Test evidence for Sinter itself** — JUnit output from the test
   suite, for `evidence import`.
+- **A generated third-party list** — `THIRD_PARTY.md` built in CI from
+  `bridge/Cargo.lock` and `sinter.opam.locked` (`cargo about` or
+  `cargo license` for the Rust tree), with a drift check. `cargo deny`
+  checks the Rust licences against an allowlist until then.
