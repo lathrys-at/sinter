@@ -9,10 +9,16 @@ version numbers, because formats and code change at different speeds.
 
 ## The specifications
 
-The four documents in `spec/` — the doctag vocabulary, the query
-algebra, the JSONL interchange schema, and the approval-ledger
-format — are one coherent set. They share one version. A release of
-the set is a git tag of the form `spec/vX.Y.Z`:
+The `spec/` directory holds four documents:
+
+- the doctag vocabulary;
+- the query algebra;
+- the JSONL interchange schema;
+- the approval-ledger format.
+
+These four documents are one coherent set, and they share one version.
+A release of the set is a git tag of the form `spec/vX.Y.Z`. The three
+parts of the version number change for different reasons:
 
 - **Major** increases for a change that breaks an existing
   implementation of the formats.
@@ -49,4 +55,4 @@ specification version it implements.
 
 The next planned release is the `base` value in
 [lib/version.ml](../lib/version.ml). The commit hash comes from
-`git describe`, which a dune rule runs at build time.
+`git describe`. A dune rule runs that command at build time.

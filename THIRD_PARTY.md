@@ -1,7 +1,8 @@
 # Third-party components
 
 This file lists each dependency that ships in the Sinter release binary.
-Each line gives the license and a link.
+Each row of the table gives one component, the license of that
+component, and a link.
 
 The project has no pinned dependencies yet. The table below lists the
 components that the design expects.

@@ -18,8 +18,8 @@ facts are defined in [vocabulary.md](vocabulary.md). The kinds and
 categories are listed in [algebra.md](algebra.md). Ledger entries are
 also JSONL records; they are defined in [ledger.md](ledger.md).
 
-The JSONL is always derived from the repository's text, the ledger,
-and the evidence set. The JSONL is never a source of truth.
+Sinter always derives the JSONL from the repository's text, the
+ledger, and the evidence set. The JSONL is never a source of truth.
 
 ## 2. Canonical form
 
@@ -46,7 +46,7 @@ The schema restricts values so that JCS stays trivial to implement:
   characters.
 
 A fact is **located** when it carries a path and a line span (section
-3); otherwise it is **unlocated**. A file of facts is sorted by
+3); otherwise it is **unlocated**. Sinter sorts a file of facts by
 `(kind, path, line, col, id)`. Unlocated facts sort after located
 facts, by `id`. The first line is the `index` header (section 10). Two
 scans of the same inputs — tree, base, ledger, evidence, session —
@@ -76,16 +76,15 @@ Located facts add:
 | `eline` `ecol` | int | inclusive end line; exclusive end column |
 
 For a declaration in markdown, this span is the tag line only. The
-extent — the whole section — is carried separately as `xline` and
-`xeline`, so that a tool can highlight the tag without highlighting
-the whole section.
+record carries the extent — the whole section — separately, in `xline`
+and `xeline`. A tool can therefore highlight the tag without
+highlighting the whole section.
 
-Fields marked *derived* below are computed from the ledger, the
+Sinter computes the fields marked *derived* below from the ledger, the
 evidence, the session, or the base — not from the file. Sinter emits
-derived fields so that a tool which reads the JSONL does not have to
-compute them again. Derived fields are included in conformance
-comparison, so conformance fixtures ship their own ledger and
-evidence.
+derived fields so that a tool that reads the JSONL does not have to
+compute them again. Conformance comparison includes derived fields, so
+conformance fixtures ship their own ledger and evidence.
 
 ## 4. Node records
 
@@ -207,7 +206,7 @@ record.
 
 | field | type | meaning |
 |---|---|---|
-| `test` | string | test fact id. When a run binds to no test fact, the scanner emits no `run` fact for that run; the import step reports the unbound run instead |
+| `test` | string | test fact id. When a run binds to no test fact, the scanner emits no `run` fact for that run; the evidence import reports the unbound run instead |
 | `status` | string | `pass`, `fail`, `error`, or `skip`. When several artifacts report one test, the fact carries the worst status among them. The order, from best to worst, is: `pass`, `skip`, `fail`, `error` |
 | `tree` | string | tree key |
 | `sources` | array of string | artifact paths, as imported |
@@ -256,8 +255,8 @@ conditions:
 | `declares` | array of string | slugs the lease promises to declare |
 | `stamped` | string | RFC 3339 timestamp |
 
-**`decline`** — unlocated. Projected from the ledger; live entries
-only.
+**`decline`** — unlocated. Sinter projects decline records from the
+ledger. It emits live entries only.
 
 | field | type | meaning |
 |---|---|---|
@@ -315,7 +314,7 @@ still emits the record, with the default tier and `default` set to
 |---|---|---|
 | `of` | string | the kind of the vanished fact |
 | `was` | string | its id at the base |
-| `slug` `rev` `xh` | | for declarations, so that renames can be computed |
+| `slug` `rev` `xh` | | for declarations, so that a tool can compute renames |
 
 ## 8. Finding records
 
@@ -369,8 +368,8 @@ under retargeting an edge.
 
 ## 10. Header and summary records
 
-**`index`** — the first line of every scan. Excluded from conformance
-comparison.
+**`index`** — the first line of every scan. Conformance comparison
+excludes it.
 
 | field | type | meaning |
 |---|---|---|
@@ -405,11 +404,12 @@ use the tiers of the `turn` gate.
 ## 11. Conformance
 
 A language pack's fixture directory contains a small project, an
-`expected.jsonl` file, a fixture ledger, and real runner and coverage
-artifacts with attribution. The verifier scans the fixture with the
-fixture's own ledger and evidence. It drops the header line from the
-output. It then compares the output with `expected.jsonl`; the two
-must be equal byte for byte. Because derived fields are included, the
-fixture tests the whole path from artifact import to evidence binding,
-not only parsing. A tool release that changes any derived field's
-semantics must regenerate every pack's fixture.
+`expected.jsonl` file, a fixture ledger, and real artifacts from a
+test runner and a coverage tool, with attribution. The verifier scans
+the fixture with the fixture's own ledger and evidence. It drops the
+header line from the output. It then compares the output with
+`expected.jsonl`; the two must be equal byte for byte. Because the
+comparison includes derived fields, the fixture tests the whole path
+from artifact import to evidence binding, not only parsing. A tool
+release that changes any derived field's semantics must regenerate
+every pack's fixture.

@@ -9,9 +9,8 @@ Status: draft. The four specifications share one version; see [docs/versioning.m
 
 The ledger is Sinter's append-only record of judgments about a
 repository: approvals, refusals, and the entry that closes each plan.
-This document defines where the ledger lives, how entries are
-identified, each entry kind, and the rules that give entries their
-meaning.
+This document defines where the ledger lives, how entries get their
+ids, each entry kind, and the rules that give entries their meaning.
 
 Anyone can implement this specification in any tool. See the
 LICENSE-SPEC file at the repository root. Entries are JSONL records in
@@ -23,8 +22,8 @@ ledger judges are defined in [vocabulary.md](vocabulary.md).
 The ledger is a JSONL file, `ledger.jsonl`, in the tree of a dedicated
 git ref: `refs/sinter/ledger`. This ref is not a checkout path. No
 editor and no file tool reaches the ledger without a git plumbing
-command. Sinter requires this on purpose, so that only a deliberate
-act writes the ledger.
+command. Sinter imposes this restriction on purpose, so that only a
+deliberate act writes the ledger.
 
 Each write appends lines to the file and commits, with the previous
 tip as the parent. The ref moves by fast-forward only. Every commit's
@@ -35,20 +34,22 @@ Unlike the derived JSONL of a scan, ledger entries carry timestamps
 and authorship. The ledger is history, not a derivation.
 
 When the repository's manifest sets `ledger.sign`, every ledger commit
-is signed, and verification can enforce an allowlist of signer keys.
-A deployment that wants the host's push restrictions to protect the
-ledger can place the ref under `refs/heads/sinter/ledger` instead.
+carries a signature. Verification can then enforce an allowlist of
+signer keys. A deployment that wants the host's push restrictions to
+protect the ledger can place the ref under `refs/heads/sinter/ledger`
+instead.
 
 ## 3. Entry identity
 
-An entry's id is `e-` plus the first twelve hex digits of SHA-256 over
-the entry's canonical bytes with the `id` key absent. Two writers can
-never produce one id for two different entries.
+An entry's id is `e-` plus the first twelve hex digits of a SHA-256
+hash. The hash covers the entry's canonical bytes with the `id` key
+absent. Two writers can never produce one id for two different
+entries.
 
 Two writers can push to the ledger ref at the same time, and one of
-the two pushes then fails. Because ids are content-derived, recovery
-from a failed push is a set union. The writer that lost does three
-steps in order:
+the two pushes then fails. Ids come from the entry's content, so
+recovery from a failed push is a set union. The writer that lost takes
+these three actions in order:
 
 1. Fetch the ledger ref.
 2. Append again the local entries that the upstream file does not
@@ -56,8 +57,8 @@ steps in order:
 3. Push again.
 
 Ids never repeat within the ledger. Where order matters — for example
-a decline superseded by a later stamp — the `ts` field decides, never
-file position.
+a decline superseded by a later stamp — the `ts` field decides the
+order, and not the position in the file.
 
 ## 4. Common fields
 
@@ -107,7 +108,7 @@ the writer writes no new entry.
 ## 6. `stamped-scope` and `stamped-promise`
 
 A plan stamp holds the approved commitment set as entries, not only as
-a hash. A hash shows only that two sets differ; it does not show which
+a hash. A hash shows only that two sets differ. It does not show which
 promises or scopes differ, and the comparison in section 11 needs that
 detail. Two entry kinds carry the set.
 
@@ -130,7 +131,8 @@ plan-level.
 
 ## 7. `decline`
 
-A decline records a human refusal, bound to the exact text refused.
+A decline records a refusal by a person, bound to the exact text
+refused.
 
 | field | meaning |
 |---|---|
@@ -142,7 +144,7 @@ A decline is **live** while the subject's current hash equals `hash`
 and no later stamp of the subject exists. A decline is never deleted.
 A later stamp of the subject ends the decline's effect. That later
 stamp can be at a different hash. It can also be at the same hash,
-when the human overrides their own earlier refusal.
+when the person overrides their own earlier refusal.
 
 ## 8. `discharged`
 
@@ -163,7 +165,7 @@ condition.
 | `report` | SHA-256 of the report compiled at discharge |
 
 **The discharge condition.** A plan meets the condition when all of
-these hold:
+these statements are true:
 
 - Every promised declaration exists.
 - Every promised edge exists, and that edge is neither dangling nor
@@ -219,8 +221,8 @@ the user to fetch it.
 
 A plan's **commitment set** is the set of canonical facts about the
 plan: the promises of each step, the scope of each step, and the plan
-scope. The current set `C` is compared against the stamped set `C₀`.
-The plan is approved if and only if all three clauses hold:
+scope. The tool compares the current set `C` against the stamped set
+`C₀`. The plan is approved if and only if all three clauses hold:
 
 1. The multiset of `(word, target)` over all promises is equal in `C`
    and `C₀`.
@@ -233,7 +235,8 @@ The plan is approved if and only if all three clauses hold:
    `C` must be contained in the effective scope of the step in `C₀`.
 
 **Glob containment** `G' ⊆ G` is decided structurally and
-conservatively. Every glob in `G'` must satisfy one of:
+conservatively. Every glob in `G'` must satisfy one of these three
+cases:
 
 - it appears verbatim in `G`;
 - it is a literal path, or a literal path prefix, that some glob in
@@ -242,9 +245,9 @@ conservatively. Every glob in `G'` must satisfy one of:
 
 When the checker cannot prove that a glob satisfies one of these three
 cases, the checker treats the new scope as wider than the stamped
-scope. The rule is decidable and deterministic. When it cannot prove
-containment, it asks a person for a new stamp, which is the safe
-result for an approval gate.
+scope. The rule is decidable and deterministic. When the checker
+cannot prove containment, the checker asks a person for a new stamp,
+which is the safe result for an approval gate.
 
 An amendment is **free** when the plan stays approved after it and no
 new stamp is needed. The consequences of the three clauses:

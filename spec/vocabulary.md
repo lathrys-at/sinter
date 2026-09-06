@@ -58,9 +58,9 @@ the same line and on later lines (section 3.2).
 
 ### 3.1 Tag lines and blocks
 
-A **tag line** is found as follows. Take a line inside a tag-bearing
-node. Remove the comment sigil and the indentation before it. The line
-is a tag line when the remaining text starts with `@`.
+The scanner finds a **tag line** as follows. Take a line inside a
+tag-bearing node. Remove the comment sigil and the indentation before
+it. The line is a tag line when the remaining text starts with `@`.
 
 Every such line is a tag line, whether or not its word is in this
 vocabulary. Unknown words are not part of this vocabulary and have no
@@ -114,8 +114,8 @@ Two declarations of one slug in a shared namespace are an error
 (finding class `bad-target`).
 
 The slug is the identity of an item. There are no hidden machine
-identifiers. To rename an item is to delete it and to declare a new
-one. Decision slugs are also permanent: a decision is never deleted
+identifiers. To rename an item, delete it and declare a new one.
+Decision slugs are also permanent: a decision is never deleted
 (section 8.3).
 
 ### 4.2 Refs
@@ -190,10 +190,15 @@ The same normalization, applied to any block, gives the **block hash**
 that `@ack` pins (section 7.4). One hash function and one rule set
 serve both uses.
 
-The effect of steps 5 and 6: three edits do not change the extent
-hash — a rename, a bare revision bump with no other text change, and a
-re-pin of a citation. Reformatting a comment also does not change the
-extent hash. Every other byte change changes the extent hash.
+Steps 5 and 6 have this effect. Three edits do not change the extent
+hash:
+
+- a rename;
+- a bare revision bump with no other text change;
+- a re-pin of a citation.
+
+Reformatting a comment also does not change the extent hash. Every
+other byte change changes the extent hash.
 
 ### 6.2 The code hash
 
@@ -278,9 +283,10 @@ A directive records a judgment in a block.
 
 **`@ack <target> <hash>`** records one judgment about one block of
 text. The judgment is one of two: someone accepted a finding, or
-someone satisfied a rule, for the block as it was when they read it.
-The grammar: `<hash>` is the last token, and `<target>` is everything
-between `@ack` and the hash. The target is one of:
+someone satisfied a rule. The judgment covers the block as it was when
+that person read it. In the grammar, `<hash>` is the last token, and
+`<target>` is everything between `@ack` and the hash. The target is
+one of:
 
 - a finding class, with an optional subject, exactly as the checking
   tool reported it — for example `disendorsed cache-ttl` or
@@ -299,10 +305,10 @@ An ack is **live** if and only if both conditions hold:
 
 The checking tool removes acked findings at the end of a check. It
 judges condition 2 against the findings and obligations that exist
-before that removal: it computes a rule's obligations from the rule's
-trigger alone, and a finding class from the class's raw definition. An
-ack therefore cannot make itself void by removing the finding it
-names.
+before that removal. It computes a rule's obligations from the rule's
+trigger alone. It computes a finding class from the class's raw
+definition. An ack therefore cannot make itself void by removing the
+finding it names.
 
 When either condition fails, the ack is **void**. A void ack is itself
 a finding (`stale-ack`). Only some finding classes accept an ack; the
@@ -361,7 +367,7 @@ file generates no findings.
 
 A person writes every revision pin by hand. Sinter stores no hash of a
 declaration's text outside the repository. Sinter also never writes
-into a governed file. Two rules make this work:
+into a governed file. Two rules make hand-written pins work:
 
 1. **Every extent edit owes a bump.** When a declaration's extent
    changes relative to the diff base and its revision does not
@@ -396,7 +402,7 @@ tag block carries `@plan`. A `@plan` tag anywhere else is an error
 
 ### 10.2 Promissory reading
 
-Inside a plan file, tags are read as promises, not as facts:
+Inside a plan file, the scanner reads tags as promises, not as facts:
 
 - A promised declaration (`@req x`) means: this step will declare `x`.
 - A promised citation (`@verifies x`) means: this step will produce a
@@ -416,7 +422,7 @@ promise — is a **step**. A `##` section with no plan tags is prose, not
 a step.
 
 The scanner derives a step's slug from the step's heading text. It
-applies these steps in order:
+makes these three changes in order:
 
 1. Change every letter to lowercase.
 2. Replace each sequence of non-alphanumeric characters with one
@@ -442,8 +448,8 @@ repository root, in gitignore style:
 
 A step with no `@scope` inherits the plan's scope. A step's `@scope`
 must be contained in its plan's scope (finding class `bad-scope`). A
-step's **effective scope** is its own scope when it has one, otherwise
-the plan's.
+step's **effective scope** is its own scope when it has one, and
+otherwise the plan's scope.
 
 ### 10.5 Discharge
 
@@ -457,8 +463,8 @@ A promise is **met** as follows:
 - A promised `@verifies` is met if and only if such an edge exists
   inside the step's effective scope at evidence rung `passing`. When
   the manifest sets `evidence.require_attribution = false` (the
-  default), rung `unattributed` also meets it. Rungs are defined in
-  [algebra.md](algebra.md) section 6.7.
+  default), an edge at rung `unattributed` also meets the promise.
+  Rungs are defined in [algebra.md](algebra.md) section 6.7.
 
 Residue that would discharge a promise, but that sits outside the
 step's scope, does not discharge that promise. The scanner reports
@@ -473,9 +479,9 @@ rung. A plan is **done** if and only if all its steps are done.
 
 ### 10.6 Amendment
 
-Plans are exempt from revision discipline. A plan is judged by its
-**commitment set** — the promises and scopes per step — never by its
-text. The rules for comparing commitment sets, and for which
+Plans are exempt from revision discipline. Sinter judges a plan by its
+**commitment set** — the promises and the scopes of each step — never
+by its text. The rules for comparing commitment sets, and for which
 amendments need a new approval, are in [ledger.md](ledger.md) section
 11.
 
@@ -485,5 +491,6 @@ To rename a declared item, delete the old declaration and write a new
 one. The citations of the old slug then dangle. When the new
 declaration has an extent hash equal to the old one, the rename is
 mechanical: a tool can retarget the citations (finding class
-`renamed`, which carries a mechanical fix). A renamed approved item is
-unapproved until it is stamped again, even when its text is unchanged.
+`renamed`, which carries a mechanical fix). A rename removes an item's
+approval. A renamed item stays unapproved until it is stamped again,
+even when its text is unchanged.
