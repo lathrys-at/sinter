@@ -36,6 +36,11 @@ jobs:
           key: opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
             opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+      # opam clones opam-repository and walks the clone at once. Git's
+      # background maintenance can remove its lock file in that window,
+      # and opam then fails on the vanished file. Turn it off.
+      - name: Turn off git background maintenance
+        run: git config --global maintenance.auto false
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: ${{ env.OCAML_VERSION }}
@@ -59,6 +64,11 @@ jobs:
           key: opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
             opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+      # opam clones opam-repository and walks the clone at once. Git's
+      # background maintenance can remove its lock file in that window,
+      # and opam then fails on the vanished file. Turn it off.
+      - name: Turn off git background maintenance
+        run: git config --global maintenance.auto false
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: ${{ env.OCAML_VERSION }}
