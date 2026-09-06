@@ -169,6 +169,49 @@ let rejects_a_file_name_that_is_not_utf_8 () =
     "the message says the file name is not UTF-8" true
     (contains "the file name is not UTF-8 text" message)
 
+let reads_the_grammar_name_from_the_module () =
+  let wasm = Parse.read_file grammar in
+  Alcotest.(check (option string))
+    "the module of the fixture names the grammar json" (Some "json")
+    (Parse.name_of_wasm wasm);
+  Alcotest.(check (option string))
+    "a file that is not wasm has no name" None
+    (Parse.name_of_wasm "not a wasm module");
+  Alcotest.(check (option string))
+    "a header without sections has no name" None
+    (Parse.name_of_wasm "\000asm\001\000\000\000")
+
+(* The name that the bridge needs comes from the module, so a file
+   that a user renamed still loads. *)
+let loads_a_grammar_file_under_another_name () =
+  let renamed = Filename.temp_file "grammar" ".wasm" in
+  let wasm = Parse.read_file grammar in
+  let channel = open_out_bin renamed in
+  output_string channel wasm;
+  close_out channel;
+  let tree =
+    Fun.protect
+      ~finally:(fun () -> Sys.remove renamed)
+      (fun () ->
+        let file = Filename.temp_file "sinter-parse" ".out" in
+        let channel = open_out_bin file in
+        Fun.protect
+          ~finally:(fun () ->
+            close_out_noerr channel;
+            Sys.remove file)
+          (fun () ->
+            Parse.run ~grammar:renamed ~query:None ~paths:[ sample ] channel;
+            close_out channel;
+            let channel = open_in_bin file in
+            Fun.protect
+              ~finally:(fun () -> close_in_noerr channel)
+              (fun () ->
+                really_input_string channel (in_channel_length channel))))
+  in
+  Alcotest.(check bool)
+    "the renamed grammar parses the sample" true
+    (String.starts_with ~prefix:"(document" tree)
+
 let names_the_grammar () =
   let check expected path =
     Alcotest.(check string) path expected (Parse.grammar_name path)
@@ -197,5 +240,9 @@ let tests =
       reports_a_channel_that_cannot_be_written;
     Alcotest.test_case "rejects a file name that is not UTF-8" `Quick
       rejects_a_file_name_that_is_not_utf_8;
+    Alcotest.test_case "reads the grammar name from the module" `Quick
+      reads_the_grammar_name_from_the_module;
+    Alcotest.test_case "loads a grammar file under another name" `Quick
+      loads_a_grammar_file_under_another_name;
     Alcotest.test_case "names the grammar" `Quick names_the_grammar;
   ]

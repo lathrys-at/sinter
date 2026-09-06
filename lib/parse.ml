@@ -47,6 +47,69 @@ let read_file path =
       | End_of_file ->
           fail "%s: the file ended sooner than its length says" path)
 
+(* The name of the grammar in a wasm module. The bridge needs the name,
+   and the module carries it: a grammar exports one function whose
+   name is "tree_sitter_" and the name of the grammar.
+
+   The reader below walks the section list of the module and reads the
+   export section. Every count and every length in that format is an
+   unsigned LEB128 integer. A module that the reader cannot follow
+   gives None; the loader then reports what is wrong with it. *)
+let name_of_wasm wasm =
+  let length = String.length wasm in
+  let prefix = "tree_sitter_" in
+  let byte offset = Char.code (String.unsafe_get wasm offset) in
+  let rec number offset shift value =
+    if offset >= length || shift > 28 then None
+    else
+      let part = byte offset in
+      let value = value lor ((part land 0x7F) lsl shift) in
+      if part < 0x80 then Some (value, offset + 1)
+      else number (offset + 1) (shift + 7) value
+  in
+  let name offset =
+    match number offset 0 0 with
+    | Some (size, start) when start + size <= length ->
+        Some (String.sub wasm start size, start + size)
+    | _ -> None
+  in
+  let rec export offset stop count =
+    if count = 0 then None
+    else
+      match name offset with
+      | None -> None
+      | Some (found, offset) -> (
+          if
+            (* One byte for the kind of the export, then its index. *)
+            offset >= stop
+          then None
+          else if String.starts_with ~prefix found then
+            Some
+              (String.sub found (String.length prefix)
+                 (String.length found - String.length prefix))
+          else
+            match number (offset + 1) 0 0 with
+            | None -> None
+            | Some (_, offset) -> export offset stop (count - 1))
+  in
+  let exports start stop =
+    match number start 0 0 with
+    | None -> None
+    | Some (count, offset) -> export offset stop count
+  in
+  let rec section offset =
+    if offset >= length then None
+    else
+      match number (offset + 1) 0 0 with
+      | None -> None
+      | Some (size, body) when body + size <= length ->
+          if byte offset = 7 then exports body (body + size)
+          else section (body + size)
+      | Some _ -> None
+  in
+  if length < 8 || not (String.starts_with ~prefix:"\000asm" wasm) then None
+  else section 8
+
 let grammar_name path =
   let base = Filename.remove_extension (Filename.basename path) in
   let underscored = String.map (fun c -> if c = '-' then '_' else c) base in
@@ -114,7 +177,11 @@ let tree language ~path =
 let run ~grammar ~query ~paths channel =
   List.iter check_path paths;
   let wasm = read_file grammar in
-  let name = grammar_name grammar in
+  let name =
+    match name_of_wasm wasm with
+    | Some name -> name
+    | None -> grammar_name grammar
+  in
   let engine =
     try Sinter_bridge.create ()
     with Sinter_bridge.Error message ->

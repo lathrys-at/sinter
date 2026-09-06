@@ -13,11 +13,18 @@ val read_file : string -> string
 
     @raise Error if the file does not open, or if reading it fails. *)
 
+val name_of_wasm : string -> string option
+(** [name_of_wasm wasm] is the name of the grammar in the wasm module [wasm],
+    read from the export whose name starts with ["tree_sitter_"]. It is [None]
+    when the module holds no such export, and when the module is not one the
+    reader can follow. *)
+
 val grammar_name : string -> string
-(** [grammar_name path] is the grammar name that the bridge needs, from the name
-    of a grammar file. It is the base name without its extension, with each
-    hyphen replaced by an underscore and a leading ["tree_sitter_"] removed. The
-    name of ["packs/tree-sitter-json.wasm"] is therefore ["json"]. *)
+(** [grammar_name path] is a grammar name from the name of a grammar file. It is
+    the base name without its extension, with each hyphen replaced by an
+    underscore and a leading ["tree_sitter_"] removed. The name of
+    ["packs/tree-sitter-json.wasm"] is therefore ["json"]. {!run} uses this only
+    for a module that {!name_of_wasm} cannot read. *)
 
 val record_of_capture :
   path:string -> source:string -> Sinter_bridge.capture -> Jsonl.record
