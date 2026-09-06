@@ -68,7 +68,10 @@ fi
 log=$target/native-static-libs.log
 mkdir -p "$target"
 
-if ! cargo rustc --release --quiet --manifest-path "$crate/Cargo.toml" \
+# CI sets CARGO_TERM_COLOR=always, which wraps the note in escape
+# codes. Ask for plain output, and strip any code that remains.
+if ! cargo rustc --release --quiet --color never \
+    --manifest-path "$crate/Cargo.toml" \
     --target-dir "$target" -- --print native-static-libs 2>"$log"; then
   cat "$log" >&2
   exit 1
@@ -78,7 +81,8 @@ cp "$target/release/libsinter_bridge.a" "$archive"
 
 # The C compiler driver already links the C library itself. Naming it
 # again makes the linker warn about a duplicate, so drop it here.
-libraries=$(sed -n 's/^note: native-static-libs: *//p' "$log" | tail -n 1 |
+libraries=$(sed 's/\x1b\[[0-9;]*m//g' "$log" |
+  sed -n 's/^note: native-static-libs: *//p' | tail -n 1 |
   tr ' ' '\n' | grep -v -e '^-lSystem$' -e '^-lc$' -e '^$' | tr '\n' ' ')
 if [ -z "$libraries" ]; then
   echo "The Rust toolchain reported no native-static-libs line." >&2
