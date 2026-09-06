@@ -1,6 +1,6 @@
 # Bootstrap: decisions, dogfooding, and the first parser
 @plan bootstrap
-@scope .claude-plugin/**, .claude/**, plugins/**, docs/decisions/**, .plans/**, bridge/**, lib/**, bin/**, test/**, .github/workflows/**, THIRD_PARTY.md, README.md, CONTRIBUTING.md, CLAUDE.md, dune-project, sinter.opam, .gitignore
+@scope .claude-plugin/**, .claude/**, plugins/**, docs/decisions/**, .plans/**, bridge/**, lib/**, bin/**, test/**, .github/workflows/**, THIRD_PARTY.md, README.md, CONTRIBUTING.md, CLAUDE.md, dune-project, sinter.opam, .gitignore, REUSE.toml, LICENSES/**
 Write a decision record for each decision that the project made so
 far. Ship the Claude Code skill pack. Make `sinter parse` and
 `sinter serve` work with a wasm grammar through a Rust bridge.
@@ -27,7 +27,7 @@ plan. A rule can then cite the record that holds its origin. Nobody
 needs to re-argue the decision.
 
 ## Build the parser bridge
-@scope bridge/**, lib/**, bin/**, test/**, .github/workflows/**, THIRD_PARTY.md, docs/decisions/**, dune-project, sinter.opam, .gitignore
+@scope bridge/**, lib/**, bin/**, test/**, .github/workflows/**, THIRD_PARTY.md, docs/decisions/**, dune-project, sinter.opam, .gitignore, REUSE.toml, LICENSES/**, CONTRIBUTING.md
 @decision parser-bridge
 @decision json-handling
 Add three things: the Rust bridge that loads a wasm grammar through
