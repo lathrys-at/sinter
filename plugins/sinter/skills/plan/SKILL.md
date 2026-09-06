@@ -103,10 +103,13 @@ commas. They use gitignore style:
 - A trailing `/` means the directory and everything under it.
 
 Derive scopes from the files the plan names. Where the plan is not
-explicit, confirm the globs with the user. Only an item inside a
-step's scope discharges a promise of that step. So a step that
-promises a decision record must include `docs/decisions/**` in its
-scope. Do the same for every other kind of promised item.
+explicit, confirm the globs with the user. An item discharges a
+promise of a step only when the item sits inside the step's scope, or
+inside the default location that the manifest's `[locations]` table
+gives for the item's kind. When the manifest has no default location
+for a kind, a step that promises an item of that kind must include
+the item's path in its scope: for example `docs/decisions/**` for a
+decision record.
 
 ### 5. Write the files
 
