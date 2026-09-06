@@ -456,7 +456,11 @@ otherwise the plan's scope.
 A promise is **met** as follows:
 
 - A promised declaration is met if and only if a declaration with that
-  slug exists inside the step's effective scope.
+  slug exists inside the step's effective scope, or inside the default
+  location of its kind. The manifest's `[locations]` table declares
+  one default location per declaration kind, as a scope glob, for
+  example `decision = "docs/decisions/**"`. A kind without an entry
+  has no default location.
 - A promised `@satisfies`, `@refines`, `@cites`, or `@supersedes` is
   met if and only if at least one such edge exists inside the step's
   effective scope, and that edge is neither dangling nor suspect.
@@ -466,9 +470,10 @@ A promise is **met** as follows:
   default), an edge at rung `unattributed` also meets the promise.
   Rungs are defined in [algebra.md](algebra.md) section 6.7.
 
-Residue that would discharge a promise, but that sits outside the
-step's scope, does not discharge that promise. The scanner reports
-this case as a finding (`promise-out-of-scope`).
+Residue that would discharge a promise, but that sits outside both
+the step's scope and the default location of its kind, does not
+discharge that promise. The scanner reports this case as a finding
+(`promise-out-of-scope`).
 
 A step is **done** if and only if all its promises are met and all
 `@verifies` edges in its scope are at an allowed rung. A step with a

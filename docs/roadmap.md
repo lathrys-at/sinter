@@ -10,10 +10,9 @@
   - `sinter parse`.
   - `sinter serve` over stdin and stdout.
 - **Manifest reader** — `sinter.toml`, design notes section 14.
-  - A default location per declaration kind (issue #2): a manifest
-    table; a promised declaration is met inside the step's scope or
-    inside that location. Spec change in `spec/vocabulary.md`
-    section 10.5; scope instruction in the `plan` skill.
+  - The `[locations]` table: one default location per declaration
+    kind (issue #2). `spec/vocabulary.md` section 10.5 defines the
+    rule.
 - **Scanner** — the language-pack interface, design notes section 5.2.
   - Markdown pack first: plans and decision records are markdown.
 - **`sinter scan`**
