@@ -31,7 +31,7 @@ typedef struct sinter_bridge_engine sinter_bridge_engine;
 /* A grammar that is loaded into an engine. */
 typedef struct sinter_bridge_language sinter_bridge_language;
 
-/* The output of one run. "data" points to "len" bytes. Write to no
+/* The result of one run. "data" points to "len" bytes. Write to no
    field: sinter_bridge_result_free reads all three. */
 typedef struct sinter_bridge_result {
   const uint8_t *data;

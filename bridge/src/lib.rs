@@ -72,7 +72,7 @@ pub struct SinterBridgeLanguage {
     language: Language,
 }
 
-/// The output of one run. The fields match `sinter_bridge_result` in
+/// The result of one run. The fields match `sinter_bridge_result` in
 /// the C header.
 #[repr(C)]
 pub struct SinterBridgeResult {
