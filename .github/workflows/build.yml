@@ -8,6 +8,9 @@ on:
   push:
     branches: [main]
 
+env:
+  OCAML_VERSION: "5.5.0"
+
 jobs:
   build:
     name: Build and test
@@ -18,11 +21,26 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      # The opam switch, with the project's dependencies installed, is
+      # cached under a key that names the platform, the compiler, and
+      # the lock file. A lock change falls back to the previous switch
+      # and installs only the difference. setup-ocaml's own cache is
+      # off, because it would restore a switch without dependencies.
+      - name: Restore the opam switch
+        uses: actions/cache@v4
+        with:
+          path: |
+            _opam
+            ~/.opam
+          key: opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
+          restore-keys: |
+            opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
       - uses: ocaml/setup-ocaml@v3
         with:
-          ocaml-compiler: "5.5"
+          ocaml-compiler: ${{ env.OCAML_VERSION }}
+          cache: false
       - name: Install dependencies
-        run: opam install . --deps-only --with-test
+        run: opam install . --deps-only --with-test --with-dev-setup --locked
       - name: Build
         run: opam exec -- dune build
       - name: Test
@@ -33,10 +51,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Restore the opam switch
+        uses: actions/cache@v4
+        with:
+          path: |
+            _opam
+            ~/.opam
+          key: opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
+          restore-keys: |
+            opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
       - uses: ocaml/setup-ocaml@v3
         with:
-          ocaml-compiler: "5.5"
-      - name: Install ocamlformat
-        run: opam install ocamlformat.0.29.0
+          ocaml-compiler: ${{ env.OCAML_VERSION }}
+          cache: false
+      - name: Install dependencies
+        run: opam install . --deps-only --with-test --with-dev-setup --locked
       - name: Check that the code is formatted
         run: opam exec -- dune build @fmt

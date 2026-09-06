@@ -18,7 +18,7 @@ We write Sinter in OCaml. To build it, install
 Then run:
 
 ```
-opam install . --deps-only --with-test
+opam install . --deps-only --with-test --with-dev-setup --locked
 dune build
 dune test
 ```
