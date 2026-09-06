@@ -451,6 +451,13 @@ must be contained in its plan's scope (finding class `bad-scope`). A
 step's **effective scope** is its own scope when it has one, and
 otherwise the plan's scope.
 
+The manifest's `shared` list names paths that every step of every
+plan may touch, for example the dependency and license files at the
+repository root. A change under a shared path is never work outside
+the plan. A shared path does not widen the discharge location of any
+promise: a promised item is met only inside the step's effective
+scope or inside the default location of its kind (section 10.5).
+
 ### 10.5 Discharge
 
 A promise is **met** as follows:
