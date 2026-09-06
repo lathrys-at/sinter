@@ -15,7 +15,9 @@
 use std::cell::RefCell;
 use std::ffi::{c_char, CStr, CString};
 
-use tree_sitter::{wasmtime, Language, Parser, Query, QueryCursor, StreamingIterator, WasmStore};
+use tree_sitter::{
+    wasmtime, Language, Node, Parser, Query, QueryCursor, StreamingIterator, WasmStore,
+};
 
 /// The first four bytes of every result buffer.
 const MAGIC: u32 = u32::from_le_bytes(*b"SBR1");
@@ -103,6 +105,104 @@ fn put_header(buffer: &mut Vec<u8>, kind: u32) {
 /// Write the record count into the header.
 fn set_count(buffer: &mut [u8], count: u32) {
     buffer[8..12].copy_from_slice(&count.to_le_bytes());
+}
+
+/// Write one character the way tree-sitter writes it after
+/// `UNEXPECTED`.
+fn push_char(out: &mut String, c: char) {
+    match c {
+        '\0' => out.push_str("'\\0'"),
+        '\n' => out.push_str("'\\n'"),
+        '\t' => out.push_str("'\\t'"),
+        '\r' => out.push_str("'\\r'"),
+        ' '..='~' => {
+            out.push('\'');
+            out.push(c);
+            out.push('\'');
+        }
+        _ => out.push_str(&(c as u32).to_string()),
+    }
+}
+
+/// Write the name that an S-expression gives to one node. `source` is
+/// the text that was parsed.
+fn push_sexp_name(out: &mut String, node: Node, source: &[u8]) {
+    if node.is_missing() {
+        if node.is_named() {
+            out.push_str("MISSING ");
+            out.push_str(node.kind());
+        } else {
+            out.push_str("MISSING \"");
+            out.push_str(node.kind());
+            out.push('"');
+        }
+        return;
+    }
+    // A leaf that covers text the grammar could not use names the
+    // first character of that text.
+    if node.is_error() && node.child_count() == 0 && node.end_byte() > node.start_byte() {
+        let rest = source
+            .get(node.start_byte()..node.end_byte())
+            .unwrap_or(&[]);
+        match std::str::from_utf8(rest)
+            .ok()
+            .and_then(|s| s.chars().next())
+        {
+            Some(c) => {
+                out.push_str("UNEXPECTED ");
+                push_char(out, c);
+            }
+            None => out.push_str("UNEXPECTED INVALID"),
+        }
+        return;
+    }
+    out.push_str(node.kind());
+}
+
+/// Write the parse tree under `root` as an S-expression.
+///
+/// tree-sitter's own `to_sexp` walks the tree by recursion, so a file
+/// that nests deeply overflows the stack of the calling thread. The
+/// walk below holds its state in a cursor and in one vector, so the
+/// depth of the tree costs heap and not stack.
+fn write_sexp(root: Node, source: &[u8], out: &mut String) {
+    let mut cursor = root.walk();
+    // One entry for each node from the root to the node the cursor is
+    // on. The entry says whether that node opened a parenthesis.
+    let mut open: Vec<bool> = Vec::new();
+    let mut descending = true;
+    loop {
+        if descending {
+            let node = cursor.node();
+            let visible = node.is_named() || node.is_missing();
+            if visible {
+                if !out.is_empty() {
+                    out.push(' ');
+                }
+                if let Some(field) = cursor.field_name() {
+                    out.push_str(field);
+                    out.push_str(": ");
+                }
+                out.push('(');
+                push_sexp_name(out, node, source);
+            }
+            open.push(visible);
+            if cursor.goto_first_child() {
+                continue;
+            }
+        }
+        if open.pop() == Some(true) {
+            out.push(')');
+        }
+        if cursor.goto_next_sibling() {
+            descending = true;
+            continue;
+        }
+        if !cursor.goto_parent() {
+            return;
+        }
+        descending = false;
+    }
 }
 
 /// Move a buffer into a result that the caller frees.
@@ -276,7 +376,9 @@ pub unsafe extern "C" fn sinter_bridge_run(
     if query_len == 0 {
         let mut buffer = Vec::new();
         put_header(&mut buffer, KIND_TREE);
-        put_bytes(&mut buffer, tree.root_node().to_sexp().as_bytes());
+        let mut sexp = String::new();
+        write_sexp(tree.root_node(), source, &mut sexp);
+        put_bytes(&mut buffer, sexp.as_bytes());
         set_count(&mut buffer, 1);
         return into_result(buffer);
     }
@@ -464,6 +566,68 @@ mod tests {
                 (1, "number", "number", "9090"),
             ]
         );
+    }
+
+    /// A parser that holds the fixture grammar.
+    fn fixture_parser() -> Parser {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let wasm = std::fs::read(root.join("test/fixtures/tree-sitter-json/tree-sitter-json.wasm"))
+            .unwrap();
+        let wasm_engine = wasmtime::Engine::new(&wasmtime::Config::new()).unwrap();
+        let mut store = WasmStore::new(&wasm_engine).unwrap();
+        let language = store.load_language("json", &wasm).unwrap();
+        let mut parser = Parser::new();
+        parser.set_wasm_store(store).unwrap();
+        parser.set_language(&language).unwrap();
+        parser
+    }
+
+    #[test]
+    fn the_writer_agrees_with_tree_sitter_on_every_shape() {
+        let mut parser = fixture_parser();
+        let sources = [
+            "",
+            "[]",
+            "{}",
+            "[1]",
+            "[1, 2, 3]",
+            "{\"a\": true, \"b\": false, \"c\": null}",
+            "{\"a\": [1, {\"b\": \"c\"}]}",
+            "{\"k\": \"caf\u{e9} \u{1f600}\"}",
+            "// a comment\n[1]",
+            "[1,]",
+            "{\"a\" 1}",
+            "[1",
+            "\"unterminated",
+            "@",
+            "{,}",
+            "[[[[[1]]]]]",
+        ];
+        for source in sources {
+            let tree = parser.parse(source, None).unwrap();
+            let mut written = String::new();
+            write_sexp(tree.root_node(), source.as_bytes(), &mut written);
+            assert_eq!(written, tree.root_node().to_sexp(), "source was {source:?}");
+        }
+    }
+
+    #[test]
+    fn a_tree_that_nests_deeply_is_written_and_does_not_crash() {
+        let depth = 40_000;
+        let source = format!("{}1{}", "[".repeat(depth), "]".repeat(depth));
+        let (kind, bytes) = run(source.as_bytes(), b"");
+        assert_eq!(kind, KIND_TREE);
+        let mut at = 8;
+        assert_eq!(take_u32(&bytes, &mut at), 1);
+        at += 4;
+        let sexp = take_string(&bytes, &mut at);
+        assert_eq!(at, bytes.len());
+        assert!(
+            sexp.starts_with("(document (array (array "),
+            "started {:.40}",
+            sexp
+        );
+        assert_eq!(sexp.matches("(array").count(), depth);
     }
 
     #[test]
