@@ -6,6 +6,9 @@
 (generate_opam_files true)
 (authors "The Sinter Authors")
 (maintainers "The Sinter Authors")
+(source (github lathrys-at/sinter))
+(homepage "https://github.com/lathrys-at/sinter")
+(bug_reports "https://github.com/lathrys-at/sinter/issues")
 
 (package
  (name sinter)
