@@ -86,6 +86,13 @@ can use either of these two trailers:
 Both trailers keep the record of authorship in the git history. Do not
 sign off code that you did not review.
 
+## Decision records
+
+Decisions that shape the project live in `docs/decisions/`, one file
+per decision, with a `@decision` tag. Read the record before you
+re-argue a choice. To record a new decision, use the `/sinter:decision`
+skill or follow its format.
+
 ## Third-party code
 
 Do not copy code from other projects, unless both conditions below are

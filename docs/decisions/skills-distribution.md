@@ -36,7 +36,8 @@ holds `.claude-plugin/plugin.json` and one `skills/<name>/SKILL.md`
 file for each skill. A user installs the plugin with two commands:
 `/plugin marketplace add lathrys-at/sinter` and
 `/plugin install sinter@sinter`. The user then invokes a skill as
-`/sinter:<name>`. The plugin's version tracks the tool's version.
+`/sinter:<name>`. The plugin has its own semantic version,
+independent of the tool's version.
 
 This repository uses its own skill pack. The skill pack is the
 marketplace file, the plugin, and the `.claude/settings.json` file
@@ -64,8 +65,14 @@ integration files.
 
 ## Consequences
 
-A user runs one marketplace command before the skills appear. Each
-tool release needs a new plugin version. Contributors edit the skills
+A user runs one marketplace command before the skills appear.
+Contributors edit the skills
 under `plugins/sinter/skills/`. The file `.claude/settings.json`
 points at the GitHub source. So a fresh session in this repository
 uses the pushed version of the pack, not the working tree.
+
+Claude Code caches an installed plugin by its version. A change to a
+skill reaches users only after the plugin version in
+`plugins/sinter/.claude-plugin/plugin.json` and in
+`.claude-plugin/marketplace.json` increases. So every change to a
+skill bumps the plugin version.

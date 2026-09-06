@@ -42,6 +42,14 @@ independent of the specification version. A release of the tool is a
 git tag of the form `vX.Y.Z`. A released tool states which
 specification version it implements.
 
+## The skill pack
+
+The Claude Code plugin in `plugins/sinter/` has its own semantic
+version, in `plugins/sinter/.claude-plugin/plugin.json` and in
+`.claude-plugin/marketplace.json`. Claude Code caches an installed
+plugin by its version, so every change to a skill increases the
+version. The plugin's version is independent of the tool's version.
+
 ## Development builds
 
 `sinter --version` prints:
