@@ -39,6 +39,21 @@
     inside the client. A desired outcome, not yet designed.
 - **`sinter serve --detach`** — a mode that outlives its caller, on a
   socket, for several clients.
+- **`sinter serve --lsp`** — a Language Server Protocol adapter on the
+  serve loop, after the MCP adapter. A child of the editor; it informs
+  and never blocks a save.
+  - Diagnostics on edit from the findings, and code actions from the
+    mechanical fixes of `sinter patch`: re-pin, bump, rename fix-up,
+    `@ack` insertion.
+  - Hover, go to definition, and find references over the graph: a
+    citation to its declaration, a declaration to its citing sites and
+    tests, a `@verifies` to its rung, a `@decision` to its record.
+  - Completion: the tag words, the slugs in the index, the test names
+    a pack captures.
+  - Rename as deletion plus declaration across the repository.
+  - One server for a person's editor and for the Claude Code plugin
+    (`.lsp.json`), so an agent gets diagnostics on every edit through
+    the same protocol.
 - **`spec/protocol.md`** — the `serve` request and response protocol,
   as a fifth specification.
 - **`sinter-packs` repository** — the language packs, built and
