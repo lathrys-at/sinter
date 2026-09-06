@@ -117,56 +117,13 @@ fn set_count(buffer: &mut [u8], count: u32) {
     buffer[8..12].copy_from_slice(&count.to_le_bytes());
 }
 
-/// Write one character the way tree-sitter writes it after
-/// `UNEXPECTED`.
-fn push_char(out: &mut String, c: char) {
-    match c {
-        '\0' => out.push_str("'\\0'"),
-        '\n' => out.push_str("'\\n'"),
-        '\t' => out.push_str("'\\t'"),
-        '\r' => out.push_str("'\\r'"),
-        ' '..='~' => {
-            out.push('\'');
-            out.push(c);
-            out.push('\'');
-        }
-        _ => out.push_str(&(c as u32).to_string()),
-    }
-}
-
-/// Write the name that an S-expression gives to one node. `source` is
-/// the text that was parsed.
-fn push_sexp_name(out: &mut String, node: Node, source: &[u8]) {
-    if node.is_missing() {
-        if node.is_named() {
-            out.push_str("MISSING ");
-            out.push_str(node.kind());
-        } else {
-            out.push_str("MISSING \"");
-            out.push_str(node.kind());
-            out.push('"');
-        }
-        return;
-    }
-    // A leaf that covers text the grammar could not use names the
-    // first character of that text.
-    if node.is_error() && node.child_count() == 0 && node.end_byte() > node.start_byte() {
-        let rest = source
-            .get(node.start_byte()..node.end_byte())
-            .unwrap_or(&[]);
-        match std::str::from_utf8(rest)
-            .ok()
-            .and_then(|s| s.chars().next())
-        {
-            Some(c) => {
-                out.push_str("UNEXPECTED ");
-                push_char(out, c);
-            }
-            None => out.push_str("UNEXPECTED INVALID"),
-        }
-        return;
-    }
-    out.push_str(node.kind());
+/// Whether tree-sitter gives this node a name of its own, such as
+/// `MISSING "]"` or `UNEXPECTED '@'`, instead of the node's type.
+///
+/// Every such node is a leaf: the parser inserts a missing token, and
+/// it reports an unusable character as an error with no child.
+fn has_its_own_name(node: Node) -> bool {
+    node.child_count() == 0 && (node.is_missing() || node.is_error())
 }
 
 /// Write the parse tree under `root` as an S-expression.
@@ -175,7 +132,7 @@ fn push_sexp_name(out: &mut String, node: Node, source: &[u8]) {
 /// that nests deeply overflows the stack of the calling thread. The
 /// walk below holds its state in a cursor and in one vector, so the
 /// depth of the tree costs heap and not stack.
-fn write_sexp(root: Node, source: &[u8], out: &mut String) {
+fn write_sexp(root: Node, out: &mut String) {
     let mut cursor = root.walk();
     // One entry for each node from the root to the node the cursor is
     // on. The entry says whether that node opened a parenthesis.
@@ -188,6 +145,9 @@ fn write_sexp(root: Node, source: &[u8], out: &mut String) {
         if descending {
             let node = cursor.node();
             let visible = node.is_named() || node.is_missing();
+            // A node with a name of its own is written whole, with its
+            // parentheses, so nothing closes it later.
+            let opened = visible && !has_its_own_name(node);
             if visible {
                 if written {
                     out.push(' ');
@@ -197,10 +157,16 @@ fn write_sexp(root: Node, source: &[u8], out: &mut String) {
                     out.push_str(field);
                     out.push_str(": ");
                 }
-                out.push('(');
-                push_sexp_name(out, node, source);
+                if opened {
+                    out.push('(');
+                    out.push_str(node.kind());
+                } else {
+                    // A leaf costs no recursion, so tree-sitter names
+                    // it.
+                    out.push_str(&node.to_sexp());
+                }
             }
-            open.push(visible);
+            open.push(opened);
             if cursor.goto_first_child() {
                 continue;
             }
@@ -420,7 +386,7 @@ pub unsafe extern "C" fn sinter_bridge_run(
             let mut buffer = Vec::new();
             put_header(&mut buffer, KIND_TREE);
             let mut sexp = String::new();
-            write_sexp(tree.root_node(), source, &mut sexp);
+            write_sexp(tree.root_node(), &mut sexp);
             put_bytes(&mut buffer, sexp.as_bytes());
             set_count(&mut buffer, 1);
             return into_result(buffer);
@@ -764,7 +730,7 @@ mod tests {
         for source in sources {
             let tree = parser.parse(source, None).unwrap();
             let mut written = String::new();
-            write_sexp(tree.root_node(), source.as_bytes(), &mut written);
+            write_sexp(tree.root_node(), &mut written);
             assert_eq!(written, tree.root_node().to_sexp(), "source was {source:?}");
         }
     }
