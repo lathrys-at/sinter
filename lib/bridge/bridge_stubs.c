@@ -81,8 +81,12 @@ CAMLprim value sinter_bridge_engine_new_stub(value unit) {
   if (engine == NULL) {
     raise_bridge_error("the bridge could not create an engine");
   }
-  result = caml_alloc_custom(&engine_operations,
-                             sizeof(sinter_bridge_engine *), 0, 1);
+  /* An engine holds the WebAssembly runtime, so it is expensive in
+     memory that the OCaml heap does not see. Tell the garbage
+     collector how much, so that it frees an unused engine promptly.
+     The number is an estimate, not a measurement. */
+  result = caml_alloc_custom_mem(&engine_operations,
+                                 sizeof(sinter_bridge_engine *), 4 << 20);
   Engine_val(result) = engine;
   CAMLreturn(result);
 }
