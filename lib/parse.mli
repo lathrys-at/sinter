@@ -11,7 +11,7 @@ exception Error of string
 val read_file : string -> string
 (** [read_file path] is the whole content of the file at [path].
 
-    @raise Error if the file does not open, or does not read. *)
+    @raise Error if the file does not open, or if reading it fails. *)
 
 val grammar_name : string -> string
 (** [grammar_name path] is the grammar name that the bridge needs, from the name
