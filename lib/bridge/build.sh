@@ -24,21 +24,35 @@ archive=$3
 flags=$4
 
 # Cargo's build output must live outside _build, because dune empties
-# a rule's directory before it runs the rule. One directory serves
-# every checkout on the machine, and cargo keys its content by
-# fingerprint, so two checkouts do not overwrite each other.
-#
-# "dune clean" does not remove this directory. Remove it by hand to
-# build the crate from nothing. CARGO_TARGET_DIR moves it.
+# a rule's directory before it runs the rule. "dune clean" does not
+# remove it. Remove it by hand to build the crate from nothing.
+# CARGO_TARGET_DIR moves it.
 if [ -n "${CARGO_TARGET_DIR:-}" ]; then
-  target=$CARGO_TARGET_DIR
+  base=$CARGO_TARGET_DIR
 elif [ -n "${XDG_CACHE_HOME:-}" ]; then
-  target=$XDG_CACHE_HOME/sinter-bridge-build
+  base=$XDG_CACHE_HOME/sinter-bridge-build
 elif [ -n "${HOME:-}" ]; then
-  target=$HOME/.cache/sinter-bridge-build
+  base=$HOME/.cache/sinter-bridge-build
 else
-  target=$fallback
+  base=$fallback
 fi
+
+# Each checkout gets its own directory under that one, named after the
+# path of its crate. Two checkouts must not share a directory. Cargo
+# decides that a path package is fresh by the times of its source
+# files against the time of the last build in the directory, and the
+# archive that this script copies always sits at one fixed name. So a
+# checkout whose files are older than another checkout's build is
+# called fresh, and it links the other checkout's library.
+root=$(cd "$crate" && pwd -P)
+if command -v shasum >/dev/null 2>&1; then
+  key=$(printf '%s' "$root" | shasum -a 256 | cut -c1-16)
+elif command -v sha256sum >/dev/null 2>&1; then
+  key=$(printf '%s' "$root" | sha256sum | cut -c1-16)
+else
+  key=$(printf '%s' "$root" | cksum | tr -d ' ')
+fi
+target=$base/$key
 
 if ! command -v cargo >/dev/null 2>&1; then
   echo "The bridge needs the Rust toolchain, and cargo is not on the PATH." >&2
