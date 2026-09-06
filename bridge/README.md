@@ -9,9 +9,9 @@ WebAssembly, parses a source text with that grammar, and runs a
 tree-sitter query over the parse tree. It gives the results to OCaml
 through a C interface of six functions.
 
-The bridge holds no Sinter vocabulary. It knows about grammars,
-source text, queries, and captures, and nothing else. See
-[docs/decisions/implementation-language.md](../docs/decisions/implementation-language.md).
+The bridge knows about grammars, source text, queries, and captures.
+It holds no Sinter vocabulary. The reasons are in
+[docs/decisions/parser-bridge.md](../docs/decisions/parser-bridge.md).
 
 ## Build
 
@@ -28,23 +28,19 @@ on `tree-sitter` with its `wasm` feature, which depends on
 the wasmtime C headers. Without cmake the build stops with
 `failed to spawn cmake`.
 
-The static library is about 40 MB, because it holds wasmtime and the
-Cranelift compiler. The linked `sinter` binary grows by less, because
-the linker drops what the binary does not call.
+The static library is about 40 MB. It holds wasmtime and the
+Cranelift compiler.
 
 `dune build` at the repository root builds the crate as well, through
-a rule in `lib/bridge/dune`. That rule does not write `bridge/target`:
-it puts the output in one directory under the user cache, so that
-every checkout on the machine shares one set of compiled crates. The
-crate takes about 19 seconds and 900 MB to build from nothing, and
-Sinter is written in many git worktrees at once, so one directory per
-checkout would pay that cost once per worktree.
-`lib/bridge/build.sh` chooses the directory and says how.
+a rule in `lib/bridge/dune`. That rule writes its output to one
+directory under the user cache, which every checkout on the machine
+shares. `lib/bridge/build.sh` chooses that directory.
 
-The command above therefore writes a second copy, in `bridge/target`.
-Set `CARGO_TARGET_DIR` to the directory the rule uses to keep one
-copy. Neither directory is removed by `dune clean`; remove one by hand
-to build the crate from nothing.
+The command above writes to `bridge/target` instead, so a contributor
+who runs both has two copies of the build. Set `CARGO_TARGET_DIR` to
+the directory the rule uses to keep one copy. `dune clean` removes
+neither directory. To build the crate from nothing, remove one by
+hand.
 
 ## The C interface
 
@@ -63,16 +59,14 @@ functions:
 Three rules govern the lifetimes:
 
 1. The engine owns every language that was loaded into it. A language
-   handle stays valid until the engine is freed. No function frees a
-   single language.
+   handle stays valid until the engine is freed.
 2. A result owns its buffer. Read the buffer before you free the
    result.
 3. Every function that can fail returns `NULL` on failure and stores
    the reason. `sinter_bridge_last_error` returns that reason. The
    message is stored per thread.
 
-An engine is not safe to use from two threads at the same time. One
-thread at a time may call `sinter_bridge_run` on one engine.
+One thread at a time may use one engine.
 
 ## The result buffer
 
@@ -122,9 +116,8 @@ that many bytes: the parse tree as an S-expression.
 
 A tree-sitter grammar that is compiled to WebAssembly imports nothing
 but what tree-sitter's own runtime supplies. It has no WASI import, so
-it cannot read a file, open a socket, or read the clock. Section 5.2
-of the design notes states this. Anyone can check it by reading the
-import section of a grammar's wasm file.
+it cannot read a file, open a socket, or read the clock. To check a
+grammar, read the import section of its wasm file.
 
 The fixture grammar, `test/fixtures/tree-sitter-json/`, imports four
 things and no function at all:

@@ -2,13 +2,12 @@
 // Copyright 2026 The Sinter Authors
 
 //! The C interface that Sinter uses to parse source text.
+//! @cites parser-bridge
 //!
 //! The bridge loads a tree-sitter grammar that is compiled to
-//! WebAssembly, parses a source text with it, and runs a tree-sitter
-//! query over the parse tree. It returns the captures of the query, or
-//! the parse tree as an S-expression, in one flat buffer. The file
-//! `README.md` beside this crate defines the layout of that buffer and
-//! the rules that govern the lifetimes.
+//! WebAssembly, parses a source text with that grammar, and runs a
+//! tree-sitter query over the parse tree. It returns the captures, or
+//! the parse tree as an S-expression, in one flat buffer.
 
 #![warn(unsafe_op_in_unsafe_fn)]
 
@@ -17,25 +16,23 @@ use std::ffi::{c_char, CStr, CString};
 
 use tree_sitter::{wasmtime, Language, Parser, Query, QueryCursor, StreamingIterator, WasmStore};
 
-/// The magic bytes at the start of every result buffer: `SBR1`.
+/// The first four bytes of every result buffer.
 const MAGIC: u32 = u32::from_le_bytes(*b"SBR1");
 
-/// The value of the `kind` field for a buffer of captures.
+/// The `kind` field of a buffer of captures.
 const KIND_CAPTURES: u32 = 0;
 
-/// The value of the `kind` field for a buffer that holds a parse tree.
+/// The `kind` field of a buffer that holds a parse tree.
 const KIND_TREE: u32 = 1;
 
 thread_local! {
-    /// The message of the last failure on this thread.
     static LAST_ERROR: RefCell<CString> = RefCell::new(CString::default());
 }
 
-/// Store a failure message for this thread.
 fn set_error(message: impl Into<Vec<u8>>) {
     let text = message.into();
-    // A NUL byte inside the message would truncate the C string.
-    // Replace it, so that the caller always reads the whole message.
+    // The message reaches the caller as a C string, so it must hold no
+    // NUL byte.
     let clean: Vec<u8> = text
         .into_iter()
         .map(|b| if b == 0 { b'?' } else { b })
@@ -47,24 +44,23 @@ fn set_error(message: impl Into<Vec<u8>>) {
 /// An engine holds the WebAssembly runtime and every language that was
 /// loaded into it.
 pub struct SinterBridgeEngine {
-    /// The parser owns the wasm store between calls. A grammar that
-    /// runs in WebAssembly needs the store for every call that reads
-    /// the parse tree, so the store stays in the parser.
+    /// Holds the WebAssembly store between calls. A grammar that runs
+    /// in WebAssembly needs the store for every read of a parse tree.
     parser: Parser,
-    /// The engine owns the languages. A handle that
-    /// `sinter_bridge_language_load` returns points into this list.
-    /// Each language sits in its own box, so that the address of a
-    /// language does not change when the list grows.
+    /// The handles that `sinter_bridge_language_load` returns point
+    /// into this list. Each language sits in its own box, so that the
+    /// address of a language survives a growth of the list.
     #[allow(clippy::vec_box)]
     languages: Vec<Box<SinterBridgeLanguage>>,
 }
 
-/// A language handle. The engine owns it.
+/// A grammar that is loaded into an engine. The engine owns it.
 pub struct SinterBridgeLanguage {
     language: Language,
 }
 
-/// The result of one run. The bridge owns the bytes.
+/// The output of one run. The fields match `sinter_bridge_result` in
+/// the C header.
 #[repr(C)]
 pub struct SinterBridgeResult {
     data: *mut u8,
@@ -72,15 +68,12 @@ pub struct SinterBridgeResult {
     capacity: usize,
 }
 
-/// Make a slice from a C pointer and a length.
+/// Make a slice from a C pointer and a length. A null pointer gives an
+/// empty slice.
 ///
 /// # Safety
 ///
 /// When `len` is not 0, `data` must point to `len` readable bytes.
-///
-/// A null pointer with the length 0 is a slice of no bytes. Rust does
-/// not allow a null pointer in `slice::from_raw_parts`, not even for
-/// an empty slice, so that case is handled before the call.
 unsafe fn slice_of(data: *const u8, len: usize) -> &'static [u8] {
     if data.is_null() {
         &[]
@@ -98,7 +91,7 @@ fn put_bytes(buffer: &mut Vec<u8>, value: &[u8]) {
     buffer.extend_from_slice(value);
 }
 
-/// Write the 16-byte header. The count is patched in later.
+/// Write the 16-byte header. `set_count` fills the count in later.
 fn put_header(buffer: &mut Vec<u8>, kind: u32) {
     put_u32(buffer, MAGIC);
     put_u32(buffer, kind);
@@ -126,10 +119,10 @@ fn into_result(buffer: Vec<u8>) -> *mut SinterBridgeResult {
 /// Create an engine. Returns null on failure.
 #[no_mangle]
 pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
-    // The compiled-module cache keeps the compiled form of each
-    // grammar in the user's cache directory, in wasmtime's default
-    // location. When no such directory is available, the engine runs
-    // without a cache and compiles every grammar on each load.
+    // @cites parser-bridge
+    // The engine uses wasmtime's compiled-module cache, in wasmtime's
+    // default directory. Without that directory the engine runs with
+    // no cache and compiles every grammar on each load.
     let mut config = wasmtime::Config::new();
     if config.cache_config_load_default().is_err() {
         config = wasmtime::Config::new();
@@ -323,11 +316,9 @@ pub unsafe extern "C" fn sinter_bridge_run(
             let name = names.get(capture.index as usize).copied().unwrap_or("");
             put_bytes(&mut buffer, name.as_bytes());
             put_bytes(&mut buffer, node.kind().as_bytes());
-            // A node always lies inside the source text. Read the
-            // text without an index, so that a grammar that breaks
-            // that rule gives an empty text and not a panic. A panic
-            // here would abort the whole process, because the caller
-            // is C.
+            // A panic would cross the C boundary and abort the
+            // process. A node outside the source text therefore gives
+            // an empty text and not a panic.
             let text = source
                 .get(node.start_byte()..node.end_byte())
                 .unwrap_or(&[]);
@@ -368,7 +359,6 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    /// One decoded capture record.
     struct Capture {
         pattern: u32,
         name: String,
@@ -376,14 +366,14 @@ mod tests {
         text: String,
     }
 
-    /// Read a little-endian u32 at `at` and move `at` past it.
+    /// Read a little-endian u32 at `at`, and move `at` past it.
     fn take_u32(bytes: &[u8], at: &mut usize) -> u32 {
         let value = u32::from_le_bytes(bytes[*at..*at + 4].try_into().unwrap());
         *at += 4;
         value
     }
 
-    /// Read a length-prefixed string at `at` and move `at` past it.
+    /// Read a length-prefixed string at `at`, and move `at` past it.
     fn take_string(bytes: &[u8], at: &mut usize) -> String {
         let len = take_u32(bytes, at) as usize;
         let value = String::from_utf8(bytes[*at..*at + len].to_vec()).unwrap();
@@ -391,7 +381,8 @@ mod tests {
         value
     }
 
-    /// Run the bridge over the fixture and return the raw buffer.
+    /// Run the fixture grammar over `source` with `query`. Returns the
+    /// kind of the buffer and the whole buffer.
     fn run(source: &[u8], query: &[u8]) -> (u32, Vec<u8>) {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let wasm = std::fs::read(root.join("test/fixtures/tree-sitter-json/tree-sitter-json.wasm"))
