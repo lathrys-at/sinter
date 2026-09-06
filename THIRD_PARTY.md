@@ -15,7 +15,7 @@ components that the design expects and the project does not pin yet.
 | component | license | link |
 |---|---|---|
 | cmdliner | ISC | https://github.com/dbuenzli/cmdliner |
-| yojson | BSD-3-Clause | https://github.com/ocaml-community/yojson |
+| yojson (declared, not yet linked) | BSD-3-Clause | https://github.com/ocaml-community/yojson |
 | wasmtime | Apache-2.0 WITH LLVM-exception | https://github.com/bytecodealliance/wasmtime |
 | tree-sitter runtime | MIT | https://github.com/tree-sitter/tree-sitter |
 | cranelift (a dependency of wasmtime) | Apache-2.0 WITH LLVM-exception | https://github.com/bytecodealliance/wasmtime |
