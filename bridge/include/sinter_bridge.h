@@ -11,8 +11,7 @@
    Every function that can fail returns NULL. Call
    sinter_bridge_last_error for the reason.
 
-   One thread at a time may use one engine. Two threads may use two
-   engines at the same time. */
+   One thread at a time may use one engine. */
 
 #ifndef SINTER_BRIDGE_H
 #define SINTER_BRIDGE_H
@@ -69,8 +68,8 @@ sinter_bridge_language *sinter_bridge_language_load(
    query, and the output holds the parse tree as an S-expression
    instead of the captures.
 
-   The output is encoded in the layout that the bridge defines. The
-   returned result is valid until sinter_bridge_result_free frees
+   The result holds the captures, or the parse tree, in the bridge's
+   own encoding. It is valid until sinter_bridge_result_free frees
    it. */
 sinter_bridge_result *sinter_bridge_run(sinter_bridge_engine *engine,
                                         sinter_bridge_language *language,
