@@ -16,7 +16,6 @@ let ints l = Array (List.map (fun i -> Int i) l)
 let max_int_value = 9007199254740991
 let min_int_value = -9007199254740991
 
-(* The UTF-16 code units of a UTF-8 string. *)
 let utf16_units s =
   let units = ref [] in
   let n = String.length s in
