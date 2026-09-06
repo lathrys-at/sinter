@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "sinter",
+  "owner": {
+    "name": "The Sinter Authors"
+  },
+  "metadata": {
+    "description": "Claude Code skills that ship with Sinter: turn approved plans into Sinter plan files and record decisions."
+  },
+  "plugins": [
+    {
+      "name": "sinter",
+      "source": "./plugins/sinter",
+      "description": "Turn approved plans into Sinter plan files, and record decisions as decision records.",
+      "version": "0.1.0"
+    }
+  ]
+}
