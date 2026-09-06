@@ -18,6 +18,14 @@ let version =
       else if d = "unknown" then "v" ^ Sinter_core.Version.base ^ "-dev"
       else "v" ^ Sinter_core.Version.base ^ "-dev+" ^ d
 
+(* Section 9 of docs/design-notes.md fixes the exit codes of every
+   command: 0 clean, 1 findings present, 2 usage error, 3 environment
+   error, 4 refused. A grammar that does not load, a query that does
+   not parse, and a file that is not text are environment errors. *)
+let clean = 0
+let usage_error = 2
+let environment_error = 3
+
 let parse_cmd =
   let doc = "Parse files with a tree-sitter grammar and print the captures" in
   let man =
@@ -72,9 +80,6 @@ let parse_cmd =
     let doc = "The files to parse." in
     Arg.(non_empty & pos_all file [] & info [] ~docv:"FILE" ~doc)
   in
-  (* A wrong command line is a usage error, and Cmdliner reports it
-     with the exit code for a usage error. A failure while parsing is
-     not a usage error, so it takes the general error code instead. *)
   let run grammar query tree paths =
     match (query, tree) with
     | Some _, true ->
@@ -84,8 +89,10 @@ let parse_cmd =
     | query, _ -> (
         try
           Sinter_core.Parse.run ~grammar ~query ~paths stdout;
-          `Ok (Ok ())
-        with Sinter_core.Parse.Error message -> `Ok (Error message))
+          `Ok clean
+        with Sinter_core.Parse.Error message ->
+          Printf.eprintf "sinter: %s\n" message;
+          `Ok environment_error)
   in
   Cmd.v info Term.(ret (const run $ grammar $ query $ tree $ paths))
 
@@ -96,4 +103,8 @@ let cmd =
     ~default:Term.(ret (const (`Help (`Pager, None))))
     [ parse_cmd ]
 
-let () = exit (Cmd.eval_result cmd)
+(* Cmdliner reports a wrong command line with its own exit code, 124.
+   Map that code to the one the design notes fix. *)
+let () =
+  let code = Cmd.eval' ~term_err:usage_error cmd in
+  exit (if code = Cmd.Exit.cli_error then usage_error else code)

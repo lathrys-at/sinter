@@ -62,6 +62,10 @@ let check buffer offset count =
   if offset < 0 || count < 0 || offset + count > String.length buffer then
     malformed "a record runs past the end of the buffer"
 
+(* An OCaml int holds 63 bits on a 64-bit machine and 31 bits on a
+   32-bit one. The mask below turns a negative int32 into the unsigned
+   value it stands for, which needs 32 bits. Sinter is built for
+   64-bit machines only. *)
 let read_int buffer offset =
   check buffer offset 4;
   Int32.to_int (String.get_int32_le buffer offset) land 0xFFFFFFFF
@@ -109,18 +113,30 @@ let read_capture buffer offset =
     },
     offset )
 
+(* The encoder in the Rust crate and this decoder are two hand-written
+   halves of one format. The magic number catches a buffer that is
+   wholly wrong. This catches one that is subtly wrong: a count that
+   does not match the records, or bytes left over at the end. *)
+let check_whole buffer offset =
+  if offset <> String.length buffer then
+    malformed
+      (Printf.sprintf "the records end at byte %d and the buffer holds %d bytes"
+         offset (String.length buffer))
+
 let captures language ~source ~query =
   if String.length query = 0 then
     invalid_arg "Sinter_bridge.captures: the query is empty";
   let buffer = run language.engine language.handle source query in
   let count = read_header buffer kind_captures in
   let rec read index offset acc =
-    if index = count then List.rev acc
+    if index = count then (List.rev acc, offset)
     else
       let capture, offset = read_capture buffer offset in
       read (index + 1) offset (capture :: acc)
   in
-  read 0 header_length []
+  let found, offset = read 0 header_length [] in
+  check_whole buffer offset;
+  found
 
 let tree language ~source =
   let buffer = run language.engine language.handle source "" in
@@ -129,5 +145,6 @@ let tree language ~source =
     malformed
       (Printf.sprintf "a parse tree buffer holds %d records, and 1 was expected"
          count);
-  let text, _ = read_string buffer header_length in
+  let text, offset = read_string buffer header_length in
+  check_whole buffer offset;
   text

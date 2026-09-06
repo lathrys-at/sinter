@@ -7,7 +7,8 @@
 #
 # The arguments, in order:
 #   1. the directory that holds the crate's Cargo.toml
-#   2. the directory that cargo uses for its build output
+#   2. the directory to use for cargo's build output, when neither
+#      CARGO_TARGET_DIR nor HOME says where to put it
 #   3. the path to write the static library to
 #   4. the path to write the dune flags file to
 #
@@ -19,9 +20,38 @@
 set -eu
 
 crate=$1
-target=$2
+fallback=$2
 archive=$3
 flags=$4
+
+# Cargo's build output must live outside _build. Dune empties a rule's
+# directory before it runs the rule, so a target directory inside
+# _build would start empty every time. Cargo would then build all 128
+# crates again on every change inside bridge/, which takes about half
+# a minute. "dune clean" does not remove the directory below; remove
+# it by hand to build the crate from nothing.
+if [ -n "${CARGO_TARGET_DIR:-}" ]; then
+  target=$CARGO_TARGET_DIR
+elif [ -n "${HOME:-}" ]; then
+  target=$HOME/.cache/sinter/bridge-target
+else
+  target=$fallback
+fi
+
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "The bridge needs the Rust toolchain, and cargo is not on the PATH." >&2
+  echo "Install it with rustup: https://rustup.rs" >&2
+  exit 1
+fi
+
+# A build script of wasmtime runs cmake. Without cmake the cargo build
+# fails inside that build script, and the message there does not say
+# what is missing.
+if ! command -v cmake >/dev/null 2>&1; then
+  echo "The bridge needs cmake, and cmake is not on the PATH." >&2
+  echo "A build script of wasmtime runs it. Install cmake and build again." >&2
+  exit 1
+fi
 
 log=$target/native-static-libs.log
 mkdir -p "$target"

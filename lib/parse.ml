@@ -44,6 +44,10 @@ let grammar_name path =
   then String.sub underscored length (String.length underscored - length)
   else underscored
 
+(* Section 2 of spec/jsonl.md says the scanner normalizes strings that
+   come from file text to Unicode NFC. The text below is not
+   normalized. Normalizing needs a Unicode library, and the project
+   has none yet. *)
 let record_of_capture ~path (capture : Sinter_bridge.capture) =
   [
     ("path", Jsonl.string path);

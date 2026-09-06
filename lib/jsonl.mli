@@ -33,8 +33,9 @@ val to_string : record -> string
 (** [to_string record] is the canonical line for [record], without the LF.
 
     @raise Invalid_argument
-      if the record holds the same field name twice, or if an integer is outside
-      the range that spec/jsonl.md section 2 allows. *)
+      if the record holds the same field name twice, if an integer is outside
+      the range that spec/jsonl.md section 2 allows, or if a string is not valid
+      UTF-8. *)
 
 val output : out_channel -> record -> unit
 (** [output channel record] writes the canonical line for [record] to [channel],
