@@ -24,9 +24,10 @@ also read JSON: the serve mode takes requests as JSON lines.
   escapes as RFC 8785 requires, and refuses a repeated field name, an
   integer outside the allowed range, and a string that is not UTF-8.
   Every command that emits facts goes through it.
-- `yojson` (BSD-3-Clause) reads JSON. It is declared as a dependency
-  now, so that the choice is fixed and CI proves it resolves; the
-  first module that links it is the serve mode.
+- `yojson` (BSD-3-Clause) reads JSON. The project does not declare it
+  yet. A declared dependency that nothing links would claim to ship
+  when it does not, so the declaration arrives with the first module
+  that reads JSON, which is the serve mode.
 - NFC normalization of strings that come from file text, which the
   specification requires, is not done yet. It needs the `uunf`
   library, and the roadmap lists it under `sinter scan`.
@@ -49,4 +50,6 @@ also read JSON: the serve mode takes requests as JSON lines.
 One module owns the canonical form, and its tests cover the cases
 where UTF-16 order and UTF-8 byte order disagree. A record that
 breaks the schema fails at construction, not in a fixture. Every JSON
-reader in Sinter depends on `yojson`, which `THIRD_PARTY.md` lists.
+reader in Sinter will depend on `yojson`. The module that adds the
+dependency also adds it to `dune-project`, to the lock file, and to
+`THIRD_PARTY.md`.
