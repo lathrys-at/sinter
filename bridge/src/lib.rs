@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 The Sinter Authors
 
+// @cites parser-bridge
+
 //! The C interface that Sinter uses to parse source text.
-//! @cites parser-bridge
 //!
 //! The bridge loads a tree-sitter grammar that is compiled to
 //! WebAssembly, parses a source text with that grammar, and runs a
