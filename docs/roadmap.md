@@ -32,6 +32,9 @@
   - An MCP server over stdio; tools named after the CLI verbs.
   - The decision record answers the "no MCP server" argument in the
     design notes, section 9.1.
+  - A richer Claude Code plugin on top of the server: MCP Apps UI that
+    shows plans, decisions, and other Sinter information to the user
+    inside the client. A desired outcome, not yet designed.
 - **`sinter serve --detach`** — a mode that outlives its caller, on a
   socket, for several clients.
 - **`spec/protocol.md`** — the `serve` request and response protocol,
