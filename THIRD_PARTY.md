@@ -5,10 +5,9 @@ Each row of the table gives one component, the license of that
 component, and a link.
 
 The parser bridge pins its Rust dependencies in `bridge/Cargo.lock`.
-That file lists every crate and its version. The table below names the
-components that a reader cares about; it does not repeat the whole
-lock file. The other rows are components that the design expects but
-that the project does not pin yet.
+That file names every crate and its version. The table below gives the
+components whose license terms a reader must know. Some rows are
+components that the design expects and the project does not pin yet.
 
 | component | license | link |
 |---|---|---|
