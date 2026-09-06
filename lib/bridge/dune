@@ -21,11 +21,12 @@
 ; it. The same cargo run reports the system libraries that the static
 ; link needs; the script writes them to link_flags.sexp.
 ;
-; Cargo keeps its own build output in bridge/target, outside _build,
-; so that a change inside bridge/ costs one crate and not all 128 and
-; so that a cargo build by hand and this rule share one directory.
-; build.sh says how it finds that path. The path below is only used
-; when the script can find no better place.
+; Cargo keeps its own build output outside _build, in one directory
+; that every checkout on the machine shares, so that a change inside
+; bridge/ costs one crate and not all 128 and so that a new worktree
+; does not pay 19 seconds and 900 MB again. build.sh says where that
+; directory is. The path below is only used when the script can find
+; no better place.
 
 (rule
  (targets libsinter_bridge.a link_flags.sexp)

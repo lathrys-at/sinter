@@ -8,7 +8,7 @@
 # The arguments, in order:
 #   1. the directory that holds the crate's Cargo.toml
 #   2. the directory to use for cargo's build output, when neither
-#      CARGO_TARGET_DIR nor DUNE_SOURCEROOT says where to put it
+#      CARGO_TARGET_DIR nor a home directory says where to put it
 #   3. the path to write the static library to
 #   4. the path to write the dune flags file to
 #
@@ -26,22 +26,26 @@ flags=$4
 
 # Cargo's build output must live outside _build. Dune empties a rule's
 # directory before it runs the rule, so a target directory inside
-# _build would start empty every time. Cargo would then build all 128
-# crates again on every change inside bridge/, which takes about half
-# a minute.
+# _build would start empty every time and cargo would build all 128
+# crates again on every change inside bridge/.
 #
-# The output goes to bridge/target, which is where cargo puts it when
-# a contributor runs "cargo build --release" in bridge/ by hand. One
-# directory therefore serves both ways of building. Dune exports the
-# source root as DUNE_SOURCEROOT. bridge/dune hides that directory
-# from dune and .gitignore hides it from git.
+# One directory serves every checkout on the machine. The crate takes
+# 19 seconds and 900 MB to build from nothing, and Sinter is written
+# in many git worktrees at once, so a directory per checkout would
+# cost that once per worktree. Cargo keys its output by fingerprint,
+# so two checkouts with different dependency versions keep both and
+# neither overwrites the other.
 #
-# "dune clean" does not remove bridge/target. Remove it by hand to
-# build the crate from nothing.
+# "dune clean" does not remove this directory. Remove it by hand to
+# build the crate from nothing. A contributor who runs "cargo build"
+# in bridge/ by hand writes bridge/target instead, which is a second
+# copy; set CARGO_TARGET_DIR to this path to share one.
 if [ -n "${CARGO_TARGET_DIR:-}" ]; then
   target=$CARGO_TARGET_DIR
-elif [ -n "${DUNE_SOURCEROOT:-}" ]; then
-  target=$DUNE_SOURCEROOT/bridge/target
+elif [ -n "${XDG_CACHE_HOME:-}" ]; then
+  target=$XDG_CACHE_HOME/sinter-bridge-build
+elif [ -n "${HOME:-}" ]; then
+  target=$HOME/.cache/sinter-bridge-build
 else
   target=$fallback
 fi

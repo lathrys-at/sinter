@@ -37,15 +37,16 @@ jobs:
             opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
       - uses: dtolnay/rust-toolchain@stable
       # A dune rule runs cargo. lib/bridge/build.sh puts cargo's build
-      # output in bridge/target. The key holds the lock file, so a
-      # change of a Rust dependency starts from an empty cache.
+      # output in ~/.cache/sinter-bridge-build. The key holds the lock
+      # file, so a change of a Rust dependency starts from an empty
+      # cache.
       - name: Cache the cargo state
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            bridge/target
+            ~/.cache/sinter-bridge-build
           key: cargo-build-${{ matrix.os }}-${{ hashFiles('bridge/Cargo.lock') }}
           restore-keys: cargo-build-${{ matrix.os }}-
       - uses: ocaml/setup-ocaml@v3
@@ -80,7 +81,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            bridge/target
+            ~/.cache/sinter-bridge-build
           key: cargo-format-${{ hashFiles('bridge/Cargo.lock') }}
           restore-keys: cargo-format-
       - uses: ocaml/setup-ocaml@v3
