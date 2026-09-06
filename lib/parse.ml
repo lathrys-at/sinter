@@ -5,9 +5,9 @@ exception Error of string
 
 let fail format = Printf.ksprintf (fun message -> raise (Error message)) format
 
+(* @cites json-handling *)
 (* Every string in a record is UTF-8, and the text of a capture comes
-   from the file.
-   @cites json-handling *)
+   from the file. *)
 let is_utf_8 text =
   let length = String.length text in
   let rec check offset =
@@ -140,8 +140,8 @@ let end_of_capture source (capture : Sinter_bridge.capture) =
     (capture.end_row, capture.end_byte - line_start + 1)
   else (capture.end_row + 1, capture.end_column + 1)
 
-(* The text of a capture is not normalized to Unicode NFC.
-   @cites json-handling *)
+(* @cites json-handling *)
+(* The text of a capture is not normalized to Unicode NFC. *)
 let record_of_capture ~path ~source (capture : Sinter_bridge.capture) =
   let end_line, end_column = end_of_capture source capture in
   [

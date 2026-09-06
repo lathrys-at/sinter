@@ -45,9 +45,9 @@ let load engine ~name ~wasm =
     invalid_arg "Sinter_bridge.load: the grammar name holds a NUL byte";
   { engine; handle = language_load engine name wasm }
 
+(* @cites parser-bridge *)
 (* The decoder of the result buffer. Every integer in the buffer is
-   unsigned, 32 bits wide, and little-endian.
-   @cites parser-bridge *)
+   unsigned, 32 bits wide, and little-endian. *)
 
 let magic = "SBR1"
 let header_length = 16

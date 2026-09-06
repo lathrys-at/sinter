@@ -11,8 +11,8 @@ let bool b = Scalar (Bool b)
 let strings l = Array (List.map (fun s -> String s) l)
 let ints l = Array (List.map (fun i -> Int i) l)
 
-(* The canonical form allows an integer in this range only.
-   @cites json-handling *)
+(* @cites json-handling *)
+(* The canonical form allows an integer in this range only. *)
 let max_int_value = 9007199254740991
 let min_int_value = -9007199254740991
 
@@ -36,8 +36,8 @@ let compare_keys a b =
   if String.equal a b then 0
   else List.compare Int.compare (utf16_units a) (utf16_units b)
 
-(* The escaping of RFC 8785 section 3.2.2.2.
-   @cites json-handling *)
+(* @cites json-handling *)
+(* The escaping of RFC 8785 section 3.2.2.2. *)
 let add_escaped buffer s =
   Buffer.add_char buffer '"';
   let n = String.length s in
