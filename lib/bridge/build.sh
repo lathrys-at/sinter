@@ -32,10 +32,10 @@ else
   flags=$4
 fi
 
-# Cargo's build output must live outside _build, because dune empties
-# a rule's directory before it runs the rule. "dune clean" does not
-# remove it. Remove it by hand to build the crate from nothing.
-# CARGO_TARGET_DIR moves the base directory below.
+# @cites parser-bridge
+# Cargo's build output must live outside _build, and each checkout
+# must build in a directory of its own. "dune clean" does not remove
+# that directory; remove it by hand to build the crate from nothing.
 if [ -n "${CARGO_TARGET_DIR:-}" ]; then
   base=$CARGO_TARGET_DIR
 elif [ -n "${XDG_CACHE_HOME:-}" ]; then
@@ -46,13 +46,6 @@ else
   base=$fallback
 fi
 
-# Each checkout gets its own directory under that one, named after the
-# path of its crate. Two checkouts must not share a directory. Cargo
-# decides that a path package is fresh by the times of its source
-# files against the time of the last build in the directory, and the
-# archive that this script copies always sits at one fixed name. So a
-# checkout whose files are older than another checkout's build is
-# called fresh, and it links the other checkout's library.
 root=$(cd "$crate" && pwd -P)
 if command -v shasum >/dev/null 2>&1; then
   key=$(printf '%s' "$root" | shasum -a 256 | cut -c1-16)

@@ -21,10 +21,10 @@
 ; the system libraries that the static link needs, and build.sh writes
 ; them to link_flags.sexp.
 ;
-; Cargo's own build output stays outside _build, and each checkout
-; builds in a directory of its own. build.sh chooses that directory;
-; the second argument below is the one to use when the environment
-; names none.
+; @cites parser-bridge
+; Cargo's build output stays outside _build, in a directory of its own
+; for each checkout. build.sh chooses it; the second argument below is
+; the directory to use when the environment names none.
 
 (rule
  (targets libsinter_bridge.a link_flags.sexp)

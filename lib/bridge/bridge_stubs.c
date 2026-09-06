@@ -71,7 +71,7 @@ CAMLprim value sinter_bridge_engine_new_stub(value unit) {
     raise_bridge_error("the bridge could not create an engine");
   }
   /* The last argument is the memory outside the OCaml heap that an
-     engine holds. It is an estimate, not a measurement. */
+     engine holds. */
   result = caml_alloc_custom_mem(&engine_operations,
                                  sizeof(sinter_bridge_engine *), 4 << 20);
   Engine_val(result) = engine;
@@ -117,8 +117,7 @@ CAMLprim value sinter_bridge_run_stub(value engine, value language,
   if (run == NULL) {
     raise_bridge_error("the bridge could not parse the source text");
   }
-  /* Copy the buffer, then free the result. No OCaml value points into
-     memory that the bridge owns. */
+  /* No OCaml value points into memory that the bridge owns. */
   result = caml_alloc_initialized_string(run->len, (const char *)run->data);
   sinter_bridge_result_free(run);
   CAMLreturn(result);
