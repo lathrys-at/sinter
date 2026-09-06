@@ -25,7 +25,9 @@ one phrase, and do not leave out the context a sentence needs.
 | `.github/workflows/` | CI: `build.yml` and `licensing.yml` | Apache-2.0 |
 
 [docs/design-notes.md](docs/design-notes.md) is the design.
-[spec/](spec/) holds the formats other tools can implement. When the
+[spec/](spec/) holds the formats other tools can implement.
+[docs/roadmap.md](docs/roadmap.md) lists the work ahead and the
+directions that are agreed but not designed yet. When the
 code and a specification disagree, the specification wins. When a
 specification and the design notes disagree, say so to the person you
 work with; the specifications are the newer documents.
