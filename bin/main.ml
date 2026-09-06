@@ -72,6 +72,9 @@ let parse_cmd =
     let doc = "The files to parse." in
     Arg.(non_empty & pos_all file [] & info [] ~docv:"FILE" ~doc)
   in
+  (* A wrong command line is a usage error, and Cmdliner reports it
+     with the exit code for a usage error. A failure while parsing is
+     not a usage error, so it takes the general error code instead. *)
   let run grammar query tree paths =
     match (query, tree) with
     | Some _, true ->
@@ -81,8 +84,8 @@ let parse_cmd =
     | query, _ -> (
         try
           Sinter_core.Parse.run ~grammar ~query ~paths stdout;
-          `Ok ()
-        with Sinter_core.Parse.Error message -> `Error (false, message))
+          `Ok (Ok ())
+        with Sinter_core.Parse.Error message -> `Ok (Error message))
   in
   Cmd.v info Term.(ret (const run $ grammar $ query $ tree $ paths))
 
@@ -93,4 +96,4 @@ let cmd =
     ~default:Term.(ret (const (`Help (`Pager, None))))
     [ parse_cmd ]
 
-let () = exit (Cmd.eval cmd)
+let () = exit (Cmd.eval_result cmd)
