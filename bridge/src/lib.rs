@@ -41,8 +41,8 @@ fn set_error(message: impl Into<Vec<u8>>) {
     LAST_ERROR.with(|cell| *cell.borrow_mut() = value);
 }
 
-/// An engine holds the WebAssembly runtime and every language that was
-/// loaded into it.
+/// An engine holds the WebAssembly runtime. It owns every language
+/// that is loaded into it.
 pub struct SinterBridgeEngine {
     /// Holds the WebAssembly store between calls. A grammar that runs
     /// in WebAssembly needs the store for every read of a parse tree.
@@ -99,7 +99,7 @@ fn put_header(buffer: &mut Vec<u8>, kind: u32) {
     put_u32(buffer, 0);
 }
 
-/// Write the final record count into the header.
+/// Write the record count into the header.
 fn set_count(buffer: &mut [u8], count: u32) {
     buffer[8..12].copy_from_slice(&count.to_le_bytes());
 }
