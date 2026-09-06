@@ -1,7 +1,7 @@
 ; SPDX-License-Identifier: Apache-2.0
 ; Copyright 2026 The Sinter Authors
 
-; Cargo writes its build output to bridge/target, which holds
-; hundreds of megabytes. Dune must not read that directory.
+; Cargo writes its build output to bridge/target. Dune must not copy
+; that directory into _build.
 
 (dirs :standard \ target)

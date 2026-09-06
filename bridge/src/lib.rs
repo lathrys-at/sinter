@@ -112,7 +112,6 @@ fn put_header(buffer: &mut Vec<u8>, kind: u32) {
     put_u32(buffer, 0);
 }
 
-/// Write the record count into the header.
 fn set_count(buffer: &mut [u8], count: u32) {
     buffer[8..12].copy_from_slice(&count.to_le_bytes());
 }

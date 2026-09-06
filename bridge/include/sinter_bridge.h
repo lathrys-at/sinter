@@ -54,8 +54,8 @@ void sinter_bridge_engine_free(sinter_bridge_engine *engine);
    "wasm_len" bytes: the content of a grammar .wasm file. Both must
    stay readable until the call returns.
 
-   The returned handle is valid until sinter_bridge_engine_free frees
-   the engine. */
+   The engine owns the returned handle. The handle is valid until
+   sinter_bridge_engine_free frees the engine. */
 sinter_bridge_language *sinter_bridge_language_load(
     sinter_bridge_engine *engine, const char *name, const uint8_t *wasm,
     size_t wasm_len);
