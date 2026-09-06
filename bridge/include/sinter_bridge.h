@@ -69,9 +69,9 @@ sinter_bridge_language *sinter_bridge_language_load(
    query, and the output holds the parse tree as an S-expression
    instead of the captures.
 
-   The result holds the captures, or the parse tree, in the bridge's
-   own encoding. It is valid until sinter_bridge_result_free frees
-   it. */
+   The result holds the captures, or the parse tree, in the encoding
+   that README.md beside this crate defines. It is valid until
+   sinter_bridge_result_free frees it. */
 sinter_bridge_result *sinter_bridge_run(sinter_bridge_engine *engine,
                                         sinter_bridge_language *language,
                                         const uint8_t *source,
