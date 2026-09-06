@@ -10,19 +10,19 @@ The core library and the `sinter` binary are OCaml; Rust appears only in the bri
 Sinter has a closed vocabulary of fourteen tags. Every gate, query,
 and compiler must handle every tag. The design notes (section 9)
 want an unhandled tag to be a build error, not a discipline. The tool
-also runs inside editor hooks, where startup time above a few
-milliseconds gets the hook disabled. Language packs run in wasmtime,
-which offers a Rust and a C interface. Coding agents write most of
-the code, and they write OCaml less well than Rust or TypeScript.
+also runs inside editor hooks, where a noticeable startup time gets
+the hook disabled. Language packs run in wasmtime, which offers a
+Rust and a C interface. Coding agents write most of the code, and
+they write OCaml less well than Rust or TypeScript.
 
 ## Decision
 
 The core library `sinter.core` and the `sinter` binary are OCaml,
-version 5.1 or newer, built with dune and installed with opam. The
-vocabulary is a variant type, and every gate is an exhaustive match
-over it: a new tag that a gate does not handle fails the build. The
-tool shells out to git; it never links git. The only platform-specific
-artifact is the native binary. Version 1 does not support Windows.
+built with dune and installed with opam. The vocabulary is a variant
+type, and every gate is an exhaustive match over it: a new tag that a
+gate does not handle fails the build. The tool shells out to git; it
+never links git. The only platform-specific artifact is the native
+binary. Version 1 does not support Windows.
 
 Rust appears in one place: the bridge that links the tree-sitter
 library and wasmtime. The bridge holds no vocabulary logic.
