@@ -306,6 +306,7 @@ still emits the record, with the default tier and `default` set to
 |---|---|---|
 | `added` `removed` | int | |
 | `ambient` | bool | *derived* |
+| `shared` | bool | *derived*: the hunk is under a manifest `shared` path |
 | `mapped` | array of string | *derived*: ids of the steps or rules whose scope covers the hunk; empty when unmapped |
 
 **`tombstone`** — base coordinates.

@@ -20,7 +20,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       # The opam switch, with the project's dependencies installed, is
       # cached under a key that names the platform, the compiler, and
       # the lock file. A lock change falls back to the previous switch
@@ -30,7 +30,7 @@ jobs:
       # holds a git clone of opam-repository that opam init cannot
       # always update.
       - name: Restore the opam switch
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: _opam
           key: opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
@@ -46,7 +46,7 @@ jobs:
       # The dune rule that runs cargo writes its build output under
       # ~/.cache/sinter-bridge-build.
       - name: Cache the cargo state
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -82,9 +82,9 @@ jobs:
     name: Check formatting
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Restore the opam switch
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: _opam
           key: opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
@@ -103,7 +103,7 @@ jobs:
     name: Check the bridge crate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -112,7 +112,7 @@ jobs:
           toolchain: 1.94.1
           components: rustfmt, clippy
       - name: Cache the cargo state
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry

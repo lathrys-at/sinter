@@ -14,3 +14,6 @@ Icon?
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Local instructions for one person, loaded by Claude Code
+CLAUDE.local.md
