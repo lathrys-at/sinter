@@ -223,6 +223,30 @@ let names_a_source_that_cannot_be_read () =
     "the message names the directory and says what is wrong" true
     (String.starts_with ~prefix:".:" message && contains "directory" message)
 
+(* tree-sitter writes an S-expression by recursion in C, and a tree
+   that nests deeply exhausts the stack of the thread. The bridge
+   writes its own, so this file must give a tree and not a signal. *)
+let writes_a_tree_that_nests_deeply () =
+  let depth = 40000 in
+  let file = Filename.temp_file "sinter-parse" ".json" in
+  let channel = open_out_bin file in
+  for _ = 1 to depth do
+    output_char channel '['
+  done;
+  output_char channel '1';
+  for _ = 1 to depth do
+    output_char channel ']'
+  done;
+  close_out channel;
+  let tree =
+    Fun.protect
+      ~finally:(fun () -> Sys.remove file)
+      (fun () -> output ~query:None ~paths:[ file ])
+  in
+  Alcotest.(check bool)
+    "the tree of a file that nests 40000 deep is written" true
+    (String.starts_with ~prefix:"(document" tree && String.length tree > depth)
+
 let names_the_grammar () =
   let check expected path =
     Alcotest.(check string) path expected (Parse.grammar_name path)
@@ -257,5 +281,7 @@ let tests =
       loads_a_grammar_file_under_another_name;
     Alcotest.test_case "names a source that cannot be read" `Quick
       names_a_source_that_cannot_be_read;
+    Alcotest.test_case "writes a tree that nests deeply" `Quick
+      writes_a_tree_that_nests_deeply;
     Alcotest.test_case "names the grammar" `Quick names_the_grammar;
   ]
