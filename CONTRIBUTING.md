@@ -33,7 +33,10 @@ quoted standards. That text stays exactly as it is in the source.
 ## Build and check
 
 Install [opam](https://opam.ocaml.org/) and an OCaml switch (5.1 or
-newer). Then, from the repository root:
+newer). The parser bridge in `bridge/` is a Rust crate, so also
+install the Rust toolchain with [rustup](https://rustup.rs) and
+install `cmake`, which a build script of wasmtime runs. Then, from the
+repository root:
 
 ```
 eval $(opam env)
