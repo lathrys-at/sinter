@@ -72,6 +72,23 @@ pub struct SinterBridgeResult {
     capacity: usize,
 }
 
+/// Make a slice from a C pointer and a length.
+///
+/// # Safety
+///
+/// When `len` is not 0, `data` must point to `len` readable bytes.
+///
+/// A null pointer with the length 0 is a slice of no bytes. Rust does
+/// not allow a null pointer in `slice::from_raw_parts`, not even for
+/// an empty slice, so that case is handled before the call.
+unsafe fn slice_of(data: *const u8, len: usize) -> &'static [u8] {
+    if data.is_null() {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(data, len) }
+    }
+}
+
 fn put_u32(buffer: &mut Vec<u8>, value: u32) {
     buffer.extend_from_slice(&value.to_le_bytes());
 }
@@ -173,7 +190,7 @@ pub unsafe extern "C" fn sinter_bridge_language_load(
             return std::ptr::null_mut();
         }
     };
-    let bytes = unsafe { std::slice::from_raw_parts(wasm, wasm_len) };
+    let bytes = unsafe { slice_of(wasm, wasm_len) };
 
     let mut store = match engine.parser.take_wasm_store() {
         Some(store) => store,
@@ -233,8 +250,8 @@ pub unsafe extern "C" fn sinter_bridge_run(
     // readable bytes at query.
     let engine = unsafe { &mut *engine };
     let language = unsafe { &*language };
-    let source = unsafe { std::slice::from_raw_parts(source, source_len) };
-    let query_bytes = unsafe { std::slice::from_raw_parts(query, query_len) };
+    let source = unsafe { slice_of(source, source_len) };
+    let query_bytes = unsafe { slice_of(query, query_len) };
 
     if let Err(error) = engine.parser.set_language(&language.language) {
         set_error(format!("cannot use the grammar: {error}"));
@@ -292,7 +309,15 @@ pub unsafe extern "C" fn sinter_bridge_run(
             let name = names.get(capture.index as usize).copied().unwrap_or("");
             put_bytes(&mut buffer, name.as_bytes());
             put_bytes(&mut buffer, node.kind().as_bytes());
-            put_bytes(&mut buffer, &source[node.start_byte()..node.end_byte()]);
+            // A node always lies inside the source text. Read the
+            // text without an index, so that a grammar that breaks
+            // that rule gives an empty text and not a panic. A panic
+            // here would abort the whole process, because the caller
+            // is C.
+            let text = source
+                .get(node.start_byte()..node.end_byte())
+                .unwrap_or(&[]);
+            put_bytes(&mut buffer, text);
             count += 1;
         }
     }
