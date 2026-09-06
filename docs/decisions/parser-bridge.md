@@ -105,8 +105,9 @@ of wasmtime runs. `bridge/rust-toolchain.toml` is the lock file of that
 toolchain. The crate is not published, and the `sinter` binary is its
 only consumer, so the project promises no minimum supported Rust
 version. The pin is bumped in the same pull request that updates the
-Rust dependencies. The binary grows from 2.0 MB to 15.4 MB, inside the
-10 to 20 MB the design notes expect. The build is no longer hermetic:
+Rust dependencies. The binary grows from 2.0 MB to 17.1 MB, inside the
+10 to 20 MB the design notes expect. About 1.7 MB of that is the
+compiled-module cache, which brings zstd with it. The build is no longer hermetic:
 `dune clean` does not remove cargo's output. The query is compiled on
 every call, which costs 0.015 ms for a two-pattern query and 0.7 ms
 for a hundred patterns; the scanner will want to compile a query once
@@ -118,7 +119,7 @@ the pull request that added the bridge:
 
 | measurement | result |
 |---|---|
-| binary size | 2,089,576 bytes without the bridge; 16,149,496 with it |
+| binary size | 2,089,576 bytes without the bridge; 17,889,896 with it |
 | first load, tree-sitter-json (5.6 KB) | 1.5 ms |
 | first load, tree-sitter-typescript (1.4 MB), no cache | 17.5 ms; engine creation 8.2 ms |
 | first load, tree-sitter-typescript, module cache warm | 3.3 ms; engine creation 0.5 ms |
