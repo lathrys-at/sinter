@@ -227,41 +227,59 @@ fn into_result(buffer: Vec<u8>) -> *mut SinterBridgeResult {
     Box::into_raw(Box::new(result))
 }
 
+/// Run `body`. Turn a panic into `failure`, so that no panic reaches
+/// the C caller.
+///
+/// Rust aborts the process when a panic tries to leave an
+/// `extern "C"` function, and an aborted process gives the caller no
+/// message and no exit code of its own.
+fn guard<T>(failure: T, body: impl FnOnce() -> T) -> T {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+        Ok(value) => value,
+        Err(_) => {
+            set_error("the parser bridge stopped on an internal fault");
+            failure
+        }
+    }
+}
+
 /// Create an engine. Returns null on failure.
 #[no_mangle]
 pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
-    // @cites parser-bridge
-    // The engine uses wasmtime's compiled-module cache, in wasmtime's
-    // default directory. Without that directory the engine runs with
-    // no cache and compiles every grammar on each load.
-    let mut config = wasmtime::Config::new();
-    if config.cache_config_load_default().is_err() {
-        config = wasmtime::Config::new();
-    }
-    let wasm_engine = match wasmtime::Engine::new(&config) {
-        Ok(engine) => engine,
-        Err(error) => {
-            set_error(format!("cannot create the WebAssembly engine: {error}"));
+    guard(std::ptr::null_mut(), move || {
+        // @cites parser-bridge
+        // The engine uses wasmtime's compiled-module cache, in wasmtime's
+        // default directory. Without that directory the engine runs with
+        // no cache and compiles every grammar on each load.
+        let mut config = wasmtime::Config::new();
+        if config.cache_config_load_default().is_err() {
+            config = wasmtime::Config::new();
+        }
+        let wasm_engine = match wasmtime::Engine::new(&config) {
+            Ok(engine) => engine,
+            Err(error) => {
+                set_error(format!("cannot create the WebAssembly engine: {error}"));
+                return std::ptr::null_mut();
+            }
+        };
+        let store = match WasmStore::new(&wasm_engine) {
+            Ok(store) => store,
+            Err(error) => {
+                set_error(format!("cannot create the WebAssembly store: {error}"));
+                return std::ptr::null_mut();
+            }
+        };
+        let mut parser = Parser::new();
+        if let Err(error) = parser.set_wasm_store(store) {
+            set_error(format!("cannot attach the WebAssembly store: {error}"));
             return std::ptr::null_mut();
         }
-    };
-    let store = match WasmStore::new(&wasm_engine) {
-        Ok(store) => store,
-        Err(error) => {
-            set_error(format!("cannot create the WebAssembly store: {error}"));
-            return std::ptr::null_mut();
-        }
-    };
-    let mut parser = Parser::new();
-    if let Err(error) = parser.set_wasm_store(store) {
-        set_error(format!("cannot attach the WebAssembly store: {error}"));
-        return std::ptr::null_mut();
-    }
-    Box::into_raw(Box::new(SinterBridgeEngine {
-        parser,
-        languages: Vec::new(),
-        query: None,
-    }))
+        Box::into_raw(Box::new(SinterBridgeEngine {
+            parser,
+            languages: Vec::new(),
+            query: None,
+        }))
+    })
 }
 
 /// Free an engine and every language that was loaded into it.
@@ -273,12 +291,14 @@ pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
 /// Every language handle from this engine becomes invalid.
 #[no_mangle]
 pub unsafe extern "C" fn sinter_bridge_engine_free(engine: *mut SinterBridgeEngine) {
-    if engine.is_null() {
-        return;
-    }
-    // Safety: the caller passes a pointer from sinter_bridge_engine_new
-    // and does not use it again.
-    drop(unsafe { Box::from_raw(engine) });
+    guard((), move || {
+        if engine.is_null() {
+            return;
+        }
+        // Safety: the caller passes a pointer from sinter_bridge_engine_new
+        // and does not use it again.
+        drop(unsafe { Box::from_raw(engine) });
+    })
 }
 
 /// Load a grammar from WebAssembly bytes. Returns null on failure.
@@ -295,45 +315,47 @@ pub unsafe extern "C" fn sinter_bridge_language_load(
     wasm: *const u8,
     wasm_len: usize,
 ) -> *mut SinterBridgeLanguage {
-    if engine.is_null() || name.is_null() || (wasm.is_null() && wasm_len != 0) {
-        set_error("a required argument is null");
-        return std::ptr::null_mut();
-    }
-    // Safety: the caller gives an engine from sinter_bridge_engine_new,
-    // a NUL-terminated name, and wasm_len readable bytes at wasm.
-    let engine = unsafe { &mut *engine };
-    let name = match unsafe { CStr::from_ptr(name) }.to_str() {
-        Ok(name) => name.to_owned(),
-        Err(_) => {
-            set_error("the grammar name is not valid UTF-8");
+    guard(std::ptr::null_mut(), move || {
+        if engine.is_null() || name.is_null() || (wasm.is_null() && wasm_len != 0) {
+            set_error("a required argument is null");
             return std::ptr::null_mut();
         }
-    };
-    let bytes = unsafe { slice_of(wasm, wasm_len) };
+        // Safety: the caller gives an engine from sinter_bridge_engine_new,
+        // a NUL-terminated name, and wasm_len readable bytes at wasm.
+        let engine = unsafe { &mut *engine };
+        let name = match unsafe { CStr::from_ptr(name) }.to_str() {
+            Ok(name) => name.to_owned(),
+            Err(_) => {
+                set_error("the grammar name is not valid UTF-8");
+                return std::ptr::null_mut();
+            }
+        };
+        let bytes = unsafe { slice_of(wasm, wasm_len) };
 
-    let mut store = match engine.parser.take_wasm_store() {
-        Some(store) => store,
-        None => {
-            set_error("the parser bridge did not recover from an earlier failure");
+        let mut store = match engine.parser.take_wasm_store() {
+            Some(store) => store,
+            None => {
+                set_error("the parser bridge did not recover from an earlier failure");
+                return std::ptr::null_mut();
+            }
+        };
+        let loaded = store.load_language(&name, bytes);
+        if let Err(error) = engine.parser.set_wasm_store(store) {
+            set_error(format!("cannot attach the WebAssembly store: {error}"));
             return std::ptr::null_mut();
         }
-    };
-    let loaded = store.load_language(&name, bytes);
-    if let Err(error) = engine.parser.set_wasm_store(store) {
-        set_error(format!("cannot attach the WebAssembly store: {error}"));
-        return std::ptr::null_mut();
-    }
-    let language = match loaded {
-        Ok(language) => language,
-        Err(error) => {
-            set_error(error.to_string());
-            return std::ptr::null_mut();
-        }
-    };
-    let mut handle = Box::new(SinterBridgeLanguage { language });
-    let pointer: *mut SinterBridgeLanguage = &mut *handle;
-    engine.languages.push(handle);
-    pointer
+        let language = match loaded {
+            Ok(language) => language,
+            Err(error) => {
+                set_error(error.to_string());
+                return std::ptr::null_mut();
+            }
+        };
+        let mut handle = Box::new(SinterBridgeLanguage { language });
+        let pointer: *mut SinterBridgeLanguage = &mut *handle;
+        engine.languages.push(handle);
+        pointer
+    })
 }
 
 /// Parse a source text and run a query over the parse tree. When
@@ -356,115 +378,114 @@ pub unsafe extern "C" fn sinter_bridge_run(
     query: *const u8,
     query_len: usize,
 ) -> *mut SinterBridgeResult {
-    if engine.is_null() || language.is_null() || (source.is_null() && source_len != 0) {
-        set_error("a required argument is null");
-        return std::ptr::null_mut();
-    }
-    if query.is_null() && query_len != 0 {
-        set_error("the query is null, and its length is not 0");
-        return std::ptr::null_mut();
-    }
-    // Safety: the caller gives an engine and a language from this
-    // bridge, source_len readable bytes at source, and query_len
-    // readable bytes at query.
-    let language_key = language as usize;
-    let engine = unsafe { &mut *engine };
-    let grammar = unsafe { &*language }.language.clone();
-    let source = unsafe { slice_of(source, source_len) };
-    let query_bytes = unsafe { slice_of(query, query_len) };
-
-    if let Err(error) = engine.parser.set_language(&grammar) {
-        set_error(format!("cannot use the grammar: {error}"));
-        return std::ptr::null_mut();
-    }
-    let tree = match engine.parser.parse(source, None) {
-        Some(tree) => tree,
-        None => {
-            set_error("the grammar produced no parse tree");
+    guard(std::ptr::null_mut(), move || {
+        if engine.is_null() || language.is_null() || (source.is_null() && source_len != 0) {
+            set_error("a required argument is null");
             return std::ptr::null_mut();
         }
-    };
-
-    if query_len == 0 {
-        let mut buffer = Vec::new();
-        put_header(&mut buffer, KIND_TREE);
-        let mut sexp = String::new();
-        write_sexp(tree.root_node(), source, &mut sexp);
-        put_bytes(&mut buffer, sexp.as_bytes());
-        set_count(&mut buffer, 1);
-        return into_result(buffer);
-    }
-
-    let query_text = match std::str::from_utf8(query_bytes) {
-        Ok(text) => text,
-        Err(_) => {
-            set_error("the query is not valid UTF-8");
+        if query.is_null() && query_len != 0 {
+            set_error("the query is null, and its length is not 0");
             return std::ptr::null_mut();
         }
-    };
-    // The engine keeps the query it compiled last. One run of
-    // "sinter parse" puts the same query over many files, so the
-    // query is compiled once and not once per file.
-    let hit = engine
-        .query
-        .as_ref()
-        .is_some_and(|c| c.language == language_key && c.text == query_text);
-    if !hit {
-        match Query::new(&grammar, query_text) {
-            Ok(compiled) => {
-                engine.query = Some(CompiledQuery {
-                    language: language_key,
-                    text: query_text.to_owned(),
-                    query: compiled,
-                })
-            }
-            Err(error) => {
-                set_error(format!("cannot read the query: {error}"));
+        // Safety: the caller gives an engine and a language from this
+        // bridge, source_len readable bytes at source, and query_len
+        // readable bytes at query.
+        let language_key = language as usize;
+        let engine = unsafe { &mut *engine };
+        let grammar = unsafe { &*language }.language.clone();
+        let source = unsafe { slice_of(source, source_len) };
+        let query_bytes = unsafe { slice_of(query, query_len) };
+
+        if let Err(error) = engine.parser.set_language(&grammar) {
+            set_error(format!("cannot use the grammar: {error}"));
+            return std::ptr::null_mut();
+        }
+        let tree = match engine.parser.parse(source, None) {
+            Some(tree) => tree,
+            None => {
+                set_error("the grammar produced no parse tree");
                 return std::ptr::null_mut();
             }
-        }
-    }
-    let query = match &engine.query {
-        Some(compiled) => &compiled.query,
-        None => {
-            set_error("the engine holds no compiled query");
-            return std::ptr::null_mut();
-        }
-    };
-    let names = query.capture_names().to_vec();
+        };
 
-    let mut buffer = Vec::new();
-    put_header(&mut buffer, KIND_CAPTURES);
-    let mut count: u32 = 0;
-    let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(query, tree.root_node(), source);
-    while let Some(found) = matches.next() {
-        for capture in found.captures {
-            let node = capture.node;
-            let start = node.start_position();
-            let end = node.end_position();
-            put_u32(&mut buffer, found.pattern_index as u32);
-            put_u32(&mut buffer, node.start_byte() as u32);
-            put_u32(&mut buffer, node.end_byte() as u32);
-            put_u32(&mut buffer, start.row as u32);
-            put_u32(&mut buffer, start.column as u32);
-            put_u32(&mut buffer, end.row as u32);
-            put_u32(&mut buffer, end.column as u32);
-            let name = names.get(capture.index as usize).copied().unwrap_or("");
-            put_bytes(&mut buffer, name.as_bytes());
-            put_bytes(&mut buffer, node.kind().as_bytes());
-            // A panic would cross the C boundary and abort the
-            // process. A node outside the source text therefore gives
-            // an empty text and not a panic.
-            let text = source
-                .get(node.start_byte()..node.end_byte())
-                .unwrap_or(&[]);
-            put_bytes(&mut buffer, text);
-            count += 1;
+        if query_len == 0 {
+            let mut buffer = Vec::new();
+            put_header(&mut buffer, KIND_TREE);
+            let mut sexp = String::new();
+            write_sexp(tree.root_node(), source, &mut sexp);
+            put_bytes(&mut buffer, sexp.as_bytes());
+            set_count(&mut buffer, 1);
+            return into_result(buffer);
         }
-    }
-    set_count(&mut buffer, count);
-    into_result(buffer)
+
+        let query_text = match std::str::from_utf8(query_bytes) {
+            Ok(text) => text,
+            Err(_) => {
+                set_error("the query is not valid UTF-8");
+                return std::ptr::null_mut();
+            }
+        };
+        // The engine keeps the query it compiled last. One run of
+        // "sinter parse" puts the same query over many files, so the
+        // query is compiled once and not once per file.
+        let hit = engine
+            .query
+            .as_ref()
+            .is_some_and(|c| c.language == language_key && c.text == query_text);
+        if !hit {
+            match Query::new(&grammar, query_text) {
+                Ok(compiled) => {
+                    engine.query = Some(CompiledQuery {
+                        language: language_key,
+                        text: query_text.to_owned(),
+                        query: compiled,
+                    })
+                }
+                Err(error) => {
+                    set_error(format!("cannot read the query: {error}"));
+                    return std::ptr::null_mut();
+                }
+            }
+        }
+        let query = match &engine.query {
+            Some(compiled) => &compiled.query,
+            None => {
+                set_error("the engine holds no compiled query");
+                return std::ptr::null_mut();
+            }
+        };
+        let names = query.capture_names().to_vec();
+
+        let mut buffer = Vec::new();
+        put_header(&mut buffer, KIND_CAPTURES);
+        let mut count: u32 = 0;
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(query, tree.root_node(), source);
+        while let Some(found) = matches.next() {
+            for capture in found.captures {
+                let node = capture.node;
+                let start = node.start_position();
+                let end = node.end_position();
+                put_u32(&mut buffer, found.pattern_index as u32);
+                put_u32(&mut buffer, node.start_byte() as u32);
+                put_u32(&mut buffer, node.end_byte() as u32);
+                put_u32(&mut buffer, start.row as u32);
+                put_u32(&mut buffer, start.column as u32);
+                put_u32(&mut buffer, end.row as u32);
+                put_u32(&mut buffer, end.column as u32);
+                let name = names.get(capture.index as usize).copied().unwrap_or("");
+                put_bytes(&mut buffer, name.as_bytes());
+                put_bytes(&mut buffer, node.kind().as_bytes());
+                let text = source
+                    .get(node.start_byte()..node.end_byte())
+                    .unwrap_or(&[]);
+                put_bytes(&mut buffer, text);
+                count += 1;
+            }
+        }
+        set_count(&mut buffer, count);
+        into_result(buffer)
+    })
 }
 
 /// Free a result.
@@ -476,19 +497,23 @@ pub unsafe extern "C" fn sinter_bridge_run(
 /// points to becomes invalid.
 #[no_mangle]
 pub unsafe extern "C" fn sinter_bridge_result_free(result: *mut SinterBridgeResult) {
-    if result.is_null() {
-        return;
-    }
-    // Safety: the caller passes a pointer from sinter_bridge_run and
-    // does not use it again.
-    let result = unsafe { Box::from_raw(result) };
-    drop(unsafe { Vec::from_raw_parts(result.data, result.len, result.capacity) });
+    guard((), move || {
+        if result.is_null() {
+            return;
+        }
+        // Safety: the caller passes a pointer from sinter_bridge_run and
+        // does not use it again.
+        let result = unsafe { Box::from_raw(result) };
+        drop(unsafe { Vec::from_raw_parts(result.data, result.len, result.capacity) });
+    })
 }
 
 /// The message of the last failure on the calling thread.
 #[no_mangle]
 pub extern "C" fn sinter_bridge_last_error() -> *const c_char {
-    LAST_ERROR.with(|cell| cell.borrow().as_ptr())
+    guard(c"".as_ptr(), move || {
+        LAST_ERROR.with(|cell| cell.borrow().as_ptr())
+    })
 }
 
 #[cfg(test)]
@@ -657,6 +682,18 @@ mod tests {
                 .map(|c| c.text)
                 .collect(),
         )
+    }
+
+    #[test]
+    fn a_panic_becomes_a_failure_and_not_an_abort() {
+        set_error("");
+        let value = guard(-1_i32, || panic!("a panic inside the bridge"));
+        assert_eq!(value, -1);
+        let message = unsafe { CStr::from_ptr(sinter_bridge_last_error()) }
+            .to_str()
+            .unwrap()
+            .to_owned();
+        assert!(!message.is_empty(), "the guard stored no message");
     }
 
     #[test]

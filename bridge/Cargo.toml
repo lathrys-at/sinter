@@ -22,3 +22,6 @@ wasmtime = { version = "29", default-features = false, features = ["cache", "cra
 
 [profile.release]
 opt-level = 2
+# The bridge catches a panic at every C function and turns it into a
+# failure the caller can read. `panic = "abort"` would end the process
+# instead, so this profile must not set it.
