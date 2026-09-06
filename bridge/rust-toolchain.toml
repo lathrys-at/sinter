@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 The Sinter Authors
+
+# @cites parser-bridge
+[toolchain]
+channel = "1.94.1"
+components = ["rustfmt", "clippy"]

@@ -20,6 +20,9 @@
 - **`sinter scan`**
   - Emit the facts that `spec/jsonl.md` defines.
   - Conformance fixtures.
+  - NFC normalization of strings that come from file text
+    (`spec/jsonl.md` section 2), with the `uunf` library. `sinter parse`
+    does not normalize yet.
 - **`sinter check`**
   - The built-in finding classes, `spec/algebra.md` section 9.
   - Classes that need no ledger and no evidence first.

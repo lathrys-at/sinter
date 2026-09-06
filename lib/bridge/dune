@@ -1,0 +1,45 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 The Sinter Authors
+
+(library
+ (name sinter_bridge)
+ (public_name sinter.bridge)
+ (foreign_stubs
+  (language c)
+  (names bridge_stubs)
+  (extra_deps sinter_bridge.h))
+ (foreign_archives sinter_bridge)
+ (c_library_flags
+  (:include link_flags.sexp))
+ ; The crate builds a static library and no shared library, so this
+ ; library has no bytecode mode, and so has every library and
+ ; executable that depends on it.
+ (modes native))
+
+; This rule runs cargo and copies the static library of the crate
+; here, where (foreign_archives) finds it. The same cargo run reports
+; the system libraries that the static link needs, and build.sh writes
+; them to link_flags.sexp.
+;
+; @cites parser-bridge
+; Cargo's build output stays outside _build, in a directory of its own
+; for each checkout. build.sh chooses it; the second argument below is
+; the directory to use when the environment names none.
+
+(rule
+ (targets libsinter_bridge.a link_flags.sexp)
+ (deps
+  build.sh
+  (source_tree %{workspace_root}/bridge))
+ (action
+  (run
+   ./build.sh
+   %{workspace_root}/bridge
+   rust-target
+   libsinter_bridge.a
+   link_flags.sexp)))
+
+(rule
+ (target sinter_bridge.h)
+ (action
+  (copy %{workspace_root}/bridge/include/sinter_bridge.h sinter_bridge.h)))

@@ -1,17 +1,32 @@
 # Third-party components
 
-This file lists each dependency that ships in the Sinter release binary.
-Each row of the table gives one component, the license of that
-component, and a link.
+This file names the third-party components that a reader of the
+license notices must know: the components that ship in the Sinter
+release binary, and the components that are checked into the
+repository. Each row of a table gives one component, the license of
+that component, and a link.
 
-The project has no pinned dependencies yet. The table below lists the
-components that the design expects.
+The parser bridge pins its Rust dependencies in `bridge/Cargo.lock`.
+That file names every crate and its version, and the tables below do
+not repeat it. The licensing workflow reads the license of every crate
+in that lock file and fails on a forbidden one. Some rows below are
+components that the design expects and the project does not pin yet.
 
 | component | license | link |
 |---|---|---|
 | cmdliner | ISC | https://github.com/dbuenzli/cmdliner |
 | wasmtime | Apache-2.0 WITH LLVM-exception | https://github.com/bytecodealliance/wasmtime |
 | tree-sitter runtime | MIT | https://github.com/tree-sitter/tree-sitter |
+| cranelift (a dependency of wasmtime) | Apache-2.0 WITH LLVM-exception | https://github.com/bytecodealliance/wasmtime |
 | jq (only if bundled) | MIT | https://github.com/jqlang/jq |
 | oniguruma (a dependency of jq) | BSD-2-Clause | https://github.com/kkos/oniguruma |
 | OCaml runtime | LGPL-2.1-only WITH OCaml-LGPL-linking-exception | https://ocaml.org/ |
+
+## Files in the repository
+
+These components are checked into the repository. They are not part of
+the release binary. Each one keeps its own license file beside it.
+
+| component | license | link |
+|---|---|---|
+| tree-sitter-json grammar, release v0.24.8, a test fixture | MIT | https://github.com/tree-sitter/tree-sitter-json |

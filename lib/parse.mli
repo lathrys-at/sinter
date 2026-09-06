@@ -1,0 +1,75 @@
+(* SPDX-License-Identifier: Apache-2.0 *)
+(* Copyright 2026 The Sinter Authors *)
+
+(** Parse source files with a tree-sitter grammar and report what a tree-sitter
+    query captures. *)
+
+exception Error of string
+(** Something went wrong, and the string says what. The string is fit to show to
+    the person who ran the command. *)
+
+val read_file : string -> string
+(** [read_file path] is the whole content of the file at [path].
+
+    @raise Error if the file does not open, or if reading it fails. *)
+
+val name_of_wasm : string -> string option
+(** [name_of_wasm wasm] is the name of the grammar in the wasm module [wasm],
+    read from the export whose name starts with ["tree_sitter_"]. It is [None]
+    when the module holds no such export, and when the module is not one the
+    reader can follow. *)
+
+val grammar_name : string -> string
+(** [grammar_name path] is a grammar name from the name of a grammar file. It is
+    the base name without its extension, with each hyphen replaced by an
+    underscore and a leading ["tree_sitter_"] removed. The name of
+    ["packs/tree-sitter-json.wasm"] is therefore ["json"]. {!run} uses this only
+    for a module that {!name_of_wasm} cannot read. *)
+
+val record_of_capture :
+  path:string -> source:string -> Sinter_bridge.capture -> Jsonl.record
+(** [record_of_capture ~path ~source capture] is the JSONL record for one
+    capture in the file at [path]. [source] is the text of that file. The fields
+    are:
+
+    - [path]: the file, as it was named on the command line
+    - [pat]: the index of the pattern in the query, from 0
+    - [cap]: the capture name, without the [@]
+    - [node]: the type of the node, for example ["string_content"]
+    - [sb], [eb]: the start and the end of the node, as byte offsets from the
+      start of the file. The end is exclusive
+    - [line], [col]: the start of the node, from 1. The column counts bytes, not
+      characters
+    - [eline]: the line that holds the last byte of the node, from 1
+    - [ecol]: one byte past the last byte of the node, in the line [eline], from
+      1
+    - [text]: the source text of the node *)
+
+val captures :
+  Sinter_bridge.language -> query:string -> path:string -> Jsonl.record list
+(** [captures language ~query ~path] reads the file at [path], parses it, runs
+    [query] over the parse tree, and gives one record per capture, in the order
+    the query produced them.
+
+    @raise Error if the file does not read, or the parse fails. *)
+
+val tree : Sinter_bridge.language -> path:string -> string
+(** [tree language ~path] reads the file at [path], parses it, and gives the
+    parse tree as an S-expression.
+
+    @raise Error if the file does not read, or the parse fails. *)
+
+val run :
+  grammar:string ->
+  query:string option ->
+  paths:string list ->
+  out_channel ->
+  unit
+(** [run ~grammar ~query ~paths channel] loads the grammar file at [grammar],
+    then handles each file of [paths] in order. When [query] is the path of a
+    query file, it writes one canonical JSONL line per capture. When [query] is
+    [None], it writes the parse tree of each file as an S-expression, one tree
+    per line.
+
+    @raise Error on the first failure, and on a failure to write to [channel].
+*)

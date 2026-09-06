@@ -7,9 +7,11 @@
 # 3. Third-party manifest: THIRD_PARTY.md exists and its table is well-formed.
 #    When the build system exists, this check will regenerate the file and
 #    compare it. A difference will then fail the job.
-# 4. Forbidden licenses: the dependency list contains no GPL, AGPL, SSPL,
-#    or unknown entry. LGPL is allowed only for the OCaml runtime, because
-#    of its linking exception.
+# 4. Forbidden licenses: neither the table in THIRD_PARTY.md nor the Rust
+#    dependencies of the parser bridge carry a GPL, AGPL, SSPL, or unknown
+#    license. LGPL is allowed only for the OCaml runtime, because of its
+#    linking exception, and for a crate that offers another license beside
+#    it.
 
 name: licensing
 
@@ -98,3 +100,35 @@ jobs:
             }
             END { exit bad }
           ' THIRD_PARTY.md
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache: false
+      - name: Check the Rust dependencies for forbidden licenses
+        run: |
+          set -eu
+          licenses=$(mktemp)
+          # The table above names a few crates. This reads every crate of
+          # the lock file, with the license that its own manifest states.
+          cargo metadata --format-version 1 --locked \
+            --manifest-path bridge/Cargo.toml |
+            jq -r '.packages[] | "\(.name)\t\(.license // "unknown")"' \
+            > "$licenses"
+          # A license expression that offers several choices passes when
+          # one choice is free of a forbidden license.
+          awk -F'\t' '
+            {
+              name = $1; expression = $2
+              if (expression == "") expression = "unknown"
+              parts = split(expression, choices, / OR /)
+              ok = 0
+              for (i = 1; i <= parts; i++) {
+                if (choices[i] !~ /GPL|SSPL/ && choices[i] !~ /unknown/) ok = 1
+              }
+              if (!ok) {
+                print "Forbidden or unknown license for " name ": " expression
+                bad = 1
+              }
+            }
+            END { exit bad }
+          ' "$licenses"

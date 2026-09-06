@@ -36,6 +36,24 @@ jobs:
           key: opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
             opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache: false
+          override: true
+          toolchain: 1.94.1
+          components: rustfmt, clippy
+      # The dune rule that runs cargo writes its build output under
+      # ~/.cache/sinter-bridge-build.
+      - name: Cache the cargo state
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/sinter-bridge-build
+          key: cargo-build-${{ matrix.os }}-${{ hashFiles('bridge/Cargo.lock') }}
+          restore-keys: cargo-build-${{ matrix.os }}-
       # opam clones opam-repository and walks the clone at once. Git's
       # background maintenance can remove its lock file in that window,
       # and opam then fails on the vanished file. Turn it off.
@@ -47,6 +65,19 @@ jobs:
           cache: false
       - name: Install dependencies
         run: opam install . --deps-only --with-test --with-dev-setup --locked
+      # Two checkouts that share one cargo build directory can link
+      # each other's library. Each checkout must get its own.
+      - name: Check that two checkouts do not share a build directory
+        run: |
+          set -eu
+          first=$(mktemp -d)/bridge
+          second=$(mktemp -d)/bridge
+          mkdir -p "$first" "$second"
+          one=$(sh lib/bridge/build.sh --target-dir "$first")
+          two=$(sh lib/bridge/build.sh --target-dir "$second")
+          echo "one: $one"
+          echo "two: $two"
+          test "$one" != "$two"
       - name: Build
         run: opam exec -- dune build
       - name: Test
@@ -77,3 +108,40 @@ jobs:
         run: opam install . --deps-only --with-test --with-dev-setup --locked
       - name: Check that the code is formatted
         run: opam exec -- dune build @fmt
+
+  rust:
+    name: Check the bridge crate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache: false
+          override: true
+          toolchain: 1.94.1
+          components: rustfmt, clippy
+      - name: Cache the cargo state
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            bridge/target
+          key: cargo-rust-${{ hashFiles('bridge/Cargo.lock') }}
+          restore-keys: cargo-rust-
+      - name: Check that the crate is formatted
+        run: cargo fmt --check --manifest-path bridge/Cargo.toml
+      - name: Check the crate with clippy
+        run: >
+          cargo clippy --release --manifest-path bridge/Cargo.toml
+          --all-targets -- -D warnings
+      - name: Run the crate's tests
+        run: cargo test --release --manifest-path bridge/Cargo.toml
+      # The list of libraries that a static link of the crate needs
+      # differs between macOS and Linux. This step reports the Linux
+      # list in the log of the job.
+      - name: Report the libraries that a static link needs
+        run: >
+          cargo rustc --release --manifest-path bridge/Cargo.toml
+          -- --print native-static-libs

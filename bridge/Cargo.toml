@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 The Sinter Authors
+
+[package]
+name = "sinter-bridge"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+description = "The C interface that Sinter uses to load tree-sitter grammars from WebAssembly"
+
+[lib]
+name = "sinter_bridge"
+crate-type = ["staticlib"]
+
+[dependencies]
+tree-sitter = { version = "0.25", features = ["wasm"] }
+# @cites parser-bridge
+# tree-sitter re-exports wasmtime. This entry names no second copy of
+# wasmtime: it adds the "cache" feature to the copy tree-sitter builds.
+wasmtime = { version = "29", default-features = false, features = ["cache", "cranelift", "runtime", "std"] }
+
+[profile.release]
+opt-level = 2
+# The bridge catches a panic at every C function and turns it into a
+# failure the caller can read. `panic = "abort"` would end the process
+# instead, so this profile must not set it.
