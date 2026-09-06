@@ -212,6 +212,17 @@ let loads_a_grammar_file_under_another_name () =
     "the renamed grammar parses the sample" true
     (String.starts_with ~prefix:"(document" tree)
 
+let names_a_source_that_cannot_be_read () =
+  let message =
+    try
+      ignore (output ~query:(Some query) ~paths:[ "." ]);
+      "no failure"
+    with Parse.Error message -> message
+  in
+  Alcotest.(check bool)
+    "the message names the directory and says what is wrong" true
+    (String.starts_with ~prefix:".:" message && contains "directory" message)
+
 let names_the_grammar () =
   let check expected path =
     Alcotest.(check string) path expected (Parse.grammar_name path)
@@ -244,5 +255,7 @@ let tests =
       reads_the_grammar_name_from_the_module;
     Alcotest.test_case "loads a grammar file under another name" `Quick
       loads_a_grammar_file_under_another_name;
+    Alcotest.test_case "names a source that cannot be read" `Quick
+      names_a_source_that_cannot_be_read;
     Alcotest.test_case "names the grammar" `Quick names_the_grammar;
   ]

@@ -43,7 +43,10 @@ let read_file path =
     ~finally:(fun () -> close_in_noerr channel)
     (fun () ->
       try really_input_string channel (in_channel_length channel) with
-      | Sys_error message -> fail "%s" message
+      | Sys_error message ->
+          (* The message of a failed read does not name the file, and
+             the message of a failed open does. *)
+          fail "%s: %s" path message
       | End_of_file ->
           fail "%s: the file ended sooner than its length says" path)
 
