@@ -35,6 +35,19 @@ jobs:
           key: opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
             opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+      - uses: dtolnay/rust-toolchain@stable
+      # A dune rule runs cargo, and cargo writes its build output
+      # inside _build. The key holds the lock file, so a change of a
+      # Rust dependency starts from an empty cache.
+      - name: Cache the cargo state
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            _build/default/lib/bridge/rust-target
+          key: cargo-build-${{ matrix.os }}-${{ hashFiles('bridge/Cargo.lock') }}
+          restore-keys: cargo-build-${{ matrix.os }}-
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: ${{ env.OCAML_VERSION }}
@@ -60,6 +73,16 @@ jobs:
           key: opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
             opam-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache the cargo state
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            _build/default/lib/bridge/rust-target
+          key: cargo-format-${{ hashFiles('bridge/Cargo.lock') }}
+          restore-keys: cargo-format-
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: ${{ env.OCAML_VERSION }}
@@ -68,3 +91,27 @@ jobs:
         run: opam install . --deps-only --with-test --with-dev-setup --locked
       - name: Check that the code is formatted
         run: opam exec -- dune build @fmt
+
+  rust:
+    name: Check the bridge crate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache the cargo state
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            bridge/target
+          key: cargo-rust-${{ hashFiles('bridge/Cargo.lock') }}
+          restore-keys: cargo-rust-
+      - name: Check that the crate is formatted
+        run: cargo fmt --check --manifest-path bridge/Cargo.toml
+      - name: Check the crate with clippy
+        run: >
+          cargo clippy --manifest-path bridge/Cargo.toml --all-targets
+          -- -D warnings

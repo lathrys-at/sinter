@@ -7,7 +7,7 @@
  ; sinter.bridge links a static Rust library and has no bytecode
  ; mode. See lib/bridge/dune.
  (modes native)
- (libraries sinter_bridge yojson))
+ (libraries sinter_bridge))
 
 ; git_version.ml holds the output of "git describe" for the current
 ; state of the checkout. The rule runs on every build; dependents
