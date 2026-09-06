@@ -10,3 +10,6 @@ _opam/
 .LSOverride
 ._*
 Icon?
+
+# Claude Code agent worktrees
+.claude/worktrees/
