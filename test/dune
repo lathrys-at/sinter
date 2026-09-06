@@ -5,5 +5,6 @@
  (name test_sinter)
  (modes exe)
  (deps
+  %{exe:../bin/main.exe}
   (glob_files_rec fixtures/*))
  (libraries sinter_core alcotest))

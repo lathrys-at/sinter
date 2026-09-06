@@ -21,6 +21,13 @@ let sorts_keys_by_utf16_code_units () =
     "U+10000 sorts before U+E000" true
     (Jsonl.compare_keys astral private_use < 0)
 
+let sorts_a_whole_record_by_utf16_code_units () =
+  let astral = "\xf0\x90\x80\x80" in
+  let private_use = "\xee\x80\x80" in
+  line "the astral key comes first"
+    ("{\"" ^ astral ^ "\":1,\"" ^ private_use ^ "\":2}")
+    (Jsonl.to_string [ (private_use, Jsonl.int 2); (astral, Jsonl.int 1) ])
+
 let writes_every_value_type () =
   line "all four value types"
     {|{"empty":[],"flag":false,"n":-7,"names":["x","y"],"s":"t","sizes":[1,2]}|}
@@ -88,6 +95,8 @@ let tests =
     Alcotest.test_case "sorts keys" `Quick sorts_keys;
     Alcotest.test_case "sorts keys by UTF-16 code units" `Quick
       sorts_keys_by_utf16_code_units;
+    Alcotest.test_case "sorts a whole record by UTF-16 code units" `Quick
+      sorts_a_whole_record_by_utf16_code_units;
     Alcotest.test_case "writes every value type" `Quick writes_every_value_type;
     Alcotest.test_case "escapes as RFC 8785 requires" `Quick
       escapes_as_rfc_8785_requires;
