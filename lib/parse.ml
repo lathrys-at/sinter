@@ -5,9 +5,6 @@ exception Error of string
 
 let fail format = Printf.ksprintf (fun message -> raise (Error message)) format
 
-(* @cites json-handling *)
-(* Every string in a record is UTF-8, and the text of a capture comes
-   from the file. *)
 let is_utf_8 text =
   let length = String.length text in
   let rec check offset =
@@ -19,6 +16,10 @@ let is_utf_8 text =
   in
   check 0
 
+(* @cites json-handling *)
+(* Every string in a record is UTF-8. The text of a capture comes from
+   the file, and the name of the file goes into the record beside
+   it. *)
 let check_utf_8 path text =
   let length = String.length text in
   let offset = ref 0 in
@@ -29,8 +30,6 @@ let check_utf_8 path text =
     offset := !offset + Uchar.utf_decode_length decoded
   done
 
-(* The name of a file goes into a record, and every string in a record
-   is UTF-8. *)
 let check_path path =
   if not (is_utf_8 path) then
     fail "the file name is not UTF-8 text: %s" (String.escaped path)
