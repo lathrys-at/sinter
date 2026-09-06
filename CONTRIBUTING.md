@@ -37,11 +37,17 @@ newer). Then, from the repository root:
 
 ```
 eval $(opam env)
-opam install . --deps-only --with-test
+opam install . --deps-only --with-test --with-dev-setup --locked
 dune build
 dune test
 dune fmt
 ```
+
+The `--with-dev-setup` flag installs `ocamlformat`, and `--locked`
+installs the versions in `sinter.opam.locked`, the same versions CI
+uses. When you change the dependencies in `dune-project`, run
+`dune build` and then `opam lock ./sinter.opam`, and commit both
+`sinter.opam` and `sinter.opam.locked`.
 
 Before you commit, check two things:
 

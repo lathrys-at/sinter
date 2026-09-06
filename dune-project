@@ -17,4 +17,8 @@
   dune
   (cmdliner (>= 1.3))
   dune-build-info
-  (alcotest :with-test)))
+  (alcotest :with-test)
+  (ocamlformat
+   (and
+    :with-dev-setup
+    (= 0.29.0)))))
