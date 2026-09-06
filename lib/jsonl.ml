@@ -11,16 +11,12 @@ let bool b = Scalar (Bool b)
 let strings l = Array (List.map (fun s -> String s) l)
 let ints l = Array (List.map (fun i -> Int i) l)
 
-(* spec/jsonl.md section 2 allows an integer in
-   [-(2^53-1), 2^53-1]. A reader that holds numbers as IEEE 754
-   double-precision floats, which JavaScript does, represents every
-   integer in that range exactly. *)
+(* The canonical form allows an integer in this range only.
+   @cites json-handling *)
 let max_int_value = 9007199254740991
 let min_int_value = -9007199254740991
 
-(* The UTF-16 code units of a UTF-8 string. A code point below
-   U+10000 is one code unit. A code point at U+10000 or above is a
-   pair of surrogate code units. *)
+(* The UTF-16 code units of a UTF-8 string. *)
 let utf16_units s =
   let units = ref [] in
   let n = String.length s in
@@ -38,15 +34,11 @@ let utf16_units s =
   List.rev !units
 
 let compare_keys a b =
-  (* Two names that hold the same bytes are equal. The decode below
-     is only needed when they differ. *)
   if String.equal a b then 0
   else List.compare Int.compare (utf16_units a) (utf16_units b)
 
-(* RFC 8785 section 3.2.2.2 defines this escaping. It is the escaping
-   that ECMAScript's JSON.stringify produces: seven two-character
-   escapes, then \u00xx with lowercase hex for the other control
-   characters, and the literal UTF-8 bytes for everything else. *)
+(* The escaping of RFC 8785 section 3.2.2.2.
+   @cites json-handling *)
 let add_escaped buffer s =
   Buffer.add_char buffer '"';
   let n = String.length s in
@@ -77,8 +69,8 @@ let add_scalar buffer = function
   | Int i ->
       if i < min_int_value || i > max_int_value then
         invalid_arg
-          "Sinter_core.Jsonl: an integer value is outside the range that \
-           spec/jsonl.md section 2 allows";
+          "Sinter_core.Jsonl: an integer value is outside the range -(2^53-1) \
+           to 2^53-1";
       Buffer.add_string buffer (string_of_int i)
   | Bool b -> Buffer.add_string buffer (if b then "true" else "false")
 

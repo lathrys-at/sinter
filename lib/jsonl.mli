@@ -1,13 +1,14 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(** The canonical form of one JSON Lines record, as spec/jsonl.md section 2
-    defines it. A record is a JSON object. The keys are sorted by UTF-16 code
-    units. The line holds no insignificant whitespace. The line ends with LF.
+(* @cites json-handling *)
 
-    The schema allows four kinds of value: a string, an integer, a boolean, and
-    a flat array of one of those three. It allows no float, no null, and no
-    nested object. The types below allow nothing else. *)
+(** The canonical form of one JSON Lines record. A record is a JSON object. Its
+    keys are sorted by UTF-16 code units. The line holds no insignificant
+    whitespace, and it ends with LF.
+
+    A value is a string, an integer, a boolean, or a flat array of one of those
+    three. A float, a null, and a nested object are not values. *)
 
 type scalar =
   | String of string
@@ -34,8 +35,7 @@ val to_string : record -> string
 
     @raise Invalid_argument
       if the record holds the same field name twice, if an integer is outside
-      the range that spec/jsonl.md section 2 allows, or if a string is not valid
-      UTF-8. *)
+      the range [-(2^53-1)] to [2^53-1], or if a string is not valid UTF-8. *)
 
 val output : out_channel -> record -> unit
 (** [output channel record] writes the canonical line for [record] to [channel],
@@ -43,4 +43,4 @@ val output : out_channel -> record -> unit
 
 val compare_keys : string -> string -> int
 (** [compare_keys a b] orders two field names by their UTF-16 code units. This
-    is the order that spec/jsonl.md section 2 requires. *)
+    is the order of the keys in a canonical record. *)

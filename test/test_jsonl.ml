@@ -10,11 +10,9 @@ let sorts_keys () =
     (Jsonl.to_string
        [ ("c", Jsonl.int 3); ("a", Jsonl.int 1); ("b", Jsonl.int 2) ])
 
-(* spec/jsonl.md section 2 orders keys by UTF-16 code units. A code
+(* UTF-16 order and UTF-8 byte order disagree for this pair. A code
    point at U+10000 or above starts with a high surrogate, and a high
-   surrogate is below U+E000. In UTF-8 byte order the same code point
-   sorts after U+E000. The two orders therefore differ for this
-   pair. *)
+   surrogate is below U+E000. *)
 let sorts_keys_by_utf16_code_units () =
   (* "\xf0\x90\x80\x80" is U+10000; "\xee\x80\x80" is U+E000. *)
   let astral = "\xf0\x90\x80\x80" in
@@ -59,8 +57,8 @@ let rejects_an_integer_that_is_too_large () =
   let too_large = 9007199254740992 in
   Alcotest.check_raises "2^53 is out of range"
     (Invalid_argument
-       "Sinter_core.Jsonl: an integer value is outside the range that \
-        spec/jsonl.md section 2 allows") (fun () ->
+       "Sinter_core.Jsonl: an integer value is outside the range -(2^53-1) to \
+        2^53-1") (fun () ->
       ignore (Jsonl.to_string [ ("n", Jsonl.int too_large) ]))
 
 let accepts_the_largest_integer () =
