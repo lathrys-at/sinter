@@ -89,3 +89,9 @@ and a `--query` file that does not exist is code 3.
 
 Code 1 is unused until the first command reports findings. The `parse`
 command reports captures, not findings, so it exits 0 or above 1.
+
+The five cover the outcomes a command designs for. A fault of the tool
+itself is outside them: an exception that a command does not catch
+reaches the argument parser, which reports its own internal-error
+code. This record does not decide whether such a fault should be
+mapped onto one of the five, or left loud and distinct.
