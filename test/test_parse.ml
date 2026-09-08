@@ -353,9 +353,9 @@ let spanning_query =
    (string_content) @c\n\
    (number) @n\n"
 
-(* [source] in a file of its own, and the records that Parse gives for
-   that file. *)
-let records_of source =
+(* Put [source] in a file of its own, and run [use] on the path of
+   that file. The file is gone when [use] returns. *)
+let in_a_file source use =
   let path = Filename.temp_file "sinter-parse" ".json" in
   Fun.protect
     ~finally:(fun () -> Sys.remove path)
@@ -364,7 +364,19 @@ let records_of source =
       Fun.protect
         ~finally:(fun () -> close_out_noerr channel)
         (fun () -> output_string channel source);
+      use path)
+
+let records_of source =
+  in_a_file source (fun path ->
       (path, Parse.captures (Lazy.force language) ~query:spanning_query ~path))
+
+(* Parse.tree reads the file and gives what the bridge gives for its
+   text. *)
+let the_tree_of_a_file_is_the_tree_of_its_text document =
+  let source = document ^ "\n" in
+  String.equal
+    (in_a_file source (fun path -> Parse.tree (Lazy.force language) ~path))
+    (Sinter_bridge.tree (Lazy.force language) ~source)
 
 let the_records_of_a_file_agree_with_the_source document =
   (* A file ends with a line feed, and the end of the document node
@@ -426,6 +438,9 @@ let properties =
     property ~count:200 ~name:"the records of a file agree with the source"
       ~print:Fun.id Generators.json_source
       the_records_of_a_file_agree_with_the_source;
+    property ~count:200 ~name:"the tree of a file is the tree of its text"
+      ~print:Fun.id Generators.json_source
+      the_tree_of_a_file_is_the_tree_of_its_text;
     property ~name:"the reader of a wasm module answers for any bytes"
       ~print:String.escaped Generators.wasm_bytes
       the_reader_of_a_module_answers_for_any_bytes;
