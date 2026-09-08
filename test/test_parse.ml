@@ -276,6 +276,166 @@ let names_the_grammar () =
   check "json" "json.wasm";
   check "type_script" "packs/tree-sitter-type-script.wasm"
 
+(* An engine that the caller owns, with the grammar of the fixture
+   loaded into it. This is the way the serve mode uses Parse. *)
+let with_language f =
+  let engine = Sinter_bridge.create () in
+  Fun.protect
+    ~finally:(fun () -> Sinter_bridge.close engine)
+    (fun () -> f (Parse.load engine ~grammar))
+
+let folds_one_tree_over_each_file () =
+  let items =
+    with_language (fun language ->
+        let seen = ref [] in
+        Parse.fold language ~query:None ~paths:[ sample; sample ]
+          ~f:(fun item -> seen := item :: !seen);
+        List.rev !seen)
+  in
+  Alcotest.(check int) "one item for each file" 2 (List.length items);
+  List.iter
+    (function
+      | Parse.Tree { path; sexp } ->
+          Alcotest.(check string) "the item names its file" sample path;
+          Alcotest.(check bool)
+            "the item holds the parse tree" true
+            (String.starts_with ~prefix:"(document" sexp)
+      | Parse.Capture _ -> Alcotest.fail "a fold with no query gave a capture")
+    items
+
+let folds_the_captures_of_the_query () =
+  let items =
+    with_language (fun language ->
+        let seen = ref [] in
+        Parse.fold language ~query:(Some query) ~paths:[ sample ]
+          ~f:(fun item -> seen := item :: !seen);
+        List.rev !seen)
+  in
+  Alcotest.(check int) "six captures of the fixture" 6 (List.length items);
+  List.iter
+    (function
+      | Parse.Capture record ->
+          Alcotest.(check bool)
+            "the record names the file it comes from" true
+            (List.assoc_opt "path" record = Some (Jsonl.string sample))
+      | Parse.Tree _ -> Alcotest.fail "a fold with a query gave a tree")
+    items
+
+(* The lines of an output, without the empty piece that follows the
+   last line feed. *)
+let output_lines text =
+  let pieces = String.split_on_char '\n' text in
+  match List.rev pieces with "" :: rest -> List.rev rest | _ -> pieces
+
+(* The lines that one run of the one-shot command wrote, and its
+   outcome. A run that fails keeps the lines it wrote first. *)
+let command_output ~query ~paths =
+  let file = Filename.temp_file "sinter-parse" ".out" in
+  let channel = open_out_bin file in
+  Fun.protect
+    ~finally:(fun () -> Sys.remove file)
+    (fun () ->
+      let outcome =
+        match Parse.run ~grammar ~query ~paths channel with
+        | () -> Ok ()
+        | exception Parse.Error message -> Error message
+      in
+      close_out_noerr channel;
+      let channel = open_in_bin file in
+      let text =
+        Fun.protect
+          ~finally:(fun () -> close_in_noerr channel)
+          (fun () -> really_input_string channel (in_channel_length channel))
+      in
+      (output_lines text, outcome))
+
+(* One state for the whole property. It holds the engine and the
+   grammar, so the property also exercises the cache. The collector
+   frees the engine when the test binary ends. *)
+let state = lazy (Serve.create ())
+
+let request ~query ~paths ~tag =
+  let files = String.concat "," (List.map (Printf.sprintf "%S") paths) in
+  let selection =
+    match query with
+    | None -> {|"tree":true|}
+    | Some path -> Printf.sprintf {|"query":%S|} path
+  in
+  Printf.sprintf {|{"id":%s,"op":"parse","grammar":%S,%s,"files":[%s]}|} tag
+    grammar selection files
+
+(* The value that the req field of every answer line must hold. The
+   tag is the JSON text of the id of the request. *)
+let value_of_tag tag =
+  if String.length tag > 0 && tag.[0] = '"' then
+    Jsonl.string (String.sub tag 1 (String.length tag - 2))
+  else Jsonl.int (int_of_string tag)
+
+let sources =
+  [
+    sample;
+    "fixtures/sample.scm";
+    "no-such-file.json";
+    "fixtures/tree-sitter-json/tree-sitter-json.wasm";
+  ]
+
+let arguments =
+  QCheck.(
+    triple
+      (list_size (Gen.int_range 1 3) (oneof_list sources))
+      bool
+      (oneof_list [ "0"; "17"; {|"a"|}; {|"a tag"|} ]))
+
+(* One answer line of the op against one line of the command. In the
+   query case the two records are the same, apart from the tag. In the
+   tree case the command writes the S-expression alone and the op
+   writes it in a field beside the path of the file. *)
+let same_capture ~tag record line =
+  List.assoc_opt "req" record = Some (value_of_tag tag)
+  && String.equal (Jsonl.to_string (List.remove_assoc "req" record)) line
+
+let same_tree ~tag ~path record line =
+  List.length record = 3
+  && List.assoc_opt "req" record = Some (value_of_tag tag)
+  && List.assoc_opt "path" record = Some (Jsonl.string path)
+  && List.assoc_opt "tree" record = Some (Jsonl.string line)
+
+(* The op writes one tree for each file, in the order of the files, so
+   a tree answer is a prefix of the files. *)
+let rec same_trees ~tag records lines paths =
+  match (records, lines, paths) with
+  | [], [], _ -> true
+  | record :: records, line :: lines, path :: paths ->
+      same_tree ~tag ~path record line && same_trees ~tag records lines paths
+  | _ -> false
+
+let the_op_answers_with_the_lines_of_the_command =
+  QCheck.Test.make ~count:50
+    ~name:"the parse op answers with the lines of the one-shot command"
+    arguments (fun (paths, with_query, tag) ->
+      let query = if with_query then Some query else None in
+      let lines, outcome = command_output ~query ~paths in
+      let response =
+        Serve.respond (Lazy.force state) (request ~query ~paths ~tag)
+      in
+      let records = Serve.lines response in
+      let last = List.length records - 1 in
+      let items = List.filteri (fun index _ -> index < last) records in
+      let same_control =
+        match (outcome, Serve.control response) with
+        | Ok (), Serve.Done 0 -> true
+        | Error message, Serve.Failed (3, said) -> String.equal said message
+        | _ -> false
+      in
+      let same_items =
+        List.length items = List.length lines
+        &&
+        match query with
+        | Some _ -> List.for_all2 (same_capture ~tag) items lines
+        | None -> same_trees ~tag items lines paths
+      in
+      same_control && same_items)
+
 let tests =
   [
     Alcotest.test_case "prints the captures of the fixture" `Quick
@@ -306,4 +466,9 @@ let tests =
     Alcotest.test_case "names the grammar" `Quick names_the_grammar;
     Alcotest.test_case "gives no name that holds a NUL byte" `Quick
       gives_no_name_that_holds_a_nul_byte;
+    Alcotest.test_case "folds one tree over each file" `Quick
+      folds_one_tree_over_each_file;
+    Alcotest.test_case "folds the captures of the query" `Quick
+      folds_the_captures_of_the_query;
+    QCheck_alcotest.to_alcotest the_op_answers_with_the_lines_of_the_command;
   ]
