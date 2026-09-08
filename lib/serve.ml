@@ -109,7 +109,7 @@ let respond state line =
       {
         tag = Option.map Request.value_of_id id;
         output = [];
-        outcome = Failed (usage_error, Request.message cause);
+        outcome = Failed (usage_error, printable (Request.message cause));
       }
   | Ok request -> run state (Request.value_of_id request.id) request.op
 
