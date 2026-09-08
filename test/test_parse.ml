@@ -181,6 +181,26 @@ let reads_the_grammar_name_from_the_module () =
     "a header without sections has no name" None
     (Parse.name_of_wasm "\000asm\001\000\000\000")
 
+(* A wasm module of a header and one export section. The section
+   holds one export of the given name, of kind 0 and index 0. Every
+   count and every length in the format is one byte here, because the
+   test keeps them below 128. *)
+let module_that_exports name =
+  let section =
+    Printf.sprintf "\001%c%s\000\000" (Char.chr (String.length name)) name
+  in
+  Printf.sprintf "\000asm\001\000\000\000\007%c%s"
+    (Char.chr (String.length section))
+    section
+
+let gives_no_name_that_holds_a_nul_byte () =
+  Alcotest.(check (option string))
+    "a name without a NUL byte is a name" (Some "json")
+    (Parse.name_of_wasm (module_that_exports "tree_sitter_json"));
+  Alcotest.(check (option string))
+    "a name with a NUL byte is no name" None
+    (Parse.name_of_wasm (module_that_exports "tree_sitter_js\000n"))
+
 (* The name that the bridge needs comes from the module, so a file
    that a user renamed still loads. *)
 let loads_a_grammar_file_under_another_name () =
@@ -284,4 +304,6 @@ let tests =
     Alcotest.test_case "writes a tree that nests deeply" `Quick
       writes_a_tree_that_nests_deeply;
     Alcotest.test_case "names the grammar" `Quick names_the_grammar;
+    Alcotest.test_case "gives no name that holds a NUL byte" `Quick
+      gives_no_name_that_holds_a_nul_byte;
   ]

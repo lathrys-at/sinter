@@ -88,9 +88,13 @@ let name_of_wasm wasm =
             offset >= stop
           then None
           else if String.starts_with ~prefix found then
-            Some
-              (String.sub found (String.length prefix)
-                 (String.length found - String.length prefix))
+            let name =
+              String.sub found (String.length prefix)
+                (String.length found - String.length prefix)
+            in
+            (* The bridge takes the name as a C string, and a module
+               can export a name that holds a NUL byte. *)
+            if String.contains name '\000' then None else Some name
           else
             match number (offset + 1) 0 0 with
             | None -> None
@@ -187,10 +191,6 @@ let load engine ~grammar =
     | Some name -> name
     | None -> grammar_name grammar
   in
-  (* The bridge takes the name as a C string. A module can export any
-     name, so a name from a module can hold a NUL byte. *)
-  if String.contains name '\000' then
-    fail "%s: the grammar does not load: its name holds a NUL byte" grammar;
   try Sinter_bridge.load engine ~name ~wasm
   with Sinter_bridge.Error message ->
     fail "%s: the grammar does not load: %s" grammar message
