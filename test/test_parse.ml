@@ -380,11 +380,16 @@ let sources =
   ]
 
 let arguments =
-  QCheck.(
+  QCheck2.Gen.(
     triple
-      (list_size (Gen.int_range 1 3) (oneof_list sources))
+      (list_size (int_range 1 3) (oneof_list sources))
       bool
       (oneof_list [ "0"; "17"; {|"a"|}; {|"a tag"|} ]))
+
+let print_arguments (paths, with_query, tag) =
+  Printf.sprintf "%s, %s, id %s" (String.concat " " paths)
+    (if with_query then "a query" else "a tree")
+    tag
 
 (* One answer line of the op against one line of the command. In the
    query case the two records are the same, apart from the tag. In the
@@ -410,7 +415,7 @@ let rec same_trees ~tag records lines paths =
   | _ -> false
 
 let the_op_answers_with_the_lines_of_the_command =
-  QCheck.Test.make ~count:50
+  QCheck2.Test.make ~count:50 ~print:print_arguments
     ~name:"the parse op answers with the lines of the one-shot command"
     arguments (fun (paths, with_query, tag) ->
       let query = if with_query then Some query else None in
@@ -470,5 +475,6 @@ let tests =
       folds_one_tree_over_each_file;
     Alcotest.test_case "folds the captures of the query" `Quick
       folds_the_captures_of_the_query;
-    QCheck_alcotest.to_alcotest the_op_answers_with_the_lines_of_the_command;
+    QCheck_alcotest.to_alcotest ~speed_level:`Quick
+      the_op_answers_with_the_lines_of_the_command;
   ]
