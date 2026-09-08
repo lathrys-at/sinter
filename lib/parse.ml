@@ -112,7 +112,12 @@ let name_of_wasm wasm =
       | Some _ -> None
   in
   if length < 8 || not (String.starts_with ~prefix:"\000asm" wasm) then None
-  else section 8
+  else
+    match section 8 with
+    (* The bridge loads a grammar under a C string, so a name that
+       holds a NUL byte is no name at all. *)
+    | Some name when String.contains name '\000' -> None
+    | found -> found
 
 let grammar_name path =
   let base = Filename.remove_extension (Filename.basename path) in

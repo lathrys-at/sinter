@@ -442,6 +442,14 @@ let the_reader_of_a_module_answers_for_any_bytes wasm =
   ignore (Parse.name_of_wasm wasm);
   true
 
+(* The bridge refuses a grammar name that holds a NUL byte, so the
+   reader gives no such name and the caller falls back to the file
+   name. *)
+let a_name_from_a_module_can_name_a_grammar wasm =
+  match Parse.name_of_wasm wasm with
+  | None -> true
+  | Some name -> not (String.contains name '\000')
+
 let the_reader_of_a_module_finds_a_generated_export (name, wasm) =
   Option.equal String.equal (Parse.name_of_wasm wasm) (Some name)
 
@@ -454,6 +462,34 @@ let a_grammar_name_holds_no_hyphen path =
 
 let a_grammar_name_drops_the_prefix_and_the_extension name =
   String.equal (Parse.grammar_name ("packs/tree-sitter-" ^ name ^ ".wasm")) name
+
+(* The module below exports "tree_sitter_a\000b". Before the reader
+   refused such a name, "sinter parse" gave the person who ran it the
+   message of the bridge, which names a function of the library. The
+   property "a name from a wasm module can name a grammar" found it.
+   The reader now gives None, the caller falls back to the file name,
+   and the failure is one that names the file. *)
+let refuses_a_module_that_names_itself_with_a_nul_byte () =
+  let wasm = Generators.wasm_module ~before:false ~name:"a\000b" in
+  Alcotest.(check (option string))
+    "a name with a NUL byte is no name" None (Parse.name_of_wasm wasm);
+  let path = Filename.temp_file "sinter-parse" ".wasm" in
+  let message =
+    Fun.protect
+      ~finally:(fun () -> Sys.remove path)
+      (fun () ->
+        let channel = open_out_bin path in
+        Fun.protect
+          ~finally:(fun () -> close_out_noerr channel)
+          (fun () -> output_string channel wasm);
+        try
+          Parse.run ~grammar:path ~query:None ~paths:[ sample ] stdout;
+          "no failure"
+        with Parse.Error message -> message)
+  in
+  Alcotest.(check bool)
+    "the message names the grammar file" true
+    (String.starts_with ~prefix:path message)
 
 let properties =
   [
@@ -486,6 +522,12 @@ let properties =
       ~print:(fun (name, wasm) -> name ^ " " ^ String.escaped wasm)
       Generators.wasm_module_with_a_name
       the_reader_of_a_module_finds_a_generated_export;
+    property ~name:"a name from a wasm module can name a grammar"
+      ~print:String.escaped Generators.wasm_bytes
+      a_name_from_a_module_can_name_a_grammar;
+    property ~name:"a module that names itself with a NUL byte has no name"
+      ~print:String.escaped Generators.wasm_module_whose_name_holds_a_nul
+      a_name_from_a_module_can_name_a_grammar;
     property ~name:"a grammar name comes back for any file name"
       ~print:String.escaped Generators.grammar_file_path
       a_grammar_name_comes_back_for_any_file_name;
@@ -526,5 +568,7 @@ let tests =
     Alcotest.test_case "names the grammar" `Quick names_the_grammar;
     Alcotest.test_case "refuses a capture that runs past the source" `Quick
       refuses_a_capture_that_runs_past_the_source;
+    Alcotest.test_case "refuses a module that names itself with a NUL byte"
+      `Quick refuses_a_module_that_names_itself_with_a_nul_byte;
   ]
   @ properties
