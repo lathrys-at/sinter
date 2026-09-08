@@ -59,17 +59,50 @@ val tree : Sinter_bridge.language -> path:string -> string
 
     @raise Error if the file does not read, or the parse fails. *)
 
+(** One result of one file. *)
+type item =
+  | Capture of Jsonl.record
+      (** one capture of the query, in the file the record names *)
+  | Tree of { path : string; sexp : string }
+      (** the parse tree of the file at [path], as an S-expression *)
+
+val load : Sinter_bridge.t -> grammar:string -> Sinter_bridge.language
+(** [load engine ~grammar] reads the grammar file at [grammar] and loads it into
+    [engine]. The grammar name comes from the module, and from the file name
+    when the module does not carry it. The result stays valid until [engine] is
+    closed.
+
+    @raise Error if the file does not read, or the grammar does not load. *)
+
+val fold :
+  Sinter_bridge.language ->
+  query:string option ->
+  paths:string list ->
+  f:(item -> unit) ->
+  unit
+(** [fold language ~query ~paths ~f] handles each file of [paths] in order and
+    calls [f] on each item, in the order the items come. When [query] is the
+    path of a query file, an item is one capture of that query. When [query] is
+    [None], an item is the parse tree of one file. [f] sees no item of a file
+    that fails.
+
+    @raise Error
+      if a file name is not UTF-8 text, if a file does not read, if the query
+      file is empty or does not compile, or if a parse fails. An exception that
+      [f] raises passes through. *)
+
 val run :
   grammar:string ->
   query:string option ->
   paths:string list ->
   out_channel ->
   unit
-(** [run ~grammar ~query ~paths channel] loads the grammar file at [grammar],
-    then handles each file of [paths] in order. When [query] is the path of a
-    query file, it writes one canonical JSONL line per capture. When [query] is
-    [None], it writes the parse tree of each file as an S-expression, one tree
-    per line.
+(** [run ~grammar ~query ~paths channel] makes an engine of its own, loads the
+    grammar file at [grammar] into it, then handles each file of [paths] in
+    order. When [query] is the path of a query file, it writes one canonical
+    JSONL line per capture. When [query] is [None], it writes the parse tree of
+    each file as an S-expression, one tree per line. It closes the engine before
+    it returns.
 
     @raise Error on the first failure, and on a failure to write to [channel].
 *)
