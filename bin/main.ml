@@ -126,12 +126,84 @@ let parse_cmd =
   in
   Cmd.v info Term.(ret (const run $ grammar $ query $ tree $ paths))
 
+(* serve prints its outcome in the answer, so it reports no finding of
+   its own, and it asks for no approval. *)
+let serve_exits = [ clean_exit; usage_exit; environment_exit ]
+
+let serve_cmd =
+  let doc = "Answer requests that arrive as JSON lines on standard input" in
+  let man =
+    [
+      `S Manpage.s_description;
+      `P
+        "Read one request for each line of standard input, and answer each \
+         request on standard output. Answer a request before reading the next \
+         one. Exit when standard input ends.";
+      `P
+        "A request is a JSON object on one line. Every request holds these two \
+         fields:";
+      `I
+        ( "$(b,id)",
+          "the caller's tag for the request: a string or an integer. Every \
+           line of the answer carries it in the field $(b,req)" );
+      `I
+        ( "$(b,op)",
+          "the operation to run: the name of a command of this tool. \
+           $(b,parse) is the only one" );
+      `P
+        "The other fields of a request are the options of that command, with \
+         the names of the long options. A $(b,parse) request therefore holds \
+         $(b,grammar), $(b,query) or $(b,tree), and $(b,files). A field that \
+         the command does not name is an error, as an unknown option is.";
+      `P
+        "The answer holds every line that the command prints, and one control \
+         line after them. The control line holds $(b,event) of $(b,done) when \
+         the operation ran, and $(b,event) of $(b,error) with a $(b,message) \
+         when it did not. The $(b,code) of the control line is the exit code \
+         that the command returns. A line that this command cannot read as a \
+         request is answered with an error line with code 2 and no $(b,req).";
+      `P
+        "The process holds one parser for its whole life and loads each \
+         grammar once, so a caller that sends many requests pays for the load \
+         once. It reads a grammar file again when the file changes.";
+    ]
+  in
+  let info = Cmd.info "serve" ~doc ~man ~exits:serve_exits in
+  let report message =
+    Printf.eprintf "sinter: %s\n" message;
+    environment_error
+  in
+  let rec answer state =
+    match In_channel.input_line stdin with
+    | None -> clean
+    | Some line ->
+        let response = Sinter_core.Serve.respond state line in
+        List.iter
+          (Sinter_core.Jsonl.output stdout)
+          (Sinter_core.Serve.lines response);
+        flush stdout;
+        answer state
+  in
+  let run () =
+    match Sinter_core.Serve.create () with
+    | exception Sinter_core.Serve.Error message -> report message
+    | state ->
+        Fun.protect
+          ~finally:(fun () -> Sinter_core.Serve.close state)
+          (fun () ->
+            try answer state with
+            | Sys_error message ->
+                report (Printf.sprintf "cannot write the output: %s" message)
+            | Invalid_argument message -> report message)
+  in
+  Cmd.v info Term.(const run $ const ())
+
 let cmd =
   let doc = "plans die into residue; residue is checked" in
   let info = Cmd.info "sinter" ~version ~doc ~exits in
   Cmd.group info
     ~default:Term.(ret (const (`Help (`Pager, None))))
-    [ parse_cmd ]
+    [ parse_cmd; serve_cmd ]
 
 let () =
   let code = Cmd.eval' ~term_err:usage_error cmd in
