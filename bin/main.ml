@@ -192,10 +192,13 @@ let serve_cmd =
         Fun.protect
           ~finally:(fun () -> Sinter_core.Serve.close state)
           (fun () ->
-            try answer state with
-            | Sys_error message ->
-                report (Printf.sprintf "cannot write the output: %s" message)
-            | Invalid_argument message -> report message)
+            (* An exception that is a fault of the tool leaves the
+               loop and reaches the argument parser, which reports its
+               own code. A write that fails is a fault of the
+               environment. *)
+            try answer state
+            with Sys_error message ->
+              report (Printf.sprintf "cannot write the output: %s" message))
   in
   Cmd.v info Term.(const run $ const ())
 
