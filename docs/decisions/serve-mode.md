@@ -75,6 +75,12 @@ is not JSON, a line that is not an object, an object with no `id`, and
 an `id` that is neither a string nor an integer. The loop continues
 after every error. The loop never ends because of what a line holds.
 
+A fault of the tool itself is the one exception. An exception that no
+code catches leaves the loop and ends the process with the code that
+the argument parser reports for its own internal error. That code
+marks a bug in the tool, and it must stay distinct from the outcome of
+a request.
+
 **The process holds one engine and a cache of grammars.** It starts
 the WebAssembly runtime once. It loads a grammar once for each
 `grammar` path and uses the loaded grammar again for every later
