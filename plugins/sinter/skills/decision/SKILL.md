@@ -21,10 +21,11 @@ needs.
 ## Input
 
 The input is the decision. The user states the decision in
-conversation, or a plan step promises it. If the choice or the
-alternatives are not clear from the conversation, ask before you
-write. Never invent an alternative. If the user considered no
-alternative, ask the user what other options existed.
+conversation, or a plan step promises it. If the choice is not clear from the conversation, ask before you
+write. Never invent an alternative. An alternative belongs in the
+record only when someone put it forward and it was deliberated: in
+the conversation, in an issue, in a pull request, in a plan, or in
+the design notes. When nobody put one forward, the record says so.
 
 ## Procedure
 
@@ -95,9 +96,12 @@ Rules for the tag block:
 - The one-sentence description follows the tag lines, on its own
   line.
 
-The "Alternatives considered" section is mandatory and must hold at
-least one entry. This section stops re-argument. Each entry names
-one option and the reason that the project did not choose it.
+The "Alternatives considered" section is mandatory. It lists only
+the alternatives that someone put forward and that were deliberated.
+Each entry names one option and the reason that the project did not
+choose it. When nobody put an alternative forward, the section holds
+one line: `None were put forward.` An alternative that nobody put
+forward lends the decision a weight it did not earn; do not add one.
 
 ### 4. Show the result
 
@@ -117,7 +121,8 @@ The record explains the decision, not the document.
 - The tag block is the first paragraph after the title and starts
   with `@decision <slug>`.
 - The slug matches the pattern and is not in use.
-- All four sections exist, and "Alternatives considered" has at least
-  one entry with a reason.
+- All four sections exist. Every entry in "Alternatives considered"
+  was put forward and deliberated, or the section holds
+  `None were put forward.`
 - Every `@cites` target exists in the repository or is a declared
   ref.
