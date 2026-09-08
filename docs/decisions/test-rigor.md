@@ -53,15 +53,7 @@ what they reach.
 
 ## Alternatives considered
 
-- **`crowbar` for the property tests, instead of `qcheck`** — not
-  chosen for the suite. Its strength is the AFL mode, which drives
-  generation from coverage. Its random mode shrinks a counterexample
-  less well than `qcheck` and reports less, and the suite already runs
-  under alcotest. `crowbar` stays the choice for the fuzz target.
-- **A fixed coverage target, such as 90 percent** — not chosen. A
-  young code base meets a fixed target by writing tests for the
-  number. A threshold that starts at the measured value and only
-  rises stops a decline and follows the code.
+None were put forward.
 
 ## Consequences
 
