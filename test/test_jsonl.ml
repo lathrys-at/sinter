@@ -351,17 +351,23 @@ let properties =
     output_writes_the_line_and_one_lf;
   ]
 
-(* output writes to the channel at once, so a channel that cannot take
-   the bytes fails in the call, not at a later flush. *)
+(* The runtime refuses a write to a closed channel in the call. The
+   message of that failure comes from the C library, so the test reads
+   the class of the exception and not its words. *)
 let reports_a_channel_that_cannot_be_written () =
   let file = Filename.temp_file "sinter-jsonl" ".jsonl" in
   let channel = open_out_bin file in
   close_out channel;
-  Fun.protect
-    ~finally:(fun () -> Sys.remove file)
-    (fun () ->
-      Alcotest.check_raises "a closed channel" (Sys_error "Bad file descriptor")
-        (fun () -> Jsonl.output channel [ ("a", Jsonl.int 1) ]))
+  let failed =
+    Fun.protect
+      ~finally:(fun () -> Sys.remove file)
+      (fun () ->
+        try
+          Jsonl.output channel [ ("a", Jsonl.int 1) ];
+          false
+        with Sys_error _ -> true)
+  in
+  Alcotest.(check bool) "a closed channel raises Sys_error" true failed
 
 let tests =
   [

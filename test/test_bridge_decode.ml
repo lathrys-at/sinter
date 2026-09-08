@@ -67,18 +67,18 @@ let decode_tree_is_total =
     ~print:Generators.print_buffer Generators.buffer_bytes (fun buffer ->
       gives_a_value_or_an_error (fun () -> Sinter_bridge.decode_tree buffer))
 
-(* A capture buffer and a parse tree buffer carry different kinds, so
-   neither decoder reads the other's buffer. *)
-let neither_decoder_reads_the_other_kind =
-  property ~name:"neither decoder reads a buffer of the other kind"
-    ~print:(fun (captures, tree) ->
-      Generators.print_buffer captures ^ " " ^ Generators.print_buffer tree)
-    (QCheck2.Gen.pair
-       (QCheck2.Gen.map snd Generators.captures_buffer)
-       (QCheck2.Gen.map snd Generators.tree_buffer))
-    (fun (captures, tree) ->
-      raises_error (fun () -> Sinter_bridge.decode_captures tree)
-      && raises_error (fun () -> Sinter_bridge.decode_tree captures))
+(* A capture buffer and a parse tree buffer carry different kinds. *)
+let decode_captures_refuses_a_parse_tree_buffer =
+  property ~name:"decode_captures raises Error on a parse tree buffer"
+    ~print:Generators.print_buffer (QCheck2.Gen.map snd Generators.tree_buffer)
+    (fun buffer ->
+      raises_error (fun () -> Sinter_bridge.decode_captures buffer))
+
+let decode_tree_refuses_a_capture_buffer =
+  property ~name:"decode_tree raises Error on a capture buffer"
+    ~print:Generators.print_buffer
+    (QCheck2.Gen.map snd Generators.captures_buffer) (fun buffer ->
+      raises_error (fun () -> Sinter_bridge.decode_tree buffer))
 
 (* The bytes of a counterexample, as the property printed them. *)
 let of_hex text =
@@ -126,5 +126,6 @@ let tests =
     decode_tree_rejects_a_damaged_buffer;
     decode_captures_is_total;
     decode_tree_is_total;
-    neither_decoder_reads_the_other_kind;
+    decode_captures_refuses_a_parse_tree_buffer;
+    decode_tree_refuses_a_capture_buffer;
   ]

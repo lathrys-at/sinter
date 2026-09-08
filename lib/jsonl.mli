@@ -42,8 +42,16 @@ val output : out_channel -> record -> unit
     and then one LF.
 
     @raise Invalid_argument on the conditions that {!to_string} refuses.
-    @raise Sys_error if the write to [channel] fails. *)
+    @raise Sys_error
+      if a write to [channel] fails. [channel] holds a buffer, so the failure of
+      one record can reach the caller at a later write to [channel] or at the
+      flush of it. *)
 
 val compare_keys : string -> string -> int
 (** [compare_keys a b] orders two field names by their UTF-16 code units. This
-    is the order of the keys in a canonical record. *)
+    is the order of the keys in a canonical record.
+
+    A byte that is not part of a valid UTF-8 sequence counts as U+FFFD, so two
+    names that are not valid UTF-8 can compare equal while they differ. On names
+    that are valid UTF-8 the order is total: two names compare equal only when
+    they are equal. *)
