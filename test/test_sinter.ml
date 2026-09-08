@@ -20,5 +20,6 @@ let () =
       ("jsonl", Test_jsonl.tests);
       ("parse", Test_parse.tests);
       ("request", Test_request.tests);
+      ("serve", Test_serve.tests);
       ("cli", Test_cli.tests);
     ]
