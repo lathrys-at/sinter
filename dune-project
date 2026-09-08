@@ -20,7 +20,10 @@
   dune
   (cmdliner (>= 1.3))
   dune-build-info
+  yojson
   (alcotest :with-test)
+  (qcheck :with-test)
+  (qcheck-alcotest :with-test)
   (ocamlformat
    (and
     :with-dev-setup
