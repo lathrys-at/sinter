@@ -53,25 +53,15 @@ what they reach.
 
 ## Alternatives considered
 
-- **Unit tests with chosen inputs only** — rejected. The
-  specifications state rules for every input. A chosen input covers
-  the case its author imagined, and the parser bridge review showed
-  that the unimagined case is the one that crashes.
-- **`crowbar` as the property-testing library** — rejected for the
-  suite. Its strength is the AFL mode, which drives generation from
-  coverage. Its random mode shrinks a counterexample less well than
-  `qcheck` and reports less, and the suite already runs under
-  alcotest. `crowbar` stays the choice for the fuzz target.
-- **`ppx_inline_test` and `ppx_expect`** — rejected. An expectation
-  test states a chosen output, not a property, and the preprocessor
-  would enter the build of the library itself.
-- **A coverage target such as 90 percent** — rejected. A young code
-  base meets a fixed target by writing tests for the number. A
-  threshold that starts at the measured value and only rises stops a
-  decline and follows the code.
-- **Coverage in review only, without a number** — rejected. A
-  reviewer reads the tests that exist and cannot see the path that
-  none reaches.
+- **`crowbar` for the property tests, instead of `qcheck`** — not
+  chosen for the suite. Its strength is the AFL mode, which drives
+  generation from coverage. Its random mode shrinks a counterexample
+  less well than `qcheck` and reports less, and the suite already runs
+  under alcotest. `crowbar` stays the choice for the fuzz target.
+- **A fixed coverage target, such as 90 percent** — not chosen. A
+  young code base meets a fixed target by writing tests for the
+  number. A threshold that starts at the measured value and only
+  rises stops a decline and follows the code.
 
 ## Consequences
 
