@@ -72,15 +72,16 @@ let read_id fields =
   | _ -> untagged Bad_id
 
 (* A name that two pairs share. yojson keeps both pairs, and a record
-   that holds one field twice is not a record. *)
+   that holds one field twice is not a record. A line holds as many
+   fields as its writer put in it, so the search sorts the names
+   instead of comparing every pair of them. *)
 let repeated fields =
-  let rec search seen = function
-    | [] -> None
-    | name :: rest ->
-        if List.exists (String.equal name) seen then Some name
-        else search (name :: seen) rest
+  let rec adjacent = function
+    | first :: (second :: _ as rest) ->
+        if String.equal first second then Some first else adjacent rest
+    | _ -> None
   in
-  search [] (List.map fst fields)
+  adjacent (List.sort String.compare (List.map fst fields))
 
 let text id field = function
   | `String value ->

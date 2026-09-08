@@ -245,6 +245,18 @@ let a_query_beside_a_false_tree_asks_for_captures () =
               };
         })
 
+(* A line that holds many fields must not cost more than the fields
+   are worth: the reader sorts the names and does not compare every
+   pair of them. This line takes about a second with a search over
+   pairs, and no time at all without one. *)
+let a_line_of_many_fields_is_read_at_once () =
+  let count = 50000 in
+  let fields =
+    [ ("id", `Int 1); ("op", `String "parse") ]
+    @ List.init count (fun index -> (Printf.sprintf "f%d" index, `Int index))
+  in
+  gives "fifty thousand fields" (Request.Unknown_field "f0") (line_of fields)
+
 let every_cause =
   [
     Request.Not_json;
@@ -346,6 +358,8 @@ let tests =
         neither_a_query_nor_a_tree_is_an_error;
       case "a query beside a false tree asks for captures"
         a_query_beside_a_false_tree_asks_for_captures;
+      case "a line of many fields is read at once"
+        a_line_of_many_fields_is_read_at_once;
       case "every cause has a message of one line"
         every_cause_has_a_message_of_one_line;
       case "a text id becomes a string value" a_text_id_becomes_a_string_value;
