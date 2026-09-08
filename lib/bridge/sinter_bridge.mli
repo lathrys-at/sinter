@@ -66,3 +66,21 @@ val tree : language -> source:string -> string
     tree as an S-expression.
 
     @raise Error if the parse fails. *)
+
+val decode_captures : string -> capture list
+(** [decode_captures buffer] is the captures that [buffer] holds. [buffer] is
+    one result buffer of a capture run, in the layout that the bridge writes.
+    The captures come back in the order in which the buffer holds them.
+
+    @raise Error
+      if [buffer] is not one whole capture result buffer of that layout, or if
+      a string in it is not valid UTF-8. *)
+
+val decode_tree : string -> string
+(** [decode_tree buffer] is the parse tree that [buffer] holds, as an
+    S-expression. [buffer] is one result buffer of a parse tree run, in the
+    layout that the bridge writes.
+
+    @raise Error
+      if [buffer] is not one whole parse tree result buffer of that layout, or
+      if the tree in it is not valid UTF-8. *)

@@ -115,10 +115,7 @@ let check_whole buffer offset =
       (Printf.sprintf "the records end at byte %d and the buffer holds %d bytes"
          offset (String.length buffer))
 
-let captures language ~source ~query =
-  if String.length query = 0 then
-    invalid_arg "Sinter_bridge.captures: the query is empty";
-  let buffer = run language.engine language.handle source query in
+let decode_captures buffer =
   let count = read_header buffer kind_captures in
   let rec read index offset acc =
     if index = count then (List.rev acc, offset)
@@ -130,8 +127,7 @@ let captures language ~source ~query =
   check_whole buffer offset;
   found
 
-let tree language ~source =
-  let buffer = run language.engine language.handle source "" in
+let decode_tree buffer =
   let count = read_header buffer kind_tree in
   if count <> 1 then
     malformed
@@ -140,3 +136,11 @@ let tree language ~source =
   let text, offset = read_string buffer header_length in
   check_whole buffer offset;
   text
+
+let captures language ~source ~query =
+  if String.length query = 0 then
+    invalid_arg "Sinter_bridge.captures: the query is empty";
+  decode_captures (run language.engine language.handle source query)
+
+let tree language ~source =
+  decode_tree (run language.engine language.handle source "")
