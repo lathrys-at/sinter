@@ -151,19 +151,20 @@ let serve_cmd =
           "the operation to run: the name of a command of this tool. \
            $(b,parse) is the only one" );
       `P
-        "The other fields of a request are the options of that command, with \
-         the names of the long options. A $(b,parse) request therefore holds \
-         $(b,grammar), $(b,query) or $(b,tree), and $(b,files). A field that \
-         the command does not name is an error, as an unknown option is.";
+        "The other fields of a request are the options of that command. Each \
+         field has the name of a long option. A $(b,parse) request therefore \
+         holds $(b,grammar), $(b,query) or $(b,tree), and $(b,files). A field \
+         that the command does not name is an error.";
       `P
         "The answer holds every line that the command prints, and one control \
          line after them. The control line holds $(b,event) of $(b,done) when \
-         the operation ran, and $(b,event) of $(b,error) with a $(b,message) \
-         when it did not. The $(b,code) of the control line is the exit code \
-         that the command returns. A line that this command cannot read as a \
-         request is answered with an error line with code 2 and no $(b,req).";
+         the operation ran. It holds $(b,event) of $(b,error), and a \
+         $(b,message), when the operation did not run. The $(b,code) of the \
+         control line is the exit code that the command returns. A line that \
+         this command cannot read as a request gets an error line with code 2 \
+         and no $(b,req).";
       `P
-        "The process holds one parser for its whole life and loads each \
+        "The process holds one parser for its whole life. It loads each \
          grammar once, so a caller that sends many requests pays for the load \
          once. It reads a grammar file again when the file changes.";
     ]
