@@ -85,16 +85,18 @@ type damage =
   | Not_utf_8  (** one string is no longer valid UTF-8 *)
   | Wrong_magic  (** one byte of the first four was changed *)
   | Wrong_kind  (** the kind field names another kind *)
+  | Wrong_count  (** the count field names another number of records *)
   | Trailing_bytes  (** bytes were added after the last record *)
+(** How a buffer was damaged. *)
 
 val damaged_captures_buffer : (damage * string) QCheck2.Gen.t
-(** A capture result buffer that was damaged in one of the six ways, and the way
-    it was damaged. No damaged buffer is a valid capture result buffer. *)
+(** A capture result buffer that was damaged in one of the seven ways, and the
+    way it was damaged. No damaged buffer is a valid capture result buffer. *)
 
 val damaged_tree_buffer : (damage * string) QCheck2.Gen.t
-(** A parse tree result buffer that was damaged in one of the six ways, and the
-    way it was damaged. No damaged buffer is a valid parse tree result buffer.
-*)
+(** A parse tree result buffer that was damaged in one of the seven ways, and
+    the way it was damaged. No damaged buffer is a valid parse tree result
+    buffer. *)
 
 val print_buffer : string QCheck2.Print.t
 (** The printer for a counterexample that is a result buffer. It gives the bytes
@@ -177,6 +179,10 @@ val grammar_export_name : string QCheck2.Gen.t
 
 val wasm_module_with_a_name : (string * string) QCheck2.Gen.t
 (** A grammar name, and a WebAssembly module that exports it. *)
+
+val wasm_module_whose_name_holds_a_nul : string QCheck2.Gen.t
+(** A WebAssembly module whose export names the grammar with a NUL byte in the
+    name. *)
 
 val wasm_bytes : string QCheck2.Gen.t
 (** Bytes that a reader of a WebAssembly module must survive: any bytes; the

@@ -283,9 +283,10 @@ type damage =
   | Not_utf_8
   | Wrong_magic
   | Wrong_kind
+  | Wrong_count
   | Trailing_bytes
 
-let damaged (buffer, runs) ~kind =
+let damaged (buffer, runs) ~kind ~count =
   let open Gen in
   let length = String.length buffer in
   let changed f =
@@ -305,6 +306,13 @@ let damaged (buffer, runs) ~kind =
     let+ other = oneof_list (List.filter (( <> ) kind) [ 0; 1; 2; 255 ]) in
     ( Wrong_kind,
       changed (fun bytes -> Bytes.set_int32_le bytes 4 (Int32.of_int other)) )
+  in
+  let wrong_count =
+    let+ other =
+      oneof_list (List.filter (( <> ) count) [ 0; 1; 2; 3; 0xFFFFFFF0 ])
+    in
+    ( Wrong_count,
+      changed (fun bytes -> Bytes.set_int32_le bytes 8 (Int32.of_int other)) )
   in
   let trailing =
     let+ extra = string_size (int_range 1 4) in
@@ -333,18 +341,19 @@ let damaged (buffer, runs) ~kind =
              changed (fun bytes -> Bytes.set bytes (at + 4 + inside) '\xff') ))
   in
   oneof
-    (truncated :: wrong_magic :: wrong_kind :: trailing
+    (truncated :: wrong_magic :: wrong_kind :: wrong_count :: trailing
     :: List.filter_map Fun.id [ length_out_of_range; not_utf_8 ])
 
 let damaged_captures_buffer =
   let open Gen in
   let* captures = list_size (int_range 0 3) capture in
   damaged (captures_bytes captures) ~kind:kind_captures
+    ~count:(List.length captures)
 
 let damaged_tree_buffer =
   let open Gen in
   let* text = utf_8_string in
-  damaged (tree_bytes text) ~kind:kind_tree
+  damaged (tree_bytes text) ~kind:kind_tree ~count:1
 
 let print_buffer buffer =
   String.concat ""
@@ -357,6 +366,7 @@ let print_damage = function
   | Not_utf_8 -> "Not_utf_8"
   | Wrong_magic -> "Wrong_magic"
   | Wrong_kind -> "Wrong_kind"
+  | Wrong_count -> "Wrong_count"
   | Trailing_bytes -> "Trailing_bytes"
 
 let print_damaged (damage, buffer) =
@@ -636,6 +646,16 @@ let wasm_module_with_a_name =
   let* before = bool in
   let+ name = grammar_export_name in
   (name, wasm_module ~before ~name)
+
+(* A module whose export names the grammar with a NUL byte in the
+   name. The bridge loads a grammar under a C string, so it can load
+   no grammar under such a name. *)
+let wasm_module_whose_name_holds_a_nul =
+  let open Gen in
+  let* before = bool in
+  let* head = grammar_export_name in
+  let+ tail = grammar_export_name in
+  wasm_module ~before ~name:(head ^ "\000" ^ tail)
 
 let wasm_bytes =
   let open Gen in
