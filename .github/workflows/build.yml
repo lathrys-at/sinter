@@ -156,17 +156,19 @@ jobs:
     # number it reports therefore comes from a build that is not the
     # build the other jobs make.
     env:
-      OCAML_VERSION: "5.3.0"
-      THRESHOLD: "90"
+      COVERAGE_OCAML_VERSION: "5.3.0"
+      # The job fails when the total is below this number. Raise it
+      # when the number grows. Do not lower it.
+      COVERAGE_MINIMUM: "90"
     steps:
       - uses: actions/checkout@v6
       - name: Restore the opam switch
         uses: actions/cache@v6
         with:
           path: _opam
-          key: opam-coverage-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam') }}
+          key: opam-coverage-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.COVERAGE_OCAML_VERSION }}-${{ hashFiles('sinter.opam') }}
           restore-keys: |
-            opam-coverage-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+            opam-coverage-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.COVERAGE_OCAML_VERSION }}-
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -192,7 +194,7 @@ jobs:
         run: git config --global maintenance.auto false
       - uses: ocaml/setup-ocaml@v3
         with:
-          ocaml-compiler: ${{ env.OCAML_VERSION }}
+          ocaml-compiler: ${{ env.COVERAGE_OCAML_VERSION }}
           cache: false
       # bisect_ppx goes in first, because it holds cmdliner below 2 and
       # the project then takes the cmdliner that is already there. The
@@ -208,19 +210,21 @@ jobs:
         run: >
           opam exec -- dune build @runtest --force
           --instrument-with bisect_ppx
+      # bisect-ppx-report reads the counts under _build, so it needs
+      # no path.
       - name: Report the coverage
         run: |
           set -eu
-          summary=$(opam exec -- bisect-ppx-report summary --coverage-path _build/default)
-          echo "$summary"
-          {
-            echo "## Coverage"
-            echo
-            echo '```'
-            opam exec -- bisect-ppx-report summary --per-file --coverage-path _build/default
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          percent=$(printf '%s\n' "$summary" | sed -n 's/.*(\([0-9][0-9]*\)\.[0-9][0-9]*%).*/\1/p' | head -1)
-          echo "The total is $percent per cent, and the threshold is $THRESHOLD."
-          test -n "$percent"
-          test "$percent" -ge "$THRESHOLD"
+          per_file=$(opam exec -- bisect-ppx-report summary --per-file)
+          printf '%s\n' "$per_file"
+          printf '## Coverage\n\n```\n%s\n```\n' "$per_file" \
+            >> "$GITHUB_STEP_SUMMARY"
+          total=$(opam exec -- bisect-ppx-report summary |
+            sed -n 's/^Coverage: .*(\([0-9.]*\)%)$/\1/p')
+          if [ -z "$total" ]; then
+            echo "The report gave no total. The line it prints changed."
+            exit 1
+          fi
+          echo "Coverage is $total%. The minimum is $COVERAGE_MINIMUM%."
+          below=$(awk "BEGIN { print ($total < $COVERAGE_MINIMUM) ? 1 : 0 }")
+          test "$below" = 0

@@ -178,13 +178,13 @@ Then, from the repository root:
 ```
 eval $(opam env --switch=sinter-coverage --set-switch)
 dune build @runtest --force --instrument-with bisect_ppx
-bisect-ppx-report summary --coverage-path _build/default
+bisect-ppx-report summary --per-file
 ```
 
 `--instrument-with` is the switch. Without it, the build carries no
-instrumentation and costs nothing. For a page per file, run
-`bisect-ppx-report html --coverage-path _build/default` and open
-`_coverage/index.html`.
+instrumentation and costs nothing. `bisect-ppx-report` reads the
+counts under `_build`, so it needs no path. For a page per file, run
+`bisect-ppx-report html` and open `_coverage/index.html`.
 
 A coverage build uses another compiler than an ordinary build, so it
 writes over `_build`. The next ordinary `dune build` builds the whole
