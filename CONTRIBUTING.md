@@ -193,8 +193,9 @@ about one per cent between runs of the same tree. Read the lowest of
 several runs, not one run.
 
 A coverage build uses another compiler than an ordinary build, so it
-writes over `_build`. The next ordinary `dune build` builds the whole
-tree again, the Rust crate included.
+writes over `_build`. The next ordinary `dune build` compiles the
+whole OCaml tree again. It does not build the Rust crate again: cargo
+builds outside `_build`, so it finds its work done.
 
 CI runs the same commands on `ubuntu-latest` and fails below the
 minimum that the `coverage` job sets. That job holds the number. A
