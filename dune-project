@@ -21,7 +21,7 @@
   (cmdliner (>= 1.3))
   dune-build-info
   (alcotest :with-test)
-  (qcheck
+  (qcheck-core
    (and
     :with-test
     (>= 0.90)))
