@@ -53,7 +53,23 @@ what they reach.
 
 ## Alternatives considered
 
-None were put forward.
+The options for the library were put forward in issue #20, and the
+options for the coverage gate in issue #21. The maintainer ruled on
+both on 2026-09-08.
+
+- **`crowbar` alone, for the suite as well as the fuzz targets** —
+  rejected. Its value needs an AFL build and runs of minutes to
+  hours, which cannot be part of every commit; without AFL it
+  generates from random bytes with no feedback; and its tests run as
+  their own executables, outside the alcotest suite.
+- **`qcheck` alone, with no fuzz target** — rejected. Random
+  generation does not search by coverage, so it is slow to find the
+  inputs that break a decoder at a boundary.
+- **A fixed coverage target, such as 90 percent** — rejected. On a
+  code base this size, a fixed target is met by writing tests aimed
+  at the number, and it says nothing about which paths matter.
+- **A coverage report with no gate** — rejected. Nothing stops a
+  decline, and a reviewer has to look every time.
 
 ## Consequences
 
