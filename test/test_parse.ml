@@ -312,6 +312,11 @@ let the_span_of_a_record_agrees_with_the_source
   && int_field record "eline" = eline
   && int_field record "ecol" = ecol
 
+(* The generator builds the text of the capture as the byte range of
+   the source, so the last clause below states that record_of_capture
+   copies the field, and nothing more. That the bridge gives that
+   range is "a capture is a byte range inside the source", in
+   test_bridge.ml. *)
 let a_record_holds_the_bytes_of_the_capture
     (source, (capture : Sinter_bridge.capture)) =
   let record = record_of source capture in
@@ -326,14 +331,15 @@ let a_record_holds_the_named_fields (source, capture) =
   let record = record_of source capture in
   List.equal String.equal (List.sort compare (List.map fst record)) field_names
 
-let a_record_is_a_canonical_line (source, capture) =
+(* Jsonl.to_string refuses a string that is not UTF-8 and an integer
+   outside the range that a record allows. A record of a capture
+   breaks neither, so the call gives a line. *)
+let to_string_accepts_a_record_of_a_capture (source, capture) =
   let line = Jsonl.to_string (record_of source capture) in
   String.length line > 1
   && line.[0] = '{'
   && line.[String.length line - 1] = '}'
 
-(* The two properties below state that the function is total: it
-   answers for every value of its argument type, and raises nothing. *)
 (* One engine and one grammar for the property below. The language
    keeps its engine alive, and alcotest runs one test at a time. *)
 let language =
@@ -438,9 +444,14 @@ let refuses_a_capture_that_runs_past_the_source () =
         source") (fun () ->
       ignore (Parse.record_of_capture ~path:"f.json" ~source:"" capture))
 
+(* The two properties below state that the function is total: it
+   answers for every value of its argument type, and raises nothing.
+   Each one adds the cheapest clause that can fail, so that neither
+   passes because the call did nothing. *)
 let the_reader_of_a_module_answers_for_any_bytes wasm =
-  ignore (Parse.name_of_wasm wasm);
-  true
+  match Parse.name_of_wasm wasm with
+  | None -> true
+  | Some found -> contains ("tree_sitter_" ^ found) wasm
 
 (* The bridge refuses a grammar name that holds a NUL byte, so the
    reader gives no such name and the caller falls back to the file
@@ -453,9 +464,12 @@ let a_name_from_a_module_can_name_a_grammar wasm =
 let the_reader_of_a_module_finds_a_generated_export (name, wasm) =
   Option.equal String.equal (Parse.name_of_wasm wasm) (Some name)
 
+(* A grammar name is the base name of the path without its extension,
+   so it is never longer than that base name. It can still hold a
+   slash: the base name of "/" is "/". *)
 let a_grammar_name_comes_back_for_any_file_name path =
-  ignore (Parse.grammar_name path);
-  true
+  String.length (Parse.grammar_name path)
+  <= String.length (Filename.basename path)
 
 let a_grammar_name_holds_no_hyphen path =
   not (String.contains (Parse.grammar_name path) '-')
@@ -502,9 +516,9 @@ let properties =
     property ~name:"a record holds the eleven named fields"
       ~print:Generators.print_source_and_capture Generators.source_and_capture
       a_record_holds_the_named_fields;
-    property ~name:"a record of a capture is a canonical line"
+    property ~name:"to_string accepts a record of a capture"
       ~print:Generators.print_source_and_capture Generators.source_and_capture
-      a_record_is_a_canonical_line;
+      to_string_accepts_a_record_of_a_capture;
     property ~name:"a record of a capture outside the source is refused"
       ~print:Generators.print_source_and_capture
       Generators.source_and_capture_outside

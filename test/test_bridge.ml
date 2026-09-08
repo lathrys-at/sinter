@@ -133,8 +133,8 @@ let reports_a_query_that_does_not_compile () =
     with Sinter_bridge.Error message -> message
   in
   Alcotest.(check bool)
-    "the message names the query" true
-    (String.length message > 0 && message <> "no failure")
+    "the message names the node type that the grammar has not" true
+    (contains "no_such_node" message)
 
 let reports_a_grammar_that_does_not_load () =
   let engine = Sinter_bridge.create () in

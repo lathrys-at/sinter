@@ -62,7 +62,7 @@ let read_file path =
 let name_of_wasm wasm =
   let length = String.length wasm in
   let prefix = "tree_sitter_" in
-  let byte offset = Char.code (String.unsafe_get wasm offset) in
+  let byte offset = Char.code (String.get wasm offset) in
   let rec number offset shift value =
     if offset >= length || shift > 28 then None
     else
