@@ -95,8 +95,6 @@ let run state tag (op : Request.op) =
         | exception Sinter_bridge.Error message ->
             Failed (environment_error, printable message)
         | exception Sys_error message ->
-            Failed (environment_error, printable message)
-        | exception Invalid_argument message ->
             Failed (environment_error, printable message))
   in
   { tag = Some tag; output = List.rev !collected; outcome }

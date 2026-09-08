@@ -41,10 +41,12 @@ val close : t -> unit
 val respond : t -> string -> response
 (** [respond state line] does the work that the request in [line] asks for.
     [line] is one line of JSON; it may end with a line feed or not. This
-    function answers every string, and it raises nothing for the content of
-    [line].
+    function answers every string. No content of [line] makes it raise, and a
+    failure of the work becomes a control line of the answer.
 
-    @raise Invalid_argument if [state] is closed. *)
+    @raise Invalid_argument
+      if [state] is closed, and if a value that reaches the parser breaks a
+      precondition of it. The second is a fault of the tool, not of [line]. *)
 
 val control : response -> control
 (** [control response] says how the operation ended. *)
