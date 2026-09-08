@@ -180,6 +180,42 @@ let a_line_holds_no_whitespace_outside_a_string =
       in
       scan 0 ~inside:false ~escaped:false)
 
+(* RFC 8785 escapes the quotation mark, the reverse solidus, and every
+   code point below U+0020, and nothing else. *)
+let a_line_holds_no_byte_below_u_0020 =
+  property ~name:"a line holds no byte below U+0020"
+    ~print:Generators.print_record Generators.record (fun record ->
+      String.for_all (fun c -> Char.code c >= 0x20) (Jsonl.to_string record))
+
+let a_line_escapes_only_what_rfc_8785_escapes =
+  property ~name:"a line holds only the escapes that RFC 8785 asks for"
+    ~print:Generators.print_record Generators.record (fun record ->
+      let line = Jsonl.to_string record in
+      let length = String.length line in
+      let is_hex c = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') in
+      let rec scan offset ~inside =
+        if offset >= length then true
+        else
+          let c = line.[offset] in
+          if not inside then scan (offset + 1) ~inside:(c = '"')
+          else if c = '"' then scan (offset + 1) ~inside:false
+          else if c <> '\\' then scan (offset + 1) ~inside:true
+          else if offset + 1 >= length then false
+          else
+            match line.[offset + 1] with
+            | '"' | '\\' | 'b' | 'f' | 'n' | 'r' | 't' ->
+                scan (offset + 2) ~inside:true
+            | 'u' ->
+                offset + 6 <= length
+                && String.equal (String.sub line (offset + 2) 2) "00"
+                && is_hex line.[offset + 4]
+                && is_hex line.[offset + 5]
+                && int_of_string ("0x" ^ String.sub line (offset + 2) 4) < 0x20
+                && scan (offset + 6) ~inside:true
+            | _ -> false
+      in
+      scan 0 ~inside:false)
+
 let raises_invalid_argument f =
   try
     ignore (f ());
@@ -299,6 +335,8 @@ let properties =
     a_line_parses_to_the_same_fields_and_values;
     a_line_holds_its_keys_in_compare_keys_order;
     a_line_holds_no_whitespace_outside_a_string;
+    a_line_holds_no_byte_below_u_0020;
+    a_line_escapes_only_what_rfc_8785_escapes;
     to_string_accepts_every_well_formed_record;
     to_string_rejects_a_repeated_field_name;
     to_string_rejects_an_integer_outside_the_range;
@@ -313,8 +351,22 @@ let properties =
     output_writes_the_line_and_one_lf;
   ]
 
+(* output writes to the channel at once, so a channel that cannot take
+   the bytes fails in the call, not at a later flush. *)
+let reports_a_channel_that_cannot_be_written () =
+  let file = Filename.temp_file "sinter-jsonl" ".jsonl" in
+  let channel = open_out_bin file in
+  close_out channel;
+  Fun.protect
+    ~finally:(fun () -> Sys.remove file)
+    (fun () ->
+      Alcotest.check_raises "a closed channel" (Sys_error "Bad file descriptor")
+        (fun () -> Jsonl.output channel [ ("a", Jsonl.int 1) ]))
+
 let tests =
   [
+    Alcotest.test_case "reports a channel that cannot be written" `Quick
+      reports_a_channel_that_cannot_be_written;
     Alcotest.test_case "sorts keys" `Quick sorts_keys;
     Alcotest.test_case "sorts keys by UTF-16 code units" `Quick
       sorts_keys_by_utf16_code_units;
