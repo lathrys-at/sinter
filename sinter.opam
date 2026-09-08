@@ -15,8 +15,8 @@ depends: [
   "cmdliner" {>= "1.3"}
   "dune-build-info"
   "alcotest" {with-test}
-  "qcheck" {with-test}
-  "qcheck-alcotest" {with-test}
+  "qcheck" {with-test & >= "0.90"}
+  "qcheck-alcotest" {with-test & >= "0.90"}
   "yojson" {with-test}
   "ocamlformat" {with-dev-setup & = "0.29.0"}
   "odoc" {with-doc}
