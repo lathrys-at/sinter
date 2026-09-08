@@ -19,5 +19,6 @@ let () =
       ("version", [ Alcotest.test_case "base is semver" `Quick base_is_semver ]);
       ("jsonl", Test_jsonl.tests);
       ("parse", Test_parse.tests);
+      ("bridge", Test_bridge.tests);
       ("cli", Test_cli.tests);
     ]

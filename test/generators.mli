@@ -107,6 +107,11 @@ val print_damaged : (damage * string) QCheck2.Print.t
 val print_captures : Sinter_bridge.capture list QCheck2.Print.t
 (** The printer for a counterexample that is a list of captures. *)
 
+val buffer_bytes : string QCheck2.Gen.t
+(** Bytes that a decoder of a result buffer must survive: any bytes; the four
+    bytes of the magic and then any bytes; a whole buffer with bytes written
+    over a run of it; a whole capture buffer; and a whole parse tree buffer. *)
+
 (** {1 Source text, and a capture inside it} *)
 
 val rows_before : string -> int -> int

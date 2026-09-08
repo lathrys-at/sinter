@@ -372,6 +372,30 @@ let print_capture (c : Sinter_bridge.capture) =
 let print_captures captures =
   "[" ^ String.concat "; " (List.map print_capture captures) ^ "]"
 
+(* Splice [piece] into [text] at [at], over the bytes that stand
+   there. *)
+let splice text at piece =
+  let at = min at (String.length text) in
+  let after = min (String.length text) (at + String.length piece) in
+  String.sub text 0 at ^ piece
+  ^ String.sub text after (String.length text - after)
+
+let buffer_bytes =
+  let open Gen in
+  let any = string_size (int_range 0 40) in
+  let whole = map (fun (_, buffer) -> buffer) captures_buffer in
+  oneof
+    [
+      any;
+      map (fun bytes -> "SBR1" ^ bytes) any;
+      (let* buffer = whole in
+       let* at = int_range 0 (String.length buffer) in
+       let+ piece = string_size (int_range 1 6) in
+       splice buffer at piece);
+      whole;
+      map (fun (_, buffer) -> buffer) tree_buffer;
+    ]
+
 (* Source text, and a capture inside it. *)
 
 let rows_before text offset =
