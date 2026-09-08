@@ -56,16 +56,18 @@ val captures : language -> source:string -> query:string -> capture list
 (** [captures language ~source ~query] parses [source] with [language] and runs
     [query] over the parse tree. [query] is tree-sitter query source, the
     content of a [.scm] file. The captures come back in the order in which the
-    query cursor produced them.
+    query cursor produced them. Every string of every capture is valid UTF-8.
 
-    @raise Error if the parse or the query fails.
+    @raise Error
+      if the parse or the query fails, or if a range of [source] that a capture
+      covers is not valid UTF-8.
     @raise Invalid_argument if [query] is empty. *)
 
 val tree : language -> source:string -> string
 (** [tree language ~source] parses [source] with [language] and gives the parse
-    tree as an S-expression.
+    tree as an S-expression. The result is valid UTF-8.
 
-    @raise Error if the parse fails. *)
+    @raise Error if the parse fails, or if the parse tree is not valid UTF-8. *)
 
 val decode_captures : string -> capture list
 (** [decode_captures buffer] is the captures that [buffer] holds. [buffer] is
@@ -73,8 +75,8 @@ val decode_captures : string -> capture list
     The captures come back in the order in which the buffer holds them.
 
     @raise Error
-      if [buffer] is not one whole capture result buffer of that layout, or if
-      a string in it is not valid UTF-8. *)
+      if [buffer] is not one whole capture result buffer of that layout, or if a
+      string in it is not valid UTF-8. *)
 
 val decode_tree : string -> string
 (** [decode_tree buffer] is the parse tree that [buffer] holds, as an

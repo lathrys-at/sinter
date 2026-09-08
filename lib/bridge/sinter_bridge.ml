@@ -67,11 +67,26 @@ let read_int buffer offset =
   check buffer offset 4;
   Int32.to_int (String.get_int32_le buffer offset) land 0xFFFFFFFF
 
-(* Give the string and the offset of the byte after it. *)
+let is_utf_8 text =
+  let length = String.length text in
+  let rec walk offset =
+    offset >= length
+    ||
+    let decoded = String.get_utf_8_uchar text offset in
+    Uchar.utf_decode_is_valid decoded
+    && walk (offset + Uchar.utf_decode_length decoded)
+  in
+  walk 0
+
+(* Give the string and the offset of the byte after it. Every string
+   of the buffer is UTF-8, so a caller of this module never sees other
+   bytes. *)
 let read_string buffer offset =
   let length = read_int buffer (offset + 0) in
   check buffer (offset + 4) length;
-  (String.sub buffer (offset + 4) length, offset + 4 + length)
+  let text = String.sub buffer (offset + 4) length in
+  if not (is_utf_8 text) then malformed "a string is not UTF-8 text";
+  (text, offset + 4 + length)
 
 let read_header buffer expected_kind =
   if String.length buffer < header_length then
