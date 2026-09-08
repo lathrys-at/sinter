@@ -404,6 +404,40 @@ let the_records_of_a_file_agree_with_the_source document =
       && String.equal (string_field record "path") path)
     records
 
+let a_record_of_a_capture_outside_the_source_is_refused (source, capture) =
+  match record_of source capture with
+  | _ -> false
+  | exception Invalid_argument message ->
+      contains "not inside the source" message
+
+(* The capture below runs two bytes past a source of no bytes, and its
+   end column is 0, so the reader of the span looks for the line feed
+   that ends the line before it. The property
+   "a record of a capture outside the source is refused" found this
+   case, and the reader raised
+   Invalid_argument "String.rindex_from_opt / Bytes.rindex_from_opt".
+   The interface named no such failure. *)
+let refuses_a_capture_that_runs_past_the_source () =
+  let capture =
+    {
+      Sinter_bridge.pattern = 0;
+      name = "d";
+      node_type = "document";
+      start_byte = 0;
+      end_byte = 2;
+      start_row = 0;
+      start_column = 0;
+      end_row = 1;
+      end_column = 0;
+      text = "";
+    }
+  in
+  Alcotest.check_raises "a capture of two bytes in a source of none"
+    (Invalid_argument
+       "Sinter_core.Parse: the byte range of the capture is not inside the \
+        source") (fun () ->
+      ignore (Parse.record_of_capture ~path:"f.json" ~source:"" capture))
+
 let the_reader_of_a_module_answers_for_any_bytes wasm =
   ignore (Parse.name_of_wasm wasm);
   true
@@ -435,6 +469,10 @@ let properties =
     property ~name:"a record of a capture is a canonical line"
       ~print:Generators.print_source_and_capture Generators.source_and_capture
       a_record_is_a_canonical_line;
+    property ~name:"a record of a capture outside the source is refused"
+      ~print:Generators.print_source_and_capture
+      Generators.source_and_capture_outside
+      a_record_of_a_capture_outside_the_source_is_refused;
     property ~count:200 ~name:"the records of a file agree with the source"
       ~print:Fun.id Generators.json_source
       the_records_of_a_file_agree_with_the_source;
@@ -486,5 +524,7 @@ let tests =
     Alcotest.test_case "writes a tree that nests deeply" `Quick
       writes_a_tree_that_nests_deeply;
     Alcotest.test_case "names the grammar" `Quick names_the_grammar;
+    Alcotest.test_case "refuses a capture that runs past the source" `Quick
+      refuses_a_capture_that_runs_past_the_source;
   ]
   @ properties

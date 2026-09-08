@@ -134,8 +134,16 @@ val capture_in : string -> Sinter_bridge.capture QCheck2.Gen.t
     columns are the rows and the byte columns of that range in [source], and the
     text is the bytes of that range. *)
 
+val capture_outside : string -> Sinter_bridge.capture QCheck2.Gen.t
+(** [capture_outside source] is a capture whose byte range is not inside
+    [source]: the end runs past [source], or the end is before the start, or the
+    start is below 0. *)
+
 val source_and_capture : (string * Sinter_bridge.capture) QCheck2.Gen.t
 (** A source text, and a capture inside it. *)
+
+val source_and_capture_outside : (string * Sinter_bridge.capture) QCheck2.Gen.t
+(** A source text, and a capture whose byte range is not inside it. *)
 
 val print_source_and_capture : (string * Sinter_bridge.capture) QCheck2.Print.t
 (** The printer for a counterexample of {!source_and_capture}. *)

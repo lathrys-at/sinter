@@ -463,10 +463,53 @@ let capture_in source =
     text = String.sub source start_byte (end_byte - start_byte);
   }
 
+(* A capture whose byte range is not inside the source: the end runs
+   past the source, or the end is before the start, or the start is
+   below 0. The end row is one past the row of the end byte, so that
+   the reader of the span reaches the branch that steps back a line. *)
+let capture_outside source =
+  let open Gen in
+  let length = String.length source in
+  let held offset = min (max offset 0) length in
+  let* start_byte, end_byte =
+    oneof
+      [
+        (let* start_byte = int_bound length in
+         let+ beyond = int_range 1 8 in
+         (start_byte, length + beyond));
+        (let* start_byte = int_range 1 (length + 1) in
+         let+ end_byte = int_bound (start_byte - 1) in
+         (start_byte, end_byte));
+        (let* start_byte = int_range (-8) (-1) in
+         let+ end_byte = int_bound length in
+         (start_byte, end_byte));
+      ]
+  in
+  let* pattern = nat_small in
+  let+ end_column = oneof_list [ 0; 0; 1; 2 ] in
+  {
+    Sinter_bridge.pattern;
+    name = "d";
+    node_type = "document";
+    start_byte;
+    end_byte;
+    start_row = rows_before source (held start_byte);
+    start_column = held start_byte - start_of_line source (held start_byte);
+    end_row = rows_before source (held end_byte) + 1;
+    end_column;
+    text = "";
+  }
+
 let source_and_capture =
   let open Gen in
   let* source = source_text in
   let+ capture = capture_in source in
+  (source, capture)
+
+let source_and_capture_outside =
+  let open Gen in
+  let* source = source_text in
+  let+ capture = capture_outside source in
   (source, capture)
 
 let print_source_and_capture (source, capture) =
