@@ -145,3 +145,82 @@ jobs:
         run: >
           cargo rustc --release --manifest-path bridge/Cargo.toml
           -- --print native-static-libs
+
+  coverage:
+    name: Measure coverage
+    runs-on: ubuntu-latest
+    # bisect_ppx 2.8.3 needs ppxlib below 0.36, which needs a compiler
+    # below 5.4, and it needs cmdliner below 2. sinter.opam.locked
+    # pins cmdliner 2.1.1, so this job builds a switch of its own, on
+    # a compiler of its own, and does not use the lock file. The
+    # number it reports therefore comes from a build that is not the
+    # build the other jobs make.
+    env:
+      OCAML_VERSION: "5.3.0"
+      THRESHOLD: "90"
+    steps:
+      - uses: actions/checkout@v6
+      - name: Restore the opam switch
+        uses: actions/cache@v6
+        with:
+          path: _opam
+          key: opam-coverage-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam') }}
+          restore-keys: |
+            opam-coverage-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache: false
+          override: true
+          toolchain: 1.94.1
+      # The dune rule that runs cargo writes its build output under
+      # ~/.cache/sinter-bridge-build. This job keeps a key of its own,
+      # so that it does not race the build job over one cache entry.
+      - name: Cache the cargo state
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/sinter-bridge-build
+          key: cargo-coverage-${{ hashFiles('bridge/Cargo.lock') }}
+          restore-keys: cargo-coverage-
+      # opam clones opam-repository and walks the clone at once. Git's
+      # background maintenance can remove its lock file in that window,
+      # and opam then fails on the vanished file. Turn it off.
+      - name: Turn off git background maintenance
+        run: git config --global maintenance.auto false
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: ${{ env.OCAML_VERSION }}
+          cache: false
+      # bisect_ppx goes in first, because it holds cmdliner below 2 and
+      # the project then takes the cmdliner that is already there. The
+      # other order installs cmdliner 2 and leaves no room for
+      # bisect_ppx. Do not name bisect_ppx on the line that carries
+      # --with-test: the flag reaches every package on the line, and
+      # the test dependencies of bisect_ppx need a compiler below 4.13.
+      - name: Install bisect_ppx and the dependencies
+        run: |
+          opam install bisect_ppx.2.8.3
+          opam install . --deps-only --with-test
+      - name: Run the tests with the code instrumented
+        run: >
+          opam exec -- dune build @runtest --force
+          --instrument-with bisect_ppx
+      - name: Report the coverage
+        run: |
+          set -eu
+          summary=$(opam exec -- bisect-ppx-report summary --coverage-path _build/default)
+          echo "$summary"
+          {
+            echo "## Coverage"
+            echo
+            echo '```'
+            opam exec -- bisect-ppx-report summary --per-file --coverage-path _build/default
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          percent=$(printf '%s\n' "$summary" | sed -n 's/.*(\([0-9][0-9]*\)\.[0-9][0-9]*%).*/\1/p' | head -1)
+          echo "The total is $percent per cent, and the threshold is $THRESHOLD."
+          test -n "$percent"
+          test "$percent" -ge "$THRESHOLD"

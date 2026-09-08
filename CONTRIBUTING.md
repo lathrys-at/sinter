@@ -153,6 +153,46 @@ Before you commit, check that all of these pass:
 
 CI runs all of them.
 
+### Coverage
+
+`bisect_ppx` measures how much of `lib/` and `bin/` the tests run. It
+does not install beside the versions in `sinter.opam.locked`: it needs
+`ppxlib` below 0.36, which needs a compiler below 5.4, and it needs
+`cmdliner` below 2, while the lock file pins `cmdliner` 2.1.1. A
+coverage run therefore uses a switch of its own. Make it once:
+
+```
+opam switch create sinter-coverage 5.3.0
+opam install --switch=sinter-coverage bisect_ppx.2.8.3
+opam install --switch=sinter-coverage . --deps-only --with-test
+```
+
+Install `bisect_ppx` first. It holds `cmdliner` below 2, and the
+project then takes the `cmdliner` that is already there. Do not name
+`bisect_ppx` on the line that carries `--with-test`: the flag reaches
+every package on the line, and the test dependencies of `bisect_ppx`
+need a compiler below 4.13.
+
+Then, from the repository root:
+
+```
+eval $(opam env --switch=sinter-coverage --set-switch)
+dune build @runtest --force --instrument-with bisect_ppx
+bisect-ppx-report summary --coverage-path _build/default
+```
+
+`--instrument-with` is the switch. Without it, the build carries no
+instrumentation and costs nothing. For a page per file, run
+`bisect-ppx-report html --coverage-path _build/default` and open
+`_coverage/index.html`.
+
+A coverage build uses another compiler than an ordinary build, so it
+writes over `_build`. The next ordinary `dune build` builds the whole
+tree again, the Rust crate included.
+
+CI runs the same commands on `ubuntu-latest` and fails when the total
+falls below 90 per cent. A change does not lower the number.
+
 ## New files
 
 Every new file needs an SPDX header with the license of its
