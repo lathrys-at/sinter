@@ -7,4 +7,4 @@
  (deps
   %{exe:../bin/main.exe}
   (glob_files_rec fixtures/*))
- (libraries sinter_core alcotest))
+ (libraries sinter_core alcotest qcheck-core qcheck-alcotest yojson))
