@@ -3,12 +3,6 @@
 
 exception Error of string
 
-(* @cites exit-codes *)
-(* The three codes that the one-shot "parse" command returns. *)
-let clean = 0
-let usage_error = 2
-let environment_error = 3
-
 type control = Done of int | Failed of int * string
 
 type response = {
@@ -89,13 +83,13 @@ let run state tag (op : Request.op) =
           let language = language state grammar in
           Parse.fold language ~query ~paths:files ~f:emit
         with
-        | () -> Done clean
+        | () -> Done Exit_code.clean
         | exception Parse.Error message ->
-            Failed (environment_error, printable message)
+            Failed (Exit_code.environment_error, printable message)
         | exception Sinter_bridge.Error message ->
-            Failed (environment_error, printable message)
+            Failed (Exit_code.environment_error, printable message)
         | exception Sys_error message ->
-            Failed (environment_error, printable message))
+            Failed (Exit_code.environment_error, printable message))
   in
   { tag = Some tag; output = List.rev !collected; outcome }
 
@@ -107,7 +101,8 @@ let respond state line =
       {
         tag = Option.map Request.value_of_id id;
         output = [];
-        outcome = Failed (usage_error, printable (Request.message cause));
+        outcome =
+          Failed (Exit_code.usage_error, printable (Request.message cause));
       }
   | Ok request -> run state (Request.value_of_id request.id) request.op
 

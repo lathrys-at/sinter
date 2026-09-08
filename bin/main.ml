@@ -18,12 +18,11 @@ let version =
       else if d = "unknown" then "v" ^ Sinter_core.Version.base ^ "-dev"
       else "v" ^ Sinter_core.Version.base ^ "-dev+" ^ d
 
-(* @cites exit-codes *)
-let clean = 0
-let findings = 1
-let usage_error = 2
-let environment_error = 3
-let refused = 4
+let clean = Sinter_core.Exit_code.clean
+let findings = Sinter_core.Exit_code.findings
+let usage_error = Sinter_core.Exit_code.usage_error
+let environment_error = Sinter_core.Exit_code.environment_error
+let refused = Sinter_core.Exit_code.refused
 
 let clean_exit =
   Cmd.Exit.info ~doc:"on success, with no finding to report." clean
