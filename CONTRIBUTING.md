@@ -153,6 +153,13 @@ sign off code that you did not review.
   design notes, or with the maintainer. When nobody put one forward,
   the section says so. A decision that rests on measurements carries
   them.
+- A record states a choice, the options that were put forward, and
+  the reasons. It holds no format, no protocol, no interface, and no
+  account of how something is built; those belong in `spec/`, in the
+  interface files, and in the help text. A record fits on one screen.
+- A record is written from a ruling of the maintainer: an issue, a
+  comment on a pull request, or a plan the maintainer approved.
+  Nobody writes a record for a choice the maintainer did not make.
 - Implementation work follows a plan in `.plans/`, written with the
   `/sinter:plan` skill. A change to a plan's promises or scopes is an
   amendment. Make it a separate, small pull request, so that the

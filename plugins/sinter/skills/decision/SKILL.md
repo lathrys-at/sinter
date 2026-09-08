@@ -21,7 +21,9 @@ needs.
 ## Input
 
 The input is the decision. The user states the decision in
-conversation, or a plan step promises it. If the choice is not clear from the conversation, ask before you
+conversation, or a plan step promises it. Write no record for a
+choice the user did not make: a choice an implementer made on the
+way is a question for the user, not a record. If the choice is not clear from the conversation, ask before you
 write. Never invent an alternative. An alternative belongs in the
 record only when someone put it forward and it was deliberated: in
 the conversation, in an issue, in a pull request, in a plan, or in
@@ -68,8 +70,10 @@ Where the pressure came from. Two to five sentences.>
 
 ## Decision
 
-<What was chosen, stated so that a reader can act on it. Include the
-concrete rule, layout, or mechanism.>
+<What was chosen, stated so that a reader can act on it. State the
+choice, not the format, the protocol, the interface, or the way it
+is built; name the specification, the interface file, or the help
+text that holds those.>
 
 ## Alternatives considered
 
@@ -124,5 +128,7 @@ The record explains the decision, not the document.
 - All four sections exist. Every entry in "Alternatives considered"
   was put forward and deliberated, or the section holds
   `None were put forward.`
+- The record holds no table of fields, no wire format, no interface,
+  and no account of how the thing is built. It fits on one screen.
 - Every `@cites` target exists in the repository or is a declared
   ref.
