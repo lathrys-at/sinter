@@ -169,6 +169,22 @@ let a_closed_engine_refuses_every_call () =
      closing twice must not fault. *)
   Sinter_bridge.close engine
 
+(* The interface says that a program does not have to call
+   {!Sinter_bridge.close}: the collector frees an engine that no value
+   refers to. An engine that was closed must not be freed a second
+   time when the collector reaches it. *)
+let the_collector_frees_an_engine_that_no_value_refers_to () =
+  for index = 1 to 8 do
+    let engine = Sinter_bridge.create () in
+    if index mod 2 = 0 then Sinter_bridge.close engine
+  done;
+  Gc.full_major ();
+  Gc.full_major ();
+  Alcotest.(check bool)
+    "the bridge still parses after the collection" true
+    (String.starts_with ~prefix:"(document"
+       (Sinter_bridge.tree (Lazy.force json) ~source:"[1]"))
+
 let tests =
   [
     property ~name:"a capture is a byte range inside the source" ~print:Fun.id
@@ -200,4 +216,6 @@ let tests =
       reports_a_grammar_that_does_not_load;
     Alcotest.test_case "a closed engine refuses every call" `Quick
       a_closed_engine_refuses_every_call;
+    Alcotest.test_case "the collector frees an engine that no value refers to"
+      `Quick the_collector_frees_an_engine_that_no_value_refers_to;
   ]
