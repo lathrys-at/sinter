@@ -93,14 +93,6 @@ let error_message f =
     "no failure"
   with Sinter_bridge.Error message -> message
 
-let contains needle haystack =
-  let n = String.length needle and h = String.length haystack in
-  let rec search index =
-    index + n <= h
-    && (String.equal (String.sub haystack index n) needle || search (index + 1))
-  in
-  search 0
-
 (* The counterexample of "decode_captures raises Error on a damaged
    capture buffer": one capture, every integer 0, an empty name, an
    empty node type, and a text of the one byte 0xFF. *)
@@ -109,19 +101,18 @@ let rejects_a_capture_whose_text_is_not_utf_8 () =
     of_hex
       "5342523100000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000ff"
   in
-  Alcotest.(check bool)
-    "the message says a string is not UTF-8 text" true
-    (contains "a string is not UTF-8 text"
-       (error_message (fun () -> Sinter_bridge.decode_captures buffer)))
+  Alcotest.(check string)
+    "the message names the text of a node"
+    "the text of a node is not UTF-8 text"
+    (error_message (fun () -> Sinter_bridge.decode_captures buffer))
 
 (* The counterexample of "decode_tree raises Error on a damaged parse
    tree buffer": one record whose text is the one byte 0xFF. *)
 let rejects_a_parse_tree_that_is_not_utf_8 () =
   let buffer = of_hex "5342523101000000010000000000000001000000ff" in
-  Alcotest.(check bool)
-    "the message says a string is not UTF-8 text" true
-    (contains "a string is not UTF-8 text"
-       (error_message (fun () -> Sinter_bridge.decode_tree buffer)))
+  Alcotest.(check string)
+    "the message names the parse tree" "the parse tree is not UTF-8 text"
+    (error_message (fun () -> Sinter_bridge.decode_tree buffer))
 
 let tests =
   [

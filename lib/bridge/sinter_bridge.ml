@@ -80,12 +80,14 @@ let is_utf_8 text =
 
 (* Give the string and the offset of the byte after it. Every string
    of the buffer is UTF-8, so a caller of this module never sees other
-   bytes. *)
-let read_string buffer offset =
+   bytes. [what] names the string in the message of a failure: the
+   buffer is well formed when a string of it is not UTF-8, and the
+   caller must be told which string. *)
+let read_string buffer offset ~what =
   let length = read_int buffer (offset + 0) in
   check buffer (offset + 4) length;
   let text = String.sub buffer (offset + 4) length in
-  if not (is_utf_8 text) then malformed "a string is not UTF-8 text";
+  if not (is_utf_8 text) then raise (Error (what ^ " is not UTF-8 text"));
   (text, offset + 4 + length)
 
 let read_header buffer expected_kind =
@@ -107,9 +109,13 @@ let read_capture buffer offset =
   let start_column = read_int buffer (offset + 16) in
   let end_row = read_int buffer (offset + 20) in
   let end_column = read_int buffer (offset + 24) in
-  let name, offset = read_string buffer (offset + 28) in
-  let node_type, offset = read_string buffer offset in
-  let text, offset = read_string buffer offset in
+  let name, offset =
+    read_string buffer (offset + 28) ~what:"the name of a capture"
+  in
+  let node_type, offset =
+    read_string buffer offset ~what:"the type of a node"
+  in
+  let text, offset = read_string buffer offset ~what:"the text of a node" in
   ( {
       pattern;
       name;
@@ -148,7 +154,7 @@ let decode_tree buffer =
     malformed
       (Printf.sprintf "a parse tree buffer holds %d records, and 1 was expected"
          count);
-  let text, offset = read_string buffer header_length in
+  let text, offset = read_string buffer header_length ~what:"the parse tree" in
   check_whole buffer offset;
   text
 
