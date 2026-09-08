@@ -82,6 +82,32 @@ let a_tree_comes_back_for_any_text source =
   let written = Sinter_bridge.tree (Lazy.force json) ~source in
   String.length written > 0 && written.[0] = '('
 
+let contains needle haystack =
+  let n = String.length needle and h = String.length haystack in
+  let rec search index =
+    index + n <= h
+    && (String.equal (String.sub haystack index n) needle || search (index + 1))
+  in
+  search 0
+
+(* The source below is a JSON string that holds one byte that is not
+   UTF-8. The property "a capture is a byte range inside any UTF-8
+   text" found this case while its generator still gave bytes of any
+   value. The interface says that every string of every capture is
+   valid UTF-8, so this source has no captures to give. *)
+let reports_a_source_that_is_not_utf_8 () =
+  let message =
+    try
+      ignore
+        (Sinter_bridge.captures (Lazy.force json) ~source:"\"\xff\""
+           ~query:one_capture_query);
+      "no failure"
+    with Sinter_bridge.Error message -> message
+  in
+  Alcotest.(check bool)
+    "the message says that a string is not UTF-8 text" true
+    (contains "is not UTF-8 text" message)
+
 let rejects_an_empty_query () =
   Alcotest.check_raises "an empty query"
     (Invalid_argument "Sinter_bridge.captures: the query is empty") (fun () ->
@@ -149,18 +175,22 @@ let tests =
       Generators.json_source a_capture_is_a_byte_range_inside_the_source;
     property ~name:"a row and a column agree with the source" ~print:Fun.id
       Generators.json_source a_row_and_a_column_agree_with_the_source;
-    property ~name:"a row and a column agree with any text" ~print:Fun.id
-      Generators.any_text a_row_and_a_column_agree_with_the_source;
+    property ~name:"a row and a column agree with any UTF-8 text"
+      ~print:String.escaped Generators.any_utf_8_text
+      a_row_and_a_column_agree_with_the_source;
     property ~name:"captures come in the order of the cursor" ~print:Fun.id
       Generators.json_source captures_come_in_the_order_of_the_cursor;
     property ~name:"a capture name belongs to the query" ~print:Fun.id
       Generators.json_source a_capture_name_belongs_to_the_query;
     property ~name:"a tree comes back for a document" ~print:Fun.id
       Generators.json_source a_tree_comes_back_for_any_text;
-    property ~name:"a tree comes back for any text" ~print:Fun.id
+    property ~name:"a tree comes back for any text" ~print:String.escaped
       Generators.any_text a_tree_comes_back_for_any_text;
-    property ~name:"a capture is a byte range inside any text" ~print:Fun.id
-      Generators.any_text a_capture_is_a_byte_range_inside_the_source;
+    property ~name:"a capture is a byte range inside any UTF-8 text"
+      ~print:String.escaped Generators.any_utf_8_text
+      a_capture_is_a_byte_range_inside_the_source;
+    Alcotest.test_case "reports a source that is not UTF-8" `Quick
+      reports_a_source_that_is_not_utf_8;
     Alcotest.test_case "rejects an empty query" `Quick rejects_an_empty_query;
     Alcotest.test_case "rejects a grammar name that holds a NUL byte" `Quick
       rejects_a_grammar_name_that_holds_a_nul_byte;

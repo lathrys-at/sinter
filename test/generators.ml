@@ -528,6 +528,18 @@ let json_source =
   in
   value 0 3
 
+let any_utf_8_text =
+  let open Gen in
+  map (String.concat "")
+    (list_size (int_bound 40)
+       (oneof_weighted
+          [
+            ( 6,
+              oneof_list
+                [ "{"; "}"; "["; "]"; ":"; ","; "\""; "1"; "a"; " "; "\n" ] );
+            (2, utf_8_string);
+          ]))
+
 let any_text =
   let open Gen in
   map (String.concat "")

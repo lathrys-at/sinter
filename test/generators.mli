@@ -147,10 +147,15 @@ val json_source : string QCheck2.Gen.t
     each pair of an object sits on a line of its own, and a string in it holds
     code points of one, two, three, and four bytes. *)
 
+val any_utf_8_text : string QCheck2.Gen.t
+(** Text of valid UTF-8, of at most forty pieces. The punctuation of JSON comes
+    up often, so the text is often a document that almost parses. *)
+
 val any_text : string QCheck2.Gen.t
 (** Text of any bytes, valid UTF-8 or not, of at most forty pieces. The
     punctuation of JSON comes up often, so the text is often a document that
-    almost parses. *)
+    almost parses. A capture of this text can hold bytes that are not UTF-8, so
+    only a parse tree comes back for all of it. *)
 
 (** {1 WebAssembly modules} *)
 
