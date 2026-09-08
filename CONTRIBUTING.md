@@ -184,14 +184,21 @@ bisect-ppx-report summary --per-file
 `--instrument-with` is the switch. Without it, the build carries no
 instrumentation and costs nothing. `bisect-ppx-report` reads the
 counts under `_build`, so it needs no path. For a page per file, run
-`bisect-ppx-report html` and open `_coverage/index.html`.
+`bisect-ppx-report html -o _build/coverage` and open
+`_build/coverage/index.html`. Write the pages under `_build`, which
+git already ignores.
+
+The properties draw a new seed on each run, so the total moves by
+about one per cent between runs of the same tree. Read the lowest of
+several runs, not one run.
 
 A coverage build uses another compiler than an ordinary build, so it
 writes over `_build`. The next ordinary `dune build` builds the whole
 tree again, the Rust crate included.
 
-CI runs the same commands on `ubuntu-latest` and fails when the total
-falls below 90 per cent. A change does not lower the number.
+CI runs the same commands on `ubuntu-latest` and fails below the
+minimum that the `coverage` job sets. That job holds the number. A
+change does not lower the coverage.
 
 ## New files
 
