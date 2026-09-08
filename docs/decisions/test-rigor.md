@@ -5,6 +5,8 @@
 @decision test-rigor
 @cites implementation-language
 @cites json-handling
+@cites gh/20
+@cites gh/21
 Every exported function has a test through its interface, every stated invariant and every decoder has a property-based test with `qcheck`, and CI measures coverage with `bisect_ppx` under a threshold that only rises.
 
 ## Context
