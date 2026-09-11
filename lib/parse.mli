@@ -53,6 +53,12 @@ val record_of_capture :
       1
     - [text]: the source text of the node
 
+    Every string of the result is valid UTF-8, so {!Jsonl.to_string} takes the
+    result.
+
+    @raise Error
+      if [path], the capture name, the node type, or the text of the node is not
+      valid UTF-8.
     @raise Invalid_argument
       if the byte range of [capture] is not inside [source]. *)
 
@@ -60,13 +66,15 @@ val captures :
   Sinter_bridge.language -> query:string -> path:string -> Jsonl.record list
 (** [captures language ~query ~path] reads the file at [path], parses it, runs
     [query] over the parse tree, and gives one record per capture, in the order
-    the query produced them.
+    the query produced them. Every string of every record is valid UTF-8.
 
-    @raise Error if the file does not read, or the parse fails. *)
+    @raise Error
+      if the file does not read, the parse fails, or a string of a record would
+      not be valid UTF-8. *)
 
 val tree : Sinter_bridge.language -> path:string -> string
 (** [tree language ~path] reads the file at [path], parses it, and gives the
-    parse tree as an S-expression.
+    parse tree as an S-expression. The result is valid UTF-8.
 
     @raise Error if the file does not read, or the parse fails. *)
 
@@ -97,10 +105,14 @@ val fold :
     [None], an item is the parse tree of one file. [f] sees no item of a file
     that fails.
 
+    Every string of every record of an item is valid UTF-8, and so is the
+    S-expression of a tree item.
+
     @raise Error
       if a file name is not UTF-8 text, if a file does not read, if the query
-      file is empty or does not compile, or if a parse fails. An exception that
-      [f] raises passes through. *)
+      file is empty or does not compile, if a parse fails, or if a string of a
+      record would not be valid UTF-8. An exception that [f] raises passes
+      through. *)
 
 val run :
   grammar:string ->
