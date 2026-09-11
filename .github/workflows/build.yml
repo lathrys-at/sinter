@@ -216,8 +216,9 @@ jobs:
         run: opam install . --deps-only --with-test --locked
       # The pin goes in after the dependencies, and bisect_ppx is
       # installed on a line of its own. --with-test on the line above
-      # reaches every package on that line, and the test dependencies
-      # of bisect_ppx need a compiler older than this one.
+      # reaches every package named on that line, and bisect_ppx asks
+      # for ocamlformat 0.16.0 to run its own tests, which no compiler
+      # this new can build.
       - name: Install the pinned bisect_ppx
         run: |
           set -eu
