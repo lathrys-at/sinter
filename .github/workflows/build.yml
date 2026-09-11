@@ -149,26 +149,42 @@ jobs:
   coverage:
     name: Measure coverage
     runs-on: ubuntu-latest
-    # bisect_ppx 2.8.3 needs ppxlib below 0.36, which needs a compiler
-    # below 5.4, and it needs cmdliner below 2. sinter.opam.locked
-    # pins cmdliner 2.1.1, so this job builds a switch of its own, on
-    # a compiler of its own, and does not use the lock file. The
-    # number it reports therefore comes from a build that is not the
-    # build the other jobs make.
+    # This job builds what the build job builds: the same compiler,
+    # and the dependencies from the lock file. It adds one tool,
+    # bisect_ppx, which rewrites the modules of the library and the
+    # tool to count the points the tests run.
+    #
+    # bisect_ppx is pinned to a commit, and the pin lives here and in
+    # CONTRIBUTING.md, not in dune-project or in the lock file. The
+    # reason is that no release of bisect_ppx installs beside the
+    # locked dependencies: the last release, 2.8.3 of 2023, asks for
+    # ppxlib below 0.36 and cmdliner below 2, and the lock file holds
+    # cmdliner 2.1.1 and a compiler that no ppxlib below 0.36
+    # supports. The commit below is the head of the open upstream pull
+    # request 448, which builds against the newer ppxlib and the newer
+    # cmdliner and still calls itself version 2.8.3. Remove the pin,
+    # and install the release instead, when upstream publishes a
+    # version that installs beside the lock file.
     env:
-      COVERAGE_OCAML_VERSION: "5.3.0"
+      # The head of upstream pull request 448, "Support ppxlib.0.36.0".
+      # A commit, never a branch, so that every run builds the same
+      # source.
+      BISECT_PPX_COMMIT: "7061d643ff492b0045796357ee6917ded21fb1f0"
       # The job fails when the total is below this number. Raise it
       # when the number grows. Do not lower it.
       COVERAGE_MINIMUM: "90"
     steps:
       - uses: actions/checkout@v6
+      # This switch holds the pinned tool as well as the project's
+      # dependencies, so it has a cache key of its own, and the key
+      # names the pinned commit. A new commit builds a new switch.
       - name: Restore the opam switch
         uses: actions/cache@v6
         with:
           path: _opam
-          key: opam-coverage-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.COVERAGE_OCAML_VERSION }}-${{ hashFiles('sinter.opam') }}
+          key: opam-coverage-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.BISECT_PPX_COMMIT }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
-            opam-coverage-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.COVERAGE_OCAML_VERSION }}-
+            opam-coverage-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.BISECT_PPX_COMMIT }}-
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -194,18 +210,20 @@ jobs:
         run: git config --global maintenance.auto false
       - uses: ocaml/setup-ocaml@v3
         with:
-          ocaml-compiler: ${{ env.COVERAGE_OCAML_VERSION }}
+          ocaml-compiler: ${{ env.OCAML_VERSION }}
           cache: false
-      # bisect_ppx goes in first, because it holds cmdliner below 2 and
-      # the project then takes the cmdliner that is already there. The
-      # other order installs cmdliner 2 and leaves no room for
-      # bisect_ppx. Do not name bisect_ppx on the line that carries
-      # --with-test: the flag reaches every package on the line, and
-      # the test dependencies of bisect_ppx need a compiler below 4.13.
-      - name: Install bisect_ppx and the dependencies
+      - name: Install the dependencies
+        run: opam install . --deps-only --with-test --locked
+      # The pin goes in after the dependencies, and bisect_ppx is
+      # installed on a line of its own. --with-test on the line above
+      # reaches every package on that line, and the test dependencies
+      # of bisect_ppx need a compiler older than this one.
+      - name: Install the pinned bisect_ppx
         run: |
-          opam install bisect_ppx.2.8.3
-          opam install . --deps-only --with-test
+          set -eu
+          opam pin add -y -n bisect_ppx \
+            "git+https://github.com/aantron/bisect_ppx.git#$BISECT_PPX_COMMIT"
+          opam install -y bisect_ppx
       - name: Run the tests with the code instrumented
         run: >
           opam exec -- dune build @runtest --force
