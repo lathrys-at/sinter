@@ -2,7 +2,8 @@
 @plan quality
 @scope test/**, lib/**, bin/dune, docs/decisions/**, docs/roadmap.md, .plans/**, .github/workflows/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, CONTRIBUTING.md
 Record the code and test rules, bring the existing interfaces under
-property-based tests, and measure coverage in CI.
+property-based tests, measure coverage and mutation score in CI, and
+close the gaps the mutants find.
 
 ## Record the rules
 @scope docs/decisions/**, docs/roadmap.md, .plans/**, CONTRIBUTING.md
@@ -20,7 +21,21 @@ commit with a unit test that holds the counterexample. Declare
 `qcheck` and `qcheck-alcotest`.
 
 ## Measure coverage in CI
-@scope .github/workflows/**, test/**, lib/dune, bin/dune, dune-project, sinter.opam, sinter.opam.locked, CONTRIBUTING.md
-Add the `coverage` profile with `bisect_ppx`, a CI job that reports
-the summary and fails below the threshold, and the local commands in
-`CONTRIBUTING.md`.
+@scope .github/workflows/**, test/**, lib/dune, lib/bridge/dune, bin/dune, docs/decisions/**, CONTRIBUTING.md
+@decision instrumented-tooling
+Instrument `lib/` and `bin/` with `bisect_ppx`, add a CI job on the
+project's compiler that reports the summary and fails below the
+minimum, and document the local commands in `CONTRIBUTING.md`.
+
+## Run mutation testing in CI
+@scope .github/workflows/**, lib/dune, lib/bridge/dune, bin/dune, docs/decisions/**, docs/roadmap.md, CONTRIBUTING.md
+@decision mutation-testing
+Instrument `lib/` and `bin/` with the project's fork of `mutaml`, add
+a CI job that reports the score and the survivors and fails below the
+minimum, and document the local commands in `CONTRIBUTING.md`.
+
+## Close the test gaps that the mutants found
+@scope test/**, lib/**, .github/workflows/**
+Write the tests that kill the surviving mutants of the first run, mark
+the equivalent ones in the source with a reason, and raise the minimum
+to the new measured score.
