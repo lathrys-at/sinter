@@ -290,6 +290,50 @@ let gives_no_name_for_a_module_the_reader_cannot_follow () =
   check "an export list whose one export is not a grammar" "\001\003foo\000\000";
   check "an export whose kind byte is missing" "\001\003foo"
 
+(* The reader walks the section list of a module, and then the export
+   list of its export section. Each module below takes it down a road
+   that neither the fixture nor a module of one export goes: a section
+   whose size needs two LEB128 bytes, a list of three exports with the
+   one of the grammar last, and an export index written in five LEB128
+   bytes. *)
+let reads_the_name_of_a_module_of_any_shape () =
+  let check what shape =
+    Alcotest.(check (option string))
+      what (Some "json")
+      (Parse.name_of_wasm (Generators.wasm_module shape ~name:"json"))
+  in
+  check "a section whose size needs two bytes" Generators.Long_custom_section;
+  check "three exports, and the one of the grammar last"
+    Generators.Three_exports;
+  check "an export index of five bytes" Generators.Long_export_index
+
+(* The export section states how many exports it holds, and its size
+   states where it ends. The two can disagree, and the reader holds to
+   both: it reads no export past the count, and none past the end of
+   the section. In each module below the export of the grammar is
+   there, and the reader must not reach it. *)
+let gives_no_name_when_the_export_count_disagrees () =
+  let check what shape =
+    Alcotest.(check (option string))
+      what None
+      (Parse.name_of_wasm (Generators.wasm_module shape ~name:"json"))
+  in
+  check "a section that declares two exports and holds three"
+    Generators.Too_few_exports_declared;
+  check
+    "a section that declares three exports and holds two, and the export of \
+     the grammar follows it"
+    Generators.Too_many_exports_declared
+
+(* A section whose body runs past the end of the module is no section.
+   The reader gives no name for such a module, even though the bytes
+   of the export are all there. *)
+let gives_no_name_for_a_module_cut_in_a_section () =
+  Alcotest.(check (option string))
+    "a module cut in the middle of its export section" None
+    (Parse.name_of_wasm
+       (Generators.wasm_module Generators.Cut_in_a_section ~name:"json"))
+
 (* A capture that holds the one line feed of a one-byte file ends at
    row 1, column 0: the start of a line that the file does not hold.
    The record then names line 1, the line that holds the last byte,
@@ -709,7 +753,7 @@ let a_grammar_name_drops_the_prefix_and_the_extension name =
    The reader now gives None, the caller falls back to the file name,
    and the failure is one that names the file. *)
 let refuses_a_module_that_names_itself_with_a_nul_byte () =
-  let wasm = Generators.wasm_module ~before:false ~name:"a\000b" in
+  let wasm = Generators.wasm_module Generators.One_export ~name:"a\000b" in
   Alcotest.(check (option string))
     "a name with a NUL byte is no name" None (Parse.name_of_wasm wasm);
   let path = Filename.temp_file "sinter-parse" ".wasm" in
@@ -998,6 +1042,12 @@ let tests =
       gives_no_name_that_holds_a_nul_byte;
     Alcotest.test_case "gives no name for a module the reader cannot follow"
       `Quick gives_no_name_for_a_module_the_reader_cannot_follow;
+    Alcotest.test_case "reads the name of a module of any shape" `Quick
+      reads_the_name_of_a_module_of_any_shape;
+    Alcotest.test_case "gives no name when the export count disagrees" `Quick
+      gives_no_name_when_the_export_count_disagrees;
+    Alcotest.test_case "gives no name for a module cut in a section" `Quick
+      gives_no_name_for_a_module_cut_in_a_section;
     Alcotest.test_case "places the end of a capture that ends before byte two"
       `Quick places_the_end_of_a_capture_that_ends_before_byte_two;
     Alcotest.test_case "folds one tree over each file" `Quick
