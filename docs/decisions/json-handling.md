@@ -38,13 +38,6 @@ also read JSON: the serve mode takes requests as JSON lines.
   or escape as RFC 8785 requires, so the output would need a second
   pass to become canonical, and nothing in its types stops a float or
   a null from reaching the output.
-- **A library that implements RFC 8785** — rejected. None exists for
-  OCaml, and the specification restricts values enough that the
-  canonical form fits in about a hundred lines of our own.
-- **A JSON reader of our own** — rejected. Reading needs a full JSON
-  parser, which is more code than the writer and gains nothing over a
-  maintained library with a permissive license.
-
 ## Consequences
 
 One module owns the canonical form, and its tests cover the cases
