@@ -64,6 +64,63 @@ tool. It says what is wrong and, when useful, what to do. It never
 names a repository file or a document section, and it never explains
 the tool's internal reasons.
 
+## Code
+
+Sinter's code holds to the standard of a library that other OCaml
+projects depend on. The rules:
+
+- Every module has an `.mli` file. The interface exports the smallest
+  set of types and functions that its callers need. A type whose
+  values a caller must not build by hand is abstract.
+- A comment on every exported value addresses the caller, as the
+  "Code comments" section describes: what the value takes, what it
+  returns, who owns the result, and what can go wrong.
+- A function's type says what can go wrong. A failure that a caller
+  handles is a value of a `result` type with a variant error type. An
+  exception is for a failure that ends the whole operation. The `.mli`
+  declares every exception a function raises and the condition that
+  raises it.
+- A function is total over its declared input type. When the type
+  admits inputs the function cannot handle, the function returns an
+  error value, or the `.mli` states the precondition and the function
+  checks it and raises `Invalid_argument`. Do not use `assert false`,
+  `Obj.magic`, `Option.get`, `List.hd`, or `failwith` on data that
+  came from outside the module.
+- State is local. A module holds no global mutable state. A resource
+  such as an engine, a channel, or a temporary file has a type, an
+  owner, and a lifetime rule in the `.mli`. Code releases a resource on
+  every path, the error paths included; use `Fun.protect`.
+- Data from outside the process (a file, standard input, the bridge's
+  buffer, a wasm module) is decoded and validated in one module. The
+  rest of the code sees typed values.
+- Each module does one thing and depends only on the modules below it.
+  The core library does not read the command line, the terminal, or
+  the process environment; the executable in `bin/` does.
+- The build is clean under dune's development profile, which turns
+  warnings into errors. Do not silence a warning with a flag or an
+  attribute; change the code.
+- Prefer the standard library. Add a dependency only when the code it
+  replaces would be larger than a module of our own, and record the
+  choice in a decision record.
+
+## Tests
+
+- Every function that an `.mli` exports has a test. The test calls
+  the function through the interface.
+- Every property that a specification or an `.mli` states about an
+  output is a property-based test: the test generates inputs with
+  `qcheck` and checks the property for each input. A round trip, an
+  ordering, an invariant, and a bound are properties.
+- Every decoder of data from outside the process has a property test
+  that feeds it generated and corrupted inputs. The decoder returns a
+  value or an error for every input, and never crashes.
+- Every exit code and every error message of a command has a test
+  through the built binary.
+- A bug fix comes with the test that failed before the fix.
+- A test states one fact, and its name says which.
+- CI measures coverage with `bisect_ppx`. A change does not lower the
+  number.
+
 ## Build and check
 
 Install [opam](https://opam.ocaml.org/) and an OCaml switch (5.1 or
@@ -148,8 +205,11 @@ sign off code that you did not review.
   per decision, with a `@decision` tag. Read the record before you
   re-argue a choice. To record a new decision, use the
   `/sinter:decision` skill or follow its format. "Alternatives
-  considered" is never empty, and a decision that rests on
-  measurements carries them.
+  considered" lists only the alternatives that someone put forward
+  and that were deliberated: in an issue, a pull request, a plan, the
+  design notes, or with the maintainer. When nobody put one forward,
+  the section says so. A decision that rests on measurements carries
+  them.
 - Implementation work follows a plan in `.plans/`, written with the
   `/sinter:plan` skill. A change to a plan's promises or scopes is an
   amendment. Make it a separate, small pull request, so that the
