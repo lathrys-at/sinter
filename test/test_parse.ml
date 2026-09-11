@@ -173,7 +173,8 @@ let a_query_file_of_one_character_is_not_empty () =
         try output ~query:(Some file) ~paths:[ sample ]
         with Parse.Error message -> message)
   in
-  Alcotest.(check string) "the run writes no line and fails not" "" written
+  Alcotest.(check string)
+    "the run writes no line and gives no failure" "" written
 
 (* A record ends on the line that holds its last byte. The document
    node of this file ends after the last line feed, and tree-sitter
