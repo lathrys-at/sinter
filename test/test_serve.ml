@@ -12,11 +12,11 @@ let query = "fixtures/sample.scm"
 let missing = "no-such-file.json"
 let line_of fields = Yojson.Safe.to_string (`Assoc fields)
 
-let request ?(id = `String "r1") ?query ?(tree = false) ?(grammar = grammar)
+let request ?(rid = `String "r1") ?query ?(tree = false) ?(grammar = grammar)
     files =
   let named name = function None -> [] | Some value -> [ (name, value) ] in
   line_of
-    ([ ("id", id); ("op", `String "parse"); ("grammar", `String grammar) ]
+    ([ ("rid", rid); ("op", `String "parse"); ("grammar", `String grammar) ]
     @ named "query" (Option.map (fun path -> `String path) query)
     @ (if tree then [ ("tree", `Bool true) ] else [])
     @ [ ("files", `List (List.map (fun file -> `String file) files)) ])
@@ -63,22 +63,22 @@ let tag : (Yojson.Safe.t * Jsonl.value) Gen.t =
    some fail, and the shape of the answer is the same either way. *)
 let well_formed =
   let open Gen in
-  let* id, expected = tag in
+  let* rid, expected = tag in
   let* shape =
     oneof
       [
-        return (fun id -> request ~id ~query [ sample ]);
-        return (fun id -> request ~id ~tree:true [ sample ]);
-        return (fun id -> request ~id ~query [ sample; sample ]);
-        return (fun id -> request ~id ~query [ sample; missing ]);
-        return (fun id -> request ~id ~query [ missing ]);
-        return (fun id -> request ~id ~tree:true ~grammar:missing [ sample ]);
-        return (fun id -> request ~id ~query:missing [ sample ]);
-        return (fun id -> request ~id ~query:sample [ sample ]);
-        return (fun id -> request ~id ~tree:true ~grammar:sample [ sample ]);
+        return (fun rid -> request ~rid ~query [ sample ]);
+        return (fun rid -> request ~rid ~tree:true [ sample ]);
+        return (fun rid -> request ~rid ~query [ sample; sample ]);
+        return (fun rid -> request ~rid ~query [ sample; missing ]);
+        return (fun rid -> request ~rid ~query [ missing ]);
+        return (fun rid -> request ~rid ~tree:true ~grammar:missing [ sample ]);
+        return (fun rid -> request ~rid ~query:missing [ sample ]);
+        return (fun rid -> request ~rid ~query:sample [ sample ]);
+        return (fun rid -> request ~rid ~tree:true ~grammar:sample [ sample ]);
       ]
   in
-  return (expected, shape id)
+  return (expected, shape rid)
 
 (* A line that is not a request: random bytes, or a request with one
    byte cut, changed, or added. *)
@@ -114,7 +114,7 @@ let answers_a_well_formed_request =
       && (match last records with
         | Some record -> is_control record
         | None -> false)
-      && List.for_all (fun record -> field "req" record = expected) records
+      && List.for_all (fun record -> field "rid" record = expected) records
       && List.for_all sorted records)
 
 let answers_a_line_that_is_not_a_request =
@@ -148,7 +148,7 @@ let a_query_request_tags_every_capture () =
   let records = Serve.lines (answer (request ~query [ sample ])) in
   holds "every capture carries the tag"
     (List.for_all
-       (fun record -> field "req" record = Some (Jsonl.string "r1"))
+       (fun record -> field "rid" record = Some (Jsonl.string "r1"))
        records)
 
 let a_tree_request_gives_one_object_for_each_file () =
@@ -216,16 +216,16 @@ let a_line_that_holds_no_tag_gets_an_answer_without_one () =
   holds "one line only" (List.length records = 1);
   holds "the line carries no tag"
     (match last records with
-    | Some record -> field "req" record = None
+    | Some record -> field "rid" record = None
     | None -> false)
 
 let a_number_tag_comes_back_as_a_number () =
   let records =
-    Serve.lines (answer (request ~id:(`Int 7) ~tree:true [ sample ]))
+    Serve.lines (answer (request ~rid:(`Int 7) ~tree:true [ sample ]))
   in
   holds "every line carries the number"
     (List.for_all
-       (fun record -> field "req" record = Some (Jsonl.int 7))
+       (fun record -> field "rid" record = Some (Jsonl.int 7))
        records)
 
 (* The grammar cache. Each test below owns a copy of the grammar file,

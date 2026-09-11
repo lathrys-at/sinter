@@ -64,9 +64,9 @@ let printable message =
   if Jsonl.is_utf_8 message then message else String.escaped message
 
 let record_of_item tag = function
-  | Parse.Capture record -> ("req", tag) :: record
+  | Parse.Capture record -> ("rid", tag) :: record
   | Parse.Tree { path; sexp } ->
-      [ ("req", tag); ("path", Jsonl.string path); ("tree", Jsonl.string sexp) ]
+      [ ("rid", tag); ("path", Jsonl.string path); ("tree", Jsonl.string sexp) ]
 
 let run state tag (op : Request.op) =
   let collected = ref [] in
@@ -97,20 +97,20 @@ let respond state line =
   if state.closed then
     invalid_arg "Sinter_core.Serve: the state of the loop is closed";
   match Request.of_line line with
-  | Error { id; cause } ->
+  | Error { rid; cause } ->
       {
-        tag = Option.map Request.value_of_id id;
+        tag = Option.map Request.value_of_rid rid;
         output = [];
         outcome =
           Failed (Exit_code.usage_error, printable (Request.message cause));
       }
-  | Ok request -> run state (Request.value_of_id request.id) request.op
+  | Ok request -> run state (Request.value_of_rid request.rid) request.op
 
 let control response = response.outcome
 
 let lines response =
   let tag =
-    match response.tag with None -> [] | Some value -> [ ("req", value) ]
+    match response.tag with None -> [] | Some value -> [ ("rid", value) ]
   in
   let last =
     match response.outcome with

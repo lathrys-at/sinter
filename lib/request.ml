@@ -1,16 +1,16 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-type id = Text of string | Number of int
+type rid = Text of string | Number of int
 type output = Captures of string | Tree
 type op = Parse of { grammar : string; output : output; files : string list }
-type t = { id : id; op : op }
+type t = { rid : rid; op : op }
 
 type cause =
   | Not_json
   | Not_an_object
-  | No_id
-  | Bad_id
+  | No_rid
+  | Bad_rid
   | No_op
   | Bad_op
   | Unknown_op of string
@@ -23,14 +23,14 @@ type cause =
   | Both_query_and_tree
   | Neither_query_nor_tree
 
-type error = { id : id option; cause : cause }
+type error = { rid : rid option; cause : cause }
 
 let message = function
   | Not_json -> "the request is not JSON"
   | Not_an_object -> "the request is not a JSON object"
-  | No_id -> "the request has no id"
-  | Bad_id ->
-      "the id must be a string, or an integer between -(2^53-1) and 2^53-1"
+  | No_rid -> "the request has no rid"
+  | Bad_rid ->
+      "the rid must be a string, or an integer between -(2^53-1) and 2^53-1"
   | No_op -> "the request has no op"
   | Bad_op -> "the op must be a string"
   | Unknown_op name -> Printf.sprintf "there is no operation named %S" name
@@ -46,7 +46,7 @@ let message = function
       "query and tree exclude each other; give one of the two"
   | Neither_query_nor_tree -> "give either query or tree"
 
-let value_of_id = function
+let value_of_rid = function
   | Text text -> Jsonl.string text
   | Number number -> Jsonl.int number
 
@@ -56,20 +56,20 @@ let value_of_id = function
 let max_number = 9007199254740991
 let min_number = -9007199254740991
 let ( let* ) = Result.bind
-let untagged cause = Error { id = None; cause }
-let bad id cause = Error { id = Some id; cause }
+let untagged cause = Error { rid = None; cause }
+let bad rid cause = Error { rid = Some rid; cause }
 
 (* Every name that a parse request may hold. *)
-let parse_fields = [ "id"; "op"; "grammar"; "query"; "tree"; "files" ]
+let parse_fields = [ "rid"; "op"; "grammar"; "query"; "tree"; "files" ]
 
-let read_id fields =
-  match List.filter (fun (name, _) -> String.equal name "id") fields with
-  | [] -> untagged No_id
-  | _ :: _ :: _ -> untagged (Repeated_field "id")
+let read_rid fields =
+  match List.filter (fun (name, _) -> String.equal name "rid") fields with
+  | [] -> untagged No_rid
+  | _ :: _ :: _ -> untagged (Repeated_field "rid")
   | [ (_, `String text) ] when Jsonl.is_utf_8 text -> Ok (Text text)
   | [ (_, `Int number) ] when number >= min_number && number <= max_number ->
       Ok (Number number)
-  | _ -> untagged Bad_id
+  | _ -> untagged Bad_rid
 
 (* A name that two pairs share. yojson keeps both pairs, and a record
    that holds one field twice is not a record. A line holds as many
@@ -83,16 +83,16 @@ let repeated fields =
   in
   adjacent (List.sort String.compare (List.map fst fields))
 
-let text id field = function
+let text rid field = function
   | `String value ->
-      if Jsonl.is_utf_8 value then Ok value else bad id (Not_text field)
-  | _ -> bad id (Wrong_type { field; wanted = "a string" })
+      if Jsonl.is_utf_8 value then Ok value else bad rid (Not_text field)
+  | _ -> bad rid (Wrong_type { field; wanted = "a string" })
 
-let flag id field = function
+let flag rid field = function
   | `Bool value -> Ok value
-  | _ -> bad id (Wrong_type { field; wanted = "true or false" })
+  | _ -> bad rid (Wrong_type { field; wanted = "true or false" })
 
-let paths id field value =
+let paths rid field value =
   let wanted = "an array of one string or more" in
   match value with
   | `List items ->
@@ -100,55 +100,55 @@ let paths id field value =
         | [] -> Ok (List.rev kept)
         | `String item :: rest ->
             if Jsonl.is_utf_8 item then collect (item :: kept) rest
-            else bad id (Not_text field)
-        | _ -> bad id (Wrong_type { field; wanted })
+            else bad rid (Not_text field)
+        | _ -> bad rid (Wrong_type { field; wanted })
       in
       let* collected = collect [] items in
-      if collected = [] then bad id (Empty_field field) else Ok collected
-  | _ -> bad id (Wrong_type { field; wanted })
+      if collected = [] then bad rid (Empty_field field) else Ok collected
+  | _ -> bad rid (Wrong_type { field; wanted })
 
-let required id field read fields =
+let required rid field read fields =
   match List.assoc_opt field fields with
-  | None -> bad id (Missing_field field)
-  | Some value -> read id field value
+  | None -> bad rid (Missing_field field)
+  | Some value -> read rid field value
 
-let optional id field read fields =
+let optional rid field read fields =
   match List.assoc_opt field fields with
   | None -> Ok None
   | Some value ->
-      let* value = read id field value in
+      let* value = read rid field value in
       Ok (Some value)
 
-let unknown id known fields =
+let unknown rid known fields =
   match
     List.find_opt
       (fun (name, _) -> not (List.exists (String.equal name) known))
       fields
   with
-  | Some (name, _) -> bad id (Unknown_field name)
+  | Some (name, _) -> bad rid (Unknown_field name)
   | None -> Ok ()
 
-let read_parse id fields =
-  let* () = unknown id parse_fields fields in
-  let* grammar = required id "grammar" text fields in
-  let* query = optional id "query" text fields in
-  let* tree = optional id "tree" flag fields in
-  let* files = required id "files" paths fields in
+let read_parse rid fields =
+  let* () = unknown rid parse_fields fields in
+  let* grammar = required rid "grammar" text fields in
+  let* query = optional rid "query" text fields in
+  let* tree = optional rid "tree" flag fields in
+  let* files = required rid "files" paths fields in
   let* output =
     match (query, tree) with
-    | Some _, Some true -> bad id Both_query_and_tree
-    | None, (None | Some false) -> bad id Neither_query_nor_tree
+    | Some _, Some true -> bad rid Both_query_and_tree
+    | None, (None | Some false) -> bad rid Neither_query_nor_tree
     | Some query, (None | Some false) -> Ok (Captures query)
     | None, Some true -> Ok Tree
   in
-  Ok { id; op = Parse { grammar; output; files } }
+  Ok { rid; op = Parse { grammar; output; files } }
 
-let read_op id fields =
+let read_op rid fields =
   match List.assoc_opt "op" fields with
-  | None -> bad id No_op
-  | Some (`String "parse") -> read_parse id fields
-  | Some (`String name) -> bad id (Unknown_op name)
-  | Some _ -> bad id Bad_op
+  | None -> bad rid No_op
+  | Some (`String "parse") -> read_parse rid fields
+  | Some (`String name) -> bad rid (Unknown_op name)
+  | Some _ -> bad rid Bad_op
 
 let of_line line =
   (* A line of any depth reaches this reader, and yojson reads a nested
@@ -157,8 +157,8 @@ let of_line line =
   | exception Yojson.Json_error _ -> untagged Not_json
   | exception Stack_overflow -> untagged Not_json
   | `Assoc fields -> (
-      let* id = read_id fields in
+      let* rid = read_rid fields in
       match repeated fields with
-      | Some name -> bad id (Repeated_field name)
-      | None -> read_op id fields)
+      | Some name -> bad rid (Repeated_field name)
+      | None -> read_op rid fields)
   | _ -> untagged Not_an_object

@@ -193,7 +193,7 @@ let the_help_lists_the_five_exit_codes () =
     [ "EXIT STATUS"; "0   on"; "1   when"; "2   when"; "3   when"; "4   when" ]
 
 let parse_request tag rest =
-  Printf.sprintf {|{"id":%s,"op":"parse","grammar":"%s",%s}|} tag grammar rest
+  Printf.sprintf {|{"rid":%s,"op":"parse","grammar":"%s",%s}|} tag grammar rest
 
 let captures_request tag =
   parse_request tag
@@ -222,26 +222,26 @@ let a_session_answers_each_request_in_order () =
     (fun index ->
       Alcotest.(check bool)
         "a capture line carries the tag of its request" true
-        (contains {|"req":1|} (line index)))
+        (contains {|"rid":1|} (line index)))
     [ 0; 1; 2; 3; 4; 5 ];
   Alcotest.(check string)
     "the first answer ends with a done line"
-    {|{"code":0,"event":"done","req":1}|} (line 6);
+    {|{"code":0,"event":"done","rid":1}|} (line 6);
   Alcotest.(check bool)
     "a line that is not a request gives an error with code 2" true
     (String.starts_with ~prefix:{|{"code":2,"event":"error","message":"|}
        (line 7));
   Alcotest.(check bool)
     "that error line carries no tag" false
-    (contains {|"req"|} (line 7));
+    (contains {|"rid"|} (line 7));
   Alcotest.(check bool)
     "the tree of the third request carries its path and its tag" true
     (String.starts_with
-       ~prefix:{|{"path":"fixtures/sample.json","req":"two","tree":"(document|}
+       ~prefix:{|{"path":"fixtures/sample.json","rid":"two","tree":"(document|}
        (line 8));
   Alcotest.(check string)
     "the third answer ends with a done line"
-    {|{"code":0,"event":"done","req":"two"}|} (line 9)
+    {|{"code":0,"event":"done","rid":"two"}|} (line 9)
 
 let end_of_file_ends_the_run () =
   let status, output, errors = session "" in

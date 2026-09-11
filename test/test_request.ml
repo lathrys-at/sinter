@@ -8,12 +8,12 @@ let line_of fields = Yojson.Safe.to_string (`Assoc fields)
 
 (* One line for a parse request. Each argument replaces one field, and
    [?query] and [?tree] add a field that is otherwise absent. *)
-let parse_line ?(id = `String "r1") ?(op = `String "parse")
+let parse_line ?(rid = `String "r1") ?(op = `String "parse")
     ?(grammar = `String "g.wasm") ?query ?tree ?(files = `List [ `String "a" ])
     () =
   let named name = function None -> [] | Some value -> [ (name, value) ] in
   line_of
-    ([ ("id", id); ("op", op); ("grammar", grammar) ]
+    ([ ("rid", rid); ("op", op); ("grammar", grammar) ]
     @ named "query" query @ named "tree" tree
     @ [ ("files", files) ])
 
@@ -23,14 +23,14 @@ let cause_of line =
   | Error error -> Some error.cause
 
 let tag_of line =
-  match Request.of_line line with Ok _ -> None | Error error -> error.id
+  match Request.of_line line with Ok _ -> None | Error error -> error.rid
 
 let holds name condition = Alcotest.(check bool) name true condition
 let gives name expected line = holds name (cause_of line = Some expected)
 
 (* Generators. *)
 
-let json_of_id = function
+let json_of_rid = function
   | Request.Text text -> `String text
   | Request.Number number -> `Int number
 
@@ -38,7 +38,7 @@ let fields_of (request : Request.t) ~spell_out =
   match request.op with
   | Request.Parse { grammar; output; files } ->
       [
-        ("id", json_of_id request.id);
+        ("rid", json_of_rid request.rid);
         ("op", `String "parse");
         ("grammar", `String grammar);
       ]
@@ -54,7 +54,7 @@ let fields_of (request : Request.t) ~spell_out =
 let request_and_line =
   let open Gen in
   let text = string_printable in
-  let* id =
+  let* rid =
     oneof
       [
         map (fun text -> Request.Text text) text;
@@ -70,7 +70,9 @@ let request_and_line =
   in
   let* files = list_size (int_range 1 4) text in
   let* spell_out = bool in
-  let request = { Request.id; op = Request.Parse { grammar; output; files } } in
+  let request =
+    { Request.rid; op = Request.Parse { grammar; output; files } }
+  in
   let* fields = shuffle_list (fields_of request ~spell_out) in
   return (request, line_of fields)
 
@@ -129,42 +131,50 @@ let a_line_of_spaces_is_not_a_request () =
 let a_json_value_that_is_not_an_object_is_not_a_request () =
   gives "an array" Request.Not_an_object "[1,2]"
 
-let a_request_without_an_id_is_an_error () =
-  gives "no id" Request.No_id
+let a_request_without_a_rid_is_an_error () =
+  gives "no rid" Request.No_rid
     {|{"op":"parse","grammar":"g.wasm","tree":true,"files":["a"]}|}
 
-let an_id_of_the_wrong_type_is_an_error () =
-  gives "a boolean id" Request.Bad_id
-    (parse_line ~id:(`Bool true) ~tree:(`Bool true) ())
+let a_rid_of_the_wrong_type_is_an_error () =
+  gives "a boolean rid" Request.Bad_rid
+    (parse_line ~rid:(`Bool true) ~tree:(`Bool true) ())
 
-let an_id_above_the_allowed_range_is_an_error () =
-  gives "2^53" Request.Bad_id
-    (parse_line ~id:(`Int 9007199254740992) ~tree:(`Bool true) ())
+let a_rid_above_the_allowed_range_is_an_error () =
+  gives "2^53" Request.Bad_rid
+    (parse_line ~rid:(`Int 9007199254740992) ~tree:(`Bool true) ())
 
-let an_id_that_is_not_utf_8_is_an_error () =
-  gives "one byte that no code point starts" Request.Bad_id
-    "{\"id\":\"\xff\",\"op\":\"parse\",\"grammar\":\"g\",\"tree\":true,\"files\":[\"a\"]}"
+let a_rid_that_is_not_utf_8_is_an_error () =
+  gives "one byte that no code point starts" Request.Bad_rid
+    "{\"rid\":\"\xff\",\"op\":\"parse\",\"grammar\":\"g\",\"tree\":true,\"files\":[\"a\"]}"
 
-let an_error_without_a_readable_id_carries_no_tag () =
+let an_error_without_a_readable_rid_carries_no_tag () =
   holds "the error names no tag"
-    (tag_of (parse_line ~id:(`Bool true) ~tree:(`Bool true) ()) = None)
+    (tag_of (parse_line ~rid:(`Bool true) ~tree:(`Bool true) ()) = None)
 
-let an_error_after_the_id_carries_the_tag () =
+let an_error_after_the_rid_carries_the_tag () =
   holds "the error names the tag"
-    (tag_of (parse_line ~id:(`String "r7") ~op:(`String "scan") ())
+    (tag_of (parse_line ~rid:(`String "r7") ~op:(`String "scan") ())
     = Some (Request.Text "r7"))
 
-let an_id_given_twice_is_an_error () =
-  gives "two id fields" (Request.Repeated_field "id")
-    {|{"id":1,"id":2,"op":"parse","grammar":"g","tree":true,"files":["a"]}|}
+let a_rid_given_twice_is_an_error () =
+  gives "two rid fields" (Request.Repeated_field "rid")
+    {|{"rid":1,"rid":2,"op":"parse","grammar":"g","tree":true,"files":["a"]}|}
 
 let a_field_given_twice_is_an_error () =
   gives "two grammar fields" (Request.Repeated_field "grammar")
-    {|{"id":1,"op":"parse","grammar":"g","grammar":"h","tree":true,"files":["a"]}|}
+    {|{"rid":1,"op":"parse","grammar":"g","grammar":"h","tree":true,"files":["a"]}|}
+
+let an_id_field_beside_a_rid_is_an_unknown_field () =
+  gives "the field id" (Request.Unknown_field "id")
+    {|{"rid":1,"id":2,"op":"parse","grammar":"g","tree":true,"files":["a"]}|}
+
+let an_id_field_alone_is_a_request_without_a_rid () =
+  gives "the field id and no rid" Request.No_rid
+    {|{"id":1,"op":"parse","grammar":"g","tree":true,"files":["a"]}|}
 
 let a_request_without_an_op_is_an_error () =
   gives "no op" Request.No_op
-    {|{"id":1,"grammar":"g","tree":true,"files":["a"]}|}
+    {|{"rid":1,"grammar":"g","tree":true,"files":["a"]}|}
 
 let an_op_of_the_wrong_type_is_an_error () =
   gives "a numeric op" Request.Bad_op
@@ -176,15 +186,15 @@ let an_op_that_does_not_exist_is_an_error () =
 
 let a_field_that_does_not_belong_is_an_error () =
   gives "the field depth" (Request.Unknown_field "depth")
-    {|{"id":1,"op":"parse","grammar":"g","tree":true,"files":["a"],"depth":2}|}
+    {|{"rid":1,"op":"parse","grammar":"g","tree":true,"files":["a"],"depth":2}|}
 
 let a_request_without_a_grammar_is_an_error () =
   gives "no grammar" (Request.Missing_field "grammar")
-    {|{"id":1,"op":"parse","tree":true,"files":["a"]}|}
+    {|{"rid":1,"op":"parse","tree":true,"files":["a"]}|}
 
 let a_request_without_files_is_an_error () =
   gives "no files" (Request.Missing_field "files")
-    {|{"id":1,"op":"parse","grammar":"g","tree":true}|}
+    {|{"rid":1,"op":"parse","grammar":"g","tree":true}|}
 
 let wrong_type_of field line =
   match cause_of line with
@@ -216,11 +226,11 @@ let an_empty_list_of_files_is_an_error () =
 
 let a_grammar_that_is_not_utf_8_is_an_error () =
   gives "one byte that no code point starts" (Request.Not_text "grammar")
-    "{\"id\":1,\"op\":\"parse\",\"grammar\":\"\xff\",\"tree\":true,\"files\":[\"a\"]}"
+    "{\"rid\":1,\"op\":\"parse\",\"grammar\":\"\xff\",\"tree\":true,\"files\":[\"a\"]}"
 
 let a_file_that_is_not_utf_8_is_an_error () =
   gives "one byte that no code point starts" (Request.Not_text "files")
-    "{\"id\":1,\"op\":\"parse\",\"grammar\":\"g\",\"tree\":true,\"files\":[\"\xff\"]}"
+    "{\"rid\":1,\"op\":\"parse\",\"grammar\":\"g\",\"tree\":true,\"files\":[\"\xff\"]}"
 
 let a_query_and_a_tree_together_are_an_error () =
   gives "both" Request.Both_query_and_tree
@@ -235,7 +245,7 @@ let a_query_beside_a_false_tree_asks_for_captures () =
        (parse_line ~query:(`String "q.scm") ~tree:(`Bool false) ())
     = Ok
         {
-          Request.id = Request.Text "r1";
+          Request.rid = Request.Text "r1";
           op =
             Request.Parse
               {
@@ -252,7 +262,7 @@ let a_query_beside_a_false_tree_asks_for_captures () =
 let a_line_of_many_fields_is_read_at_once () =
   let count = 50000 in
   let fields =
-    [ ("id", `Int 1); ("op", `String "parse") ]
+    [ ("rid", `Int 1); ("op", `String "parse") ]
     @ List.init count (fun index -> (Printf.sprintf "f%d" index, `Int index))
   in
   gives "fifty thousand fields" (Request.Unknown_field "f0") (line_of fields)
@@ -261,13 +271,13 @@ let every_cause =
   [
     Request.Not_json;
     Request.Not_an_object;
-    Request.No_id;
-    Request.Bad_id;
+    Request.No_rid;
+    Request.Bad_rid;
     Request.No_op;
     Request.Bad_op;
     Request.Unknown_op "scan";
     Request.Unknown_field "depth";
-    Request.Repeated_field "id";
+    Request.Repeated_field "rid";
     Request.Missing_field "grammar";
     Request.Wrong_type { field = "files"; wanted = "an array" };
     Request.Empty_field "files";
@@ -285,15 +295,15 @@ let every_cause_has_a_message_of_one_line () =
         (not (String.contains message '\n')))
     every_cause
 
-let a_text_id_becomes_a_string_value () =
+let a_text_rid_becomes_a_string_value () =
   Alcotest.(check string)
-    "the value is a string" {|{"req":"r1"}|}
-    (Jsonl.to_string [ ("req", Request.value_of_id (Request.Text "r1")) ])
+    "the value is a string" {|{"rid":"r1"}|}
+    (Jsonl.to_string [ ("rid", Request.value_of_rid (Request.Text "r1")) ])
 
-let a_number_id_becomes_an_integer_value () =
+let a_number_rid_becomes_an_integer_value () =
   Alcotest.(check string)
-    "the value is an integer" {|{"req":7}|}
-    (Jsonl.to_string [ ("req", Request.value_of_id (Request.Number 7)) ])
+    "the value is an integer" {|{"rid":7}|}
+    (Jsonl.to_string [ ("rid", Request.value_of_rid (Request.Number 7)) ])
 
 let case name test = Alcotest.test_case name `Quick test
 
@@ -312,20 +322,24 @@ let tests =
       case "a line of spaces is not a request" a_line_of_spaces_is_not_a_request;
       case "a JSON value that is not an object is not a request"
         a_json_value_that_is_not_an_object_is_not_a_request;
-      case "a request without an id is an error"
-        a_request_without_an_id_is_an_error;
-      case "an id of the wrong type is an error"
-        an_id_of_the_wrong_type_is_an_error;
-      case "an id above the allowed range is an error"
-        an_id_above_the_allowed_range_is_an_error;
-      case "an id that is not UTF-8 is an error"
-        an_id_that_is_not_utf_8_is_an_error;
-      case "an error without a readable id carries no tag"
-        an_error_without_a_readable_id_carries_no_tag;
-      case "an error after the id carries the tag"
-        an_error_after_the_id_carries_the_tag;
-      case "an id given twice is an error" an_id_given_twice_is_an_error;
+      case "a request without a rid is an error"
+        a_request_without_a_rid_is_an_error;
+      case "a rid of the wrong type is an error"
+        a_rid_of_the_wrong_type_is_an_error;
+      case "a rid above the allowed range is an error"
+        a_rid_above_the_allowed_range_is_an_error;
+      case "a rid that is not UTF-8 is an error"
+        a_rid_that_is_not_utf_8_is_an_error;
+      case "an error without a readable rid carries no tag"
+        an_error_without_a_readable_rid_carries_no_tag;
+      case "an error after the rid carries the tag"
+        an_error_after_the_rid_carries_the_tag;
+      case "a rid given twice is an error" a_rid_given_twice_is_an_error;
       case "a field given twice is an error" a_field_given_twice_is_an_error;
+      case "an id field beside a rid is an unknown field"
+        an_id_field_beside_a_rid_is_an_unknown_field;
+      case "an id field alone is a request without a rid"
+        an_id_field_alone_is_a_request_without_a_rid;
       case "a request without an op is an error"
         a_request_without_an_op_is_an_error;
       case "an op of the wrong type is an error"
@@ -362,7 +376,7 @@ let tests =
         a_line_of_many_fields_is_read_at_once;
       case "every cause has a message of one line"
         every_cause_has_a_message_of_one_line;
-      case "a text id becomes a string value" a_text_id_becomes_a_string_value;
-      case "a number id becomes an integer value"
-        a_number_id_becomes_an_integer_value;
+      case "a text rid becomes a string value" a_text_rid_becomes_a_string_value;
+      case "a number rid becomes an integer value"
+        a_number_rid_becomes_an_integer_value;
     ]
