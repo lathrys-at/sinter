@@ -359,8 +359,8 @@ let names_a_source_that_cannot_be_read () =
      the directory. Only the guard of this library gives these words,
      so the test states the whole message. *)
   Alcotest.(check string)
-    "the message names the directory and says what is wrong"
-    ".: is a directory" message
+    "the message names the directory and says what is wrong" ".: is a directory"
+    message
 
 (* tree-sitter writes an S-expression by recursion in C, and a tree
    that nests deeply exhausts the stack of the thread. The bridge
