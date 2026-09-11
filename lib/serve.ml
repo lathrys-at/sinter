@@ -6,7 +6,7 @@ exception Error of string
 type control = Done of int | Failed of int * string
 
 type response = {
-  tag : Jsonl.value option;
+  rid : Jsonl.value option;
   output : Jsonl.record list;
   outcome : control;
 }
@@ -91,7 +91,7 @@ let run state tag (op : Request.op) =
         | exception Sys_error message ->
             Failed (Exit_code.environment_error, printable message))
   in
-  { tag = Some tag; output = List.rev !collected; outcome }
+  { rid = Some tag; output = List.rev !collected; outcome }
 
 let respond state line =
   if state.closed then
@@ -99,7 +99,7 @@ let respond state line =
   match Request.of_line line with
   | Error { rid; cause } ->
       {
-        tag = Option.map Request.value_of_rid rid;
+        rid = Option.map Request.value_of_rid rid;
         output = [];
         outcome =
           Failed (Exit_code.usage_error, printable (Request.message cause));
@@ -110,7 +110,7 @@ let control response = response.outcome
 
 let lines response =
   let tag =
-    match response.tag with None -> [] | Some value -> [ ("rid", value) ]
+    match response.rid with None -> [] | Some value -> [ ("rid", value) ]
   in
   let last =
     match response.outcome with
