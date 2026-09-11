@@ -84,7 +84,7 @@ let is_utf_8 text =
    buffer is well formed when a string of it is not UTF-8, and the
    caller must be told which string. *)
 let read_string buffer offset ~what =
-  let length = read_int buffer (offset + 0) in
+  let length = read_int buffer offset in
   check buffer (offset + 4) length;
   let text = String.sub buffer (offset + 4) length in
   if not (is_utf_8 text) then raise (Error (what ^ " is not UTF-8 text"));
