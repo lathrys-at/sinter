@@ -155,28 +155,32 @@ CI runs all of them.
 
 ### Coverage
 
-`bisect_ppx` measures how much of `lib/` and `bin/` the tests run. It
-does not install beside the versions in `sinter.opam.locked`: it needs
-`ppxlib` below 0.36, which needs a compiler below 5.4, and it needs
-`cmdliner` below 2, while the lock file pins `cmdliner` 2.1.1. A
-coverage run therefore uses a switch of its own. Make it once:
+`bisect_ppx` measures how much of `lib/` and `bin/` the tests run. No
+released version of it installs beside the versions in
+`sinter.opam.locked`. The last release, 2.8.3, needs `ppxlib` below
+0.36 and `cmdliner` below 2. The lock file pins the compiler 5.5.0,
+which no `ppxlib` below 0.36 supports, and it pins `cmdliner` 2.1.1.
+An open pull request of `bisect_ppx` builds against the newer
+`ppxlib` and the newer `cmdliner`, so a coverage run pins one commit
+of it. Pin it into the project's switch once:
 
 ```
-opam switch create sinter-coverage 5.3.0
-opam install --switch=sinter-coverage bisect_ppx.2.8.3
-opam install --switch=sinter-coverage . --deps-only --with-test
+opam pin add -y -n bisect_ppx \
+  git+https://github.com/aantron/bisect_ppx.git#7061d643ff492b0045796357ee6917ded21fb1f0
+opam install bisect_ppx
 ```
 
-Install `bisect_ppx` first. It holds `cmdliner` below 2, and the
-project then takes the `cmdliner` that is already there. Do not name
-`bisect_ppx` on the line that carries `--with-test`: the flag reaches
-every package on the line, and the test dependencies of `bisect_ppx`
-need a compiler below 4.13.
+The pin names a commit and never a branch, so that every run installs
+the same code. The install adds `ppxlib` to the switch, and it changes
+no version that the lock file pins. Remove the pin with
+`opam pin remove bisect_ppx` when `bisect_ppx` makes a release that
+installs beside the lock file. Then declare that release in
+`dune-project`, and take the pin out of this section and out of the
+`coverage` job. That job pins the same commit, for the same reason.
 
 Then, from the repository root:
 
 ```
-eval $(opam env --switch=sinter-coverage --set-switch)
 dune build @runtest --force --instrument-with bisect_ppx
 bisect-ppx-report summary --per-file
 ```
@@ -189,13 +193,13 @@ counts under `_build`, so it needs no path. For a page per file, run
 git already ignores.
 
 The properties draw a new seed on each run, so the total moves by
-about one per cent between runs of the same tree. Read the lowest of
-several runs, not one run.
+about a third of a per cent between runs of the same tree. Read the
+lowest of several runs, not one run.
 
-A coverage build uses another compiler than an ordinary build, so it
-writes over `_build`. The next ordinary `dune build` compiles the
-whole OCaml tree again. It does not build the Rust crate again: cargo
-builds outside `_build`, so it finds its work done.
+An instrumented build writes over `_build`. The next ordinary
+`dune build` compiles the whole OCaml tree again. It does not build
+the Rust crate again: cargo builds outside `_build`, so it finds its
+work done.
 
 CI runs the same commands on `ubuntu-latest` and fails below the
 minimum that the `coverage` job sets. That job holds the number. A
