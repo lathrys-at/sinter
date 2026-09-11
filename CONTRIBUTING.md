@@ -205,8 +205,11 @@ sign off code that you did not review.
   per decision, with a `@decision` tag. Read the record before you
   re-argue a choice. To record a new decision, use the
   `/sinter:decision` skill or follow its format. "Alternatives
-  considered" is never empty, and a decision that rests on
-  measurements carries them.
+  considered" lists only the alternatives that someone put forward
+  and that were deliberated: in an issue, a pull request, a plan, the
+  design notes, or with the maintainer. When nobody put one forward,
+  the section says so. A decision that rests on measurements carries
+  them.
 - Implementation work follows a plan in `.plans/`, written with the
   `/sinter:plan` skill. A change to a plan's promises or scopes is an
   amendment. Make it a separate, small pull request, so that the
