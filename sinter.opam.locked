@@ -46,6 +46,8 @@ depends: [
   "ocamlformat" {= "0.29.0" & with-dev-setup}
   "ocamlformat-lib" {= "0.29.0" & with-dev-setup}
   "ocp-indent" {= "1.9.0" & with-dev-setup}
+  "qcheck-alcotest" {= "0.91" & with-test}
+  "qcheck-core" {= "0.91" & with-test}
   "re" {= "1.14.0" & with-test}
   "sexplib0" {= "v0.17.0" & with-dev-setup}
   "stdio" {= "v0.17.0" & with-dev-setup}
@@ -54,6 +56,7 @@ depends: [
   "uucp" {= "17.0.0" & with-dev-setup}
   "uuseg" {= "17.0.0" & with-dev-setup}
   "uutf" {= "1.0.4" & with-test}
+  "yojson" {= "3.0.0"}
 ]
 build: [
   ["dune" "subst"] {dev}
@@ -69,3 +72,6 @@ build: [
     "@doc" {with-doc}
   ]
 ]
+homepage: "https://github.com/lathrys-at/sinter"
+bug-reports: "https://github.com/lathrys-at/sinter/issues"
+dev-repo: "git+https://github.com/lathrys-at/sinter.git"

@@ -6,7 +6,7 @@
  (public_name sinter.core)
  ; sinter.bridge is native only, so this library is native only.
  (modes native)
- (libraries sinter_bridge))
+ (libraries sinter_bridge unix yojson))
 
 ; git_version.ml holds the output of "git describe" for the current
 ; state of the checkout. The rule runs on every build; dependents

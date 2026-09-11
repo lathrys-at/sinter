@@ -16,6 +16,17 @@ let ints l = Array (List.map (fun i -> Int i) l)
 let max_int_value = 9007199254740991
 let min_int_value = -9007199254740991
 
+let is_utf_8 text =
+  let length = String.length text in
+  let rec check offset =
+    offset >= length
+    ||
+    let decoded = String.get_utf_8_uchar text offset in
+    Uchar.utf_decode_is_valid decoded
+    && check (offset + Uchar.utf_decode_length decoded)
+  in
+  check 0
+
 let utf16_units s =
   let units = ref [] in
   let n = String.length s in
