@@ -53,8 +53,7 @@ val record_of_capture :
       1
     - [text]: the source text of the node
 
-    Every string of the result is valid UTF-8, so {!Jsonl.to_string} takes the
-    result.
+    Every string of the result is valid UTF-8.
 
     @raise Error
       if [path], the capture name, the node type, or the text of the node is not
