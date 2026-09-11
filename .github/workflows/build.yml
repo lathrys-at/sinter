@@ -145,3 +145,105 @@ jobs:
         run: >
           cargo rustc --release --manifest-path bridge/Cargo.toml
           -- --print native-static-libs
+
+  coverage:
+    name: Measure coverage
+    runs-on: ubuntu-latest
+    # This job builds what the build job builds: the same compiler,
+    # and the dependencies from the lock file. It adds one tool,
+    # bisect_ppx, which rewrites the modules of the library and the
+    # tool to count the points the tests run.
+    #
+    # bisect_ppx is pinned to a commit, and the pin lives here and in
+    # CONTRIBUTING.md, not in dune-project or in the lock file. The
+    # reason is that no release of bisect_ppx installs beside the
+    # locked dependencies: the last release, 2.8.3 of 2023, asks for
+    # ppxlib below 0.36 and cmdliner below 2, and the lock file holds
+    # cmdliner 2.1.1 and a compiler that no ppxlib below 0.36
+    # supports. The commit below is the head of the open upstream pull
+    # request 448, which builds against the newer ppxlib and the newer
+    # cmdliner and still calls itself version 2.8.3. Remove the pin,
+    # and install the release instead, when upstream publishes a
+    # version that installs beside the lock file.
+    env:
+      # The head of upstream pull request 448, "Support ppxlib.0.36.0".
+      # A commit, never a branch, so that every run builds the same
+      # source.
+      BISECT_PPX_COMMIT: "7061d643ff492b0045796357ee6917ded21fb1f0"
+      # The job fails when the total is below this number. Raise it
+      # when the number grows. Do not lower it.
+      COVERAGE_MINIMUM: "92"
+    steps:
+      - uses: actions/checkout@v6
+      # This switch holds the pinned tool as well as the project's
+      # dependencies, so it has a cache key of its own, and the key
+      # names the pinned commit. A new commit builds a new switch.
+      - name: Restore the opam switch
+        uses: actions/cache@v6
+        with:
+          path: _opam
+          key: opam-coverage-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.BISECT_PPX_COMMIT }}-${{ hashFiles('sinter.opam.locked') }}
+          restore-keys: |
+            opam-coverage-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.BISECT_PPX_COMMIT }}-
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache: false
+          override: true
+          toolchain: 1.94.1
+      # The dune rule that runs cargo writes its build output under
+      # ~/.cache/sinter-bridge-build. This job keeps a key of its own,
+      # so that it does not race the build job over one cache entry.
+      - name: Cache the cargo state
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/sinter-bridge-build
+          key: cargo-coverage-${{ hashFiles('bridge/Cargo.lock') }}
+          restore-keys: cargo-coverage-
+      # opam clones opam-repository and walks the clone at once. Git's
+      # background maintenance can remove its lock file in that window,
+      # and opam then fails on the vanished file. Turn it off.
+      - name: Turn off git background maintenance
+        run: git config --global maintenance.auto false
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: ${{ env.OCAML_VERSION }}
+          cache: false
+      - name: Install the dependencies
+        run: opam install . --deps-only --with-test --locked
+      # The pin goes in after the dependencies, and bisect_ppx is
+      # installed on a line of its own. --with-test on the line above
+      # reaches every package named on that line, and bisect_ppx asks
+      # for ocamlformat 0.16.0 to run its own tests, which no compiler
+      # this new can build.
+      - name: Install the pinned bisect_ppx
+        run: |
+          set -eu
+          opam pin add -y -n bisect_ppx \
+            "git+https://github.com/aantron/bisect_ppx.git#$BISECT_PPX_COMMIT"
+          opam install -y bisect_ppx
+      - name: Run the tests with the code instrumented
+        run: >
+          opam exec -- dune build @runtest --force
+          --instrument-with bisect_ppx
+      # bisect-ppx-report reads the counts under _build, so it needs
+      # no path.
+      - name: Report the coverage
+        run: |
+          set -eu
+          per_file=$(opam exec -- bisect-ppx-report summary --per-file)
+          printf '%s\n' "$per_file"
+          printf '## Coverage\n\n```\n%s\n```\n' "$per_file" \
+            >> "$GITHUB_STEP_SUMMARY"
+          total=$(opam exec -- bisect-ppx-report summary |
+            sed -n 's/^Coverage: .*(\([0-9.]*\)%)$/\1/p')
+          if [ -z "$total" ]; then
+            echo "The report gave no total. The line it prints changed."
+            exit 1
+          fi
+          echo "Coverage is $total%. The minimum is $COVERAGE_MINIMUM%."
+          below=$(awk "BEGIN { print ($total < $COVERAGE_MINIMUM) ? 1 : 0 }")
+          test "$below" = 0

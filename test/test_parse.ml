@@ -201,6 +201,56 @@ let gives_no_name_that_holds_a_nul_byte () =
     "a name with a NUL byte is no name" None
     (Parse.name_of_wasm (module_that_exports "tree_sitter_js\000n"))
 
+(* A module of a header and one export section whose body is [body].
+   The size of the section is one byte, so [body] stays below 128
+   bytes. *)
+let module_with_export_section body =
+  Printf.sprintf "\000asm\001\000\000\000\007%c%s"
+    (Char.chr (String.length body))
+    body
+
+(* Each module below fails the reader in one place. The reader gives
+   no name for every one of them, and it raises on none of them. *)
+let gives_no_name_for_a_module_the_reader_cannot_follow () =
+  let check what body =
+    Alcotest.(check (option string))
+      what None
+      (Parse.name_of_wasm (module_with_export_section body))
+  in
+  check "a number that runs off the end of the module" "\128";
+  check "a number that runs past 28 bits of shift" "\128\128\128\128\128\001";
+  check "an export name that runs past the end of the module" "\001\010ab";
+  check "an export list with no export at all" "\000";
+  check "an export list whose one export is not a grammar" "\001\003foo\000\000";
+  check "an export whose kind byte is missing" "\001\003foo"
+
+(* A capture that holds the one line feed of a one-byte file ends at
+   row 1, column 0: the start of a line that the file does not hold.
+   The record then names line 1, the line that holds the last byte,
+   and column 2, one past that byte. *)
+let places_the_end_of_a_capture_that_ends_before_byte_two () =
+  let capture : Sinter_bridge.capture =
+    {
+      pattern = 0;
+      name = "d";
+      node_type = "document";
+      start_byte = 0;
+      end_byte = 1;
+      start_row = 0;
+      start_column = 0;
+      end_row = 1;
+      end_column = 0;
+      text = "\n";
+    }
+  in
+  let record = Parse.record_of_capture ~path:"f.json" ~source:"\n" capture in
+  Alcotest.(check (option bool))
+    "eline is the line that holds the last byte" (Some true)
+    (Option.map (fun v -> v = Jsonl.int 1) (List.assoc_opt "eline" record));
+  Alcotest.(check (option bool))
+    "ecol is one past the last byte" (Some true)
+    (Option.map (fun v -> v = Jsonl.int 2) (List.assoc_opt "ecol" record))
+
 (* The name that the bridge needs comes from the module, so a file
    that a user renamed still loads. *)
 let loads_a_grammar_file_under_another_name () =
@@ -771,6 +821,10 @@ let tests =
       `Quick refuses_a_module_that_names_itself_with_a_nul_byte;
     Alcotest.test_case "gives no name that holds a NUL byte" `Quick
       gives_no_name_that_holds_a_nul_byte;
+    Alcotest.test_case "gives no name for a module the reader cannot follow"
+      `Quick gives_no_name_for_a_module_the_reader_cannot_follow;
+    Alcotest.test_case "places the end of a capture that ends before byte two"
+      `Quick places_the_end_of_a_capture_that_ends_before_byte_two;
     Alcotest.test_case "folds one tree over each file" `Quick
       folds_one_tree_over_each_file;
     Alcotest.test_case "folds the captures of the query" `Quick
