@@ -63,6 +63,9 @@
   verified as the licensing brief describes.
 - **Test evidence for Sinter itself** — JUnit output from the test
   suite, for `evidence import`.
+- **Drop the pins on the measuring tools** when upstream `bisect_ppx`
+  and `mutaml` release versions that install beside the lock file
+  (`docs/decisions/instrumented-tooling.md`).
 - **A fuzz target for the bridge boundary** — `crowbar` under AFL over
   the result-buffer decoder and the wasm export reader, built outside
   the test suite. `docs/decisions/test-rigor.md` notes the choice.
