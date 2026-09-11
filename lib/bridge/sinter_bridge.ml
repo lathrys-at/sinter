@@ -67,11 +67,28 @@ let read_int buffer offset =
   check buffer offset 4;
   Int32.to_int (String.get_int32_le buffer offset) land 0xFFFFFFFF
 
-(* Give the string and the offset of the byte after it. *)
-let read_string buffer offset =
+let is_utf_8 text =
+  let length = String.length text in
+  let rec walk offset =
+    offset >= length
+    ||
+    let decoded = String.get_utf_8_uchar text offset in
+    Uchar.utf_decode_is_valid decoded
+    && walk (offset + Uchar.utf_decode_length decoded)
+  in
+  walk 0
+
+(* Give the string and the offset of the byte after it. Every string
+   of the buffer is UTF-8, so a caller of this module never sees other
+   bytes. [what] names the string in the message of a failure: the
+   buffer is well formed when a string of it is not UTF-8, and the
+   caller must be told which string. *)
+let read_string buffer offset ~what =
   let length = read_int buffer (offset + 0) in
   check buffer (offset + 4) length;
-  (String.sub buffer (offset + 4) length, offset + 4 + length)
+  let text = String.sub buffer (offset + 4) length in
+  if not (is_utf_8 text) then raise (Error (what ^ " is not UTF-8 text"));
+  (text, offset + 4 + length)
 
 let read_header buffer expected_kind =
   if String.length buffer < header_length then
@@ -92,9 +109,13 @@ let read_capture buffer offset =
   let start_column = read_int buffer (offset + 16) in
   let end_row = read_int buffer (offset + 20) in
   let end_column = read_int buffer (offset + 24) in
-  let name, offset = read_string buffer (offset + 28) in
-  let node_type, offset = read_string buffer offset in
-  let text, offset = read_string buffer offset in
+  let name, offset =
+    read_string buffer (offset + 28) ~what:"the name of a capture"
+  in
+  let node_type, offset =
+    read_string buffer offset ~what:"the type of a node"
+  in
+  let text, offset = read_string buffer offset ~what:"the text of a node" in
   ( {
       pattern;
       name;
@@ -115,10 +136,7 @@ let check_whole buffer offset =
       (Printf.sprintf "the records end at byte %d and the buffer holds %d bytes"
          offset (String.length buffer))
 
-let captures language ~source ~query =
-  if String.length query = 0 then
-    invalid_arg "Sinter_bridge.captures: the query is empty";
-  let buffer = run language.engine language.handle source query in
+let decode_captures buffer =
   let count = read_header buffer kind_captures in
   let rec read index offset acc =
     if index = count then (List.rev acc, offset)
@@ -130,13 +148,20 @@ let captures language ~source ~query =
   check_whole buffer offset;
   found
 
-let tree language ~source =
-  let buffer = run language.engine language.handle source "" in
+let decode_tree buffer =
   let count = read_header buffer kind_tree in
   if count <> 1 then
     malformed
       (Printf.sprintf "a parse tree buffer holds %d records, and 1 was expected"
          count);
-  let text, offset = read_string buffer header_length in
+  let text, offset = read_string buffer header_length ~what:"the parse tree" in
   check_whole buffer offset;
   text
+
+let captures language ~source ~query =
+  if String.length query = 0 then
+    invalid_arg "Sinter_bridge.captures: the query is empty";
+  decode_captures (run language.engine language.handle source query)
+
+let tree language ~source =
+  decode_tree (run language.engine language.handle source "")

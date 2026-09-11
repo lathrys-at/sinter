@@ -16,8 +16,8 @@ depends: [
   "dune-build-info"
   "yojson"
   "alcotest" {with-test}
-  "qcheck-core" {with-test}
-  "qcheck-alcotest" {with-test}
+  "qcheck-core" {with-test & >= "0.90"}
+  "qcheck-alcotest" {with-test & >= "0.90"}
   "ocamlformat" {with-dev-setup & = "0.29.0"}
   "odoc" {with-doc}
 ]

@@ -22,3 +22,15 @@
    git_version.ml
    (system
     "printf 'let describe = \"%s\"\\n' \"$(git describe --always --dirty 2>/dev/null || echo unknown)\""))))
+
+; The interface of the generated module. A rule writes it, because a
+; module of the library holds an interface file and this module has no
+; source file of its own.
+
+(rule
+ (targets git_version.mli)
+ (action
+  (with-stdout-to
+   git_version.mli
+   (echo
+    "val describe : string\n(** The description of the checkout that built this library, as\n    [git describe --always --dirty] gives it. It is [\"unknown\"] when the\n    build read no checkout. *)\n"))))

@@ -22,8 +22,14 @@
   dune-build-info
   yojson
   (alcotest :with-test)
-  (qcheck-core :with-test)
-  (qcheck-alcotest :with-test)
+  (qcheck-core
+   (and
+    :with-test
+    (>= 0.90)))
+  (qcheck-alcotest
+   (and
+    :with-test
+    (>= 0.90)))
   (ocamlformat
    (and
     :with-dev-setup

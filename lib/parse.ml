@@ -62,7 +62,7 @@ let read_file path =
 let name_of_wasm wasm =
   let length = String.length wasm in
   let prefix = "tree_sitter_" in
-  let byte offset = Char.code (String.unsafe_get wasm offset) in
+  let byte offset = Char.code (String.get wasm offset) in
   let rec number offset shift value =
     if offset >= length || shift > 28 then None
     else
@@ -116,7 +116,12 @@ let name_of_wasm wasm =
       | Some _ -> None
   in
   if length < 8 || not (String.starts_with ~prefix:"\000asm" wasm) then None
-  else section 8
+  else
+    match section 8 with
+    (* The bridge loads a grammar under a C string, so a name that
+       holds a NUL byte is no name at all. *)
+    | Some name when String.contains name '\000' -> None
+    | found -> found
 
 let grammar_name path =
   let base = Filename.remove_extension (Filename.basename path) in
@@ -148,6 +153,14 @@ let end_of_capture source (capture : Sinter_bridge.capture) =
 (* @cites json-handling *)
 (* The text of a capture is not normalized to Unicode NFC. *)
 let record_of_capture ~path ~source (capture : Sinter_bridge.capture) =
+  if
+    capture.start_byte < 0
+    || capture.end_byte < capture.start_byte
+    || capture.end_byte > String.length source
+  then
+    invalid_arg
+      "Sinter_core.Parse: the byte range of the capture is not inside the \
+       source";
   let end_line, end_column = end_of_capture source capture in
   [
     ("path", Jsonl.string path);

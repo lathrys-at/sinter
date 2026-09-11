@@ -30,8 +30,15 @@ val grammar_name : string -> string
 val record_of_capture :
   path:string -> source:string -> Sinter_bridge.capture -> Jsonl.record
 (** [record_of_capture ~path ~source capture] is the JSONL record for one
-    capture in the file at [path]. [source] is the text of that file. The fields
-    are:
+    capture in the file at [path]. [source] is the text of that file.
+
+    The byte range of [capture] must lie inside [source]: the start is 0 or
+    more, the end is the start or more, and the end is at most the length of
+    [source]. The rows and the columns of [capture] must be the rows and the
+    byte columns of that range in [source]; a row or a column that says
+    otherwise gives a record with a span that does not name the range.
+
+    The fields are:
 
     - [path]: the file, as it was named on the command line
     - [pat]: the index of the pattern in the query, from 0
@@ -44,7 +51,10 @@ val record_of_capture :
     - [eline]: the line that holds the last byte of the node, from 1
     - [ecol]: one byte past the last byte of the node, in the line [eline], from
       1
-    - [text]: the source text of the node *)
+    - [text]: the source text of the node
+
+    @raise Invalid_argument
+      if the byte range of [capture] is not inside [source]. *)
 
 val captures :
   Sinter_bridge.language -> query:string -> path:string -> Jsonl.record list

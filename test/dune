@@ -13,4 +13,5 @@
   alcotest
   qcheck-core
   qcheck-alcotest
+  yojson
   unix))
