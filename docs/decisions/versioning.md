@@ -39,9 +39,6 @@ wire-format version that increases only for an incompatible change.
 - **One version per specification file** — rejected. The four
   documents are one coherent set, and other implementations track the
   set, not single files.
-- **A fixed development version without the commit hash** —
-  rejected. Two builds from different commits would print the same
-  string.
 
 ## Consequences
 

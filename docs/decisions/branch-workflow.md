@@ -33,11 +33,6 @@ every commit. Two CI workflows exist: `build` and `licensing`.
 - **Direct commits to `main`** — rejected. There is no review
   boundary. The project used this only for the bootstrap, before the
   first pull request.
-- **Merge commits or rebase merges** — not chosen. A squash merge
-  keeps one commit per reviewed change on `main`, and the pull request
-  keeps the full history.
-- **A merge queue** — deferred. It pays off when several pull
-  requests are open at once; one at a time needs no queue.
 
 ## Consequences
 

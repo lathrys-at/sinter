@@ -46,9 +46,6 @@ Authors`.
 - **A Contributor License Agreement** — rejected. Apache-2.0 section 5
   already covers the grant for contributions, and a CLA costs
   contributors time and trust.
-- **A permissive license without a patent grant, such as MIT** —
-  rejected. Apache-2.0 adds the patent grant and the termination
-  clause, which matter for infrastructure that companies adopt.
 - **A copyleft license, such as GPL or AGPL** — rejected. Copyleft
   blocks adoption as infrastructure and conflicts with redistributing
   grammars under their own permissive licenses.
