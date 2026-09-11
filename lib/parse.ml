@@ -34,6 +34,13 @@ let check_path path =
   if not (is_utf_8 path) then
     fail "the file name is not UTF-8 text: %s" (String.escaped path)
 
+(* @cites json-handling *)
+(* Every string of a record is UTF-8. [what] names the string, in the
+   words the bridge uses for it. The caller checks [path] first, so
+   that the message of a failure names a file the reader can read. *)
+let check_string path what text =
+  if not (is_utf_8 text) then fail "%s: %s is not UTF-8 text" path what
+
 let read_file path =
   if try Sys.is_directory path with Sys_error _ -> false then
     fail "%s: is a directory" path;
@@ -151,7 +158,15 @@ let end_of_capture source (capture : Sinter_bridge.capture) =
   else (capture.end_row + 1, capture.end_column + 1)
 
 (* @cites json-handling *)
-(* The text of a capture is not normalized to Unicode NFC. *)
+(* @cites exit-codes *)
+(* The text of a capture is not normalized to Unicode NFC.
+
+   This function fails in two ways, and the two are of different
+   kinds. A byte range outside the source can only be a fault of the
+   tool, because the same string is the source of the parse and the
+   source of the record; so it breaks a precondition and ends the
+   command. A string that is not UTF-8 can be a fault of the data the
+   tool was given; so it is an error of the run. *)
 let record_of_capture ~path ~source (capture : Sinter_bridge.capture) =
   if
     capture.start_byte < 0
@@ -161,6 +176,10 @@ let record_of_capture ~path ~source (capture : Sinter_bridge.capture) =
     invalid_arg
       "Sinter_core.Parse: the byte range of the capture is not inside the \
        source";
+  check_path path;
+  check_string path "the name of a capture" capture.name;
+  check_string path "the type of a node" capture.node_type;
+  check_string path "the text of a node" capture.text;
   let end_line, end_column = end_of_capture source capture in
   [
     ("path", Jsonl.string path);

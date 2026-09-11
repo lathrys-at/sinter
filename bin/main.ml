@@ -112,14 +112,13 @@ let parse_cmd =
           (false, "--query and --tree exclude each other; give one of the two")
     | None, false -> `Error (false, "give either --query or --tree")
     | query, _ -> (
+        (* An exception that is a fault of the tool leaves this command
+           and reaches the argument parser, which reports its own code.
+           Parse.Error and Sys_error are faults of the environment. *)
         try
           Sinter_core.Parse.run ~grammar ~query ~paths stdout;
           `Ok clean
-        with
-        | Sinter_core.Parse.Error message
-        | Sys_error message
-        | Invalid_argument message
-        ->
+        with Sinter_core.Parse.Error message | Sys_error message ->
           Printf.eprintf "sinter: %s\n" message;
           `Ok environment_error)
   in
