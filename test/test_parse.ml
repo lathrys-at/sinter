@@ -514,6 +514,92 @@ let refuses_a_capture_that_runs_past_the_source () =
         source") (fun () ->
       ignore (Parse.record_of_capture ~path:"f.json" ~source:"" capture))
 
+(* One byte that starts no code point, so a string that holds it is
+   not valid UTF-8. *)
+let not_utf_8 = "\xff"
+
+(* A capture of the one byte of the source "a". Each argument replaces
+   one string of it; the byte range does not change, so the only thing
+   that can be wrong with the capture is the string the caller
+   replaced. *)
+let one_capture ?(name = "d") ?(node_type = "document") ?(text = "a") () =
+  {
+    Sinter_bridge.pattern = 0;
+    name;
+    node_type;
+    start_byte = 0;
+    end_byte = 1;
+    start_row = 0;
+    start_column = 0;
+    end_row = 0;
+    end_column = 1;
+    text;
+  }
+
+(* The message of the failure that [capture] causes. The test fails
+   when the call builds a record instead. *)
+let refusal ?(path = "f.json") capture =
+  match Parse.record_of_capture ~path ~source:"a" capture with
+  | _ -> Alcotest.fail "the call built a record"
+  | exception Parse.Error message -> message
+
+let a_capture_name_that_is_not_utf_8_is_refused () =
+  Alcotest.(check string)
+    "the message names the file and the string"
+    "f.json: the name of a capture is not UTF-8 text"
+    (refusal (one_capture ~name:not_utf_8 ()))
+
+let a_node_type_that_is_not_utf_8_is_refused () =
+  Alcotest.(check string)
+    "the message names the file and the string"
+    "f.json: the type of a node is not UTF-8 text"
+    (refusal (one_capture ~node_type:not_utf_8 ()))
+
+let a_text_that_is_not_utf_8_is_refused () =
+  Alcotest.(check string)
+    "the message names the file and the string"
+    "f.json: the text of a node is not UTF-8 text"
+    (refusal (one_capture ~text:not_utf_8 ()))
+
+let a_path_that_is_not_utf_8_is_refused () =
+  Alcotest.(check string)
+    "the message gives the file name as bytes"
+    "the file name is not UTF-8 text: \\255"
+    (refusal ~path:not_utf_8 (one_capture ()))
+
+(* Which string of a capture the generator below made bad. *)
+type bad_string = Capture_name | Node_type | Node_text
+
+(* A source, and a capture inside it whose one bad string is not valid
+   UTF-8. The integer fields do not change, so the byte range stays
+   inside the source and the string is the only thing that is wrong. *)
+let source_and_capture_with_a_bad_string =
+  let open QCheck2.Gen in
+  let* source, (capture : Sinter_bridge.capture) =
+    Generators.source_and_capture
+  in
+  let* text = Generators.not_utf_8_string in
+  let* which = oneof_list [ Capture_name; Node_type; Node_text ] in
+  let capture =
+    match which with
+    | Capture_name -> { capture with Sinter_bridge.name = text }
+    | Node_type -> { capture with Sinter_bridge.node_type = text }
+    | Node_text -> { capture with Sinter_bridge.text }
+  in
+  return (source, capture)
+
+(* A bad string gives Parse.Error and never Invalid_argument, which is
+   the whole of the change: a string the tool was given is a fault of
+   the environment, and only a fault of the tool leaves the command.
+   An Invalid_argument here would leave this check and fail the
+   property. *)
+let a_record_of_a_capture_with_a_bad_string_is_refused (source, capture) =
+  match Parse.record_of_capture ~path:"f.json" ~source capture with
+  | _ -> false
+  | exception Parse.Error message ->
+      String.starts_with ~prefix:"f.json: " message
+      && contains "is not UTF-8 text" message
+
 (* The two properties below state that the function is total: it
    answers for every value of its argument type, and raises nothing.
    Each one adds the cheapest clause that can fail, so that neither
@@ -593,6 +679,10 @@ let properties =
       ~print:Generators.print_source_and_capture
       Generators.source_and_capture_outside
       a_record_of_a_capture_outside_the_source_is_refused;
+    property ~name:"a record of a capture with a bad string is refused"
+      ~print:Generators.print_source_and_capture
+      source_and_capture_with_a_bad_string
+      a_record_of_a_capture_with_a_bad_string_is_refused;
     property ~count:200 ~name:"the records of a file agree with the source"
       ~print:Fun.id Generators.json_source
       the_records_of_a_file_agree_with_the_source;
@@ -817,6 +907,14 @@ let tests =
     Alcotest.test_case "names the grammar" `Quick names_the_grammar;
     Alcotest.test_case "refuses a capture that runs past the source" `Quick
       refuses_a_capture_that_runs_past_the_source;
+    Alcotest.test_case "a capture name that is not UTF-8 is refused" `Quick
+      a_capture_name_that_is_not_utf_8_is_refused;
+    Alcotest.test_case "a node type that is not UTF-8 is refused" `Quick
+      a_node_type_that_is_not_utf_8_is_refused;
+    Alcotest.test_case "a text that is not UTF-8 is refused" `Quick
+      a_text_that_is_not_utf_8_is_refused;
+    Alcotest.test_case "a path that is not UTF-8 is refused" `Quick
+      a_path_that_is_not_utf_8_is_refused;
     Alcotest.test_case "refuses a module that names itself with a NUL byte"
       `Quick refuses_a_module_that_names_itself_with_a_nul_byte;
     Alcotest.test_case "gives no name that holds a NUL byte" `Quick

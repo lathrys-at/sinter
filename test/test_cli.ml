@@ -319,6 +319,34 @@ let the_help_of_serve_names_the_request_tag () =
   Alcotest.(check bool)
     "the help of serve does not name the old field" false
     (contains "the field req" text)
+(* Every Invalid_argument of this library starts its message with the
+   module that raised it, so a message that holds "sinter: Sinter_" is
+   the message of a broken precondition. A broken precondition is a
+   fault of the tool. It must leave the command and reach the argument
+   parser, which reports its own code, and it must not come back to
+   the person who ran the tool as an environment error. *)
+let a_parse_run_that_fails_names_no_module_of_the_library () =
+  List.iter
+    (fun (what, arguments) ->
+      let status, text = run arguments in
+      code (Printf.sprintf "%s exits 3" what) 3 status;
+      Alcotest.(check bool)
+        (Printf.sprintf "%s names no module of the library" what)
+        false
+        (contains "sinter: Sinter_" text))
+    [
+      ( "a grammar that is not wasm",
+        Printf.sprintf "parse --grammar %s --tree %s" sample sample );
+      ( "a source file that does not exist",
+        Printf.sprintf "parse --grammar %s --tree no-such-file.json" grammar );
+      ( "a query file that does not exist",
+        Printf.sprintf "parse --grammar %s --query no-such-file.scm %s" grammar
+          sample );
+      ( "a directory as the grammar",
+        Printf.sprintf "parse --grammar fixtures --tree %s" sample );
+      ( "a directory as the source file",
+        Printf.sprintf "parse --grammar %s --tree fixtures" grammar );
+    ]
 
 let tests =
   [
@@ -336,6 +364,8 @@ let tests =
       `Quick a_file_that_does_not_exist_is_an_environment_error;
     Alcotest.test_case "a grammar that is not wasm is an environment error"
       `Quick a_grammar_that_is_not_wasm_is_an_environment_error;
+    Alcotest.test_case "a parse run that fails names no module of the library"
+      `Quick a_parse_run_that_fails_names_no_module_of_the_library;
     Alcotest.test_case "the help lists the five exit codes" `Quick
       the_help_lists_the_five_exit_codes;
     Alcotest.test_case "the help of parse names only the codes it returns"
