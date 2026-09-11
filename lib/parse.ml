@@ -88,9 +88,13 @@ let name_of_wasm wasm =
             offset >= stop
           then None
           else if String.starts_with ~prefix found then
-            Some
-              (String.sub found (String.length prefix)
-                 (String.length found - String.length prefix))
+            let name =
+              String.sub found (String.length prefix)
+                (String.length found - String.length prefix)
+            in
+            (* The bridge takes the name as a C string, and a module
+               can export a name that holds a NUL byte. *)
+            if String.contains name '\000' then None else Some name
           else
             match number (offset + 1) 0 0 with
             | None -> None
@@ -191,14 +195,47 @@ let tree language ~path =
   let source = read_source path in
   of_bridge path (fun () -> Sinter_bridge.tree language ~source)
 
-let run ~grammar ~query ~paths channel =
-  List.iter check_path paths;
+type item = Capture of Jsonl.record | Tree of { path : string; sexp : string }
+
+let load engine ~grammar =
   let wasm = read_file grammar in
   let name =
     match name_of_wasm wasm with
     | Some name -> name
     | None -> grammar_name grammar
   in
+  try Sinter_bridge.load engine ~name ~wasm
+  with Sinter_bridge.Error message ->
+    fail "%s: the grammar does not load: %s" grammar message
+
+let fold language ~query ~paths ~f =
+  List.iter check_path paths;
+  match query with
+  | None ->
+      List.iter
+        (fun path -> f (Tree { path; sexp = tree language ~path }))
+        paths
+  | Some query_path ->
+      let query = read_source query_path in
+      if String.length (String.trim query) = 0 then
+        fail "%s: the query file is empty" query_path;
+      (* A query that does not compile fails in the same way for
+         every file. Run it once over an empty text, so that the
+         failure names the query file and not a source file. *)
+      of_bridge query_path (fun () ->
+          ignore (Sinter_bridge.captures language ~source:"" ~query));
+      List.iter
+        (fun path ->
+          List.iter
+            (fun record -> f (Capture record))
+            (captures language ~query ~path))
+        paths
+
+let run ~grammar ~query ~paths channel =
+  (* run reports a file name that is not UTF-8 text before it reads
+     the grammar, and fold checks the names again for its own
+     callers. *)
+  List.iter check_path paths;
   let engine =
     try Sinter_bridge.create ()
     with Sinter_bridge.Error message ->
@@ -207,33 +244,12 @@ let run ~grammar ~query ~paths channel =
   Fun.protect
     ~finally:(fun () -> Sinter_bridge.close engine)
     (fun () ->
-      let language =
-        try Sinter_bridge.load engine ~name ~wasm
-        with Sinter_bridge.Error message ->
-          fail "%s: the grammar does not load: %s" grammar message
-      in
-      let emit () =
-        match query with
-        | None ->
-            List.iter
-              (fun path -> output_string channel (tree language ~path ^ "\n"))
-              paths
-        | Some query_path ->
-            let query = read_source query_path in
-            if String.length (String.trim query) = 0 then
-              fail "%s: the query file is empty" query_path;
-            (* A query that does not compile fails in the same way for
-               every file. Run it once over an empty text, so that the
-               failure names the query file and not a source file. *)
-            of_bridge query_path (fun () ->
-                ignore (Sinter_bridge.captures language ~source:"" ~query));
-            List.iter
-              (fun path ->
-                List.iter (Jsonl.output channel)
-                  (captures language ~query ~path))
-              paths
+      let language = load engine ~grammar in
+      let write = function
+        | Capture record -> Jsonl.output channel record
+        | Tree { path = _; sexp } -> output_string channel (sexp ^ "\n")
       in
       try
-        emit ();
+        fold language ~query ~paths ~f:write;
         flush channel
       with Sys_error message -> fail "cannot write the output: %s" message)

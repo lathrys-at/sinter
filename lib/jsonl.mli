@@ -47,6 +47,10 @@ val output : out_channel -> record -> unit
       one record can reach the caller at a later write to [channel] or at the
       flush of it. *)
 
+val is_utf_8 : string -> bool
+(** [is_utf_8 text] is [true] when [text] is valid UTF-8. Only such a string can
+    be a field name or a string value of a record. *)
+
 val compare_keys : string -> string -> int
 (** [compare_keys a b] orders two field names by their UTF-16 code units. This
     is the order of the keys in a canonical record.

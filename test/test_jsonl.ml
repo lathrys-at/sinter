@@ -369,6 +369,15 @@ let reports_a_channel_that_cannot_be_written () =
   in
   Alcotest.(check bool) "a closed channel raises Sys_error" true failed
 
+let accepts_text_that_is_utf_8 () =
+  Alcotest.(check bool)
+    "one code point of each length" true
+    (Jsonl.is_utf_8 "a\xc3\xa9\xe2\x82\xac\xf0\x9f\x92\xa1")
+
+let refuses_text_that_is_not_utf_8 () =
+  Alcotest.(check bool)
+    "a lone continuation byte" false (Jsonl.is_utf_8 "a\xff")
+
 let tests =
   [
     Alcotest.test_case "reports a channel that cannot be written" `Quick
@@ -392,5 +401,9 @@ let tests =
     Alcotest.test_case "rejects text that is not UTF-8" `Quick
       rejects_text_that_is_not_utf_8;
     Alcotest.test_case "writes one line with LF" `Quick writes_one_line_with_lf;
+    Alcotest.test_case "accepts text that is UTF-8" `Quick
+      accepts_text_that_is_utf_8;
+    Alcotest.test_case "refuses text that is not UTF-8" `Quick
+      refuses_text_that_is_not_utf_8;
   ]
   @ properties

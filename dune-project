@@ -20,6 +20,7 @@
   dune
   (cmdliner (>= 1.3))
   dune-build-info
+  yojson
   (alcotest :with-test)
   (qcheck-core
    (and
@@ -29,7 +30,6 @@
    (and
     :with-test
     (>= 0.90)))
-  (yojson :with-test)
   (ocamlformat
    (and
     :with-dev-setup
