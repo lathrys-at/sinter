@@ -171,12 +171,15 @@ opam install bisect_ppx
 ```
 
 The pin names a commit and never a branch, so that every run installs
-the same code. The install adds `ppxlib` to the switch, and it changes
-no version that the lock file pins. Remove the pin with
-`opam pin remove bisect_ppx` when `bisect_ppx` makes a release that
-installs beside the lock file. Then declare that release in
-`dune-project`, and take the pin out of this section and out of the
-`coverage` job. That job pins the same commit, for the same reason.
+the same code. The install adds `ppxlib` to the switch, and it needs
+no version that the lock file pins to change: the pinned source asks
+for `ppxlib` 0.36.0 or newer, `dune` 2.9.0 or newer, and `cmdliner`
+1.3.0 or newer, and the lock file holds `dune` 3.24.2 and `cmdliner`
+2.1.1. Remove the pin with `opam pin remove bisect_ppx` when
+`bisect_ppx` makes a release that installs beside the lock file.
+Install that release instead, and take the pin out of this section and
+out of the `coverage` job. That job pins the same commit, for the same
+reason.
 
 Then, from the repository root:
 
@@ -192,8 +195,8 @@ counts under `_build`, so it needs no path. For a page per file, run
 `_build/coverage/index.html`. Write the pages under `_build`, which
 git already ignores.
 
-The properties draw a new seed on each run, so the total moves by
-about a third of a per cent between runs of the same tree. Read the
+The properties draw a new seed on each run, so the total moves by up
+to about 0.6 of a per cent between runs of the same tree. Read the
 lowest of several runs, not one run.
 
 An instrumented build writes over `_build`. The next ordinary
