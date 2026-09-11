@@ -35,12 +35,7 @@ section 7).
 
 ## Alternatives considered
 
-- **No writing standard; free prose with review** — rejected. Quality
-  decays as agents lose context, and reviewers have no shared
-  checklist to point at.
-- **A style guide of the project's own** — rejected. It would be one
-  more invented set of rules. ASD-STE100 is an existing standard with
-  a dictionary and a tool ecosystem.
+None were put forward.
 
 ## Consequences
 
