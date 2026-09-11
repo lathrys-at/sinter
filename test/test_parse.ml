@@ -71,11 +71,15 @@ let handles_every_file_in_order () =
     (expected_captures ^ expected_captures)
     both
 
-let reports_a_file_that_is_not_utf_8 () =
+(* The name of a source file that holds [text], and the message of the
+   failure that the file causes. The message is "no failure" when the
+   run gives none. *)
+let source_failure text =
   let file = Filename.temp_file "sinter-parse" ".json" in
   let channel = open_out_bin file in
-  output_string channel "{\"a\": \"\xff\"}";
-  close_out channel;
+  Fun.protect
+    ~finally:(fun () -> close_out_noerr channel)
+    (fun () -> output_string channel text);
   let message =
     Fun.protect
       ~finally:(fun () -> Sys.remove file)
@@ -85,9 +89,25 @@ let reports_a_file_that_is_not_utf_8 () =
           "no failure"
         with Parse.Error message -> message)
   in
-  Alcotest.(check bool)
-    "the message says the file is not UTF-8" true
-    (contains "is not UTF-8 text" message)
+  (file, message)
+
+(* The bridge refuses text that is not UTF-8 as well, and its message
+   ends in the same words. Only the check of this library names the
+   byte that starts no code point, so the two tests below state the
+   whole message. *)
+let reports_a_file_that_is_not_utf_8 () =
+  let file, message = source_failure "{\"a\": \"\xff\"}" in
+  Alcotest.(check string)
+    "the message names the file and the byte"
+    (file ^ ": the file is not UTF-8 text, at byte 7")
+    message
+
+let reports_a_file_whose_first_byte_is_not_utf_8 () =
+  let file, message = source_failure "\xff{}" in
+  Alcotest.(check string)
+    "the message names byte 0"
+    (file ^ ": the file is not UTF-8 text, at byte 0")
+    message
 
 let reports_a_file_that_does_not_exist () =
   let message =
@@ -117,6 +137,43 @@ let names_the_query_file_when_the_query_fails () =
   Alcotest.(check bool)
     "the message names the query file, not the source file" true
     (String.starts_with ~prefix:file message)
+
+(* A query file that holds nothing runs no pattern, so the tool
+   refuses it before it loads the query. *)
+let reports_an_empty_query_file () =
+  let file = Filename.temp_file "sinter-parse" ".scm" in
+  close_out (open_out_bin file);
+  let message =
+    Fun.protect
+      ~finally:(fun () -> Sys.remove file)
+      (fun () ->
+        try
+          ignore (output ~query:(Some file) ~paths:[ sample ]);
+          "no failure"
+        with Parse.Error message -> message)
+  in
+  Alcotest.(check string)
+    "the message names the query file"
+    (file ^ ": the query file is empty")
+    message
+
+(* A semicolon starts a comment in the query language, so a query file
+   of that one character holds no pattern. It is still not the empty
+   query file: the run gives no failure. *)
+let a_query_file_of_one_character_is_not_empty () =
+  let file = Filename.temp_file "sinter-parse" ".scm" in
+  let channel = open_out_bin file in
+  Fun.protect
+    ~finally:(fun () -> close_out_noerr channel)
+    (fun () -> output_string channel ";");
+  let written =
+    Fun.protect
+      ~finally:(fun () -> Sys.remove file)
+      (fun () ->
+        try output ~query:(Some file) ~paths:[ sample ]
+        with Parse.Error message -> message)
+  in
+  Alcotest.(check string) "the run writes no line and fails not" "" written
 
 (* A record ends on the line that holds its last byte. The document
    node of this file ends after the last line feed, and tree-sitter
@@ -158,16 +215,25 @@ let reports_a_channel_that_cannot_be_written () =
     "the message says the output cannot be written" true
     (contains "cannot write the output" message)
 
+(* The message gives the name as bytes, because a name that is not
+   UTF-8 text cannot go into a record. *)
+let name_failure path =
+  try
+    ignore (output ~query:(Some query) ~paths:[ path ]);
+    "no failure"
+  with Parse.Error message -> message
+
 let rejects_a_file_name_that_is_not_utf_8 () =
-  let message =
-    try
-      ignore (output ~query:(Some query) ~paths:[ "bad\xffname.json" ]);
-      "no failure"
-    with Parse.Error message -> message
-  in
-  Alcotest.(check bool)
-    "the message says the file name is not UTF-8" true
-    (contains "the file name is not UTF-8 text" message)
+  Alcotest.(check string)
+    "the message gives the file name as bytes"
+    "the file name is not UTF-8 text: bad\\255name.json"
+    (name_failure "bad\xffname.json")
+
+let rejects_a_file_name_whose_first_byte_is_not_utf_8 () =
+  Alcotest.(check string)
+    "the message gives the file name as bytes"
+    "the file name is not UTF-8 text: \\255name.json"
+    (name_failure "\xffname.json")
 
 let reads_the_grammar_name_from_the_module () =
   let wasm = Parse.read_file grammar in
@@ -289,9 +355,12 @@ let names_a_source_that_cannot_be_read () =
       "no failure"
     with Parse.Error message -> message
   in
-  Alcotest.(check bool)
-    "the message names the directory and says what is wrong" true
-    (String.starts_with ~prefix:".:" message && contains "directory" message)
+  (* An open of a directory fails as well, and its message also names
+     the directory. Only the guard of this library gives these words,
+     so the test states the whole message. *)
+  Alcotest.(check string)
+    "the message names the directory and says what is wrong"
+    ".: is a directory" message
 
 (* tree-sitter writes an S-expression by recursion in C, and a tree
    that nests deeply exhausts the stack of the thread. The bridge
@@ -886,16 +955,24 @@ let tests =
       handles_every_file_in_order;
     Alcotest.test_case "reports a file that is not UTF-8" `Quick
       reports_a_file_that_is_not_utf_8;
+    Alcotest.test_case "reports a file whose first byte is not UTF-8" `Quick
+      reports_a_file_whose_first_byte_is_not_utf_8;
     Alcotest.test_case "reports a file that does not exist" `Quick
       reports_a_file_that_does_not_exist;
     Alcotest.test_case "names the query file when the query fails" `Quick
       names_the_query_file_when_the_query_fails;
+    Alcotest.test_case "reports an empty query file" `Quick
+      reports_an_empty_query_file;
+    Alcotest.test_case "a query file of one character is not empty" `Quick
+      a_query_file_of_one_character_is_not_empty;
     Alcotest.test_case "ends a span on the line of its last byte" `Quick
       ends_a_span_on_the_line_of_its_last_byte;
     Alcotest.test_case "reports a channel that cannot be written" `Quick
       reports_a_channel_that_cannot_be_written;
     Alcotest.test_case "rejects a file name that is not UTF-8" `Quick
       rejects_a_file_name_that_is_not_utf_8;
+    Alcotest.test_case "rejects a file name whose first byte is not UTF-8"
+      `Quick rejects_a_file_name_whose_first_byte_is_not_utf_8;
     Alcotest.test_case "reads the grammar name from the module" `Quick
       reads_the_grammar_name_from_the_module;
     Alcotest.test_case "loads a grammar file under another name" `Quick
