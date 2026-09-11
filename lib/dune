@@ -8,7 +8,9 @@
  (modes native)
  (libraries sinter_bridge unix yojson)
  (instrumentation
-  (backend bisect_ppx)))
+  (backend bisect_ppx))
+ (instrumentation
+  (backend mutaml)))
 
 ; git_version.ml holds the output of "git describe" for the current
 ; state of the checkout. The rule runs on every build; dependents

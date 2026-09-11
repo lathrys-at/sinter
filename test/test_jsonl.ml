@@ -28,6 +28,37 @@ let sorts_a_whole_record_by_utf16_code_units () =
     ("{\"" ^ astral ^ "\":1,\"" ^ private_use ^ "\":2}")
     (Jsonl.to_string [ (private_use, Jsonl.int 2); (astral, Jsonl.int 1) ])
 
+(* A code point at U+10000 or above becomes two UTF-16 code units. Take
+   the point less 0x10000; its ten upper bits make the high unit, which
+   is that number and 0xD800; its ten lower bits make the low unit,
+   which is that number and 0xDC00. So U+1F600 becomes 0xD83D and
+   0xDE00.
+
+   The two tests below each hold a pair of code points that differ in
+   one of the two units only. A pair of that shape tells the two units
+   apart; a pair of independent points does not. *)
+
+(* "\xf0\x9f\x98\x80" is U+1F600 and "\xf0\x9f\x98\x81" is U+1F601.
+   They share the high unit 0xD83D, and their low units are 0xDE00 and
+   0xDE01. "\xf0\x90\x80\x80" is U+10000 and "\xf0\x90\x80\x81" is
+   U+10001, with the high unit 0xD800 and the low units 0xDC00 and
+   0xDC01. *)
+let orders_two_astral_keys_by_their_low_unit () =
+  Alcotest.(check bool)
+    "U+1F600 sorts before U+1F601" true
+    (Jsonl.compare_keys "\xf0\x9f\x98\x80" "\xf0\x9f\x98\x81" < 0);
+  Alcotest.(check bool)
+    "U+10000 sorts before U+10001" true
+    (Jsonl.compare_keys "\xf0\x90\x80\x80" "\xf0\x90\x80\x81" < 0)
+
+(* "\xf0\x9f\x88\x80" is U+1F200 and "\xf0\x9f\x98\x80" is U+1F600.
+   They share the low unit 0xDE00, and their high units are 0xD83C and
+   0xD83D. *)
+let orders_two_astral_keys_by_their_high_unit () =
+  Alcotest.(check bool)
+    "U+1F200 sorts before U+1F600" true
+    (Jsonl.compare_keys "\xf0\x9f\x88\x80" "\xf0\x9f\x98\x80" < 0)
+
 let writes_every_value_type () =
   line "all four value types"
     {|{"empty":[],"flag":false,"n":-7,"names":["x","y"],"s":"t","sizes":[1,2]}|}
@@ -387,6 +418,10 @@ let tests =
       sorts_keys_by_utf16_code_units;
     Alcotest.test_case "sorts a whole record by UTF-16 code units" `Quick
       sorts_a_whole_record_by_utf16_code_units;
+    Alcotest.test_case "orders two astral keys by their low unit" `Quick
+      orders_two_astral_keys_by_their_low_unit;
+    Alcotest.test_case "orders two astral keys by their high unit" `Quick
+      orders_two_astral_keys_by_their_high_unit;
     Alcotest.test_case "writes every value type" `Quick writes_every_value_type;
     Alcotest.test_case "escapes as RFC 8785 requires" `Quick
       escapes_as_rfc_8785_requires;

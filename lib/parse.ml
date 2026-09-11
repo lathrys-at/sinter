@@ -251,10 +251,9 @@ let fold language ~query ~paths ~f =
         paths
 
 let run ~grammar ~query ~paths channel =
-  (* run reports a file name that is not UTF-8 text before it reads
-     the grammar, and fold checks the names again for its own
-     callers. *)
-  List.iter check_path paths;
+  (* fold checks every path before it reads one. So with a grammar
+     that does not load and a file name that is not UTF-8 text given
+     together, the failure names the grammar. *)
   let engine =
     try Sinter_bridge.create ()
     with Sinter_bridge.Error message ->
