@@ -208,7 +208,8 @@ change does not lower the coverage.
 
 ## New files
 
-Every new file needs an SPDX header with the license of its
+A new file under `lib/`, `bin/`, `bridge/`, `test/`, `spec/`,
+`docs/`, or `.github/` needs an SPDX header with the license of its
 directory, and the line `Copyright <year> The Sinter Authors`:
 
 <!-- REUSE-IgnoreStart -->
@@ -221,8 +222,12 @@ directory, and the line `Copyright <year> The Sinter Authors`:
   `<!-- SPDX-License-Identifier: CC-BY-4.0 -->`
 <!-- REUSE-IgnoreEnd -->
 
-Files at the repository root need no header; `REUSE.toml` covers
-them. Keep the two ignore markers around the list above. The markers
+Four kinds of file carry no header, and `REUSE.toml` gives each the
+license of its directory: files at the repository root; files whose
+format has no comment, such as JSON; files that a tool generates,
+such as `bridge/Cargo.lock` and `sinter.opam`; and the plan files
+under `.plans/` and the skill files under `plugins/`. Keep the two
+ignore markers around the list above. The markers
 stop the `reuse` tool from reading the examples as license tags for
 this file.
 
