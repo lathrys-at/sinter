@@ -14,7 +14,9 @@
  ; The crate builds a static library and no shared library, so this
  ; library has no bytecode mode, and so has every library and
  ; executable that depends on it.
- (modes native))
+ (modes native)
+ (instrumentation
+  (backend bisect_ppx)))
 
 ; This rule runs cargo and copies the static library of the crate
 ; here, where (foreign_archives) finds it. The same cargo run reports

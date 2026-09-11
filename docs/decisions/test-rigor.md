@@ -43,12 +43,13 @@ what they reach.
   dependencies. A generator lives in one shared module under `test/`.
   A counterexample that `qcheck` shrinks to becomes a unit test with
   that exact input, beside the property.
-- `bisect_ppx` measures coverage, as a test-only dependency, under a
-  dune profile named `coverage` that instruments `lib/` and `bin/`.
-  A CI job runs the suite under that profile and fails when the
-  total is below a threshold. The threshold starts at the measured
-  number, rounded down to a whole percent. A pull request may raise
-  it. No pull request lowers it.
+- `bisect_ppx` measures coverage. The `--instrument-with` flag of
+  dune turns the instrumentation on; an ordinary build carries none.
+  A CI job runs the suite instrumented and fails when the total is
+  below a threshold. The threshold starts at the measured number,
+  rounded down to a whole percent. A pull request may raise it. No
+  pull request lowers it. How the tool is installed is the decision
+  `instrumented-tooling`.
 - A fuzz target for the bridge boundary, `crowbar` under AFL, is on
   the roadmap. It is not part of the test suite, because AFL needs
   its own build and runs for hours, not seconds.
