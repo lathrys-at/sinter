@@ -39,6 +39,7 @@ wire-format version that increases only for an incompatible change.
 - **One version per specification file** — rejected. The four
   documents are one coherent set, and other implementations track the
   set, not single files.
+
 ## Consequences
 
 Two tag namespaces exist. The Claude Code plugin has its own semantic

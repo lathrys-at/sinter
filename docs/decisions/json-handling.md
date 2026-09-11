@@ -38,6 +38,7 @@ also read JSON: the serve mode takes requests as JSON lines.
   or escape as RFC 8785 requires, so the output would need a second
   pass to become canonical, and nothing in its types stops a float or
   a null from reaching the output.
+
 ## Consequences
 
 One module owns the canonical form, and its tests cover the cases

@@ -33,6 +33,7 @@ every commit. Two CI workflows exist: `build` and `licensing`.
 - **Direct commits to `main`** — rejected. There is no review
   boundary. The project used this only for the bootstrap, before the
   first pull request.
+
 ## Consequences
 
 CI runs on every pull request. An agent can open a pull request but

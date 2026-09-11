@@ -53,6 +53,7 @@ integration files.
 - **Project-level `.claude/skills/` only** — rejected. Only people
   who clone this repository get the skills. The invocation names also
   change later, when the skills move into a plugin.
+
 ## Consequences
 
 A user runs one marketplace command before the skills appear.
