@@ -319,6 +319,7 @@ let the_help_of_serve_names_the_request_tag () =
   Alcotest.(check bool)
     "the help of serve does not name the old field" false
     (contains "the field req" text)
+
 (* Every Invalid_argument of this library starts its message with the
    module that raised it, so a message that holds "sinter: Sinter_" is
    the message of a broken precondition. A broken precondition is a
