@@ -56,22 +56,7 @@ can act, what to do.
 
 ## Alternatives considered
 
-- **Two codes, 0 for success and 1 for any failure** — rejected. A
-  hook cannot then tell a repository with findings from a broken
-  install, so a missing grammar would look like a real finding and
-  block a commit for the wrong reason.
-- **The codes of `sysexits.h`, such as 64 for a usage error and 78
-  for a configuration error** — rejected. That set has no code for
-  "the tool ran and found something", which is the case Sinter needs
-  most. It is also not used by the tools Sinter sits beside, so it
-  would surprise the reader of a hook script.
-- **One code for each class of finding** — rejected. The set of
-  finding classes grows with every rule, and a caller would have to
-  change its script each time. The classes belong in the output,
-  where a caller can filter them.
-- **Follow the exit code of the underlying tool, such as git** —
-  rejected. Sinter calls several tools, and their codes disagree with
-  each other.
+None were put forward.
 
 ## Consequences
 

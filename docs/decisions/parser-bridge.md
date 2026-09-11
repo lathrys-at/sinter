@@ -87,7 +87,7 @@ must build on macOS and Linux from a clean checkout.
   inside `bridge/`.
 - **One build directory for every checkout on the machine** — chosen
   first, then rejected. It builds a fresh clone in under a second,
-  against the 19 seconds and 900 MB that a first build costs, and
+  against the 68 seconds and 480 MB that a first build costs, and
   Sinter is written in many git worktrees at once. It is unsound:
   cargo called a second checkout fresh and left the first checkout's
   `libsinter_bridge.a` in place, so the second checkout linked code
