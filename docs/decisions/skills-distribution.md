@@ -53,16 +53,6 @@ integration files.
 - **Project-level `.claude/skills/` only** — rejected. Only people
   who clone this repository get the skills. The invocation names also
   change later, when the skills move into a plugin.
-- **The marketplace plus `.claude/skills/` symlinks into the plugin**
-  — rejected. Two delivery paths in one repository double the
-  maintenance. Symlinks in git also behave differently across
-  platforms. A contributor can work on a skill without symlinks: the
-  contributor runs `/plugin marketplace add ./` one time.
-- **Skills embedded in the `sinter` binary and installed by
-  `sinter init` only** — deferred, not rejected. This path becomes
-  the second delivery path when `init` exists. A user who does not
-  install Sinter can still get the skills from the marketplace.
-
 ## Consequences
 
 A user runs one marketplace command before the skills appear.
