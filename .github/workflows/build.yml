@@ -172,7 +172,7 @@ jobs:
       BISECT_PPX_COMMIT: "7061d643ff492b0045796357ee6917ded21fb1f0"
       # The job fails when the total is below this number. Raise it
       # when the number grows. Do not lower it.
-      COVERAGE_MINIMUM: "90"
+      COVERAGE_MINIMUM: "92"
     steps:
       - uses: actions/checkout@v6
       # This switch holds the pinned tool as well as the project's
