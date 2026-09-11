@@ -193,7 +193,7 @@ let the_help_lists_the_five_exit_codes () =
     [ "EXIT STATUS"; "0   on"; "1   when"; "2   when"; "3   when"; "4   when" ]
 
 let parse_request tag rest =
-  Printf.sprintf {|{"id":%s,"op":"parse","grammar":"%s",%s}|} tag grammar rest
+  Printf.sprintf {|{"rid":%s,"op":"parse","grammar":"%s",%s}|} tag grammar rest
 
 let captures_request tag =
   parse_request tag
@@ -222,26 +222,26 @@ let a_session_answers_each_request_in_order () =
     (fun index ->
       Alcotest.(check bool)
         "a capture line carries the tag of its request" true
-        (contains {|"req":1|} (line index)))
+        (contains {|"rid":1|} (line index)))
     [ 0; 1; 2; 3; 4; 5 ];
   Alcotest.(check string)
     "the first answer ends with a done line"
-    {|{"code":0,"event":"done","req":1}|} (line 6);
+    {|{"code":0,"event":"done","rid":1}|} (line 6);
   Alcotest.(check bool)
     "a line that is not a request gives an error with code 2" true
     (String.starts_with ~prefix:{|{"code":2,"event":"error","message":"|}
        (line 7));
   Alcotest.(check bool)
     "that error line carries no tag" false
-    (contains {|"req"|} (line 7));
+    (contains {|"rid"|} (line 7));
   Alcotest.(check bool)
     "the tree of the third request carries its path and its tag" true
     (String.starts_with
-       ~prefix:{|{"path":"fixtures/sample.json","req":"two","tree":"(document|}
+       ~prefix:{|{"path":"fixtures/sample.json","rid":"two","tree":"(document|}
        (line 8));
   Alcotest.(check string)
     "the third answer ends with a done line"
-    {|{"code":0,"event":"done","req":"two"}|} (line 9)
+    {|{"code":0,"event":"done","rid":"two"}|} (line 9)
 
 let end_of_file_ends_the_run () =
   let status, output, errors = session "" in
@@ -280,6 +280,46 @@ let the_help_of_serve_names_only_the_codes_it_returns () =
         false (contains line text))
     [ "1   when"; "4   when" ]
 
+(* The help text breaks its lines to a width, and a phrase of it can
+   fall over two lines. This gives the same text with every run of
+   blanks turned into one space, so that a check for a phrase does not
+   depend on where a line ends. *)
+let unwrapped text =
+  let buffer = Buffer.create (String.length text) in
+  let blank character =
+    character = ' ' || character = '\n' || character = '\t' || character = '\r'
+  in
+  let ends_with_space () =
+    Buffer.length buffer > 0
+    && Buffer.nth buffer (Buffer.length buffer - 1) = ' '
+  in
+  String.iter
+    (fun character ->
+      if blank character then (
+        if Buffer.length buffer > 0 && not (ends_with_space ()) then
+          Buffer.add_char buffer ' ')
+      else Buffer.add_char buffer character)
+    text;
+  Buffer.contents buffer
+
+(* The help text holds the words "request" and "requests" many times,
+   and each of them holds "req". A search for "req" alone would find
+   one of those, so each check below names the field with the words
+   around it. *)
+let the_help_of_serve_names_the_request_tag () =
+  let status, text = run "serve --help=plain" in
+  code "the exit code is 0" 0 status;
+  let text = unwrapped text in
+  List.iter
+    (fun phrase ->
+      Alcotest.(check bool)
+        (Printf.sprintf "the help of serve holds %S" phrase)
+        true (contains phrase text))
+    [ "in the field rid"; "code 2 and no rid" ];
+  Alcotest.(check bool)
+    "the help of serve does not name the old field" false
+    (contains "the field req" text)
+
 let tests =
   [
     Alcotest.test_case "a run that prints captures is clean" `Quick
@@ -310,4 +350,6 @@ let tests =
       a_closed_standard_output_ends_the_run;
     Alcotest.test_case "the help of serve names only the codes it returns"
       `Quick the_help_of_serve_names_only_the_codes_it_returns;
+    Alcotest.test_case "the help of serve names the request tag" `Quick
+      the_help_of_serve_names_the_request_tag;
   ]

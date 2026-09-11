@@ -707,11 +707,11 @@ let request ~query ~paths ~tag =
     | None -> {|"tree":true|}
     | Some path -> Printf.sprintf {|"query":%S|} path
   in
-  Printf.sprintf {|{"id":%s,"op":"parse","grammar":%S,%s,"files":[%s]}|} tag
+  Printf.sprintf {|{"rid":%s,"op":"parse","grammar":%S,%s,"files":[%s]}|} tag
     grammar selection files
 
-(* The value that the req field of every answer line must hold. The
-   tag is the JSON text of the id of the request. *)
+(* The value that the rid field of every answer line must hold. The
+   tag is the JSON text of the rid of the request. *)
 let value_of_tag tag =
   if String.length tag > 0 && tag.[0] = '"' then
     Jsonl.string (String.sub tag 1 (String.length tag - 2))
@@ -733,7 +733,7 @@ let arguments =
       (oneof_list [ "0"; "17"; {|"a"|}; {|"a tag"|} ]))
 
 let print_arguments (paths, with_query, tag) =
-  Printf.sprintf "%s, %s, id %s" (String.concat " " paths)
+  Printf.sprintf "%s, %s, rid %s" (String.concat " " paths)
     (if with_query then "a query" else "a tree")
     tag
 
@@ -742,12 +742,12 @@ let print_arguments (paths, with_query, tag) =
    tree case the command writes the S-expression alone and the op
    writes it in a field beside the path of the file. *)
 let same_capture ~tag record line =
-  List.assoc_opt "req" record = Some (value_of_tag tag)
-  && String.equal (Jsonl.to_string (List.remove_assoc "req" record)) line
+  List.assoc_opt "rid" record = Some (value_of_tag tag)
+  && String.equal (Jsonl.to_string (List.remove_assoc "rid" record)) line
 
 let same_tree ~tag ~path record line =
   List.length record = 3
-  && List.assoc_opt "req" record = Some (value_of_tag tag)
+  && List.assoc_opt "rid" record = Some (value_of_tag tag)
   && List.assoc_opt "path" record = Some (Jsonl.string path)
   && List.assoc_opt "tree" record = Some (Jsonl.string line)
 

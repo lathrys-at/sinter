@@ -7,12 +7,13 @@
     reads such a line and gives a value that the rest of the library can use. It
     is the only module that reads JSON. *)
 
-type id =
+type rid =
   | Text of string
   | Number of int
-      (** The caller's tag for one request. The response carries it back as the
-          caller gave it. A [Text] holds valid UTF-8. A [Number] is between
-          [-(2^53-1)] and [2^53-1]. *)
+      (** The caller's tag for one request. The request holds it in the field
+          [rid], and every line of the answer carries it back in the field
+          [rid], as the caller gave it. A [Text] holds valid UTF-8. A [Number]
+          is between [-(2^53-1)] and [2^53-1]. *)
 
 type output =
   | Captures of string
@@ -24,14 +25,14 @@ type op =
       (** [grammar] is the path of a grammar file. [files] holds one path or
           more. Every string is valid UTF-8. *)
 
-type t = { id : id; op : op }
+type t = { rid : rid; op : op }
 (** One request: the caller's tag, and the work to do. *)
 
 type cause =
   | Not_json
   | Not_an_object
-  | No_id
-  | Bad_id
+  | No_rid
+  | Bad_rid
   | No_op
   | Bad_op
   | Unknown_op of string
@@ -47,9 +48,9 @@ type cause =
           of value the field takes, for example ["an array of strings"].
           [Not_text] names a field whose string is not valid UTF-8. *)
 
-type error = { id : id option; cause : cause }
-(** Why a line is not a request, and the tag to answer with. [id] is [None] when
-    the line carries no tag that this module can read back. *)
+type error = { rid : rid option; cause : cause }
+(** Why a line is not a request, and the tag to answer with. [rid] is [None]
+    when the line carries no tag that this module can read back. *)
 
 val of_line : string -> (t, error) result
 (** [of_line line] reads one line of JSON as a request. [line] may end with a
@@ -60,5 +61,5 @@ val message : cause -> string
 (** [message cause] is one sentence for the person who runs the tool. It says
     what is wrong with the request. It names no file of the repository. *)
 
-val value_of_id : id -> Jsonl.value
-(** [value_of_id id] is [id] as a value of a JSONL record. *)
+val value_of_rid : rid -> Jsonl.value
+(** [value_of_rid rid] is [rid] as a value of a JSONL record. *)

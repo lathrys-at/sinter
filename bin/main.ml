@@ -142,9 +142,9 @@ let serve_cmd =
         "A request is a JSON object on one line. Every request holds these two \
          fields:";
       `I
-        ( "$(b,id)",
+        ( "$(b,rid)",
           "the caller's tag for the request: a string or an integer. Every \
-           line of the answer carries it in the field $(b,req)" );
+           line of the answer carries it back in the field $(b,rid)" );
       `I
         ( "$(b,op)",
           "the operation to run: the name of a command of this tool. \
@@ -161,7 +161,7 @@ let serve_cmd =
          $(b,message), when the operation did not run. The $(b,code) of the \
          control line is the exit code that the command returns. A line that \
          this command cannot read as a request gets an error line with code 2 \
-         and no $(b,req).";
+         and no $(b,rid).";
       `P
         "The process holds one parser for its whole life. It loads each \
          grammar once, so a caller that sends many requests pays for the load \
