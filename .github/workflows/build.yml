@@ -288,7 +288,10 @@ jobs:
       # a pass the whole of this limit. Do not lower it below the
       # measured suite time: a limit that is too short stops a run
       # that would have passed, and a stopped run counts as a kill, so
-      # the score would rise for the wrong reason.
+      # the score would rise for the wrong reason. The "timed out"
+      # column of the summary is the check: it reads 2, and a larger
+      # number on a run that changed no source means this limit is too
+      # short for the machine the job ran on.
       MUTATION_TIMEOUT: "10"
     steps:
       - uses: actions/checkout@v6
