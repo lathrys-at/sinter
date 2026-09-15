@@ -281,10 +281,6 @@ jobs:
       # covers bin/main.ml, which holds eight of the thirty-five
       # survivors and which no earlier measurement reached.
       MUTATION_MINIMUM: "91"
-      # Every place that can hold a mutant holds one, and a rebuild
-      # gives the same set of mutants.
-      MUTAML_MUT_RATE: "100"
-      MUTAML_SEED: "42"
       # The time that one run of the suite may take. The suite runs in
       # about 1.4 seconds, so this is about seven times the measured
       # time, and it is also a floor for a slower machine. Two mutants
@@ -335,11 +331,11 @@ jobs:
           cache: false
       - name: Install the dependencies
         run: opam install . --deps-only --with-test --locked
-      # The pin goes in after the dependencies, and mutaml is
-      # installed on a line of its own, for the reason the coverage
-      # job gives: --with-test on the line above reaches every package
-      # named on that line, and the tools ask for test dependencies
-      # that this compiler cannot build.
+      # mutaml is not a dependency of the package, so the line above
+      # does not install it. It is pinned here, by commit, and
+      # installed on a line of its own, which carries no --with-test,
+      # so that opam builds the tool and not the tool's own test
+      # suite. The coverage job installs bisect_ppx the same way.
       - name: Install the pinned mutaml
         run: |
           set -eu
@@ -351,6 +347,14 @@ jobs:
       # it runs the suite once with no mutant switched on, which also
       # puts the suite's fixtures under _build/default/test.
       - name: Build the tests with the code instrumented
+        env:
+          # The preprocessor reads these two, and nothing else does.
+          # A rate of 100 puts a mutant at every place that can hold
+          # one, so that a pass covers the whole set, and the seed
+          # then decides nothing; it is fixed so that a rate below
+          # 100 would still give the same set twice running.
+          MUTAML_MUT_RATE: "100"
+          MUTAML_SEED: "42"
         run: >
           opam exec -- dune build @runtest --force
           --instrument-with mutaml
