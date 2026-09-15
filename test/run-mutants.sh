@@ -32,7 +32,7 @@ set -eu
 # tree. Should dune ever copy this script into _build, that copy would
 # read the root as _build/default, which holds no build tree of its
 # own, and the check below would stop it.
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+root=$(cd -- "$(dirname -- "$0")/.." >/dev/null && pwd)
 suite=$root/_build/default/test/test_sinter.exe
 
 if [ ! -x "$suite" ]; then
