@@ -129,6 +129,25 @@ let neither_option_is_a_usage_error () =
   let status, _ = run (Printf.sprintf "parse --grammar %s %s" grammar sample) in
   code "the exit code is 2" 2 status
 
+(* The argument parser prints the usage text of a command when the
+   command asks for it. These two errors ask for no usage text, so the
+   whole output of each run is the one line below. *)
+let two_options_that_exclude_each_other_print_their_message_alone () =
+  let _, text =
+    run
+      (Printf.sprintf "parse --grammar %s --query %s --tree %s" grammar query
+         sample)
+  in
+  Alcotest.(check string)
+    "the output is the message of the error"
+    "sinter: --query and --tree exclude each other; give one of the two\n" text
+
+let neither_option_prints_its_message_alone () =
+  let _, text = run (Printf.sprintf "parse --grammar %s %s" grammar sample) in
+  Alcotest.(check string)
+    "the output is the message of the error"
+    "sinter: give either --query or --tree\n" text
+
 let an_unknown_option_is_a_usage_error () =
   let status, _ = run "parse --no-such-option" in
   code "the exit code is 2" 2 status
@@ -191,6 +210,37 @@ let the_help_lists_the_five_exit_codes () =
         in
         search 0))
     [ "EXIT STATUS"; "0   on"; "1   when"; "2   when"; "3   when"; "4   when" ]
+
+(* The version of a build that reads a checkout names that checkout.
+   Git_version.describe is the description of the checkout, and it is
+   "unknown" when the build read none. The tool and this test link the
+   same module, so the two agree on the description. *)
+let the_version_names_the_checkout () =
+  let status, text = run "--version" in
+  code "the exit code is 0" 0 status;
+  let describe = Sinter_core.Git_version.describe in
+  if String.equal describe "unknown" then
+    Alcotest.(check string)
+      "the version of a build without a checkout"
+      ("v" ^ Sinter_core.Version.base ^ "-dev\n")
+      text
+  else
+    Alcotest.(check bool)
+      "the version holds the description of the checkout" true
+      (contains describe text)
+
+(* A development build has no package version, so it takes the release
+   version from the library and the rest from the checkout. Every
+   version of the tool starts with the letter v and the release
+   version. *)
+let the_version_starts_with_the_release_version () =
+  let status, text = run "--version" in
+  code "the exit code is 0" 0 status;
+  let prefix = "v" ^ Sinter_core.Version.base in
+  Alcotest.(check bool)
+    (Printf.sprintf "the version starts with %S" prefix)
+    true
+    (String.starts_with ~prefix text)
 
 let parse_request tag rest =
   Printf.sprintf {|{"rid":%s,"op":"parse","grammar":"%s",%s}|} tag grammar rest
@@ -359,8 +409,17 @@ let tests =
       `Quick two_options_that_exclude_each_other_are_a_usage_error;
     Alcotest.test_case "neither option is a usage error" `Quick
       neither_option_is_a_usage_error;
+    Alcotest.test_case
+      "two options that exclude each other print their message alone" `Quick
+      two_options_that_exclude_each_other_print_their_message_alone;
+    Alcotest.test_case "neither option prints its message alone" `Quick
+      neither_option_prints_its_message_alone;
     Alcotest.test_case "an unknown option is a usage error" `Quick
       an_unknown_option_is_a_usage_error;
+    Alcotest.test_case "the version names the checkout" `Quick
+      the_version_names_the_checkout;
+    Alcotest.test_case "the version starts with the release version" `Quick
+      the_version_starts_with_the_release_version;
     Alcotest.test_case "a file that does not exist is an environment error"
       `Quick a_file_that_does_not_exist_is_an_environment_error;
     Alcotest.test_case "a grammar that is not wasm is an environment error"
