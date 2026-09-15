@@ -32,7 +32,18 @@ set -eu
 # tree. Should dune ever copy this script into _build, that copy would
 # read the root as _build/default, which holds no build tree of its
 # own, and the check below would stop it.
-root=$(cd -- "$(dirname -- "$0")/.." >/dev/null && pwd)
+#
+# The line below carries two guards, and they stop two different
+# things. CDPATH='' stops cd from going somewhere else: the runner
+# starts this script as test/run-mutants.sh, so the operand of cd is
+# "test/..", which does not begin with "." or "..", and cd therefore
+# searches any CDPATH the reader's shell holds. A CDPATH that names a
+# directory with a test/ in it would send cd there. The redirection
+# stops cd from printing the directory it chose, which under a CDPATH
+# it does, and which would land inside the command substitution and
+# become part of the path. Keep both. The empty string is written out
+# so that shellcheck does not read CDPATH= as a mistyped assignment.
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." >/dev/null && pwd)
 suite=$root/_build/default/test/test_sinter.exe
 
 if [ ! -x "$suite" ]; then
