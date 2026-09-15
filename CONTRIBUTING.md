@@ -321,8 +321,10 @@ source will take them out of the score once the fork carries one.
 per source file, and `--json-report` writes the
 mutation-testing-elements format that Stryker, Infection, and Mull
 share, which the HTML viewer of that format reads. Both paths above
-are inside `_mutations/`, the directory the runner makes, which git
-ignores.
+are inside `_mutations/`, which git ignores. The runner makes that
+directory in the step above, and `mutaml-report` does not make it, so
+run the report after a pass of the runner and not on its own in a
+clean tree.
 
 `mutaml-report` exits 0 when the score is at or above `--fail-under`,
 2 when it is below, and 1 when the tool could not do its work. Give it
