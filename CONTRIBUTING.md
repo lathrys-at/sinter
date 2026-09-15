@@ -263,7 +263,7 @@ Then, from the repository root:
 ```
 MUTAML_MUT_RATE=100 MUTAML_SEED=42 \
   dune build @runtest --force --instrument-with mutaml
-mutaml-runner --build-context _build/default --timeout 10 \
+mutaml-runner --build-context _build/default --timeout 30 \
   --test-env QCHECK_SEED=1 --baseline-env QCHECK_SEED=2 \
   test/run-mutants.sh
 mutaml-report --fail-under 91 \
@@ -295,11 +295,12 @@ the suite cannot start at the root. The script starts at the root,
 where the runner starts it, and starts the suite where the fixtures
 are.
 
-`--timeout 10` is the time that one run of the suite may take. The
-suite runs in about 1.4 seconds, so ten seconds is about seven times
-the measurement and a floor for a slower machine. Do not set it below
-the time the suite really takes: a run cut short counts as a kill, and
-the score then reads higher than it is. The report tells you when the
+`--timeout 30` is the time that one run of the suite may take. The
+suite runs in about 1.4 seconds, so thirty seconds is about twenty
+times the measurement, with room for a slower machine under load. Do
+not set it near the time the suite really takes: a run cut short
+counts as a kill, and the score then reads higher than it is with
+nothing to show it. The report tells you when the
 limit is too short for your machine: the "timed out" column counts 2,
 and a larger number on a pass that changed no source means the limit
 must go up. Two mutants hang the suite, and each of the two costs a

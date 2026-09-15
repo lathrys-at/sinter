@@ -282,17 +282,19 @@ jobs:
       # survivors and which no earlier measurement reached.
       MUTATION_MINIMUM: "91"
       # The time that one run of the suite may take. The suite runs in
-      # about 1.4 seconds, so this is about seven times the measured
-      # time, and it is also a floor for a slower machine. Two mutants
-      # hang the suite instead of failing it, and each of those costs
-      # a pass the whole of this limit. Do not lower it below the
-      # measured suite time: a limit that is too short stops a run
-      # that would have passed, and a stopped run counts as a kill, so
-      # the score would rise for the wrong reason. The "timed out"
-      # column of the summary is the check: it reads 2, and a larger
-      # number on a run that changed no source means this limit is too
-      # short for the machine the job ran on.
-      MUTATION_TIMEOUT: "10"
+      # about 1.4 seconds on the machine that measured it, so this is
+      # about twenty times that, with room for a slower runner under
+      # load. Two mutants hang the suite instead of failing it, and
+      # each of those costs a pass the whole of this limit. Do not
+      # lower it towards the measured suite time: a limit that is too
+      # short stops a run that would have passed, and a stopped run
+      # counts as a kill, so the score would rise for the wrong reason
+      # and nothing would turn red. The "timed out" column of the
+      # summary is the check: it reads 2, and a larger number on a run
+      # that changed no source means this limit is too short for the
+      # machine the job ran on. The fork's next release derives the
+      # limit from the measured baseline run; this number goes then.
+      MUTATION_TIMEOUT: "30"
     steps:
       - uses: actions/checkout@v6
       # This switch holds the pinned tool as well as the project's
@@ -377,14 +379,28 @@ jobs:
       # mutant twice, once under each seed, and stops when the two
       # runs disagree, because a suite whose answer depends on the
       # seed gives the score no meaning.
+      #
+      # The runner prints one line, "Skipping ...", for each mutant
+      # file whose source file it cannot find, and goes on. A pass
+      # that skipped a file measured part of the tree, and its score
+      # says nothing about the rest, so the job keeps the runner's
+      # output and fails on that line.
       - name: Run the tests once for each mutant
-        run: >
-          opam exec -- mutaml-runner
-          --build-context _build/default
-          --timeout "$MUTATION_TIMEOUT"
-          --test-env QCHECK_SEED=1
-          --baseline-env QCHECK_SEED=2
-          test/run-mutants.sh
+        run: |
+          set -euo pipefail
+          mkdir -p _mutations
+          opam exec -- mutaml-runner \
+            --build-context _build/default \
+            --timeout "$MUTATION_TIMEOUT" \
+            --test-env QCHECK_SEED=1 \
+            --baseline-env QCHECK_SEED=2 \
+            test/run-mutants.sh 2>&1 | tee _mutations/runner.log
+          if grep -q '^Skipping ' _mutations/runner.log; then
+            echo "The runner skipped a mutant file, so the pass measured" \
+              "part of the tree. The lines above that start with" \
+              "Skipping name the files. Run dune clean and build again."
+            exit 1
+          fi
       # mutaml-report reads mutaml-report.json, which the runner wrote
       # in this directory, so it needs no path. It exits with 0 when
       # the score is at or above --fail-under, with 2 when the score
