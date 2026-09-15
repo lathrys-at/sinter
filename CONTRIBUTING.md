@@ -299,8 +299,11 @@ are.
 suite runs in about 1.4 seconds, so ten seconds is about seven times
 the measurement and a floor for a slower machine. Do not set it below
 the time the suite really takes: a run cut short counts as a kill, and
-the score then reads higher than it is. Two mutants hang the suite,
-and each of the two costs a pass the whole of the limit.
+the score then reads higher than it is. The report tells you when the
+limit is too short for your machine: the "timed out" column counts 2,
+and a larger number on a pass that changed no source means the limit
+must go up. Two mutants hang the suite, and each of the two costs a
+pass the whole of the limit.
 
 The two seeds are a check on the suite, not on the mutants. Every
 mutant runs under `QCHECK_SEED=1`. The runner also runs the suite
