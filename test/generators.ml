@@ -626,15 +626,94 @@ let wasm_header = "\000asm\001\000\000\000"
 let wasm_section identifier body =
   String.make 1 (Char.chr identifier) ^ leb128 (String.length body) ^ body
 
-let wasm_module ~before ~name =
-  let exported = "tree_sitter_" ^ name in
-  (* A name, then the kind of the export, then its index. *)
-  let entry = leb128 (String.length exported) ^ exported ^ "\000" ^ leb128 0 in
-  let custom =
-    if before then wasm_section 0 (leb128 4 ^ "name" ^ String.make 3 '\000')
-    else ""
+(* One export: the length of the name, the name, the kind of the
+   export, and its index. The index is a LEB128 number, and the format
+   allows an encoding longer than the value needs, so the caller gives
+   the bytes of the index and not the value. *)
+let wasm_export ~index name =
+  leb128 (String.length name) ^ name ^ "\000" ^ index
+
+(* The export section. [declared] is the count the section states,
+   which the caller can set against the number of exports that follow
+   it. *)
+let wasm_export_section ~declared exports =
+  wasm_section 7 (leb128 declared ^ String.concat "" exports)
+
+(* A custom section. Its body is the name of the section and then
+   [content]. *)
+let wasm_custom_section content = wasm_section 0 (leb128 4 ^ "name" ^ content)
+
+type wasm_shape =
+  | One_export
+  | Custom_section_before
+  | Long_custom_section
+  | Three_exports
+  | Long_export_index
+  | Too_few_exports_declared
+  | Too_many_exports_declared
+  | Cut_in_a_section
+
+(* A custom section whose body is 128 bytes, so that the size of the
+   section needs two LEB128 bytes. Five of those bytes are the name of
+   the section, and the rest is padding.
+
+   The padding is 0xFF, and not 0. A reader that loses its place
+   inside the section then meets a number that never ends, and it
+   stops. Through a run of zeros it would walk on, two bytes at a
+   time, and it could come out at the export section by luck. *)
+let long_custom_section =
+  let name = leb128 4 ^ "name" in
+  wasm_custom_section (String.make (128 - String.length name) '\255')
+
+let wasm_module shape ~name =
+  let grammar = "tree_sitter_" ^ name in
+  let index = leb128 0 in
+  let one_export =
+    wasm_export_section ~declared:1 [ wasm_export ~index grammar ]
   in
-  wasm_header ^ custom ^ wasm_section 7 (leb128 1 ^ entry)
+  (* Three exports, and the one of the grammar last. *)
+  let three =
+    [
+      wasm_export ~index "a"; wasm_export ~index "b"; wasm_export ~index grammar;
+    ]
+  in
+  match shape with
+  | One_export -> wasm_header ^ one_export
+  | Custom_section_before ->
+      wasm_header ^ wasm_custom_section (String.make 3 '\000') ^ one_export
+  | Long_custom_section -> wasm_header ^ long_custom_section ^ one_export
+  | Three_exports -> wasm_header ^ wasm_export_section ~declared:3 three
+  | Long_export_index ->
+      wasm_header
+      ^ wasm_export_section ~declared:2
+          [
+            wasm_export ~index:"\128\128\128\128\000" "a";
+            wasm_export ~index grammar;
+          ]
+  | Too_few_exports_declared ->
+      wasm_header ^ wasm_export_section ~declared:2 three
+  | Too_many_exports_declared ->
+      (* The bytes of the export of the grammar follow the section,
+         and the size of the section does not cover them. A reader
+         that trusts the count over the size walks into them. *)
+      wasm_header
+      ^ wasm_export_section ~declared:3
+          [ wasm_export ~index "a"; wasm_export ~index "b" ]
+      ^ wasm_export ~index grammar
+  | Cut_in_a_section ->
+      let whole = wasm_header ^ one_export in
+      (* The kind and the index of the one export go, and the size of
+         the section still counts them. *)
+      String.sub whole 0 (String.length whole - 2)
+
+let wasm_shapes_that_hold_a_name =
+  [
+    One_export;
+    Custom_section_before;
+    Long_custom_section;
+    Three_exports;
+    Long_export_index;
+  ]
 
 let grammar_export_name =
   Gen.map (String.concat "")
@@ -643,27 +722,27 @@ let grammar_export_name =
 
 let wasm_module_with_a_name =
   let open Gen in
-  let* before = bool in
+  let* shape = oneof_list wasm_shapes_that_hold_a_name in
   let+ name = grammar_export_name in
-  (name, wasm_module ~before ~name)
+  (name, wasm_module shape ~name)
 
 (* A module whose export names the grammar with a NUL byte in the
    name. The bridge loads a grammar under a C string, so it can load
    no grammar under such a name. *)
 let wasm_module_whose_name_holds_a_nul =
   let open Gen in
-  let* before = bool in
+  let* shape = oneof_list wasm_shapes_that_hold_a_name in
   let* head = grammar_export_name in
   let+ tail = grammar_export_name in
-  wasm_module ~before ~name:(head ^ "\000" ^ tail)
+  wasm_module shape ~name:(head ^ "\000" ^ tail)
 
 let wasm_bytes =
   let open Gen in
   let noise = string_size ~gen:(char_range '\000' '\255') (int_bound 40) in
   let cut_or_changed =
-    let* before = bool in
+    let* shape = oneof_list wasm_shapes_that_hold_a_name in
     let* name = grammar_export_name in
-    let whole = wasm_module ~before ~name in
+    let whole = wasm_module shape ~name in
     let* cut = int_range 0 (String.length whole) in
     let short = String.sub whole 0 cut in
     if String.length short = 0 then return short

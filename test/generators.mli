@@ -169,20 +169,52 @@ val any_text : string QCheck2.Gen.t
 
 (** {1 WebAssembly modules} *)
 
-val wasm_module : before:bool -> name:string -> string
-(** [wasm_module ~before ~name] is a WebAssembly module that exports one
-    function called ["tree_sitter_"] and [name]. When [before] is [true], a
-    custom section stands before the export section. *)
+(** The shape of a WebAssembly module. Each shape sends the reader of a grammar
+    name down a different road: over a section whose size needs two LEB128
+    bytes, down a list of exports, or into a section the module cuts short. *)
+type wasm_shape =
+  | One_export  (** one export, and every count and every length of one byte *)
+  | Custom_section_before
+      (** a custom section of eight bytes stands before the export section *)
+  | Long_custom_section
+      (** the custom section holds a body of 128 bytes, so the size of that
+          section needs two LEB128 bytes *)
+  | Three_exports  (** three exports, and the one of the grammar last *)
+  | Long_export_index
+      (** two exports, and the one before the grammar carries an index written
+          in five LEB128 bytes. The format allows the longer encoding; the
+          reader takes five bytes and no more. *)
+  | Too_few_exports_declared
+      (** the export section declares two exports and holds three, and the one
+          of the grammar is the third. The reader stops at the count, so it
+          finds no name. *)
+  | Too_many_exports_declared
+      (** the export section declares three exports and holds two, and the bytes
+          of the export of the grammar follow the section. The reader stops at
+          the end of the section, so it finds no name. *)
+  | Cut_in_a_section
+      (** the last two bytes of the module are gone, and the size of the export
+          section still counts them. The reader finds no name in a section that
+          runs past the end of the module. *)
+
+val wasm_module : wasm_shape -> name:string -> string
+(** [wasm_module shape ~name] is a WebAssembly module of [shape] that exports
+    one function called ["tree_sitter_"] and [name]. The reader of a grammar
+    name finds [name] in every shape but the last three, which state what the
+    reader finds instead. *)
 
 val grammar_export_name : string QCheck2.Gen.t
 (** A grammar name of one to eight characters, drawn from seven characters. *)
 
 val wasm_module_with_a_name : (string * string) QCheck2.Gen.t
-(** A grammar name, and a WebAssembly module that exports it. *)
+(** A grammar name, and a WebAssembly module that exports it. The shape of the
+    module is drawn from the five shapes in which the reader finds a name, so a
+    property over this generator meets a section whose size needs two bytes, a
+    list of three exports, and an index of five bytes. *)
 
 val wasm_module_whose_name_holds_a_nul : string QCheck2.Gen.t
-(** A WebAssembly module whose export names the grammar with a NUL byte in the
-    name. *)
+(** A WebAssembly module, of a drawn shape, whose export names the grammar with
+    a NUL byte in the name. *)
 
 val wasm_bytes : string QCheck2.Gen.t
 (** Bytes that a reader of a WebAssembly module must survive: any bytes; the
