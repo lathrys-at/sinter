@@ -7,4 +7,6 @@
  (modes exe)
  (libraries sinter_core cmdliner dune-build-info)
  (instrumentation
-  (backend bisect_ppx)))
+  (backend bisect_ppx))
+ (instrumentation
+  (backend mutaml)))

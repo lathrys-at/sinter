@@ -5,6 +5,13 @@ _opam/
 .sinter/
 bridge/target/
 
+# What a pass of the mutation tester writes at the root of the
+# project: mutaml-runner's working directory, which also holds the
+# report files that the documented commands and the mutation job
+# write, and the report that the runner writes beside it.
+_mutations/
+mutaml-report.json
+
 # macOS
 .DS_Store
 .AppleDouble
