@@ -224,7 +224,24 @@ The released tool does not build on the compiler in
 `sinter.opam.locked`, loses its working files under the current
 `dune`, and makes no mutant of a comparison operator;
 `docs/decisions/mutation-testing.md` gives the reasons for the fork.
-Pin the fork into the project's switch once:
+
+A pass needs the GNU `timeout` command on `PATH`. `mutaml-runner`
+starts every test run through it, and reads its exit status to tell a
+run that took too long from a run that a signal ended. Install it
+before the pin below: `mutaml` depends on the opam package
+`conf-timeout`, which looks for the command and fails the install
+without it. macOS has no `timeout` command of its own:
+
+```
+brew install coreutils
+export PATH="$(brew --prefix)/opt/coreutils/libexec/gnubin:$PATH"
+```
+
+Homebrew names the command `gtimeout` and puts a `timeout` in the
+directory above. `mutaml` also needs the `diff` command, which every
+machine that builds Sinter already has.
+
+Then pin the fork into the project's switch once:
 
 ```
 opam pin add -y -n mutaml \
@@ -237,19 +254,9 @@ the same code, as the pin of `bisect_ppx` above does. It does not
 enter `dune-project` or the lock file, because the tool is not a
 dependency of the package. The `mutation` job pins the same commit.
 Moving a pin is a pull request of its own that names the new commit.
-
-A pass also needs the GNU `timeout` command on `PATH`.
-`mutaml-runner` starts every test run through it, and reads its exit
-status to tell a run that took too long from a run that a signal
-ended. macOS has no `timeout` command of its own:
-
-```
-brew install coreutils
-export PATH="$(brew --prefix)/opt/coreutils/libexec/gnubin:$PATH"
-```
-
-Homebrew names the command `gtimeout` and puts a `timeout` in the
-directory above.
+The install adds `mutaml` and the packages it needs, among them
+`ppxlib` 0.36 or newer, which the `bisect_ppx` pin above also asks
+for. It changes no version that the lock file pins.
 
 Then, from the repository root:
 
@@ -285,7 +292,8 @@ the tree.
 `test/run-mutants.sh` is the test command. The suite reads its
 fixtures from paths relative to its own directory under `_build`, so
 the suite cannot start at the root. The script starts at the root,
-where the runner puts it, and starts the suite where the fixtures are.
+where the runner starts it, and starts the suite where the fixtures
+are.
 
 `--timeout 10` is the time that one run of the suite may take. The
 suite runs in about 1.4 seconds, so ten seconds is about seven times
@@ -304,13 +312,13 @@ new seed on each ordinary run, which is why a pass fixes one.
 `mutaml-report` reads `mutaml-report.json`, which the runner wrote at
 the root, so it needs no path. It prints the score and, for each
 survivor, the name of the mutant and a diff of the change that
-survived. Read a survivor as
-a question: which test would have failed on this change? The answer is
-the test to write. A few survivors have no answer, because no input
-can tell the change from the original; those are equivalent mutants,
-and a marker in the source will take them out of the score once the
-fork carries one. `--markdown` writes the same report as a file with a
-table of one row per source file, and `--json-report` writes the
+survived. Read a survivor as a question: which test would have failed
+on this change? The answer is the test to write. A few survivors have
+no answer, because no input can tell the change from the original;
+those are equivalent mutants, and a marker in the
+source will take them out of the score once the fork carries one.
+`--markdown` writes the same report as a file with a table of one row
+per source file, and `--json-report` writes the
 mutation-testing-elements format that Stryker, Infection, and Mull
 share, which the HTML viewer of that format reads. Both paths above
 are inside `_mutations/`, the directory the runner makes, which git
