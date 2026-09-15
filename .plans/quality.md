@@ -1,6 +1,6 @@
 # Quality: property tests and coverage
 @plan quality
-@scope test/**, lib/**, bin/dune, docs/decisions/**, docs/roadmap.md, .plans/**, .github/workflows/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, CONTRIBUTING.md
+@scope test/**, lib/**, bin/dune, docs/decisions/**, docs/roadmap.md, .plans/**, .github/workflows/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, CONTRIBUTING.md, .gitignore
 Record the code and test rules, bring the existing interfaces under
 property-based tests, measure coverage and mutation score in CI, and
 close the gaps the mutants find.
@@ -28,11 +28,14 @@ project's compiler that reports the summary and fails below the
 minimum, and document the local commands in `CONTRIBUTING.md`.
 
 ## Run mutation testing in CI
-@scope .github/workflows/**, lib/dune, lib/bridge/dune, bin/dune, docs/decisions/**, docs/roadmap.md, CONTRIBUTING.md
+@scope .github/workflows/**, lib/dune, lib/bridge/dune, bin/dune, test/**, .gitignore, docs/decisions/**, docs/roadmap.md, CONTRIBUTING.md
 @decision mutation-testing
 Instrument `lib/` and `bin/` with the project's fork of `mutaml`, add
 a CI job that reports the score and the survivors and fails below the
-minimum, and document the local commands in `CONTRIBUTING.md`.
+minimum, and document the local commands in `CONTRIBUTING.md`. The
+runner starts the suite through a script under `test/`, because the
+suite reads its fixtures from the build copy of `test/`, and
+`.gitignore` covers what a run writes.
 
 ## Close the test gaps that the mutants found
 @scope test/**, lib/**, .github/workflows/**
