@@ -247,3 +247,176 @@ jobs:
           echo "Coverage is $total%. The minimum is $COVERAGE_MINIMUM%."
           below=$(awk "BEGIN { print ($total < $COVERAGE_MINIMUM) ? 1 : 0 }")
           test "$below" = 0
+
+  mutation:
+    name: Measure the mutation score
+    runs-on: ubuntu-latest
+    # A mutation tester makes one small change to the source, called a
+    # mutant, and runs the test suite with that change switched on. A
+    # mutant that no test fails on has survived, and it names a
+    # behaviour that no test checks. The share of the mutants that the
+    # suite caught is the score.
+    #
+    # This job builds what the build job builds: the same compiler,
+    # and the dependencies from the lock file. It adds one tool,
+    # mutaml, which rewrites the modules of the library and the tool
+    # so that one mutant at a time can be switched on.
+    #
+    # mutaml is pinned to a commit of the project's fork, and the pin
+    # lives here and in CONTRIBUTING.md, not in dune-project or in the
+    # lock file. The reason is that the released mutaml does not build
+    # on this compiler, loses its working files under current dune,
+    # and makes no mutant of a comparison operator. The fork carries
+    # the fixes. Remove the pin, and install a release instead, when
+    # upstream publishes a version that does all three.
+    env:
+      # The head of the fork's main branch, after its pull request 5.
+      # A commit, never a branch, so that every run builds the same
+      # source.
+      MUTAML_COMMIT: "dceb996ce683043b1373e1c887c8983089139331"
+      # The job fails when the score is below this number. Raise it
+      # when the number grows. Do not lower it. 91 is the measured
+      # score, 91.1 per cent, rounded down to a whole number, as the
+      # decision record mutation-testing rules. The measurement
+      # covers bin/main.ml, which holds eight of the thirty-five
+      # survivors and which no earlier measurement reached.
+      MUTATION_MINIMUM: "91"
+      # Every place that can hold a mutant holds one, and a rebuild
+      # gives the same set of mutants.
+      MUTAML_MUT_RATE: "100"
+      MUTAML_SEED: "42"
+      # The time that one run of the suite may take. The suite runs in
+      # about 1.4 seconds, so this is about seven times the measured
+      # time, and it is also a floor for a slower machine. Two mutants
+      # hang the suite instead of failing it, and each of those costs
+      # a pass the whole of this limit. Do not lower it below the
+      # measured suite time: a limit that is too short stops a run
+      # that would have passed, and a stopped run counts as a kill, so
+      # the score would rise for the wrong reason.
+      MUTATION_TIMEOUT: "10"
+    steps:
+      - uses: actions/checkout@v6
+      # This switch holds the pinned tool as well as the project's
+      # dependencies, so it has a cache key of its own, and the key
+      # names the pinned commit. A new commit builds a new switch.
+      - name: Restore the opam switch
+        uses: actions/cache@v6
+        with:
+          path: _opam
+          key: opam-mutation-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.MUTAML_COMMIT }}-${{ hashFiles('sinter.opam.locked') }}
+          restore-keys: |
+            opam-mutation-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.MUTAML_COMMIT }}-
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache: false
+          override: true
+          toolchain: 1.94.1
+      # The dune rule that runs cargo writes its build output under
+      # ~/.cache/sinter-bridge-build. This job keeps a key of its own,
+      # so that it does not race the other jobs over one cache entry.
+      - name: Cache the cargo state
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/sinter-bridge-build
+          key: cargo-mutation-${{ hashFiles('bridge/Cargo.lock') }}
+          restore-keys: cargo-mutation-
+      # opam clones opam-repository and walks the clone at once. Git's
+      # background maintenance can remove its lock file in that window,
+      # and opam then fails on the vanished file. Turn it off.
+      - name: Turn off git background maintenance
+        run: git config --global maintenance.auto false
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: ${{ env.OCAML_VERSION }}
+          cache: false
+      - name: Install the dependencies
+        run: opam install . --deps-only --with-test --locked
+      # The pin goes in after the dependencies, and mutaml is
+      # installed on a line of its own, for the reason the coverage
+      # job gives: --with-test on the line above reaches every package
+      # named on that line, and the tools ask for test dependencies
+      # that this compiler cannot build.
+      - name: Install the pinned mutaml
+        run: |
+          set -eu
+          opam pin add -y -n mutaml \
+            "git+https://github.com/lathrys-at/mutaml.git#$MUTAML_COMMIT"
+          opam install -y mutaml
+      # This build writes one side file for each instrumented source
+      # file, beside the build context in _build/.mutaml/default, and
+      # it runs the suite once with no mutant switched on, which also
+      # puts the suite's fixtures under _build/default/test.
+      - name: Build the tests with the code instrumented
+        run: >
+          opam exec -- dune build @runtest --force
+          --instrument-with mutaml
+      # The runner starts at the repository root, so that it finds the
+      # side files and resolves the source paths that they name. The
+      # suite reads its fixtures relative to the build copy of test/,
+      # so the test command is a script that changes into that copy
+      # first. A run started in the wrong place finds no side file and
+      # tests no mutant; mutaml-report then says that it found no test
+      # results and exits with 1, and the step after this one fails on
+      # that and calls it a fault of the run. The total row of the
+      # Markdown summary names the number of mutants, so a person
+      # reads the count on the page of the job.
+      #
+      # The two seeds fix what the property tests draw. QCHECK_SEED=1
+      # runs every mutant; the runner also runs the suite with no
+      # mutant twice, once under each seed, and stops when the two
+      # runs disagree, because a suite whose answer depends on the
+      # seed gives the score no meaning.
+      - name: Run the tests once for each mutant
+        run: >
+          opam exec -- mutaml-runner
+          --build-context _build/default
+          --timeout "$MUTATION_TIMEOUT"
+          --test-env QCHECK_SEED=1
+          --baseline-env QCHECK_SEED=2
+          test/run-mutants.sh
+      # mutaml-report reads mutaml-report.json, which the runner wrote
+      # in this directory, so it needs no path. It exits with 0 when
+      # the score is at or above --fail-under, with 2 when the score
+      # is below it, and with another status when the tool itself
+      # failed. The job fails on both, and says which happened.
+      - name: Report the mutation score
+        run: |
+          set -eu
+          mkdir -p _mutations
+          status=0
+          opam exec -- mutaml-report \
+            --fail-under "$MUTATION_MINIMUM" \
+            --markdown "$GITHUB_STEP_SUMMARY" \
+            --json-report _mutations/report.json || status=$?
+          if [ "$status" = 2 ]; then
+            echo "The mutation score is below the minimum of" \
+              "$MUTATION_MINIMUM per cent. The summary of this job" \
+              "names every mutant that survived. Write a test that" \
+              "kills each one."
+            exit "$status"
+          fi
+          if [ "$status" != 0 ]; then
+            echo "mutaml-report failed with status $status. It is" \
+              "the run that failed, not the score: the report is" \
+              "missing, or it holds no mutant because the runner" \
+              "started in the wrong directory, or one of the two" \
+              "report files could not be written."
+            exit "$status"
+          fi
+          echo "The mutation score is at or above the minimum of" \
+            "$MUTATION_MINIMUM per cent."
+      # The JSON report is in the format that Stryker, Infection, and
+      # Mull share, so a person can open it in a viewer of that
+      # format. Upload it whether the gate passed or failed: it is
+      # most wanted when it failed.
+      - name: Upload the JSON report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-report
+          path: _mutations/report.json
+          if-no-files-found: warn
