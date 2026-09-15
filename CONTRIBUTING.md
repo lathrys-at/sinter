@@ -206,6 +206,146 @@ CI runs the same commands on `ubuntu-latest` and fails below the
 minimum that the `coverage` job sets. That job holds the number. A
 change does not lower the coverage.
 
+### Mutation testing
+
+Coverage counts the lines that the tests run. It cannot see whether a
+test checks what it runs, so a coverage number rises with tests that
+check nothing. Mutation testing measures that. A tool makes one small
+change to the source, such as `<=` where the code says `<`, and runs
+the suite with that change switched on. The changed program is a
+mutant. A mutant that makes a test fail is killed. A mutant that the
+whole suite passes on has survived, and it names a behaviour that no
+test checks. The mutation score is the share of the mutants that were
+killed. A mutant that makes the suite run past its time limit counts
+as killed, because a run that never ends is a fault the suite found.
+
+Sinter measures `lib/` and `bin/` with the project's fork of `mutaml`.
+The released tool does not build on the compiler in
+`sinter.opam.locked`, loses its working files under the current
+`dune`, and makes no mutant of a comparison operator;
+`docs/decisions/mutation-testing.md` gives the reasons for the fork.
+Pin the fork into the project's switch once:
+
+```
+opam pin add -y -n mutaml \
+  git+https://github.com/lathrys-at/mutaml.git#dceb996ce683043b1373e1c887c8983089139331
+opam install mutaml
+```
+
+The pin names a commit and never a branch, so that every run installs
+the same code, as the pin of `bisect_ppx` above does. It does not
+enter `dune-project` or the lock file, because the tool is not a
+dependency of the package. The `mutation` job pins the same commit.
+Moving a pin is a pull request of its own that names the new commit.
+
+A pass also needs the GNU `timeout` command on `PATH`.
+`mutaml-runner` starts every test run through it, and reads its exit
+status to tell a run that took too long from a run that a signal
+ended. macOS has no `timeout` command of its own:
+
+```
+brew install coreutils
+export PATH="$(brew --prefix)/opt/coreutils/libexec/gnubin:$PATH"
+```
+
+Homebrew names the command `gtimeout` and puts a `timeout` in the
+directory above.
+
+Then, from the repository root:
+
+```
+MUTAML_MUT_RATE=100 MUTAML_SEED=42 \
+  dune build @runtest --force --instrument-with mutaml
+mutaml-runner --build-context _build/default --timeout 10 \
+  --test-env QCHECK_SEED=1 --baseline-env QCHECK_SEED=2 \
+  test/run-mutants.sh
+mutaml-report --fail-under 91 \
+  --markdown _mutations/summary.md \
+  --json-report _mutations/report.json
+```
+
+`--instrument-with` is the switch, as it is for coverage. Without it
+the build carries no instrumentation and costs nothing.
+`MUTAML_MUT_RATE=100` puts a mutant at every place that can hold one,
+so that a pass covers the whole set, and `MUTAML_SEED` fixes the draw,
+which decides anything only at a rate below 100. The build writes one
+side file for each instrumented source file, beside the build
+directory in `_build/.mutaml/default`, and the runner reads them.
+
+**Start the runner at the repository root and nowhere else.**
+`--build-context _build/default` names the build directory, and the
+runner looks beside it for the side files and reads the source paths
+in them from the root. Started anywhere else it finds no side file and
+tests nothing; `mutaml-report` then prints `Found no test results` and
+exits 1. Read the number of mutants in the report of every pass. A
+pass over the whole tree makes several hundred, 394 when this was
+written, so a much smaller number means that the pass missed part of
+the tree.
+
+`test/run-mutants.sh` is the test command. The suite reads its
+fixtures from paths relative to its own directory under `_build`, so
+the suite cannot start at the root. The script starts at the root,
+where the runner puts it, and starts the suite where the fixtures are.
+
+`--timeout 10` is the time that one run of the suite may take. The
+suite runs in about 1.4 seconds, so ten seconds is about seven times
+the measurement and a floor for a slower machine. Do not set it below
+the time the suite really takes: a run cut short counts as a kill, and
+the score then reads higher than it is. Two mutants hang the suite,
+and each of the two costs a pass the whole of the limit.
+
+The two seeds are a check on the suite, not on the mutants. Every
+mutant runs under `QCHECK_SEED=1`. The runner also runs the suite
+twice with no mutant, once under each of the two seeds, and stops when
+the two runs disagree, because a suite that answers differently under
+two seeds gives the score no meaning. Sinter's property tests draw a
+new seed on each ordinary run, which is why a pass fixes one.
+
+`mutaml-report` reads `mutaml-report.json`, which the runner wrote at
+the root, so it needs no path. It prints the score and, for each
+survivor, the name of the mutant and a diff of the change that
+survived. Read a survivor as
+a question: which test would have failed on this change? The answer is
+the test to write. A few survivors have no answer, because no input
+can tell the change from the original; those are equivalent mutants,
+and a marker in the source will take them out of the score once the
+fork carries one. `--markdown` writes the same report as a file with a
+table of one row per source file, and `--json-report` writes the
+mutation-testing-elements format that Stryker, Infection, and Mull
+share, which the HTML viewer of that format reads. Both paths above
+are inside `_mutations/`, the directory the runner makes, which git
+ignores.
+
+`mutaml-report` exits 0 when the score is at or above `--fail-under`,
+2 when it is below, and 1 when the tool could not do its work. Give it
+the number that the `mutation` job holds in `MUTATION_MINIMUM`, so
+that a pass at your own machine answers as the job does. That job
+holds the number that decides a merge, and it is 91 today. A change
+does not lower the score, and the pull request that raises the score
+raises the minimum with it.
+
+An instrumented build writes over `_build`, as a coverage build does,
+and the next ordinary `dune build` compiles the whole OCaml tree
+again. `dune` does not always build again when only an environment
+variable changed, so run `dune clean` first when the variables of this
+pass differ from those of the last one.
+
+One number will move on the day this repository takes its first
+release tag, and the reason is known. `bin/main.ml` works out the
+version from the output of `git describe`, with two tests on that
+output: `String.contains d '.'` and `d = "unknown"`. Today the
+repository carries no tag, the output is a bare hash, and the suite
+kills the mutant of each of the two tests. After the first tag the
+output holds a dot, the first test holds, and the function gives back
+the description at once. Both mutants then survive. The mutant of
+`d = "unknown"` survives because nothing reaches that line any more.
+The mutant of `String.contains d '.'` survives because it sends a
+description such as `v0.1.0` down the other road, which builds
+`v0.1.0-dev+v0.1.0`; that string starts with the release version and
+names the checkout, so both tests of the version pass on it. Expect
+the score to fall by two mutants on that day, not by one, and look
+for no other cause.
+
 ## New files
 
 A new file under `lib/`, `bin/`, `bridge/`, `test/`, `spec/`,
