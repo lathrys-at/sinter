@@ -417,14 +417,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p _mutations
-          jobs=$(nproc)
-          if [ "$jobs" -gt 1 ]; then
-            jobs=$((jobs - 1))
+          cores=$(nproc)
+          workers=$cores
+          if [ "$workers" -gt 1 ]; then
+            workers=$((workers - 1))
           fi
-          echo "Testing $jobs mutants at a time."
+          echo "Cores: $cores. Workers: $workers."
           opam exec -- mutaml-runner \
             --build-context _build/default \
-            -j "$jobs" \
+            -j "$workers" \
             --repeat 3 \
             --test-env 'QCHECK_SEED={}' \
             --baseline-env QCHECK_SEED=2 \
