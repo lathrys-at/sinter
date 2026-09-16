@@ -11,7 +11,11 @@ let version =
   match Build_info.V1.version () with
   | Some v ->
       let s = Build_info.V1.Version.to_string v in
-      if s <> "" && s.[0] <> 'v' then "v" ^ s else s
+      (if s <> "" && s.[0] <> 'v' then "v" ^ s else s)
+      [@mutaml.skip
+        "a build that dune build makes carries no package version, so \
+         Build_info.V1.version () gives None and this road is never taken; \
+         only an installed release build reaches it"]
   | None ->
       let d = Sinter_core.Git_version.describe in
       if String.contains d '.' then d

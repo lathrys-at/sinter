@@ -225,16 +225,16 @@ The released tool does not build on the compiler in
 `dune`, and makes no mutant of a comparison operator;
 `docs/decisions/mutation-testing.md` gives the reasons for the fork.
 
-`mutaml` needs the `diff` command, which every machine that builds
-Sinter already has, and nothing else that is not an opam package. It
-needs no `timeout` command: the runner starts each test run itself
-and stops a run that goes on too long.
+`mutaml` needs no command of the system that is not an opam package.
+It needs no `diff` command: `mutaml-report` writes the diff of a
+mutant itself. It needs no `timeout` command: the runner starts each
+test run itself and stops a run that goes on too long.
 
 Pin the fork into the project's switch once:
 
 ```
 opam pin add -y -n mutaml \
-  git+https://github.com/lathrys-at/mutaml.git#552416cb1e9444a1ce0d3fbeba6f8efb7732e9a4
+  git+https://github.com/lathrys-at/mutaml.git#b3c6b062522d1b8ac3b9615f84320e5d7e8d8ac8
 opam install mutaml
 ```
 
@@ -358,16 +358,44 @@ survivor, the name of the mutant and a diff of the change that
 survived. Read a survivor as a question: which test would have failed
 on this change? The answer is the test to write. A few survivors have
 no answer, because no input can tell the change from the original;
-those are equivalent mutants, and a marker in the
-source will take them out of the score once the fork carries one.
-`--markdown` writes the same report as a file with a table of one row
-per source file, and `--json-report` writes the
+those are equivalent mutants, and the part below says how to mark
+one. `--markdown` writes the same report as a file with a table of
+one row per source file, and `--json-report` writes the
 mutation-testing-elements format that Stryker, Infection, and Mull
 share, which the HTML viewer of that format reads. Both paths above
 are inside `_mutations/`, which git ignores. The runner makes that
 directory in the step above, and `mutaml-report` does not make it, so
 run the report after a pass of the runner and not on its own in a
 clean tree.
+
+**How to mark a mutant that no test can kill.** Write
+`[@mutaml.skip "reason"]` on the smallest expression that holds the
+mutant, and put that expression in parentheses:
+
+```
+let is_ready count = ((count >= 1) [@mutaml.skip "..."])
+```
+
+The attribute binds to the expression right in front of it, and it
+binds tighter than an operator, so `count >= 1 [@mutaml.skip "..."]`
+marks the `1` alone and leaves the comparison to be mutated. A mark
+takes out every mutant inside the expression it names, the mutants
+that the tests kill among them, so name no larger an expression than
+the place needs. The reason is a string, and it is not optional: a
+mark with no reason, with an empty reason, or with a payload that is
+not a string stops the build with a message that names the file and
+the line. A marked place is no mutant: it is outside the score, and
+every report names it, its line, and its reason. The JSON report
+gives it the status `Ignored` and the reason in `statusReason`.
+
+A mark is a claim: that no input can tell the changed program from
+the original. A mark that is wrong hides a gap in the tests for as
+long as it stands, and no later pass will find that gap again. So
+write the reason as a reader can check it against the code, name the
+property that makes the two programs one, and read a mark in review
+as closely as you read the code around it. Never mark a gap. When a
+test could kill the mutant, that test is the answer, and the mark is
+a way of not writing it.
 
 `mutaml-report` exits 0 when the score is at or above `--fail-under`,
 2 when it is below, and 1 when the tool could not do its work. Give it

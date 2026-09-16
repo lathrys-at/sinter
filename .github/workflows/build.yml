@@ -270,10 +270,10 @@ jobs:
     # the fixes. Remove the pin, and install a release instead, when
     # upstream publishes a version that does all three.
     env:
-      # The head of the fork's main branch, after its pull request 6.
+      # The head of the fork's main branch, after its pull request 7.
       # A commit, never a branch, so that every run builds the same
       # source.
-      MUTAML_COMMIT: "552416cb1e9444a1ce0d3fbeba6f8efb7732e9a4"
+      MUTAML_COMMIT: "b3c6b062522d1b8ac3b9615f84320e5d7e8d8ac8"
       # The job fails when the score is below this number. Raise it
       # when the number grows. Do not lower it. 91 is the measured
       # score rounded down to a whole number, as the decision record
