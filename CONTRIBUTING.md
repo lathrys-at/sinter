@@ -378,6 +378,16 @@ again. `dune` does not always build again when only an environment
 variable changed, so run `dune clean` first when the variables of this
 pass differ from those of the last one.
 
+**Do not run an ordinary `dune build` while a pass is running, and
+build again with `--instrument-with mutaml` after any ordinary
+build.** An ordinary build carries no instrumentation, and it relinks
+`bin/main.exe` without it while leaving the test executable
+instrumented, so nothing looks wrong. The tests of the command line
+run that binary, so no mutant of `bin/main.ml` can switch on: every
+one of them passes every run, and the pass reports all of them as
+survivors. A pass that suddenly reports the whole of `bin/main.ml` as
+surviving has met this and measured nothing.
+
 A pass also leaves one directory for each run of the suite under
 `_build/default/test/_build/_tests`, several hundred of them, because
 `alcotest` writes its logs there and nothing removes them while the
