@@ -260,7 +260,7 @@ mutaml-runner --build-context _build/default \
   --repeat 3 --test-env 'QCHECK_SEED={}' \
   --baseline-env QCHECK_SEED=2 \
   test/run-mutants.sh
-mutaml-report --fail-under 100 \
+mutaml-report --fail-under 95 \
   --markdown _mutations/summary.md \
   --json-report _mutations/report.json
 ```
@@ -279,7 +279,7 @@ runner looks beside it for the side files and reads the source paths
 in them from the root. Started anywhere else it finds no side file and
 tests nothing; `mutaml-report` then prints `Found no test results` and
 exits 1. Read the number of mutants in the report of every pass. A
-pass over the whole tree makes several hundred, 373 when this was
+pass over the whole tree makes several hundred, 380 when this was
 written, so a much smaller number means that the pass missed part of
 the tree.
 
@@ -402,13 +402,20 @@ a way of not writing it.
 `mutaml-report` exits 0 when the score is at or above `--fail-under`,
 2 when it is below, and 1 when the tool could not do its work. Give it
 the number that the `mutation` job holds in `MUTATION_MINIMUM`, so
-that a pass at your own machine answers as the job does. That job
-holds the number that decides a merge, and it is 100 today. A change
-does not lower the score, and the pull request that raises the score
-raises the minimum with it. At 100 the job fails on the first mutant
-that no test kills, which is what the number is for: answer it with
-the test that kills it, or with a mark and a reason, and never by
-lowering the number.
+that a pass on your own machine answers as the job does. The
+maintainer fixed that number at 95 on 2026-09-16. It does not follow
+the measurement: it does not rise when the score rises and it does not
+fall, and it changes only on another ruling of the maintainer.
+
+95 is the gate and not the target. **The score to aim for is 100.**
+The job prints the score of every run in its summary and names every
+mutant that survived, so the number a pull request reached is on the
+page whether the gate passed or not. The gap between 95 and 100 is
+there so that one mutant nobody has got to yet does not stop a pull
+request that is sound in every other way; it is not room to leave
+survivors in. Read every survivor the summary names. The answer is
+the test that kills it, or, when no input can tell the change from
+the original, a mark with a reason, as the part above says.
 
 An instrumented build writes over `_build`, as a coverage build does,
 and the next ordinary `dune build` compiles the whole OCaml tree
