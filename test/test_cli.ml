@@ -61,23 +61,36 @@ let lines text =
   match List.rev pieces with "" :: rest -> List.rev rest | _ -> pieces
 
 (* Run [command] with [input] on its standard input, and wait [bound]
-   seconds at most. The result names the outcome: a process that
-   outlives the bound is killed, and the result says so. *)
-let outcome_within command ~input ~bound =
+   seconds at most. Standard error goes to the file [errors] when the
+   caller names one, and nowhere otherwise. The result names the
+   outcome: a process that outlives the bound is killed, and the
+   result says so. *)
+let outcome_within ?errors command ~input ~bound =
   let request = Filename.temp_file "sinter-serve" ".in" in
   write request input;
   let from_file = Unix.openfile request [ Unix.O_RDONLY ] 0 in
   let to_nowhere = Unix.openfile "/dev/null" [ Unix.O_WRONLY ] 0 in
+  let to_errors =
+    match errors with
+    | None -> None
+    | Some path ->
+        Some
+          (Unix.openfile path
+             [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ]
+             0o600)
+  in
   Fun.protect
     ~finally:(fun () ->
       Unix.close from_file;
       Unix.close to_nowhere;
+      Option.iter Unix.close to_errors;
       Sys.remove request)
     (fun () ->
       let pid =
         Unix.create_process "/bin/sh"
           [| "/bin/sh"; "-c"; command |]
-          from_file to_nowhere to_nowhere
+          from_file to_nowhere
+          (Option.value to_errors ~default:to_nowhere)
       in
       let step = 0.05 in
       let rec wait waited =
@@ -314,6 +327,33 @@ let a_closed_standard_output_ends_the_run () =
        ~input:(tree_request "1" ^ "\n")
        ~bound:10.)
 
+(* A write to standard output that fails is a fault of the
+   environment, and the run says so before it ends. The test above
+   states the exit code of the same run and not the line, so a run
+   that ended without a word would pass it. *)
+let a_closed_standard_output_names_the_failure () =
+  let errors = Filename.temp_file "sinter-serve" ".err" in
+  let text =
+    Fun.protect
+      ~finally:(fun () -> Sys.remove errors)
+      (fun () ->
+        ignore
+          (outcome_within ~errors
+             (Printf.sprintf "exec %s serve >&-" (Filename.quote sinter))
+             ~input:(tree_request "1" ^ "\n")
+             ~bound:10.);
+        contents errors)
+  in
+  (* The words after the colon are the words of the system for a
+     channel that cannot be written, so the test does not state
+     them. *)
+  Alcotest.(check bool)
+    "standard error names the tool and the failure" true
+    (String.starts_with ~prefix:"sinter: cannot write the output: " text);
+  Alcotest.(check int)
+    "standard error holds one line" 1
+    (List.length (lines text))
+
 let the_help_of_serve_names_only_the_codes_it_returns () =
   let status, text = run "serve --help=plain" in
   code "the exit code is 0" 0 status;
@@ -438,6 +478,8 @@ let tests =
       a_request_without_a_last_line_feed_is_answered;
     Alcotest.test_case "a closed standard output ends the run" `Quick
       a_closed_standard_output_ends_the_run;
+    Alcotest.test_case "a closed standard output names the failure" `Quick
+      a_closed_standard_output_names_the_failure;
     Alcotest.test_case "the help of serve names only the codes it returns"
       `Quick the_help_of_serve_names_only_the_codes_it_returns;
     Alcotest.test_case "the help of serve names the request tag" `Quick
