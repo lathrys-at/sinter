@@ -275,16 +275,26 @@ jobs:
       # source.
       MUTAML_COMMIT: "b3c6b062522d1b8ac3b9615f84320e5d7e8d8ac8"
       # The job fails when the score is below this number. Raise it
-      # when the number grows. Do not lower it. 91 is the measured
+      # when the number grows. Do not lower it. 100 is the measured
       # score rounded down to a whole number, as the decision record
-      # mutation-testing rules. The measurement is of 394 mutants
-      # under the three seeds: 33 survived, so the score is 91.6 per
-      # cent. One seed left 35 survivors and 91.1 per cent. The two
-      # mutants that the difference names are both in the
-      # end_of_capture binding of lib/parse.ml, and both pass under
-      # the first two seeds and die under the third; they are what
-      # the third seed buys.
-      MUTATION_MINIMUM: "91"
+      # mutation-testing rules. The measurement is of 373 mutants
+      # under the three seeds: 371 died, 2 ran past the time limit,
+      # which counts as caught, and none survived. Two passes of one
+      # build agree mutant by mutant.
+      #
+      # The set is 373 and not the 394 of the pass before it,
+      # because [@mutaml.skip] takes 11 places out of the run. Those
+      # places hold 19 mutants that no test can kill, and 2 that the
+      # tests do kill: the 2 sit inside a marked place and have no
+      # expression of their own to mark. Of the 33 mutants that
+      # survived the pass before, 19 went with the marks and 14 fell
+      # to new tests.
+      #
+      # At 100 the job fails on the first mutant that no test kills.
+      # That is the rule doing its work. The answer to such a mutant
+      # is the test that kills it, or a mark with a reason that a
+      # reader can check; it is never a lower number here.
+      MUTATION_MINIMUM: "100"
     steps:
       - uses: actions/checkout@v6
       # This switch holds the pinned tool as well as the project's

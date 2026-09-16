@@ -258,7 +258,7 @@ mutaml-runner --build-context _build/default \
   --repeat 3 --test-env 'QCHECK_SEED={}' \
   --baseline-env QCHECK_SEED=2 \
   test/run-mutants.sh
-mutaml-report --fail-under 91 \
+mutaml-report --fail-under 100 \
   --markdown _mutations/summary.md \
   --json-report _mutations/report.json
 ```
@@ -277,7 +277,7 @@ runner looks beside it for the side files and reads the source paths
 in them from the root. Started anywhere else it finds no side file and
 tests nothing; `mutaml-report` then prints `Found no test results` and
 exits 1. Read the number of mutants in the report of every pass. A
-pass over the whole tree makes several hundred, 394 when this was
+pass over the whole tree makes several hundred, 373 when this was
 written, so a much smaller number means that the pass missed part of
 the tree.
 
@@ -401,9 +401,12 @@ a way of not writing it.
 2 when it is below, and 1 when the tool could not do its work. Give it
 the number that the `mutation` job holds in `MUTATION_MINIMUM`, so
 that a pass at your own machine answers as the job does. That job
-holds the number that decides a merge, and it is 91 today. A change
+holds the number that decides a merge, and it is 100 today. A change
 does not lower the score, and the pull request that raises the score
-raises the minimum with it.
+raises the minimum with it. At 100 the job fails on the first mutant
+that no test kills, which is what the number is for: answer it with
+the test that kills it, or with a mark and a reason, and never by
+lowering the number.
 
 An instrumented build writes over `_build`, as a coverage build does,
 and the next ordinary `dune build` compiles the whole OCaml tree
@@ -446,21 +449,23 @@ branch: an ordinary `dune build` started beside a pass left ten runs
 of `lib/bridge/sinter_bridge.ml` at exit status 125, in one unbroken
 block, which read an ordinary test failure in every later pass.
 
-One number will move on the day this repository takes its first
+The score will fall on the day this repository takes its first
 release tag, and the reason is known. `bin/main.ml` works out the
 version from the output of `git describe`, with two tests on that
 output: `String.contains d '.'` and `d = "unknown"`. Today the
 repository carries no tag, the output is a bare hash, and the suite
-kills the mutant of each of the two tests. After the first tag the
-output holds a dot, the first test holds, and the function gives back
-the description at once. Both mutants then survive. The mutant of
-`d = "unknown"` survives because nothing reaches that line any more.
-The mutant of `String.contains d '.'` survives because it sends a
-description such as `v0.1.0` down the other road, which builds
-`v0.1.0-dev+v0.1.0`; that string starts with the release version and
-names the checkout, so both tests of the version pass on it. Expect
-the score to fall by two mutants on that day, not by one, and look
-for no other cause.
+kills all three mutants of those two lines. After the first tag the
+output holds a dot, the first test holds, and the function gives
+back the description at once. All three then survive. The two
+mutants of `d = "unknown"` survive because nothing reaches that line
+any more. The mutant of `String.contains d '.'` survives because it
+sends a description such as `v0.1.0` down the other road, which
+builds `v0.1.0-dev+v0.1.0`; that string starts with the release
+version and names the checkout, so both tests of the version pass on
+it. Expect three survivors on that day, and look for no other cause.
+With the minimum at 100 the `mutation` job fails that day. Answer it
+with the tests, or with marks and their reasons, and do not lower
+the number.
 
 ## New files
 
