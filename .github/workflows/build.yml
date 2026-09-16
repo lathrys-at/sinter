@@ -392,13 +392,17 @@ jobs:
       # process of its own and has a TMPDIR of its own, and the
       # results keep the order of the mutants, so the report does not
       # depend on which run ends first. The number is the core count
-      # of the machine the job runs on, read at run time, so the job
-      # carries no number that fits one machine. The fork's README
-      # advises the core count less one, because the suite already
-      # uses the machine; a job runner runs nothing else, so this
-      # takes the whole count. The runner refuses -j above 1 for a
-      # test command that starts with dune, which locks the build
-      # directory; the command here is a script.
+      # of the machine the job runs on, less one, and never below one.
+      # It is read at run time, so the job carries no number that fits
+      # one machine. One core stays free because the runner measures
+      # the time limit on the run with no mutant, and that run happens
+      # before any worker starts, on an idle machine. A machine loaded
+      # to its last core runs a mutant slower than that measurement,
+      # and a run stopped at the limit counts as a kill, so the score
+      # would rise for a reason that has nothing to do with the tests.
+      # The runner refuses -j above 1 for a test command that starts
+      # with dune, which locks the build directory; the command here
+      # is a script.
       #
       # The runner prints one line, "Skipping ...", for each mutant
       # file whose source file it cannot find, and goes on. A pass
@@ -409,9 +413,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p _mutations
+          jobs=$(nproc)
+          if [ "$jobs" -gt 1 ]; then
+            jobs=$((jobs - 1))
+          fi
+          echo "Testing $jobs mutants at a time."
           opam exec -- mutaml-runner \
             --build-context _build/default \
-            -j "$(nproc)" \
+            -j "$jobs" \
             --repeat 3 \
             --test-env 'QCHECK_SEED={}' \
             --baseline-env QCHECK_SEED=2 \
