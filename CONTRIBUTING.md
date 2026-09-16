@@ -252,9 +252,10 @@ Then, from the repository root:
 ```
 MUTAML_MUT_RATE=100 MUTAML_SEED=42 \
   dune build @runtest --force --instrument-with mutaml
+cores=$(getconf _NPROCESSORS_ONLN)
 mutaml-runner --build-context _build/default \
-  -j "$(getconf _NPROCESSORS_ONLN)" \
-  --repeat 3 --test-env QCHECK_SEED={} \
+  -j "$(( cores > 1 ? cores - 1 : 1 ))" \
+  --repeat 3 --test-env 'QCHECK_SEED={}' \
   --baseline-env QCHECK_SEED=2 \
   test/run-mutants.sh
 mutaml-report --fail-under 91 \
@@ -300,21 +301,27 @@ The "timed out" column of the report is the check: it counts 2, and a
 larger number on a pass that changed no source means that the machine
 was too busy for a run to finish inside the limit.
 
-`-j` is the number of mutants the runner tests at one time.
-`getconf _NPROCESSORS_ONLN` gives the number of cores of the machine,
-on macOS and on Linux both; the `mutation` job reads the same number
-with `nproc`, which Ubuntu has. Each worker runs a test process of
-its own, writes only the output file of its own mutant, and works
-under a `TMPDIR` of its own, which the runner removes at the end of
-the pass. The results keep the order of the mutants, so the lines the
-runner prints and the report it writes do not depend on which run
-ends first, and a parallel pass names the same survivors as a serial
-one. Sinter's suite is safe to run this way for two reasons: the test
-command is a script and not `dune`, which locks the build directory
-and which the runner therefore refuses to run more than once at a
-time; and every file the suite writes has a name from
-`Filename.temp_file`, which no other worker draws and which lies
-under the worker's own `TMPDIR`. Keep both true, or lower `-j` to 1.
+`-j` is the number of mutants the runner tests at one time. Set it to
+the number of cores of the machine less one, and never below 1.
+`getconf _NPROCESSORS_ONLN` gives the core count on macOS and on Linux
+both; the `mutation` job works the same number out from `nproc`, which
+Ubuntu has. Hold the one core back. The runner takes the time limit
+from the run with no mutant, and it makes that run before any worker
+starts and therefore on an unloaded machine. On a machine whose every
+core is busy, a later run can pass that limit through waiting alone,
+and a run stopped at the limit counts as a kill, so the score would
+rise for a reason that has nothing to do with the tests. Each worker
+runs a test process of its own, writes only the output file of its own
+mutant, and works under a `TMPDIR` of its own, which the runner
+removes at the end of the pass. The results keep the order of the
+mutants, so the lines the runner prints and the report it writes do
+not depend on which run ends first, and a parallel pass names the same
+survivors as a serial one. Sinter's suite is safe to run this way for
+two reasons: the test command is a script and not `dune`, which locks
+the build directory and which the runner therefore refuses to run more
+than once at a time; and every file the suite writes has a name from
+`Filename.temp_file`, which no other worker draws and which lies under
+the worker's own `TMPDIR`. Keep both true, or lower `-j` to 1.
 
 `--repeat 3` gives one mutant three runs, and `--test-env
 QCHECK_SEED={}` gives each of the three a seed of its own: the runner
@@ -370,6 +377,13 @@ and the next ordinary `dune build` compiles the whole OCaml tree
 again. `dune` does not always build again when only an environment
 variable changed, so run `dune clean` first when the variables of this
 pass differ from those of the last one.
+
+A pass also leaves one directory for each run of the suite under
+`_build/default/test/_build/_tests`, several hundred of them, because
+`alcotest` writes its logs there and nothing removes them while the
+pass runs. `dune` did not put them there, so the next ordinary
+`dune build` spends its first seconds removing them. `dune clean`
+removes them at once.
 
 One number will move on the day this repository takes its first
 release tag, and the reason is known. `bin/main.ml` works out the
