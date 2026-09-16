@@ -451,23 +451,24 @@ branch: an ordinary `dune build` started beside a pass left ten runs
 of `lib/bridge/sinter_bridge.ml` at exit status 125, in one unbroken
 block, which read an ordinary test failure in every later pass.
 
-The score will fall on the day this repository takes its first
-release tag, and the reason is known. `bin/main.ml` works out the
-version from the output of `git describe`, with two tests on that
-output: `String.contains d '.'` and `d = "unknown"`. Today the
-repository carries no tag, the output is a bare hash, and the suite
-kills all three mutants of those two lines. After the first tag the
-output holds a dot, the first test holds, and the function gives
-back the description at once. All three then survive. The two
-mutants of `d = "unknown"` survive because nothing reaches that line
-any more. The mutant of `String.contains d '.'` survives because it
-sends a description such as `v0.1.0` down the other road, which
-builds `v0.1.0-dev+v0.1.0`; that string starts with the release
-version and names the checkout, so both tests of the version pass on
-it. Expect three survivors on that day, and look for no other cause.
-With the minimum at 100 the `mutation` job fails that day. Answer it
-with the tests, or with marks and their reasons, and do not lower
-the number.
+The score does not answer to the state of this checkout, and that is
+worth keeping. `Sinter_core.Version.render` works out the version to
+print from two values that its caller reads for it: the version of
+the package, which only a build of a release carries, and the output
+of `git describe`. It reads neither itself, so its tests hand it a
+bare hash, the name of a tag, and the word `unknown`, and every road
+of it is tested whatever this repository carries. The first release
+tag will therefore change what the tool prints and not what a pass
+reports.
+
+While that logic stood in `bin/main.ml` it was the other way about.
+Seven of its mutants sat on a road that only an installed build
+reaches, so no test could state a fact about them; three more
+answered to whether the repository carried a tag, and a pass on the
+day of the first tag would have lost those three kills for a reason
+that is not in the tests at all. That is the shape to watch for: a
+road that only the build can choose is a road that no test can
+reach, and the score then measures the build and not the suite.
 
 ## New files
 
