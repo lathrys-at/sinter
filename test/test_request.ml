@@ -25,6 +25,11 @@ let cause_of line =
 let tag_of line =
   match Request.of_line line with Ok _ -> None | Error error -> error.rid
 
+let rid_of line =
+  match Request.of_line line with
+  | Ok request -> Some request.Request.rid
+  | Error _ -> None
+
 let holds name condition = Alcotest.(check bool) name true condition
 let gives name expected line = holds name (cause_of line = Some expected)
 
@@ -142,6 +147,18 @@ let a_rid_of_the_wrong_type_is_an_error () =
 let a_rid_above_the_allowed_range_is_an_error () =
   gives "2^53" Request.Bad_rid
     (parse_line ~rid:(`Int 9007199254740992) ~tree:(`Bool true) ())
+
+(* The corners of the range belong to it. A reader that left either
+   corner out would refuse a tag that the canonical form allows. *)
+let a_rid_at_the_bottom_of_the_range_is_read () =
+  holds "the rid -(2^53-1) comes back as that number"
+    (rid_of (parse_line ~rid:(`Int (-9007199254740991)) ~tree:(`Bool true) ())
+    = Some (Request.Number (-9007199254740991)))
+
+let a_rid_at_the_top_of_the_range_is_read () =
+  holds "the rid 2^53-1 comes back as that number"
+    (rid_of (parse_line ~rid:(`Int 9007199254740991) ~tree:(`Bool true) ())
+    = Some (Request.Number 9007199254740991))
 
 let a_rid_that_is_not_utf_8_is_an_error () =
   gives "one byte that no code point starts" Request.Bad_rid
@@ -328,6 +345,10 @@ let tests =
         a_rid_of_the_wrong_type_is_an_error;
       case "a rid above the allowed range is an error"
         a_rid_above_the_allowed_range_is_an_error;
+      case "a rid at the bottom of the range is read"
+        a_rid_at_the_bottom_of_the_range_is_read;
+      case "a rid at the top of the range is read"
+        a_rid_at_the_top_of_the_range_is_read;
       case "a rid that is not UTF-8 is an error"
         a_rid_that_is_not_utf_8_is_an_error;
       case "an error without a readable rid carries no tag"

@@ -93,7 +93,7 @@ let source_failure text =
 
 (* The bridge refuses text that is not UTF-8 as well, and its message
    ends in the same words. Only the check of this library names the
-   byte that starts no code point, so the two tests below state the
+   byte that starts no code point, so the three tests below state the
    whole message. *)
 let reports_a_file_that_is_not_utf_8 () =
   let file, message = source_failure "{\"a\": \"\xff\"}" in
@@ -107,6 +107,15 @@ let reports_a_file_whose_first_byte_is_not_utf_8 () =
   Alcotest.(check string)
     "the message names byte 0"
     (file ^ ": the file is not UTF-8 text, at byte 0")
+    message
+
+(* The check walks the source to its last byte. A check that stopped
+   one byte sooner would pass this file. *)
+let reports_a_file_whose_last_byte_is_not_utf_8 () =
+  let file, message = source_failure "{}\xff" in
+  Alcotest.(check string)
+    "the message names the last byte"
+    (file ^ ": the file is not UTF-8 text, at byte 2")
     message
 
 let reports_a_file_that_does_not_exist () =
@@ -335,6 +344,52 @@ let gives_no_name_for_a_module_cut_in_a_section () =
     (Parse.name_of_wasm
        (Generators.wasm_module Generators.Cut_in_a_section ~name:"json"))
 
+(* The reader needs one byte after an export name, for the kind of the
+   export. The module below stops at the end of that name, so the byte
+   is outside the export section, and the reader gives no name. A
+   custom section follows, so the export section is not the last of
+   the module. *)
+let gives_no_name_for_an_export_name_that_ends_at_its_section () =
+  let grammar = "tree_sitter_json" in
+  let section identifier body =
+    Printf.sprintf "%c%c%s" (Char.chr identifier)
+      (Char.chr (String.length body))
+      body
+  in
+  let exports =
+    section 7
+      (Printf.sprintf "\001%c%s" (Char.chr (String.length grammar)) grammar)
+  in
+  let custom = section 0 "\004name\255\255\255" in
+  Alcotest.(check (option string))
+    "an export name that ends at the end of its section is no name" None
+    (Parse.name_of_wasm ("\000asm\001\000\000\000" ^ exports ^ custom))
+
+(* A reader that took bytes of eight or more for a module would walk
+   the section list of the bytes below and find the export of a
+   grammar in it. The first four bytes are not the magic number of a
+   module, so the reader gives no name. *)
+let gives_no_name_for_bytes_that_are_not_a_module () =
+  let wasm = Generators.wasm_module Generators.One_export ~name:"json" in
+  let bytes = Bytes.of_string wasm in
+  Bytes.set bytes 3 'X';
+  Alcotest.(check (option string))
+    "the same bytes under the magic number of a module name the grammar"
+    (Some "json") (Parse.name_of_wasm wasm);
+  Alcotest.(check (option string))
+    "the bytes without that magic number name nothing" None
+    (Parse.name_of_wasm (Bytes.to_string bytes))
+
+(* A file whose base name is the prefix and nothing else. The prefix
+   is not longer than the name, so it does not come off: a grammar of
+   no name is no grammar, and the bridge is given the name the file
+   carries. *)
+let keeps_a_base_name_that_is_the_prefix_alone () =
+  Alcotest.(check string)
+    "the base name tree-sitter- gives the grammar name tree_sitter_"
+    "tree_sitter_"
+    (Parse.grammar_name "packs/tree-sitter-.wasm")
+
 (* A capture that holds the one line feed of a one-byte file ends at
    row 1, column 0: the start of a line that the file does not hold.
    The record then names line 1, the line that holds the last byte,
@@ -360,6 +415,34 @@ let places_the_end_of_a_capture_that_ends_before_byte_two () =
     (Option.map (fun v -> v = Jsonl.int 1) (List.assoc_opt "eline" record));
   Alcotest.(check (option bool))
     "ecol is one past the last byte" (Some true)
+    (Option.map (fun v -> v = Jsonl.int 2) (List.assoc_opt "ecol" record))
+
+(* A capture that holds the two line feeds of a two-byte file ends at
+   row 2, column 0. The record names line 2, the line that holds the
+   last byte, and column 2, one past that byte on that line. A reader
+   that took byte 2 for a byte on the first line would name column 3.
+   *)
+let places_the_end_of_a_capture_that_ends_at_byte_two () =
+  let capture : Sinter_bridge.capture =
+    {
+      pattern = 0;
+      name = "d";
+      node_type = "document";
+      start_byte = 0;
+      end_byte = 2;
+      start_row = 0;
+      start_column = 0;
+      end_row = 2;
+      end_column = 0;
+      text = "\n\n";
+    }
+  in
+  let record = Parse.record_of_capture ~path:"f.json" ~source:"\n\n" capture in
+  Alcotest.(check (option bool))
+    "eline is the line that holds the last byte" (Some true)
+    (Option.map (fun v -> v = Jsonl.int 2) (List.assoc_opt "eline" record));
+  Alcotest.(check (option bool))
+    "ecol is one past the last byte on that line" (Some true)
     (Option.map (fun v -> v = Jsonl.int 2) (List.assoc_opt "ecol" record))
 
 (* The name that the bridge needs comes from the module, so a file
@@ -1002,6 +1085,8 @@ let tests =
       reports_a_file_that_is_not_utf_8;
     Alcotest.test_case "reports a file whose first byte is not UTF-8" `Quick
       reports_a_file_whose_first_byte_is_not_utf_8;
+    Alcotest.test_case "reports a file whose last byte is not UTF-8" `Quick
+      reports_a_file_whose_last_byte_is_not_utf_8;
     Alcotest.test_case "reports a file that does not exist" `Quick
       reports_a_file_that_does_not_exist;
     Alcotest.test_case "names the query file when the query fails" `Quick
@@ -1049,6 +1134,15 @@ let tests =
       gives_no_name_when_the_export_count_disagrees;
     Alcotest.test_case "gives no name for a module cut in a section" `Quick
       gives_no_name_for_a_module_cut_in_a_section;
+    Alcotest.test_case
+      "gives no name for an export name that ends at its section" `Quick
+      gives_no_name_for_an_export_name_that_ends_at_its_section;
+    Alcotest.test_case "gives no name for bytes that are not a module" `Quick
+      gives_no_name_for_bytes_that_are_not_a_module;
+    Alcotest.test_case "keeps a base name that is the prefix alone" `Quick
+      keeps_a_base_name_that_is_the_prefix_alone;
+    Alcotest.test_case "places the end of a capture that ends at byte two"
+      `Quick places_the_end_of_a_capture_that_ends_at_byte_two;
     Alcotest.test_case "places the end of a capture that ends before byte two"
       `Quick places_the_end_of_a_capture_that_ends_before_byte_two;
     Alcotest.test_case "folds one tree over each file" `Quick

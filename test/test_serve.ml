@@ -305,6 +305,35 @@ let a_grammar_that_does_not_load_is_not_kept () =
       Unix.utimes path fixed_time fixed_time;
       holds "the second request loads the grammar" (ran (ask state path)))
 
+(* A load that fails takes the grammar the loop kept with it. The file
+   below goes back to the size and the modification time it had when
+   the loop loaded it, and its bytes are no longer a grammar. A loop
+   that had kept the grammar of the first request would find the
+   stamp of the file unchanged and answer with it. *)
+let a_failed_load_drops_the_grammar_the_loop_kept () =
+  with_copy (fun state path text ->
+      Unix.utimes path fixed_time fixed_time;
+      holds "the first request loads the grammar" (ran (ask state path));
+      write_file path (broken text);
+      Unix.utimes path (fixed_time +. 10.) (fixed_time +. 10.);
+      holds "the second request fails" (not (ran (ask state path)));
+      Unix.utimes path fixed_time fixed_time;
+      holds "the third request does not answer with the grammar of the first"
+        (not (ran (ask state path))))
+
+(* The message of a failure goes into a record as it stands when it is
+   UTF-8. The file name below holds a code point of two bytes, which
+   an escape would write as two numbers. *)
+let a_message_that_is_utf_8_is_not_escaped () =
+  let absent = "no-such-f\xc3\xaele.json" in
+  let records = Serve.lines (answer (request ~query [ absent ])) in
+  holds "the message names the file as the request spells it"
+    (match last records with
+    | Some record ->
+        field "message" record
+        = Some (Jsonl.string (absent ^ ": No such file or directory"))
+    | None -> false)
+
 let a_closed_state_refuses_to_answer () =
   let state = Serve.create () in
   Serve.close state;
@@ -348,5 +377,9 @@ let tests =
         the_loop_reads_a_grammar_again_when_its_time_changes;
       case "a grammar that does not load is not kept"
         a_grammar_that_does_not_load_is_not_kept;
+      case "a failed load drops the grammar the loop kept"
+        a_failed_load_drops_the_grammar_the_loop_kept;
+      case "a message that is UTF-8 is not escaped"
+        a_message_that_is_utf_8_is_not_escaped;
       case "a closed state refuses to answer" a_closed_state_refuses_to_answer;
     ]
