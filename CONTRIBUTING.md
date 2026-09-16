@@ -317,23 +317,28 @@ removes at the end of the pass. The results keep the order of the
 mutants, so the lines the runner prints and the report it writes do
 not depend on which run ends first, and a parallel pass names the same
 survivors as a serial one. Sinter's suite is safe to run this way for
-two reasons: the test command is a script and not `dune`, which locks
-the build directory and which the runner therefore refuses to run more
-than once at a time; and every file the suite writes has a name from
-`Filename.temp_file`, which no other worker draws and which lies under
-the worker's own `TMPDIR`. Keep both true, or lower `-j` to 1.
+three reasons: the test command is a script and not `dune`, which
+locks the build directory and which the runner therefore refuses to
+run more than once at a time; every file the suite writes has a name
+from `Filename.temp_file`, which no other worker draws and which lies
+under the worker's own `TMPDIR`; and neither `lib/` nor `bin/` keeps a
+cache on disk, so no two workers can read a half-written one. Keep all
+three true, or lower `-j` to 1. A cache added later must write whole
+files, by writing a temporary file and renaming it, or live under
+`TMPDIR`.
 
 `--repeat 3` gives one mutant three runs, and `--test-env
 QCHECK_SEED={}` gives each of the three a seed of its own: the runner
 replaces the two characters `{}` by the number of the run, counted
 from 1, so the seeds are 1, 2, and 3. A mutant that any one of the
-three runs kills is killed, and only a mutant that all three pass is
-a survivor. Sinter's property tests draw random values, so one seed
-can miss a change that another seed catches. Without the three runs,
-such a mutant reads as a survivor, and it sends a reader looking for
-a test that the suite already holds. A survivor costs three runs of
-the suite; a killed mutant usually still costs one, because most
-mutants die under the first seed.
+three runs kills is killed, and only a mutant that all three pass is a
+survivor. Sinter's property tests draw a new seed on each ordinary
+run, which is why a pass fixes one, and one fixed seed can miss a
+change that another seed catches. Without the three runs, such a
+mutant reads as a survivor, and it sends a reader looking for a test
+that the suite already holds. A survivor costs three runs of the
+suite; a killed mutant usually still costs one, because most mutants
+die under the first seed.
 
 `--baseline-env QCHECK_SEED=2` is a check on the suite, not on the
 mutants. The runner runs the suite twice with no mutant and stops
