@@ -225,10 +225,12 @@ The released tool does not build on the compiler in
 `dune`, and makes no mutant of a comparison operator;
 `docs/decisions/mutation-testing.md` gives the reasons for the fork.
 
-`mutaml` needs no command of the system that is not an opam package.
-It needs no `diff` command: `mutaml-report` writes the diff of a
-mutant itself. It needs no `timeout` command: the runner starts each
-test run itself and stops a run that goes on too long.
+`mutaml` needs no command of the system for the run this project
+makes. It needs no `diff` command: `mutaml-report` writes the diff of
+a mutant itself. It needs no `timeout` command: the runner starts each
+test run itself and stops a run that goes on too long. The one option
+that needs a command of the system is `--changed-since`, which asks
+`git` which lines a branch touched; this project does not use it.
 
 Pin the fork into the project's switch once:
 
