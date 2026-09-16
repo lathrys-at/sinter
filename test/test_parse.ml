@@ -347,23 +347,17 @@ let gives_no_name_for_a_module_cut_in_a_section () =
 (* The reader needs one byte after an export name, for the kind of the
    export. The module below stops at the end of that name, so the byte
    is outside the export section, and the reader gives no name. A
-   custom section follows, so the export section is not the last of
-   the module. *)
+   custom section of eight bytes follows, so that the name ends inside
+   the module and not at the end of it. *)
 let gives_no_name_for_an_export_name_that_ends_at_its_section () =
-  let grammar = "tree_sitter_json" in
-  let section identifier body =
-    Printf.sprintf "%c%c%s" (Char.chr identifier)
-      (Char.chr (String.length body))
-      body
+  let export_name = "tree_sitter_json" in
+  let body =
+    Printf.sprintf "\001%c%s" (Char.chr (String.length export_name)) export_name
   in
-  let exports =
-    section 7
-      (Printf.sprintf "\001%c%s" (Char.chr (String.length grammar)) grammar)
-  in
-  let custom = section 0 "\004name\255\255\255" in
+  let custom = "\000\008\004name\255\255\255" in
   Alcotest.(check (option string))
     "an export name that ends at the end of its section is no name" None
-    (Parse.name_of_wasm ("\000asm\001\000\000\000" ^ exports ^ custom))
+    (Parse.name_of_wasm (module_with_export_section body ^ custom))
 
 (* A reader that took bytes of eight or more for a module would walk
    the section list of the bytes below and find the export of a
@@ -1141,10 +1135,10 @@ let tests =
       gives_no_name_for_bytes_that_are_not_a_module;
     Alcotest.test_case "keeps a base name that is the prefix alone" `Quick
       keeps_a_base_name_that_is_the_prefix_alone;
-    Alcotest.test_case "places the end of a capture that ends at byte two"
-      `Quick places_the_end_of_a_capture_that_ends_at_byte_two;
     Alcotest.test_case "places the end of a capture that ends before byte two"
       `Quick places_the_end_of_a_capture_that_ends_before_byte_two;
+    Alcotest.test_case "places the end of a capture that ends at byte two"
+      `Quick places_the_end_of_a_capture_that_ends_at_byte_two;
     Alcotest.test_case "folds one tree over each file" `Quick
       folds_one_tree_over_each_file;
     Alcotest.test_case "folds the captures of the query" `Quick
