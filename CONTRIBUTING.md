@@ -225,27 +225,16 @@ The released tool does not build on the compiler in
 `dune`, and makes no mutant of a comparison operator;
 `docs/decisions/mutation-testing.md` gives the reasons for the fork.
 
-A pass needs the GNU `timeout` command on `PATH`. `mutaml-runner`
-starts every test run through it, and reads its exit status to tell a
-run that took too long from a run that a signal ended. Install it
-before the pin below: `mutaml` depends on the opam package
-`conf-timeout`, which looks for the command and fails the install
-without it. macOS has no `timeout` command of its own:
+`mutaml` needs the `diff` command, which every machine that builds
+Sinter already has, and nothing else that is not an opam package. It
+needs no `timeout` command: the runner starts each test run itself
+and stops a run that goes on too long.
 
-```
-brew install coreutils
-export PATH="$(brew --prefix)/opt/coreutils/libexec/gnubin:$PATH"
-```
-
-Homebrew names the command `gtimeout` and puts a `timeout` in the
-directory above. `mutaml` also needs the `diff` command, which every
-machine that builds Sinter already has.
-
-Then pin the fork into the project's switch once:
+Pin the fork into the project's switch once:
 
 ```
 opam pin add -y -n mutaml \
-  git+https://github.com/lathrys-at/mutaml.git#dceb996ce683043b1373e1c887c8983089139331
+  git+https://github.com/lathrys-at/mutaml.git#552416cb1e9444a1ce0d3fbeba6f8efb7732e9a4
 opam install mutaml
 ```
 
@@ -263,8 +252,10 @@ Then, from the repository root:
 ```
 MUTAML_MUT_RATE=100 MUTAML_SEED=42 \
   dune build @runtest --force --instrument-with mutaml
-mutaml-runner --build-context _build/default --timeout 30 \
-  --test-env QCHECK_SEED=1 --baseline-env QCHECK_SEED=2 \
+mutaml-runner --build-context _build/default \
+  -j "$(getconf _NPROCESSORS_ONLN)" \
+  --repeat 3 --test-env QCHECK_SEED={} \
+  --baseline-env QCHECK_SEED=2 \
   test/run-mutants.sh
 mutaml-report --fail-under 91 \
   --markdown _mutations/summary.md \
@@ -295,23 +286,59 @@ the suite cannot start at the root. The script starts at the root,
 where the runner starts it, and starts the suite where the fixtures
 are.
 
-`--timeout 30` is the time that one run of the suite may take. The
-suite runs in about 1.4 seconds, so thirty seconds is about twenty
-times the measurement, with room for a slower machine under load. Do
-not set it near the time the suite really takes: a run cut short
-counts as a kill, and the score then reads higher than it is with
-nothing to show it. The report tells you when the
-limit is too short for your machine: the "timed out" column counts 2,
-and a larger number on a pass that changed no source means the limit
-must go up. Two mutants hang the suite, and each of the two costs a
-pass the whole of the limit.
+The runner sets the time that one run of the suite may take, and it
+takes that time from the run with no mutant: five times that run, and
+never less than ten seconds. It prints the rule, and not the number
+of seconds the rule gives, after the runs with no mutant, because the
+number follows a measurement and a measurement differs from one
+machine to the next. Give `--timeout` only to set the limit yourself,
+and do not set it near the time the suite really takes: a run cut
+short counts as a kill, and the score then reads higher than it is
+with nothing to show it. Two mutants hang the suite instead of
+failing it, and each of the two costs a pass the whole of the limit.
+The "timed out" column of the report is the check: it counts 2, and a
+larger number on a pass that changed no source means that the machine
+was too busy for a run to finish inside the limit.
 
-The two seeds are a check on the suite, not on the mutants. Every
-mutant runs under `QCHECK_SEED=1`. The runner also runs the suite
-twice with no mutant, once under each of the two seeds, and stops when
-the two runs disagree, because a suite that answers differently under
-two seeds gives the score no meaning. Sinter's property tests draw a
-new seed on each ordinary run, which is why a pass fixes one.
+`-j` is the number of mutants the runner tests at one time.
+`getconf _NPROCESSORS_ONLN` gives the number of cores of the machine,
+on macOS and on Linux both; the `mutation` job reads the same number
+with `nproc`, which Ubuntu has. Each worker runs a test process of
+its own, writes only the output file of its own mutant, and works
+under a `TMPDIR` of its own, which the runner removes at the end of
+the pass. The results keep the order of the mutants, so the lines the
+runner prints and the report it writes do not depend on which run
+ends first, and a parallel pass names the same survivors as a serial
+one. Sinter's suite is safe to run this way for two reasons: the test
+command is a script and not `dune`, which locks the build directory
+and which the runner therefore refuses to run more than once at a
+time; and every file the suite writes has a name from
+`Filename.temp_file`, which no other worker draws and which lies
+under the worker's own `TMPDIR`. Keep both true, or lower `-j` to 1.
+
+`--repeat 3` gives one mutant three runs, and `--test-env
+QCHECK_SEED={}` gives each of the three a seed of its own: the runner
+replaces the two characters `{}` by the number of the run, counted
+from 1, so the seeds are 1, 2, and 3. A mutant that any one of the
+three runs kills is killed, and only a mutant that all three pass is
+a survivor. Sinter's property tests draw random values, so one seed
+can miss a change that another seed catches. Without the three runs,
+such a mutant reads as a survivor, and it sends a reader looking for
+a test that the suite already holds. A survivor costs three runs of
+the suite; a killed mutant usually still costs one, because most
+mutants die under the first seed.
+
+`--baseline-env QCHECK_SEED=2` is a check on the suite, not on the
+mutants. The runner runs the suite twice with no mutant and stops
+when the two runs disagree, because a suite that answers differently
+under two seeds gives the score no meaning. The first of the two
+takes its seed from `--test-env`, and the runner counts a run with no
+mutant as run number 1, so `{}` there gives 1; the second takes
+`QCHECK_SEED=2`. The two runs therefore use the seeds 1 and 2, as
+they did before `--repeat`. Give `--baseline-env` a seed of its own
+and never `{}`: both runs with no mutant are run number 1, so `{}`
+would give 1 in each of them and the check would compare a run with
+itself.
 
 `mutaml-report` reads `mutaml-report.json`, which the runner wrote at
 the root, so it needs no path. It prints the score and, for each
