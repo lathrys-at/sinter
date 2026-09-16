@@ -276,10 +276,14 @@ jobs:
       MUTAML_COMMIT: "552416cb1e9444a1ce0d3fbeba6f8efb7732e9a4"
       # The job fails when the score is below this number. Raise it
       # when the number grows. Do not lower it. 91 is the measured
-      # score, 91.1 per cent, rounded down to a whole number, as the
-      # decision record mutation-testing rules. The measurement
-      # covers bin/main.ml, which holds eight of the thirty-five
-      # survivors and which no earlier measurement reached.
+      # score rounded down to a whole number, as the decision record
+      # mutation-testing rules. The measurement is of 394 mutants
+      # under the three seeds: 33 survived, so the score is 91.6 per
+      # cent. One seed left 35 survivors and 91.1 per cent. The two
+      # mutants that the difference names are both in the
+      # end_of_capture binding of lib/parse.ml, and both pass under
+      # the first two seeds and die under the third; they are what
+      # the third seed buys.
       MUTATION_MINIMUM: "91"
     steps:
       - uses: actions/checkout@v6
