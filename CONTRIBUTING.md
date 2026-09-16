@@ -383,15 +383,24 @@ again. `dune` does not always build again when only an environment
 variable changed, so run `dune clean` first when the variables of this
 pass differ from those of the last one.
 
-**Do not run an ordinary `dune build` while a pass is running, and
-build again with `--instrument-with mutaml` after any ordinary
-build.** An ordinary build carries no instrumentation, and it relinks
-`bin/main.exe` without it while leaving the test executable
-instrumented, so nothing looks wrong. The tests of the command line
-run that binary, so no mutant of `bin/main.ml` can switch on: every
-one of them passes every run, and the pass reports all of them as
-survivors. A pass that suddenly reports the whole of `bin/main.ml` as
-surviving has met this and measured nothing.
+**Build again with `--instrument-with mutaml` after any ordinary
+`dune` command, and never run one while a pass is running.** An
+ordinary build carries no instrumentation and relinks what it builds
+without it. Measured here from a clean tree: after the instrumented
+build, `bin/main.exe` and `test/test_sinter.exe` both carried the
+instrumentation; after a plain `dune build`, neither did.
+
+A pass on a tree in that state measures nothing, and it shows itself
+in two ways. After an ordinary build of the whole tree, nearly every
+mutant survives and the score collapses, which is hard to miss. A
+build that runs beside a pass is the one that hides: the two
+executables can end up in different states, and the pass then reports
+as survivors every mutant of the source that went plain, while the
+rest of the tree reads as usual. That happened here. `bin/main.exe`
+went plain, the test executable kept its instrumentation, and the
+whole of `bin/main.ml` read as surviving with nothing else disturbed.
+So read a whole source file surviving at once as this, and not as a
+gap in the tests.
 
 A pass leaves one directory for each run of the suite under
 `_build/default/test/_build/_tests`, several hundred of them, because
