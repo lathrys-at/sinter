@@ -375,9 +375,8 @@ let gives_no_name_for_bytes_that_are_not_a_module () =
     (Parse.name_of_wasm (Bytes.to_string bytes))
 
 (* A file whose base name is the prefix and nothing else. The prefix
-   is not longer than the name, so it does not come off: a grammar of
-   no name is no grammar, and the bridge is given the name the file
-   carries. *)
+   comes off only when the name is longer than it, so here it stays
+   and the grammar name is the whole base name. *)
 let keeps_a_base_name_that_is_the_prefix_alone () =
   Alcotest.(check string)
     "the base name tree-sitter- gives the grammar name tree_sitter_"
