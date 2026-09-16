@@ -270,10 +270,10 @@ jobs:
     # the fixes. Remove the pin, and install a release instead, when
     # upstream publishes a version that does all three.
     env:
-      # The head of the fork's main branch, after its pull request 5.
+      # The head of the fork's main branch, after its pull request 6.
       # A commit, never a branch, so that every run builds the same
       # source.
-      MUTAML_COMMIT: "dceb996ce683043b1373e1c887c8983089139331"
+      MUTAML_COMMIT: "552416cb1e9444a1ce0d3fbeba6f8efb7732e9a4"
       # The job fails when the score is below this number. Raise it
       # when the number grows. Do not lower it. 91 is the measured
       # score, 91.1 per cent, rounded down to a whole number, as the
@@ -281,20 +281,6 @@ jobs:
       # covers bin/main.ml, which holds eight of the thirty-five
       # survivors and which no earlier measurement reached.
       MUTATION_MINIMUM: "91"
-      # The time that one run of the suite may take. The suite runs in
-      # about 1.4 seconds on the machine that measured it, so this is
-      # about twenty times that, with room for a slower runner under
-      # load. Two mutants hang the suite instead of failing it, and
-      # each of those costs a pass the whole of this limit. Do not
-      # lower it towards the measured suite time: a limit that is too
-      # short stops a run that would have passed, and a stopped run
-      # counts as a kill, so the score would rise for the wrong reason
-      # and nothing would turn red. The "timed out" column of the
-      # summary is the check: it reads 2, and a larger number on a run
-      # that changed no source means this limit is too short for the
-      # machine the job ran on. The fork's next release derives the
-      # limit from the measured baseline run; this number goes then.
-      MUTATION_TIMEOUT: "30"
     steps:
       - uses: actions/checkout@v6
       # This switch holds the pinned tool as well as the project's
@@ -374,25 +360,60 @@ jobs:
       # Markdown summary names the number of mutants, so a person
       # reads the count on the page of the job.
       #
-      # The two seeds fix what the property tests draw. QCHECK_SEED=1
-      # runs every mutant; the runner also runs the suite with no
-      # mutant twice, once under each seed, and stops when the two
-      # runs disagree, because a suite whose answer depends on the
-      # seed gives the score no meaning.
+      # The seeds fix what the property tests draw. The runner
+      # replaces the two characters {} in the value of --test-env by
+      # the number of the run, so --repeat 3 --test-env
+      # QCHECK_SEED={} gives one mutant the seeds 1, 2, and 3. A
+      # mutant runs again only while the run before it passed; a
+      # mutant that any seed kills is killed, and only a mutant that
+      # all three seeds passed is a survivor. A seed that misses a
+      # mutant therefore no longer makes that mutant a survivor, and
+      # a killed mutant usually still costs one run.
+      #
+      # The runner also runs the suite with no mutant twice and stops
+      # when the two runs disagree, because a suite whose answer
+      # depends on the seed gives the score no meaning. Both of those
+      # runs are run number 1, so {} would give them the same seed
+      # and they would be one run done twice. --baseline-env
+      # therefore carries a number of its own, and the two runs with
+      # no mutant are seeds 1 and 2, as they were before.
+      #
+      # The runner derives the time that one run may take from the
+      # run with no mutant: five times that run, and never less than
+      # ten seconds. It starts each run itself and stops one that
+      # reaches the limit, so this job needs no timeout command and
+      # carries no number of seconds of its own. The "timed out"
+      # column of the summary stays the check: a mutant that hangs
+      # the suite reads there, and a count that grows on a run which
+      # changed no source says the machine was slower than the
+      # baseline it was measured against.
+      #
+      # -j tests several mutants at one time. Each worker runs a test
+      # process of its own and has a TMPDIR of its own, and the
+      # results keep the order of the mutants, so the report does not
+      # depend on which run ends first. The number is the core count
+      # of the machine the job runs on, read at run time, so the job
+      # carries no number that fits one machine. The fork's README
+      # advises the core count less one, because the suite already
+      # uses the machine; a job runner runs nothing else, so this
+      # takes the whole count. The runner refuses -j above 1 for a
+      # test command that starts with dune, which locks the build
+      # directory; the command here is a script.
       #
       # The runner prints one line, "Skipping ...", for each mutant
       # file whose source file it cannot find, and goes on. A pass
       # that skipped a file measured part of the tree, and its score
       # says nothing about the rest, so the job keeps the runner's
       # output and fails on that line.
-      - name: Run the tests once for each mutant
+      - name: Run the tests for each mutant under three seeds
         run: |
           set -euo pipefail
           mkdir -p _mutations
           opam exec -- mutaml-runner \
             --build-context _build/default \
-            --timeout "$MUTATION_TIMEOUT" \
-            --test-env QCHECK_SEED=1 \
+            -j "$(nproc)" \
+            --repeat 3 \
+            --test-env 'QCHECK_SEED={}' \
             --baseline-env QCHECK_SEED=2 \
             test/run-mutants.sh 2>&1 | tee _mutations/runner.log
           if grep -q '^Skipping ' _mutations/runner.log; then
