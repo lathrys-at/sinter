@@ -388,12 +388,21 @@ one of them passes every run, and the pass reports all of them as
 survivors. A pass that suddenly reports the whole of `bin/main.ml` as
 surviving has met this and measured nothing.
 
-A pass also leaves one directory for each run of the suite under
+A pass leaves one directory for each run of the suite under
 `_build/default/test/_build/_tests`, several hundred of them, because
 `alcotest` writes its logs there and nothing removes them while the
 pass runs. `dune` did not put them there, so the next ordinary
-`dune build` spends its first seconds removing them. `dune clean`
-removes them at once.
+`dune build` removes them. `dune clean` removes them at once.
+
+**This is the second reason not to run `dune` beside a pass, and it
+costs you kills you did not earn.** A `dune` that runs while a pass
+runs removes those directories from under the suite runs that are
+still using them. Such a run dies, the runner sees a non-zero exit,
+and it counts any non-zero exit as a kill. The pass then reports
+mutants as caught that no test caught. This was measured on this
+branch: an ordinary `dune build` started beside a pass left ten runs
+of `lib/bridge/sinter_bridge.ml` at exit status 125, in one unbroken
+block, which read an ordinary test failure in every later pass.
 
 One number will move on the day this repository takes its first
 release tag, and the reason is known. `bin/main.ml` works out the
