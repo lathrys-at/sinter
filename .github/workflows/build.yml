@@ -114,6 +114,23 @@ jobs:
       - name: Check that the code is formatted
         run: opam exec -- dune build @fmt
 
+  # docs/versioning.md puts the version of the skill pack in two
+  # files. They must agree.
+  plugin:
+    name: Check the plugin manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check that the two manifests carry one version
+        run: |
+          set -eu
+          plugin=$(jq -r .version plugins/sinter/.claude-plugin/plugin.json)
+          market=$(jq -r '.plugins[] | select(.name == "sinter") | .version' .claude-plugin/marketplace.json)
+          echo "plugin.json: $plugin"
+          echo "marketplace.json: $market"
+          test -n "$plugin"
+          test "$plugin" = "$market"
+
   rust:
     name: Check the bridge crate
     runs-on: ubuntu-latest
