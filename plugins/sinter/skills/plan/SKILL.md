@@ -14,8 +14,9 @@ exist when the step is done. The tool later checks the promises
 against the repository. This skill writes the plan file from a plan
 that the user approved.
 
-The full format is in `spec/vocabulary.md`, section 10, of the Sinter
-repository. The rules below are the parts this skill needs.
+The full specification is at
+<https://github.com/lathrys-at/sinter/blob/main/spec/vocabulary.md>,
+section 10. The rules below are the parts this skill needs.
 
 ## Input
 
@@ -113,6 +114,14 @@ decision record.
 
 ### 5. Write the files
 
+A header is the comment at the top of a file that names the license
+and the copyright holder. Give each file you write the header that
+the repository you work in puts on the files beside it. Look for that
+header in this order: a file that is already in `.plans/`, then
+`REUSE.toml`, then the repository's contributing guide. When the
+repository puts no header on those files, write none. Never write a
+license or a copyright holder that the repository does not use.
+
 Write `.plans/<slug>.md` with this shape:
 
 ```markdown
@@ -148,12 +157,24 @@ change to a promise needs the user's approval.
 
 ## Writing rules
 
-All text in the plan file follows the project's writing rules in
-`CONTRIBUTING.md`: short sentences, active voice, one meaning per
-word, no invented terms, no notes that explain why the file exists.
+All text in the plan file follows these rules:
+
+- Write short sentences. Put one idea in one sentence.
+- Use the active voice and simple tenses.
+- Use one word for one meaning, and use it the same way every time.
+- Define a technical term at first use. Do not invent a term.
+- Do not add a note that explains why the file exists.
+
+The plan file states the work. It does not explain the document.
+
+When the repository you work in states writing rules of its own,
+follow them too.
 
 ## Checks before you finish
 
+- Each file carries the header that the repository you work in puts
+  on the files beside it, or carries none because the repository puts
+  none on them.
 - The first tag block carries `@plan <slug>`.
 - Every `##` heading with a tag is a step, and every step slug is
   unique in the plan.
