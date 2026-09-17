@@ -95,6 +95,11 @@ little-endian. No field is padded and no field is aligned: a reader
 must copy the four bytes of an integer before it reads them. Every
 string is UTF-8 and carries no terminating NUL byte.
 
+The 32 bits bound what the bridge can report. A source of 2^32 bytes
+or more fails with a message before the bridge reads it, and so does
+a parse tree whose S-expression is 2^32 bytes or more. The bridge
+never truncates a length or an offset to fit.
+
 ### Header
 
 The header is 16 bytes.
