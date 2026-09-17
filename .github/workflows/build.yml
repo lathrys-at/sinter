@@ -7,6 +7,12 @@ on:
   pull_request:
   push:
     branches: [main]
+  # The daily run is for the mutation job alone; the other jobs skip
+  # it. It measures main whole once a day, so that a change in the
+  # toolchain or a kill that only one seed makes shows up without a
+  # pull request.
+  schedule:
+    - cron: "17 6 * * *"
 
 env:
   OCAML_VERSION: "5.5.0"
@@ -14,6 +20,7 @@ env:
 jobs:
   build:
     name: Build and test
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -90,6 +97,7 @@ jobs:
 
   format:
     name: Check formatting
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -118,6 +126,7 @@ jobs:
   # files. They must agree.
   plugin:
     name: Check the plugin manifests
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -133,6 +142,7 @@ jobs:
 
   rust:
     name: Check the bridge crate
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -181,6 +191,7 @@ jobs:
 
   coverage:
     name: Measure coverage
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     # This job builds what the build job builds: the same compiler,
     # and the dependencies from the lock file. It adds one tool,
@@ -284,6 +295,10 @@ jobs:
   mutation:
     name: Measure the mutation score
     runs-on: ubuntu-latest
+    # This job is not a required check, by the maintainer's ruling of
+    # 2026-09-17: it never holds a merge, and a failure stays red on
+    # the pull request for the author and the reviewer to read. The
+    # rule is in docs/decisions/mutation-job-scope.md.
     # A mutation tester makes one small change to the source, called a
     # mutant, and runs the test suite with that change switched on. A
     # mutant that no test fails on has survived, and it names a
@@ -329,11 +344,42 @@ jobs:
       # and two passes of one build agreed mutant by mutant.
       MUTATION_MINIMUM: "95"
     steps:
+      # The whole history, because a pull request run asks git which
+      # lines the branch changed since the base branch.
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      # What this run measures. On a push to main and on the daily
+      # schedule it runs every mutant. On a pull request it runs only
+      # the mutants that sit on a line the pull request changed, and it
+      # runs nothing at all when the pull request touched no file under
+      # lib/ or bin/, which is where the mutants live. A pull request
+      # that changed only tests is measured whole by the next run on
+      # main. The rule is in docs/decisions/mutation-job-scope.md.
+      - name: Decide what this run measures
+        id: scope
+        run: |
+          set -eu
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+            echo "mode=full" >>"$GITHUB_OUTPUT"
+            echo "Every mutant: this is a run on main."
+            exit 0
+          fi
+          base=$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)
+          echo "base=$base" >>"$GITHUB_OUTPUT"
+          changed=$(git diff --name-only "$base" -- lib bin | wc -l)
+          if [ "$changed" -eq 0 ]; then
+            echo "mode=none" >>"$GITHUB_OUTPUT"
+            echo "No mutant: the pull request changed no file under lib/ or bin/."
+          else
+            echo "mode=changed" >>"$GITHUB_OUTPUT"
+            echo "The mutants on the lines changed since $base, in $changed files under lib/ and bin/."
+          fi
       # This switch holds the pinned tool as well as the project's
       # dependencies, so it has a cache key of its own, and the key
       # names the pinned commit. A new commit builds a new switch.
       - name: Restore the opam switch
+        if: steps.scope.outputs.mode != 'none'
         uses: actions/cache@v6
         with:
           path: _opam
@@ -341,6 +387,7 @@ jobs:
           restore-keys: |
             opam-mutation-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.MUTAML_COMMIT }}-
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        if: steps.scope.outputs.mode != 'none'
         with:
           rustflags: ""
           cache: false
@@ -350,6 +397,7 @@ jobs:
       # ~/.cache/sinter-bridge-build. This job keeps a key of its own,
       # so that it does not race the other jobs over one cache entry.
       - name: Cache the cargo state
+        if: steps.scope.outputs.mode != 'none'
         uses: actions/cache@v6
         with:
           path: |
@@ -362,12 +410,15 @@ jobs:
       # background maintenance can remove its lock file in that window,
       # and opam then fails on the vanished file. Turn it off.
       - name: Turn off git background maintenance
+        if: steps.scope.outputs.mode != 'none'
         run: git config --global maintenance.auto false
       - uses: ocaml/setup-ocaml@v3
+        if: steps.scope.outputs.mode != 'none'
         with:
           ocaml-compiler: ${{ env.OCAML_VERSION }}
           cache: false
       - name: Install the dependencies
+        if: steps.scope.outputs.mode != 'none'
         run: opam install . --deps-only --with-test --locked
       # mutaml is not a dependency of the package, so the line above
       # does not install it. It is pinned here, by commit, and
@@ -375,6 +426,7 @@ jobs:
       # so that opam builds the tool and not the tool's own test
       # suite. The coverage job installs bisect_ppx the same way.
       - name: Install the pinned mutaml
+        if: steps.scope.outputs.mode != 'none'
         run: |
           set -eu
           opam pin add -y -n mutaml \
@@ -385,6 +437,7 @@ jobs:
       # it runs the suite once with no mutant switched on, which also
       # puts the suite's fixtures under _build/default/test.
       - name: Build the tests with the code instrumented
+        if: steps.scope.outputs.mode != 'none'
         env:
           # The preprocessor reads these two, and nothing else does.
           # A rate of 100 puts a mutant at every place that can hold
@@ -456,7 +509,17 @@ jobs:
       # that skipped a file measured part of the tree, and its score
       # says nothing about the rest, so the job keeps the runner's
       # output and fails on that line.
+      #
+      # --changed-since, on a pull request, keeps only the mutants on
+      # a line that the branch changed since its base. The others are
+      # recorded as not run and stay outside the score, so the score
+      # is a share of what the pull request touched. A survivor there
+      # is one the author made or uncovered.
       - name: Run the tests for each mutant under three seeds
+        if: steps.scope.outputs.mode != 'none'
+        env:
+          MODE: ${{ steps.scope.outputs.mode }}
+          BASE: ${{ steps.scope.outputs.base }}
         run: |
           set -euo pipefail
           mkdir -p _mutations
@@ -466,13 +529,17 @@ jobs:
             workers=$((workers - 1))
           fi
           echo "Cores: $cores. Workers: $workers."
+          set -- test/run-mutants.sh
+          if [ "$MODE" = changed ]; then
+            set -- --changed-since "$BASE" "$@"
+          fi
           opam exec -- mutaml-runner \
             --build-context _build/default \
             -j "$workers" \
             --repeat 3 \
             --test-env 'QCHECK_SEED={}' \
             --baseline-env QCHECK_SEED=2 \
-            test/run-mutants.sh 2>&1 | tee _mutations/runner.log
+            "$@" 2>&1 | tee _mutations/runner.log
           if grep -q '^Skipping ' _mutations/runner.log; then
             echo "The runner skipped a mutant file, so the pass measured" \
               "part of the tree. The lines above that start with" \
@@ -485,6 +552,7 @@ jobs:
       # is below it, and with another status when the tool itself
       # failed. The job fails on both, and says which happened.
       - name: Report the mutation score
+        if: steps.scope.outputs.mode != 'none'
         run: |
           set -eu
           mkdir -p _mutations
@@ -518,7 +586,7 @@ jobs:
       # format. Upload it whether the gate passed or failed: it is
       # most wanted when it failed.
       - name: Upload the JSON report
-        if: always()
+        if: always() && steps.scope.outputs.mode != 'none'
         uses: actions/upload-artifact@v7
         with:
           name: mutation-report

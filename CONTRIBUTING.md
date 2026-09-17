@@ -252,7 +252,8 @@ makes. It needs no `diff` command: `mutaml-report` writes the diff of
 a mutant itself. It needs no `timeout` command: the runner starts each
 test run itself and stops a run that goes on too long. The one option
 that needs a command of the system is `--changed-since`, which asks
-`git` which lines a branch touched; this project does not use it.
+`git` which lines a branch touched; the `mutation` job gives it on a
+pull request, and the pass on a branch below gives it too.
 
 Pin the fork into the project's switch once:
 
@@ -286,6 +287,18 @@ mutaml-report --fail-under 95 \
   --markdown _mutations/summary.md \
   --json-report _mutations/report.json
 ```
+
+That is the full pass, the one the `mutation` job makes on `main`.
+On a branch, put `--changed-since origin/main` in front of the script
+name in the `mutaml-runner` line, after `git fetch origin`. The runner
+then tests only the mutants that sit on a line the branch changed,
+and records every other mutant as not run and outside the score. The
+score is then a share of what the branch touched, and a survivor in
+it is one the branch made or uncovered. When no mutant sits on a
+changed line, `mutaml-report` says the run has no score and exits 0.
+The `mutation` job makes this pass on a pull request, and it skips
+the job when the pull request changed no file under `lib/` or `bin/`;
+`docs/decisions/mutation-job-scope.md` holds the rule.
 
 `--instrument-with` is the switch, as it is for coverage. Without it
 the build carries no instrumentation and costs nothing.
@@ -424,7 +437,9 @@ a way of not writing it.
 `mutaml-report` exits 0 when the score is at or above `--fail-under`,
 2 when it is below, and 1 when the tool could not do its work. Give it
 the number that the `mutation` job holds in `MUTATION_MINIMUM`, so
-that a pass on your own machine answers as the job does. The
+that a pass on your own machine answers as the job does. The job is
+not a required check: it never holds a merge, and a failure stays red
+on the pull request for the author and the reviewer to read. The
 maintainer fixed that number at 95 on 2026-09-16. It does not follow
 the measurement: it does not rise when the score rises and it does not
 fall, and it changes only on another ruling of the maintainer.
@@ -579,6 +594,14 @@ the change and for the people who read it later. It says what the
 change adds, what it does not do, measurements when there are any,
 and where to look first. It follows the writing rules above. It does
 not describe the process that produced the change.
+
+Before you open a pull request that touches `lib/` or `bin/`, run the
+mutation pass on your branch with `--changed-since origin/main`, as
+"Mutation testing" above says, and read every survivor. The `mutation`
+job makes the same pass on the pull request, and its result does not
+hold the merge, so the pass on your machine is the one that catches a
+gap before a reviewer sees it. Put the score and the survivors in the
+pull request description when the pass found any.
 
 A review comment names an example of a defect, not its only instance.
 When you address a comment, find and fix every instance of the same
