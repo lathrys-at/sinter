@@ -225,16 +225,18 @@ The released tool does not build on the compiler in
 `dune`, and makes no mutant of a comparison operator;
 `docs/decisions/mutation-testing.md` gives the reasons for the fork.
 
-`mutaml` needs the `diff` command, which every machine that builds
-Sinter already has, and nothing else that is not an opam package. It
-needs no `timeout` command: the runner starts each test run itself
-and stops a run that goes on too long.
+`mutaml` needs no command of the system for the run this project
+makes. It needs no `diff` command: `mutaml-report` writes the diff of
+a mutant itself. It needs no `timeout` command: the runner starts each
+test run itself and stops a run that goes on too long. The one option
+that needs a command of the system is `--changed-since`, which asks
+`git` which lines a branch touched; this project does not use it.
 
 Pin the fork into the project's switch once:
 
 ```
 opam pin add -y -n mutaml \
-  git+https://github.com/lathrys-at/mutaml.git#552416cb1e9444a1ce0d3fbeba6f8efb7732e9a4
+  git+https://github.com/lathrys-at/mutaml.git#b3c6b062522d1b8ac3b9615f84320e5d7e8d8ac8
 opam install mutaml
 ```
 
@@ -258,7 +260,7 @@ mutaml-runner --build-context _build/default \
   --repeat 3 --test-env 'QCHECK_SEED={}' \
   --baseline-env QCHECK_SEED=2 \
   test/run-mutants.sh
-mutaml-report --fail-under 91 \
+mutaml-report --fail-under 95 \
   --markdown _mutations/summary.md \
   --json-report _mutations/report.json
 ```
@@ -277,7 +279,7 @@ runner looks beside it for the side files and reads the source paths
 in them from the root. Started anywhere else it finds no side file and
 tests nothing; `mutaml-report` then prints `Found no test results` and
 exits 1. Read the number of mutants in the report of every pass. A
-pass over the whole tree makes several hundred, 394 when this was
+pass over the whole tree makes several hundred, 380 when this was
 written, so a much smaller number means that the pass missed part of
 the tree.
 
@@ -358,10 +360,9 @@ survivor, the name of the mutant and a diff of the change that
 survived. Read a survivor as a question: which test would have failed
 on this change? The answer is the test to write. A few survivors have
 no answer, because no input can tell the change from the original;
-those are equivalent mutants, and a marker in the
-source will take them out of the score once the fork carries one.
-`--markdown` writes the same report as a file with a table of one row
-per source file, and `--json-report` writes the
+those are equivalent mutants, and the part below says how to mark
+one. `--markdown` writes the same report as a file with a table of
+one row per source file, and `--json-report` writes the
 mutation-testing-elements format that Stryker, Infection, and Mull
 share, which the HTML viewer of that format reads. Both paths above
 are inside `_mutations/`, which git ignores. The runner makes that
@@ -369,13 +370,52 @@ directory in the step above, and `mutaml-report` does not make it, so
 run the report after a pass of the runner and not on its own in a
 clean tree.
 
+**How to mark a mutant that no test can kill.** Write
+`[@mutaml.skip "reason"]` on the smallest expression that holds the
+mutant, and put that expression in parentheses:
+
+```
+let is_ready count = ((count >= 1) [@mutaml.skip "..."])
+```
+
+The attribute binds to the expression right in front of it, and it
+binds tighter than an operator, so `count >= 1 [@mutaml.skip "..."]`
+marks the `1` alone and leaves the comparison to be mutated. A mark
+takes out every mutant inside the expression it names, the mutants
+that the tests kill among them, so name no larger an expression than
+the place needs. The reason is a string, and it is not optional: a
+mark with no reason, with an empty reason, or with a payload that is
+not a string stops the build with a message that names the file and
+the line. A marked place is no mutant: it is outside the score, and
+every report names it, its line, and its reason. The JSON report
+gives it the status `Ignored` and the reason in `statusReason`.
+
+A mark is a claim: that no input can tell the changed program from
+the original. A mark that is wrong hides a gap in the tests for as
+long as it stands, and no later pass will find that gap again. So
+write the reason as a reader can check it against the code, name the
+property that makes the two programs one, and read a mark in review
+as closely as you read the code around it. Never mark a gap. When a
+test could kill the mutant, that test is the answer, and the mark is
+a way of not writing it.
+
 `mutaml-report` exits 0 when the score is at or above `--fail-under`,
 2 when it is below, and 1 when the tool could not do its work. Give it
 the number that the `mutation` job holds in `MUTATION_MINIMUM`, so
-that a pass at your own machine answers as the job does. That job
-holds the number that decides a merge, and it is 91 today. A change
-does not lower the score, and the pull request that raises the score
-raises the minimum with it.
+that a pass on your own machine answers as the job does. The
+maintainer fixed that number at 95 on 2026-09-16. It does not follow
+the measurement: it does not rise when the score rises and it does not
+fall, and it changes only on another ruling of the maintainer.
+
+95 is the gate and not the target. **The score to aim for is 100.**
+The job prints the score of every run in its summary and names every
+mutant that survived, so the number a pull request reached is on the
+page whether the gate passed or not. The gap between 95 and 100 is
+there so that one mutant nobody has got to yet does not stop a pull
+request that is sound in every other way; it is not room to leave
+survivors in. Read every survivor the summary names. The answer is
+the test that kills it, or, when no input can tell the change from
+the original, a mark with a reason, as the part above says.
 
 An instrumented build writes over `_build`, as a coverage build does,
 and the next ordinary `dune build` compiles the whole OCaml tree
@@ -418,21 +458,24 @@ branch: an ordinary `dune build` started beside a pass left ten runs
 of `lib/bridge/sinter_bridge.ml` at exit status 125, in one unbroken
 block, which read an ordinary test failure in every later pass.
 
-One number will move on the day this repository takes its first
-release tag, and the reason is known. `bin/main.ml` works out the
-version from the output of `git describe`, with two tests on that
-output: `String.contains d '.'` and `d = "unknown"`. Today the
-repository carries no tag, the output is a bare hash, and the suite
-kills the mutant of each of the two tests. After the first tag the
-output holds a dot, the first test holds, and the function gives back
-the description at once. Both mutants then survive. The mutant of
-`d = "unknown"` survives because nothing reaches that line any more.
-The mutant of `String.contains d '.'` survives because it sends a
-description such as `v0.1.0` down the other road, which builds
-`v0.1.0-dev+v0.1.0`; that string starts with the release version and
-names the checkout, so both tests of the version pass on it. Expect
-the score to fall by two mutants on that day, not by one, and look
-for no other cause.
+The score does not answer to the state of this checkout, and that is
+worth keeping. `Sinter_core.Version.render` works out the version to
+print from two values that its caller reads for it: the version of
+the package, which only a build of a release carries, and the output
+of `git describe`. It reads neither itself, so its tests hand it a
+bare hash, the name of a tag, and the word `unknown`, and every road
+of it is tested whatever this repository carries. The first release
+tag will therefore change what the tool prints and not what a pass
+reports.
+
+While that logic stood in `bin/main.ml` it was the other way about.
+Seven of its mutants sat on a road that only an installed build
+reaches, so no test could state a fact about them; three more
+answered to whether the repository carried a tag, and a pass on the
+day of the first tag would have lost those three kills for a reason
+that is not in the tests at all. That is the shape to watch for: a
+road that only the build can choose is a road that no test can
+reach, and the score then measures the build and not the suite.
 
 ## New files
 

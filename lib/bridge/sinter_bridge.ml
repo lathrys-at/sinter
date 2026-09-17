@@ -58,8 +58,15 @@ let malformed reason =
   raise (Error ("the bridge returned a malformed buffer: " ^ reason))
 
 let check buffer offset count =
-  if offset < 0 || count < 0 || offset + count > String.length buffer then
-    malformed "a record runs past the end of the buffer"
+  if
+    (offset < 0)
+    [@mutaml.skip
+      "check is not in the interface, and no call reaches it with an offset \
+       below 4: read_header reads 4 and 8, and a record starts at \
+       header_length"]
+    || count < 0
+    || offset + count > String.length buffer
+  then malformed "a record runs past the end of the buffer"
 
 (* The mask gives the unsigned value of the four bytes. It needs an
    int of more than 32 bits, so Sinter runs on 64-bit machines only. *)

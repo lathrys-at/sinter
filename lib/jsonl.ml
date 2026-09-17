@@ -37,7 +37,15 @@ let utf16_units s =
     let point = Uchar.to_int (Uchar.utf_decode_uchar decoded) in
     if point < 0x10000 then units := point :: !units
     else
-      let rest = point - 0x10000 in
+      let rest =
+        (point - 0x10000)
+        [@mutaml.skip
+          "compare_keys is the only caller, and + leaves the low unit alone, \
+           because 0x10000 is a whole multiple of 0x400, and raises every high \
+           unit by the same 0x80, which keeps it above 0xD7FF and below \
+           0xE000, where no code point of a key falls, so no two keys change \
+           order"]
+      in
       units :=
         (0xDC00 lor (rest land 0x3FF)) :: (0xD800 lor (rest lsr 10)) :: !units
   done;
@@ -109,7 +117,13 @@ let to_string record =
     | _ -> ()
   in
   check_unique sorted;
-  let buffer = Buffer.create 256 in
+  let buffer =
+    Buffer.create
+      (256
+      [@mutaml.skip
+        "the number is only the first size of a buffer that grows as it needs, \
+         and no output reads it"])
+  in
   Buffer.add_char buffer '{';
   List.iteri
     (fun index (name, value) ->

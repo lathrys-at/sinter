@@ -71,7 +71,14 @@ let name_of_wasm wasm =
   let prefix = "tree_sitter_" in
   let byte offset = Char.code (String.get wasm offset) in
   let rec number offset shift value =
-    if offset >= length || shift > 28 then None
+    if
+      offset >= length
+      || shift
+         > (28
+           [@mutaml.skip
+             "shift starts at 0 and rises by 7, so it takes 0, 7, 14, 21, 28, \
+              35, and never a value between 28 and 29"])
+    then None
     else
       let part = byte offset in
       let value = value lor ((part land 0x7F) lsl shift) in
@@ -80,7 +87,13 @@ let name_of_wasm wasm =
   in
   let name offset =
     match number offset 0 0 with
-    | Some (size, start) when start + size <= length ->
+    | Some (size, start)
+      when (start + size <= length)
+           [@mutaml.skip
+             "the two differ for one input only, a name that ends at the end \
+              of the module, and both give None there: a section never ends \
+              past the module, so stop is at most length, and export then \
+              finds offset >= stop"] ->
         Some (String.sub wasm start size, start + size)
     | _ -> None
   in
@@ -103,7 +116,14 @@ let name_of_wasm wasm =
                can export a name that holds a NUL byte. *)
             if String.contains name '\000' then None else Some name
           else
-            match number (offset + 1) 0 0 with
+            match
+              number (offset + 1) 0
+                (0
+                [@mutaml.skip
+                  "this caller writes Some (_, offset) and throws the value \
+                   away, and the value number starts from changes neither the \
+                   offset it gives back nor whether it gives None"])
+            with
             | None -> None
             | Some (_, offset) -> export offset stop (count - 1))
   in
@@ -113,7 +133,14 @@ let name_of_wasm wasm =
     | Some (count, offset) -> export offset stop count
   in
   let rec section offset =
-    if offset >= length then None
+    if
+      (offset >= length)
+      [@mutaml.skip
+        "the two differ for one input only, a section list that ends at the \
+         end of the module, and both give None there: with offset equal to \
+         length the changed test lets the reader on to number (length + 1) 0 \
+         0, whose first test stops it at once"]
+    then None
     else
       match number (offset + 1) 0 0 with
       | None -> None
@@ -122,7 +149,13 @@ let name_of_wasm wasm =
           else section (body + size)
       | Some _ -> None
   in
-  if length < 8 || not (String.starts_with ~prefix:"\000asm" wasm) then None
+  if
+    (length < 8)
+    [@mutaml.skip
+      "a module of exactly 8 bytes gives None either way: the unchanged code \
+       goes on to section 8, which finds offset >= length at once"]
+    || not (String.starts_with ~prefix:"\000asm" wasm)
+  then None
   else
     match section 8 with
     (* The bridge loads a grammar under a C string, so a name that

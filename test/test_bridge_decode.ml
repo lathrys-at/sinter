@@ -114,12 +114,41 @@ let rejects_a_parse_tree_that_is_not_utf_8 () =
     "the message names the parse tree" "the parse tree is not UTF-8 text"
     (error_message (fun () -> Sinter_bridge.decode_tree buffer))
 
+(* The header is sixteen bytes. A buffer of fifteen is short by one,
+   and the decoder says so rather than read a field that is not
+   there. *)
+let rejects_a_buffer_one_byte_shorter_than_the_header () =
+  let whole = Generators.encode_captures [] in
+  let buffer = String.sub whole 0 (String.length whole - 1) in
+  Alcotest.(check int) "the buffer is fifteen bytes" 15 (String.length buffer);
+  Alcotest.(check string)
+    "the message says the buffer is shorter than the header"
+    "the bridge returned a malformed buffer: the buffer is shorter than the \
+     header"
+    (error_message (fun () -> Sinter_bridge.decode_captures buffer))
+
+(* The message of a buffer that does not end where its records end
+   names two numbers, and the second is the length of the buffer
+   itself. *)
+let names_the_length_of_a_buffer_with_bytes_after_its_records () =
+  let buffer = Generators.encode_captures [] ^ "\000" in
+  Alcotest.(check string)
+    "the message names byte 16 and a buffer of 17 bytes"
+    "the bridge returned a malformed buffer: the records end at byte 16 and \
+     the buffer holds 17 bytes"
+    (error_message (fun () -> Sinter_bridge.decode_captures buffer))
+
 let tests =
   [
     Alcotest.test_case "rejects a capture whose text is not UTF-8" `Quick
       rejects_a_capture_whose_text_is_not_utf_8;
     Alcotest.test_case "rejects a parse tree that is not UTF-8" `Quick
       rejects_a_parse_tree_that_is_not_utf_8;
+    Alcotest.test_case "rejects a buffer one byte shorter than the header"
+      `Quick rejects_a_buffer_one_byte_shorter_than_the_header;
+    Alcotest.test_case
+      "names the length of a buffer with bytes after its records" `Quick
+      names_the_length_of_a_buffer_with_bytes_after_its_records;
     decode_captures_gives_back_what_was_encoded;
     decode_tree_gives_back_what_was_encoded;
     decode_captures_rejects_a_damaged_buffer;

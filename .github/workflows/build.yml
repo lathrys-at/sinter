@@ -270,21 +270,31 @@ jobs:
     # the fixes. Remove the pin, and install a release instead, when
     # upstream publishes a version that does all three.
     env:
-      # The head of the fork's main branch, after its pull request 6.
+      # The head of the fork's main branch, after its pull request 7.
       # A commit, never a branch, so that every run builds the same
       # source.
-      MUTAML_COMMIT: "552416cb1e9444a1ce0d3fbeba6f8efb7732e9a4"
-      # The job fails when the score is below this number. Raise it
-      # when the number grows. Do not lower it. 91 is the measured
-      # score rounded down to a whole number, as the decision record
-      # mutation-testing rules. The measurement is of 394 mutants
-      # under the three seeds: 33 survived, so the score is 91.6 per
-      # cent. One seed left 35 survivors and 91.1 per cent. The two
-      # mutants that the difference names are both in the
-      # end_of_capture binding of lib/parse.ml, and both pass under
-      # the first two seeds and die under the third; they are what
-      # the third seed buys.
-      MUTATION_MINIMUM: "91"
+      MUTAML_COMMIT: "b3c6b062522d1b8ac3b9615f84320e5d7e8d8ac8"
+      # The job fails when the score is below this number. The
+      # maintainer fixed it at 95 on 2026-09-16. It does not follow
+      # the measurement: it does not rise when the score rises, and
+      # it does not fall. Change it only on another ruling of the
+      # maintainer.
+      #
+      # 95 is not the target. The score to aim for is 100, and the
+      # summary of this job carries the score of every run and names
+      # every mutant that survived. The gap between 95 and 100 is
+      # there so that one mutant nobody has got to yet does not stop
+      # a pull request that is sound in every other way. It is not
+      # room to leave survivors in. A survivor is a behaviour that no
+      # test checks, and the answer is the test that kills it, or a
+      # mark in the source with a reason that a reader can check;
+      # CONTRIBUTING.md says how to write each.
+      #
+      # The measurement when this was written: 380 mutants under the
+      # three seeds, 378 killed, 2 past the time limit, which counts
+      # as caught, and none survived. The score is 100.0 per cent,
+      # and two passes of one build agreed mutant by mutant.
+      MUTATION_MINIMUM: "95"
     steps:
       - uses: actions/checkout@v6
       # This switch holds the pinned tool as well as the project's
@@ -453,8 +463,11 @@ jobs:
           if [ "$status" = 2 ]; then
             echo "The mutation score is below the minimum of" \
               "$MUTATION_MINIMUM per cent. The summary of this job" \
-              "names every mutant that survived. Write a test that" \
-              "kills each one."
+              "names every mutant that survived. Each one is a" \
+              "behaviour that no test checks. Write the test that" \
+              "kills it, or, when no input can tell the change from" \
+              "the original, mark the place in the source with a" \
+              "reason; CONTRIBUTING.md says how to write each."
             exit "$status"
           fi
           if [ "$status" != 0 ]; then

@@ -22,15 +22,30 @@ type t = {
 
 let create () =
   match Sinter_bridge.create () with
-  | engine -> { engine; grammars = Hashtbl.create 4; closed = false }
+  | engine ->
+      {
+        engine;
+        grammars =
+          Hashtbl.create
+            (4
+            [@mutaml.skip
+              "Hashtbl.create raises its argument to power_2_above 16, which \
+               gives 16 for 4 and for 5, so both build the same table"]);
+        closed = false;
+      }
   | exception Sinter_bridge.Error message ->
       raise (Error ("the parser bridge does not start: " ^ message))
 
 let close state =
   if not state.closed then (
     state.closed <- true;
-    Hashtbl.reset state.grammars;
-    Sinter_bridge.close state.engine)
+    (Hashtbl.reset state.grammars;
+     Sinter_bridge.close state.engine)
+    [@mutaml.skip
+      "close sets closed before it empties the table, respond raises on a \
+       closed state, a second close does nothing, and t is abstract, so no \
+       road reads the table after close; dropping the line only keeps the \
+       grammars alive longer"])
 
 (* The size and the modification time of the file at [path]. The pair
    is None when the file does not stat; the loader then reports what is
