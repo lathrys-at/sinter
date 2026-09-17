@@ -80,6 +80,11 @@ jobs:
           test "$one" != "$two"
       - name: Build
         run: opam exec -- dune build
+      # dune-project is the source of sinter.opam, and dune rewrites
+      # the file on every build. A build that changes it means the
+      # committed copy is stale.
+      - name: Check that sinter.opam matches dune-project
+        run: git diff --exit-code -- sinter.opam
       - name: Test
         run: opam exec -- dune test
 
