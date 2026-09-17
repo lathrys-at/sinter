@@ -159,13 +159,15 @@ change to a promise needs the user's approval.
 
 All text in the plan file follows these rules:
 
-- Write short sentences. Put one idea in one sentence.
+- Use short sentences: one idea per sentence, about 20 words or
+  fewer.
 - Use the active voice and simple tenses.
 - Use one word for one meaning, and use it the same way every time.
-- Define a technical term at first use. Do not invent a term.
-- Do not add a note that explains why the file exists.
+- Do not invent terms. Define a technical term at first use.
+- Do not add notes that explain why a sentence or a file exists.
 
-The plan file states the work. It does not explain the document.
+The plan file states the work, not the document. Do not narrate the
+process that produced the plan file.
 
 When the repository you work in states writing rules of its own,
 follow them too.
