@@ -33,10 +33,14 @@ Cranelift compiler.
 
 `dune build` at the repository root builds the crate as well, through
 a rule in `lib/bridge/dune`. That rule writes its output under the
-user cache, in a directory of its own for each checkout.
-`lib/bridge/build.sh` chooses the directory and names it from the path
-of the crate. Two checkouts must not share one: cargo would call the
-second checkout fresh and leave the first checkout's library in place.
+user cache, by default `~/.cache/sinter-bridge-build`, in a directory
+of its own for each checkout. `lib/bridge/build.sh` chooses the
+directory, names it from the path of the crate, and writes the path
+of the checkout into a file named `checkout` inside it. Two checkouts
+must not share one: cargo would call the second checkout fresh and
+leave the first checkout's library in place. `CONTRIBUTING.md`, in
+"The bridge's build directory", says how to remove the directories of
+checkouts that are gone.
 
 The command above writes to `bridge/target` instead, so a contributor
 who runs both has two copies of the build. `dune clean` removes

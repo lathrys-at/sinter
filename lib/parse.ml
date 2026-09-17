@@ -236,7 +236,11 @@ let read_source path =
 let of_bridge path f =
   try f () with Sinter_bridge.Error message -> fail "%s: %s" path message
 
+(* The name of the file goes into every record, so a name that is not
+   UTF-8 text fails before the file is read, and it fails the same way
+   for a file that gives no capture. *)
 let captures language ~query ~path =
+  check_path path;
   let source = read_source path in
   let found =
     of_bridge path (fun () -> Sinter_bridge.captures language ~source ~query)
@@ -244,6 +248,7 @@ let captures language ~query ~path =
   List.map (record_of_capture ~path ~source) found
 
 let tree language ~path =
+  check_path path;
   let source = read_source path in
   of_bridge path (fun () -> Sinter_bridge.tree language ~source)
 

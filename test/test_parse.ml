@@ -1067,6 +1067,56 @@ let the_op_answers_with_the_lines_of_the_command =
       in
       same_control && same_items)
 
+(* [captures] and [tree] check the file name before they open the
+   file. A name that is not UTF-8 text therefore fails the same way
+   whether or not the file exists, and whether or not the query
+   captures anything in it. *)
+let captures_checks_the_file_name_first () =
+  let message =
+    try
+      ignore
+        (Parse.captures (Lazy.force language) ~query:"(document) @d"
+           ~path:"\xffnope.json");
+      "no failure"
+    with Parse.Error message -> message
+  in
+  Alcotest.(check string)
+    "the message gives the file name as bytes, not a failure to open"
+    "the file name is not UTF-8 text: \\255nope.json" message
+
+let tree_checks_the_file_name_first () =
+  let message =
+    try
+      ignore (Parse.tree (Lazy.force language) ~path:"\xffnope.json");
+      "no failure"
+    with Parse.Error message -> message
+  in
+  Alcotest.(check string)
+    "the message gives the file name as bytes, not a failure to open"
+    "the file name is not UTF-8 text: \\255nope.json" message
+
+(* [run] loads the grammar before it looks at any file, so when the
+   grammar does not read and a file name is not UTF-8 text, the
+   message names the grammar. *)
+let names_the_grammar_before_a_bad_file_name () =
+  let file = Filename.temp_file "sinter-parse" ".out" in
+  let channel = open_out_bin file in
+  let message =
+    Fun.protect
+      ~finally:(fun () ->
+        close_out_noerr channel;
+        Sys.remove file)
+      (fun () ->
+        try
+          Parse.run ~grammar:"no-such-grammar.wasm" ~query:None
+            ~paths:[ "\xffname.json" ] channel;
+          "no failure"
+        with Parse.Error message -> message)
+  in
+  Alcotest.(check bool)
+    "the message names the grammar file" true
+    (String.starts_with ~prefix:"no-such-grammar.wasm:" message)
+
 let tests =
   [
     Alcotest.test_case "prints the captures of the fixture" `Quick
@@ -1094,6 +1144,12 @@ let tests =
       reports_a_channel_that_cannot_be_written;
     Alcotest.test_case "rejects a file name that is not UTF-8" `Quick
       rejects_a_file_name_that_is_not_utf_8;
+    Alcotest.test_case "captures checks the file name first" `Quick
+      captures_checks_the_file_name_first;
+    Alcotest.test_case "tree checks the file name first" `Quick
+      tree_checks_the_file_name_first;
+    Alcotest.test_case "names the grammar before a bad file name" `Quick
+      names_the_grammar_before_a_bad_file_name;
     Alcotest.test_case "rejects a file name whose first byte is not UTF-8"
       `Quick rejects_a_file_name_whose_first_byte_is_not_utf_8;
     Alcotest.test_case "reads the grammar name from the module" `Quick

@@ -80,6 +80,11 @@ jobs:
           test "$one" != "$two"
       - name: Build
         run: opam exec -- dune build
+      # dune-project is the source of sinter.opam, and dune rewrites
+      # the file on every build. A build that changes it means the
+      # committed copy is stale.
+      - name: Check that sinter.opam matches dune-project
+        run: git diff --exit-code -- sinter.opam
       - name: Test
         run: opam exec -- dune test
 
@@ -108,6 +113,23 @@ jobs:
         run: opam install . --deps-only --with-test --with-dev-setup --locked
       - name: Check that the code is formatted
         run: opam exec -- dune build @fmt
+
+  # docs/versioning.md puts the version of the skill pack in two
+  # files. They must agree.
+  plugin:
+    name: Check the plugin manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check that the two manifests carry one version
+        run: |
+          set -eu
+          plugin=$(jq -r .version plugins/sinter/.claude-plugin/plugin.json)
+          market=$(jq -r '.plugins[] | select(.name == "sinter") | .version' .claude-plugin/marketplace.json)
+          echo "plugin.json: $plugin"
+          echo "marketplace.json: $market"
+          test -n "$plugin"
+          test "$plugin" = "$market"
 
   rust:
     name: Check the bridge crate
