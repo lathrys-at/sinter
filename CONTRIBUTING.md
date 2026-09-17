@@ -153,6 +153,28 @@ Before you commit, check that all of these pass:
 
 CI runs all of them.
 
+### The bridge's build directory
+
+The dune rule that builds the bridge runs cargo outside `_build`, in a
+directory of its own for each checkout, so that two checkouts never
+link each other's library. The directory sits under the first of
+these that is set: `CARGO_TARGET_DIR`; `$XDG_CACHE_HOME/sinter-bridge-build`;
+`~/.cache/sinter-bridge-build`. Its name is a hash of the checkout's
+path, and a file named `checkout` inside it holds that path. Each one
+is about 500 MB. `dune clean` does not remove them, so a machine with
+many worktrees collects them. This loop removes every directory whose
+checkout is gone:
+
+```
+for d in "${XDG_CACHE_HOME:-$HOME/.cache}"/sinter-bridge-build/*/; do
+  p=$(cat "$d/checkout" 2>/dev/null) || continue
+  [ -d "$p" ] || rm -rf "$d"
+done
+```
+
+A directory with no `checkout` file predates the file; remove it by
+hand, and the next build writes a new one.
+
 ### Coverage
 
 `bisect_ppx` measures how much of `lib/` and `bin/` the tests run. No
