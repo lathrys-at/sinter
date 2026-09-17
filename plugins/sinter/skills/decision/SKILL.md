@@ -14,18 +14,20 @@ tag. A rule or a later decision can cite the record. A person who
 would otherwise re-argue the decision then finds the reasoning.
 Never delete a decision record.
 
-The tag rules are in `spec/vocabulary.md` of the Sinter repository
-(sections 4, 7.1, and 8.3). The rules below are the parts this skill
+The full tag specification is at
+<https://github.com/lathrys-at/sinter/blob/main/spec/vocabulary.md>,
+sections 4, 7.1, and 8.3. The rules below are the parts this skill
 needs.
 
 ## Input
 
 The input is the decision. The user states the decision in
-conversation, or a plan step promises it. If the choice is not clear from the conversation, ask before you
-write. Never invent an alternative. An alternative belongs in the
-record only when someone put it forward and it was deliberated: in
-the conversation, in an issue, in a pull request, in a plan, or in
-the design notes. When nobody put one forward, the record says so.
+conversation, or a plan step promises it. If the choice is not clear
+from the conversation, ask before you write. Never invent an
+alternative. An alternative belongs in the record only when someone
+put it forward and it was deliberated: in the conversation, in an
+issue, in a pull request, in a plan, or in the design notes. When
+nobody put one forward, the record says so.
 
 ## Procedure
 
@@ -54,9 +56,6 @@ Look in `docs/decisions/` for a record on the same subject.
 Write `docs/decisions/<slug>.md` with this shape:
 
 ```markdown
-<!-- SPDX-License-Identifier: CC-BY-4.0 -->
-<!-- Copyright <year> The Sinter Authors -->
-
 # <Title: the decision in one line>
 @decision <slug>
 <One sentence: what was decided.>
@@ -82,6 +81,16 @@ concrete rule, layout, or mechanism.>
 <What follows from the decision: what becomes easier, what becomes
 harder, what it commits the project to.>
 ```
+
+Rules for the header:
+
+A header is the comment at the top of a file that names the license
+and the copyright holder. Give each file you write the header that
+the repository you work in puts on the files beside it. Look for that
+header in this order: a file that is already in `docs/decisions/`,
+then `REUSE.toml`, then the repository's contributing guide. When the
+repository puts no header on those files, write none. Never write a
+license or a copyright holder that the repository does not use.
 
 Rules for the tag block:
 
@@ -110,14 +119,26 @@ refs that the record cites.
 
 ## Writing rules
 
-All text in the record follows the project's writing rules in
-`CONTRIBUTING.md`: short sentences, active voice, one meaning per
-word, no invented terms, no notes that explain why the file exists.
-The record explains the decision, not the document.
+All text in the record follows these rules:
+
+- Use short sentences: one idea per sentence, about 20 words or
+  fewer.
+- Use the active voice and simple tenses.
+- Use one word for one meaning, and use it the same way every time.
+- Do not invent terms. Define a technical term at first use.
+- Do not add notes that explain why a sentence or a file exists.
+
+The record explains the decision, not the document. Do not narrate
+the process that produced the record.
+
+When the repository you work in states writing rules of its own,
+follow them too.
 
 ## Checks before you finish
 
-- The file has the CC-BY-4.0 header and the copyright line.
+- Each file carries the header that the repository you work in puts
+  on the files beside it, or carries none because the repository puts
+  none on them.
 - The tag block is the first paragraph after the title and starts
   with `@decision <slug>`.
 - The slug matches the pattern and is not in use.
