@@ -76,6 +76,13 @@ fi
 log=$target/native-static-libs.log
 mkdir -p "$target"
 
+# The name of the directory is a hash, so write the checkout it
+# belongs to inside it. A person who cleans the cache reads this file
+# and removes the directory when the checkout is gone; CONTRIBUTING.md
+# gives the loop.
+checkout=$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$root")
+printf '%s\n' "$checkout" >"$target/checkout"
+
 # CARGO_TERM_COLOR=always wraps the note in escape codes, so ask for
 # plain output and strip any code that is left.
 if ! cargo rustc --release --quiet --color never \
