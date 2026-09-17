@@ -11,7 +11,9 @@ exception Error of string
 val read_file : string -> string
 (** [read_file path] is the whole content of the file at [path].
 
-    @raise Error if the file does not open, or if reading it fails. *)
+    @raise Error
+      if [path] is a directory, if the file does not open, or if reading it
+      fails. *)
 
 val name_of_wasm : string -> string option
 (** [name_of_wasm wasm] is the name of the grammar in the wasm module [wasm],
