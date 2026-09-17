@@ -13,15 +13,20 @@ directory specifies the formats that other tools can implement.
 
 ## Build
 
-We write Sinter in OCaml. To build it, install
-[opam](https://opam.ocaml.org/) and an OCaml switch (5.1 or newer).
-Then run:
+We write Sinter in OCaml, and its parser bridge in Rust. To build
+it, install [opam](https://opam.ocaml.org/) and an OCaml switch (5.1
+or newer), the Rust toolchain from [rustup](https://rustup.rs), and
+`cmake`, which a build script of wasmtime runs. Then, from the
+repository root:
 
 ```
+eval $(opam env)
 opam install . --deps-only --with-test --with-dev-setup --locked
 dune build
 dune test
 ```
+
+`CONTRIBUTING.md` has the full list of checks to run before a commit.
 
 ## Skills for Claude Code
 
