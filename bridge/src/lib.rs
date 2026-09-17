@@ -12,6 +12,14 @@
 
 #![warn(unsafe_op_in_unsafe_fn)]
 
+// Every C function of the bridge catches a panic with `guard` and
+// turns it into a failure the caller can read. That works only while
+// the crate unwinds panics. A build that aborts on panic would make
+// every guard dead and end the process with no message, so the crate
+// refuses to build that way.
+#[cfg(panic = "abort")]
+compile_error!("the bridge needs unwinding panics; do not build it with panic = \"abort\"");
+
 use std::cell::RefCell;
 use std::ffi::{c_char, CStr, CString};
 
@@ -99,9 +107,25 @@ fn put_u32(buffer: &mut Vec<u8>, value: u32) {
     buffer.extend_from_slice(&value.to_le_bytes());
 }
 
-fn put_bytes(buffer: &mut Vec<u8>, value: &[u8]) {
-    put_u32(buffer, value.len() as u32);
+/// A length that does not fit the 32-bit prefix of a string in the
+/// result buffer.
+#[derive(Debug, PartialEq, Eq)]
+struct TooLong;
+
+/// The 32-bit length prefix for a string of `len` bytes.
+///
+/// The buffer format holds every length in 32 bits. A length that
+/// does not fit is an error, not a truncation: a truncated prefix
+/// would leave the reader in the middle of a string with no way to
+/// tell.
+fn length_prefix(len: usize) -> Result<u32, TooLong> {
+    u32::try_from(len).map_err(|_| TooLong)
+}
+
+fn put_bytes(buffer: &mut Vec<u8>, value: &[u8]) -> Result<(), TooLong> {
+    put_u32(buffer, length_prefix(value.len())?);
     buffer.extend_from_slice(value);
+    Ok(())
 }
 
 /// Write the 16-byte header. `set_count` fills the count in later.
@@ -342,6 +366,9 @@ pub unsafe extern "C" fn sinter_bridge_language_load(
 /// `source` must point to `source_len` readable bytes and `query` to
 /// `query_len` readable bytes; either may be null when its length is
 /// 0.
+///
+/// A source of 2^32 bytes or more fails with a message before any byte
+/// of it is read: the buffer format holds every offset in 32 bits.
 #[no_mangle]
 pub unsafe extern "C" fn sinter_bridge_run(
     engine: *mut SinterBridgeEngine,
@@ -358,6 +385,10 @@ pub unsafe extern "C" fn sinter_bridge_run(
         }
         if query.is_null() && query_len != 0 {
             set_error("the query is null, and its length is not 0");
+            return std::ptr::null_mut();
+        }
+        if length_prefix(source_len).is_err() {
+            set_error("the source text is 4 GiB or more, and the result buffer holds no offset that large");
             return std::ptr::null_mut();
         }
         // Safety: the caller gives an engine and a language from this
@@ -386,7 +417,13 @@ pub unsafe extern "C" fn sinter_bridge_run(
             put_header(&mut buffer, KIND_TREE);
             let mut sexp = String::new();
             write_sexp(tree.root_node(), &mut sexp);
-            put_bytes(&mut buffer, sexp.as_bytes());
+            // The tree's text is several times the size of the source,
+            // so a source under the limit can still give a tree over
+            // it.
+            if put_bytes(&mut buffer, sexp.as_bytes()).is_err() {
+                set_error("the parse tree is 4 GiB or more, and the result buffer holds no string that large");
+                return std::ptr::null_mut();
+            }
             set_count(&mut buffer, 1);
             return into_result(buffer);
         }
@@ -447,12 +484,20 @@ pub unsafe extern "C" fn sinter_bridge_run(
                 put_u32(&mut buffer, end.row as u32);
                 put_u32(&mut buffer, end.column as u32);
                 let name = names.get(capture.index as usize).copied().unwrap_or("");
-                put_bytes(&mut buffer, name.as_bytes());
-                put_bytes(&mut buffer, node.kind().as_bytes());
                 let text = source
                     .get(node.start_byte()..node.end_byte())
                     .unwrap_or(&[]);
-                put_bytes(&mut buffer, text);
+                // Each string is a piece of the source or a name from
+                // the grammar, and the source is under the limit, so
+                // these cannot fail; the check stays so that the
+                // format is never written with a truncated prefix.
+                if put_bytes(&mut buffer, name.as_bytes()).is_err()
+                    || put_bytes(&mut buffer, node.kind().as_bytes()).is_err()
+                    || put_bytes(&mut buffer, text).is_err()
+                {
+                    set_error("a string of a capture is 4 GiB or more, and the result buffer holds no string that large");
+                    return std::ptr::null_mut();
+                }
                 count += 1;
             }
         }
@@ -655,6 +700,58 @@ mod tests {
                 .map(|c| c.text)
                 .collect(),
         )
+    }
+
+    #[test]
+    fn a_length_prefix_holds_32_bits_and_refuses_more() {
+        assert_eq!(length_prefix(0), Ok(0));
+        assert_eq!(length_prefix(u32::MAX as usize), Ok(u32::MAX));
+        let mut buffer = Vec::new();
+        assert_eq!(put_bytes(&mut buffer, b"abc"), Ok(()));
+        assert_eq!(buffer, vec![3, 0, 0, 0, b'a', b'b', b'c']);
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn a_length_over_32_bits_is_refused_and_not_truncated() {
+        assert_eq!(length_prefix(u32::MAX as usize + 1), Err(TooLong));
+        assert_eq!(length_prefix(usize::MAX), Err(TooLong));
+    }
+
+    /// The check on the source length runs before any byte of the
+    /// source is read, so the pointer below is never dereferenced.
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn a_source_of_four_gib_or_more_fails_with_a_message() {
+        let wasm = fixture_wasm();
+        let engine = sinter_bridge_engine_new();
+        let name = CString::new("json").unwrap();
+        let language = unsafe {
+            sinter_bridge_language_load(engine, name.as_ptr(), wasm.as_ptr(), wasm.len())
+        };
+        assert!(!language.is_null());
+        let one_byte = [b'1'];
+        set_error("");
+        let result = unsafe {
+            sinter_bridge_run(
+                engine,
+                language,
+                one_byte.as_ptr(),
+                u32::MAX as usize + 1,
+                std::ptr::null(),
+                0,
+            )
+        };
+        assert!(result.is_null());
+        let message = unsafe { CStr::from_ptr(sinter_bridge_last_error()) }
+            .to_str()
+            .unwrap()
+            .to_owned();
+        assert!(
+            message.contains("4 GiB or more"),
+            "the message does not state the limit: {message}"
+        );
+        unsafe { sinter_bridge_engine_free(engine) };
     }
 
     #[test]

@@ -69,6 +69,10 @@ sinter_bridge_language *sinter_bridge_language_load(
    query, and the output holds the parse tree as an S-expression
    instead of the captures.
 
+   The encoding holds every offset and every length in 32 bits. A
+   source of 2^32 bytes or more fails with a message before the bridge
+   reads it, and so does a parse tree whose text is that long.
+
    The result holds the captures, or the parse tree, in the encoding
    that README.md beside this crate defines. It is valid until
    sinter_bridge_result_free frees it. */
