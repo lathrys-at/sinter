@@ -70,14 +70,17 @@ val captures :
     the query produced them. Every string of every record is valid UTF-8.
 
     @raise Error
-      if the file does not read, the parse fails, or a string of a record would
-      not be valid UTF-8. *)
+      if [path] is not UTF-8 text, if the file does not read or is not UTF-8
+      text, if the parse fails, or if a string of a record would not be valid
+      UTF-8. *)
 
 val tree : Sinter_bridge.language -> path:string -> string
 (** [tree language ~path] reads the file at [path], parses it, and gives the
     parse tree as an S-expression. The result is valid UTF-8.
 
-    @raise Error if the file does not read, or the parse fails. *)
+    @raise Error
+      if [path] is not UTF-8 text, if the file does not read or is not UTF-8
+      text, or if the parse fails. *)
 
 (** One result of one file. *)
 type item =
