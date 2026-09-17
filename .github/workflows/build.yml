@@ -138,6 +138,17 @@ jobs:
           --all-targets -- -D warnings
       - name: Run the crate's tests
         run: cargo test --release --manifest-path bridge/Cargo.toml
+      # src/lib.rs refuses to compile when panics abort, because every
+      # guard in the crate would be dead. This step checks the refusal
+      # itself: the build must fail, and it must fail for that reason.
+      - name: Check that the crate refuses panic = "abort"
+        run: |
+          set -u
+          if RUSTFLAGS="-C panic=abort" cargo check --release --manifest-path bridge/Cargo.toml --target-dir bridge/target/abort-check 2>bridge/target/abort.log; then
+            echo "the crate built with panic = \"abort\", and it must not"
+            exit 1
+          fi
+          grep -q 'the bridge needs unwinding panics' bridge/target/abort.log || { cat bridge/target/abort.log; exit 1; }
       # The list of libraries that a static link of the crate needs
       # differs between macOS and Linux. This step reports the Linux
       # list in the log of the job.

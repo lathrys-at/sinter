@@ -12,6 +12,14 @@
 
 #![warn(unsafe_op_in_unsafe_fn)]
 
+// Every C function of the bridge catches a panic with `guard` and
+// turns it into a failure the caller can read. That works only while
+// the crate unwinds panics. A build that aborts on panic would make
+// every guard dead and end the process with no message, so the crate
+// refuses to build that way.
+#[cfg(panic = "abort")]
+compile_error!("the bridge needs unwinding panics; do not build it with panic = \"abort\"");
+
 use std::cell::RefCell;
 use std::ffi::{c_char, CStr, CString};
 
