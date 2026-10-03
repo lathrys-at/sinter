@@ -107,7 +107,8 @@ val fold :
     calls [f] on each item, in the order the items come. When [query] is the
     path of a query file, an item is one capture of that query. When [query] is
     [None], an item is the parse tree of one file. [f] sees no item of a file
-    that fails.
+    that fails. [fold] checks every name in [paths] before it reads a file, so a
+    name that is not UTF-8 text fails before [f] sees any item.
 
     Every string of every record of an item is valid UTF-8, and so is the
     S-expression of a tree item.

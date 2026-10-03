@@ -947,6 +947,28 @@ let folds_the_captures_of_the_query () =
       | Parse.Tree _ -> Alcotest.fail "a fold with a query gave a tree")
     items
 
+(* The good file comes first, so a fold that read it before it checked
+   the second name would hand [f] items of it. *)
+let fold_checks_every_file_name_first () =
+  let outcome query =
+    with_language (fun language ->
+        let items = ref 0 in
+        let message =
+          try
+            Parse.fold language ~query ~paths:[ sample; "\xffnope.json" ]
+              ~f:(fun _ -> incr items);
+            "no failure"
+          with Parse.Error message -> message
+        in
+        (!items, message))
+  in
+  let failure = (0, "the file name is not UTF-8 text: \\255nope.json") in
+  let outcome_t = Alcotest.(pair int string) in
+  Alcotest.check outcome_t "no tree of the good file, then the name fails"
+    failure (outcome None);
+  Alcotest.check outcome_t "no capture of the good file, then the name fails"
+    failure (outcome (Some query))
+
 (* The lines of an output, without the empty piece that follows the
    last line feed. *)
 let output_lines text =
@@ -1198,6 +1220,8 @@ let tests =
       folds_one_tree_over_each_file;
     Alcotest.test_case "folds the captures of the query" `Quick
       folds_the_captures_of_the_query;
+    Alcotest.test_case "fold checks every file name first" `Quick
+      fold_checks_every_file_name_first;
     QCheck_alcotest.to_alcotest ~speed_level:`Quick
       the_op_answers_with_the_lines_of_the_command;
   ]
