@@ -14,13 +14,15 @@ directory specifies the formats that other tools can implement.
 ## Build
 
 We write Sinter in OCaml, and its parser bridge in Rust. To build
-it, install [opam](https://opam.ocaml.org/) and an OCaml switch (5.1
-or newer), the Rust toolchain from [rustup](https://rustup.rs), and
-`cmake`, which a build script of wasmtime runs. Then, from the
-repository root:
+it, install [opam](https://opam.ocaml.org/), the Rust toolchain from
+[rustup](https://rustup.rs), and `cmake`, which a build script of
+wasmtime runs. Create an opam switch with the compiler that
+`sinter.opam.locked` pins, 5.5.0; the install below fails on any other
+compiler. Then, from the repository root:
 
 ```
-eval $(opam env)
+opam switch create 5.5.0
+eval $(opam env --switch=5.5.0)
 opam install . --deps-only --with-test --with-dev-setup --locked
 dune build
 dune test

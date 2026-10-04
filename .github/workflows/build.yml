@@ -337,11 +337,6 @@ jobs:
       # test checks, and the answer is the test that kills it, or a
       # mark in the source with a reason that a reader can check;
       # CONTRIBUTING.md says how to write each.
-      #
-      # The measurement when this was written: 380 mutants under the
-      # three seeds, 378 killed, 2 past the time limit, which counts
-      # as caught, and none survived. The score is 100.0 per cent,
-      # and two passes of one build agreed mutant by mutant.
       MUTATION_MINIMUM: "95"
     steps:
       # The whole history, because a pull request run asks git which
