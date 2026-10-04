@@ -265,7 +265,7 @@ jobs:
       BISECT_PPX_COMMIT: "7061d643ff492b0045796357ee6917ded21fb1f0"
       # The job fails when the total is below this number. Raise it
       # when the number grows. Do not lower it.
-      COVERAGE_MINIMUM: "92"
+      COVERAGE_MINIMUM: "94"
     steps:
       - uses: actions/checkout@v6
       - name: Name the runner image
@@ -337,7 +337,12 @@ jobs:
           echo "$prefix/bin" >>"$GITHUB_PATH"
           echo "OPAM_SWITCH_PREFIX=$prefix" >>"$GITHUB_ENV"
           echo "CAML_LD_LIBRARY_PATH=$prefix/lib/stublibs:$prefix/lib/ocaml/stublibs" >>"$GITHUB_ENV"
+      # The seed of the property tests is fixed, so that the total
+      # changes only when the tree changes. The build jobs draw a new
+      # seed on each run.
       - name: Run the tests with the code instrumented
+        env:
+          QCHECK_SEED: "1"
         run: >
           dune build @runtest --force
           --instrument-with bisect_ppx
