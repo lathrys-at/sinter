@@ -344,15 +344,65 @@ let a_closed_standard_output_names_the_failure () =
              ~bound:10.);
         contents errors)
   in
-  (* The words after the colon are the words of the system for a
-     channel that cannot be written, so the test does not state
-     them. *)
+  Alcotest.(check (list string))
+    "standard error holds one line that names the failure"
+    [ "sinter: cannot write the output: standard output is closed" ]
+    (lines text)
+
+(* The outcome of [command], and what it wrote to standard error. *)
+let outcome_and_errors command ~input =
+  let errors = Filename.temp_file "sinter-run" ".err" in
+  Fun.protect
+    ~finally:(fun () -> Sys.remove errors)
+    (fun () ->
+      let outcome = outcome_within ~errors command ~input ~bound:10. in
+      (outcome, contents errors))
+
+let a_closed_standard_output_ends_a_run_that_writes_nothing () =
+  Alcotest.(check string)
+    "the run ends with the environment code" "exited 3"
+    (outcome_within
+       (Printf.sprintf "exec %s serve >&-" (Filename.quote sinter))
+       ~input:"" ~bound:10.)
+
+let a_closed_standard_output_ends_any_command () =
+  Alcotest.(check string)
+    "the run ends with the environment code" "exited 3"
+    (outcome_within
+       (Printf.sprintf "exec %s --help=plain >&-" (Filename.quote sinter))
+       ~input:"" ~bound:10.)
+
+let a_closed_standard_input_reads_as_no_request () =
+  Alcotest.(check (pair string string))
+    "the run ends clean and writes no error" ("exited 0", "")
+    (outcome_and_errors
+       (Printf.sprintf "exec %s serve <&-" (Filename.quote sinter))
+       ~input:"")
+
+(* A directory as standard input opens, and the first read of it
+   fails. *)
+let a_failed_read_names_the_input () =
+  let outcome, text =
+    outcome_and_errors
+      (Printf.sprintf "exec %s serve < /" (Filename.quote sinter))
+      ~input:""
+  in
+  Alcotest.(check string)
+    "the run ends with the environment code" "exited 3" outcome;
   Alcotest.(check bool)
-    "standard error names the tool and the failure" true
-    (String.starts_with ~prefix:"sinter: cannot write the output: " text);
-  Alcotest.(check int)
-    "standard error holds one line" 1
-    (List.length (lines text))
+    "standard error names the read" true
+    (String.starts_with ~prefix:"sinter: cannot read the input: " text)
+
+(* With standard error closed and not reserved, the message of the
+   failure has nowhere to go, and the runtime ends the process with
+   its own code at exit. *)
+let a_closed_standard_error_keeps_the_exit_code () =
+  Alcotest.(check string)
+    "the run ends with the environment code" "exited 3"
+    (outcome_within
+       (Printf.sprintf "exec %s parse --grammar missing.wasm --query %s %s 2>&-"
+          (Filename.quote sinter) query sample)
+       ~input:"" ~bound:10.)
 
 let the_help_of_serve_names_only_the_codes_it_returns () =
   let status, text = run "serve --help=plain" in
@@ -480,6 +530,16 @@ let tests =
       a_closed_standard_output_ends_the_run;
     Alcotest.test_case "a closed standard output names the failure" `Quick
       a_closed_standard_output_names_the_failure;
+    Alcotest.test_case "a closed standard output ends a run that writes nothing"
+      `Quick a_closed_standard_output_ends_a_run_that_writes_nothing;
+    Alcotest.test_case "a closed standard output ends any command" `Quick
+      a_closed_standard_output_ends_any_command;
+    Alcotest.test_case "a closed standard input reads as no request" `Quick
+      a_closed_standard_input_reads_as_no_request;
+    Alcotest.test_case "a failed read names the input" `Quick
+      a_failed_read_names_the_input;
+    Alcotest.test_case "a closed standard error keeps the exit code" `Quick
+      a_closed_standard_error_keeps_the_exit_code;
     Alcotest.test_case "the help of serve names only the codes it returns"
       `Quick the_help_of_serve_names_only_the_codes_it_returns;
     Alcotest.test_case "the help of serve names the request tag" `Quick
