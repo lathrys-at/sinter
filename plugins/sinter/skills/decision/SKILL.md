@@ -121,6 +121,12 @@ forward lends the decision a weight it did not earn; do not add one.
 Print the record. Tell the user the slug. List the records and the
 refs that the record cites.
 
+When you quote the record, or any of its tag lines, on GitHub (in an
+issue, a pull request, or a comment), put the text in a fenced code
+block. GitHub reads `@word` outside code as a mention of the account
+`word`, and most tag words, such as `decision` and `cites`, are GitHub
+accounts, so a bare tag line notifies strangers.
+
 ## Writing rules
 
 All text in the record follows these rules:

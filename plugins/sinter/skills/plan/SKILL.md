@@ -155,6 +155,12 @@ promise: `<step slug>: <word> <target>`. Tell the user that the
 branch agrees to deliver these promises. Tell the user that a later
 change to a promise needs the user's approval.
 
+When you quote the plan, or any of its tag lines, on GitHub (in an
+issue, a pull request, or a comment), put the text in a fenced code
+block. GitHub reads `@word` outside code as a mention of the account
+`word`, and most tag words, such as `req`, `plan`, and `cites`, are
+GitHub accounts, so a bare tag line notifies strangers.
+
 ## Writing rules
 
 All text in the plan file follows these rules:
