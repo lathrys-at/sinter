@@ -191,7 +191,7 @@ let end_of_capture source (capture : Sinter_bridge.capture) =
   else (capture.end_row + 1, capture.end_column + 1)
 
 (* @cites json-handling *)
-(* @cites exit-codes *)
+(* @cites exit-codes-by-gate *)
 (* The text of a capture is not normalized to Unicode NFC.
 
    This function fails in two ways, and the two are of different
