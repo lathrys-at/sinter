@@ -319,6 +319,78 @@ let a_request_without_a_last_line_feed_is_answered () =
     "two lines answer the request" 2
     (List.length (lines output))
 
+(* The first line that a serve run writes while its standard input
+   stays open, after it reads [request]; [None] when no whole line
+   arrives within [bound] seconds. The run is killed at the end. *)
+let first_line_while_open request ~bound =
+  let request_in, request_out = Unix.pipe ~cloexec:true () in
+  let answer_in, answer_out = Unix.pipe ~cloexec:true () in
+  let to_nowhere =
+    Unix.openfile "/dev/null" [ Unix.O_WRONLY; Unix.O_CLOEXEC ] 0
+  in
+  let pid =
+    Fun.protect
+      ~finally:(fun () ->
+        Unix.close request_in;
+        Unix.close answer_out;
+        Unix.close to_nowhere)
+      (fun () ->
+        try
+          Unix.create_process sinter [| sinter; "serve" |] request_in answer_out
+            to_nowhere
+        with error ->
+          Unix.close request_out;
+          Unix.close answer_in;
+          raise error)
+  in
+  Fun.protect
+    ~finally:(fun () ->
+      Unix.kill pid Sys.sigkill;
+      ignore (Unix.waitpid [] pid);
+      Unix.close request_out;
+      Unix.close answer_in)
+    (fun () ->
+      (* A run that ended before the write turns the write into an
+         error, and not into a signal that ends the suite. *)
+      let previous = Sys.signal Sys.sigpipe Sys.Signal_ignore in
+      Fun.protect
+        ~finally:(fun () -> Sys.set_signal Sys.sigpipe previous)
+        (fun () ->
+          let text = request ^ "\n" in
+          ignore (Unix.write_substring request_out text 0 (String.length text)));
+      let deadline = Unix.gettimeofday () +. bound in
+      let buffer = Buffer.create 256 in
+      let chunk = Bytes.create 4096 in
+      let rec read () =
+        match String.index_opt (Buffer.contents buffer) '\n' with
+        | Some stop -> Some (Buffer.sub buffer 0 stop)
+        | None -> (
+            let left = deadline -. Unix.gettimeofday () in
+            if left <= 0. then None
+            else
+              match Unix.select [ answer_in ] [] [] left with
+              | [], _, _ -> None
+              | _ -> (
+                  match Unix.read answer_in chunk 0 (Bytes.length chunk) with
+                  | 0 -> None
+                  | count ->
+                      Buffer.add_subbytes buffer chunk 0 count;
+                      read ()))
+      in
+      read ())
+
+(* A client may wait for the answer to one request before it sends the
+   next, so the answer must reach standard output before the run reads
+   on. *)
+let an_answer_arrives_before_the_input_ends () =
+  match first_line_while_open "not a request" ~bound:5. with
+  | None -> Alcotest.fail "no answer arrived while the input stayed open"
+  | Some line ->
+      Alcotest.(check bool)
+        "the answer is the error line of the request" true
+        (String.starts_with ~prefix:{|{"code":2,"event":"error","message":"|}
+           line)
+
 let a_closed_standard_output_ends_the_run () =
   Alcotest.(check string)
     "the run ends with the environment code" "exited 3"
@@ -526,6 +598,8 @@ let tests =
       end_of_file_ends_the_run;
     Alcotest.test_case "a request without a last line feed is answered" `Quick
       a_request_without_a_last_line_feed_is_answered;
+    Alcotest.test_case "an answer arrives before the input ends" `Quick
+      an_answer_arrives_before_the_input_ends;
     Alcotest.test_case "a closed standard output ends the run" `Quick
       a_closed_standard_output_ends_the_run;
     Alcotest.test_case "a closed standard output names the failure" `Quick
