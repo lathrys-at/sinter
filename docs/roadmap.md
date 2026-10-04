@@ -3,12 +3,6 @@
 
 # Roadmap
 
-- **Bootstrap plan** — `.plans/bootstrap.md`.
-  - Decision records for the decisions made so far.
-  - The Claude Code skill pack.
-  - The Rust bridge that loads wasm grammars.
-  - `sinter parse`.
-  - `sinter serve` over stdin and stdout.
 - **Manifest reader** — `sinter.toml`, design notes section 14.
   - The `[locations]` table: one default location per declaration
     kind (issue #2). `spec/vocabulary.md` section 10.5 defines the
@@ -60,7 +54,7 @@
 - **`spec/protocol.md`** — the `serve` request and response protocol,
   as a fifth specification.
 - **`sinter-packs` repository** — the language packs, built and
-  verified as the licensing brief describes.
+  verified as `docs/licensing-setup.md` describes.
 - **Test evidence for Sinter itself** — JUnit output from the test
   suite, for `evidence import`.
 - **Drop the pins on the measuring tools** when upstream `bisect_ppx`

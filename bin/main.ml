@@ -168,6 +168,8 @@ let serve_cmd =
   in
   let rec answer state =
     match In_channel.input_line stdin with
+    | exception Sys_error message ->
+        report (Printf.sprintf "cannot read the input: %s" message)
     | None -> clean
     | Some line ->
         let response = Sinter_core.Serve.respond state line in
@@ -201,6 +203,29 @@ let cmd =
     ~default:Term.(ret (const (`Help (`Pager, None))))
     [ parse_cmd; serve_cmd ]
 
+(* A descriptor that is closed when the process starts goes to the next
+   file that any thread opens, and the wasm engine's cache thread opens
+   files. So each closed standard descriptor is opened on /dev/null
+   before any other work. They are opened in the order 0, 1, 2, so each
+   open gives the lowest free number, which is the one it reserves. *)
+let reserve fd flags =
+  match Unix.fstat fd with
+  | _ -> false
+  | exception Unix.Unix_error (Unix.EBADF, _, _) ->
+      ignore
+        (Unix.openfile "/dev/null" flags
+           (0
+           [@mutaml.skip
+             "openfile reads the mode only when it creates the file; the flags \
+              hold no O_CREAT, and /dev/null exists"]));
+      true
+
 let () =
+  ignore (reserve Unix.stdin [ Unix.O_RDONLY ]);
+  let output_closed = reserve Unix.stdout [ Unix.O_WRONLY ] in
+  ignore (reserve Unix.stderr [ Unix.O_WRONLY ]);
+  if output_closed then (
+    prerr_endline "sinter: cannot write the output: standard output is closed";
+    exit environment_error);
   let code = Cmd.eval' ~term_err:usage_error cmd in
   exit (if code = Cmd.Exit.cli_error then usage_error else code)
