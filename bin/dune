@@ -5,7 +5,7 @@
  (name main)
  (public_name sinter)
  (modes exe)
- (libraries sinter_core cmdliner dune-build-info)
+ (libraries sinter_core cmdliner dune-build-info unix)
  (instrumentation
   (backend bisect_ppx))
  (instrumentation
