@@ -63,4 +63,7 @@ version. The plugin's version is independent of the tool's version.
 
 The next planned release is the `base` value in
 [lib/version.ml](../lib/version.ml). The commit hash comes from
-`git describe`. A dune rule runs that command at build time.
+`git describe`. A dune rule runs that command at build time. The
+command reads only the tags of the tool, the tags that begin with `v`
+and a digit, so a tag of the specifications never appears as the
+tool's version.
