@@ -18,12 +18,12 @@ val render : package:string option -> describe:string -> string
     [Some ""] gives [""], because there is no first letter to read.
 
     [describe] is the description of the checkout, as
-    [git describe --always --dirty] gives it. It is read only when [package] is
-    [None]. A description that holds a full stop is the name of a tag and is
-    given back as it stands. The description ["unknown"] says that the build
-    read no checkout, and the answer is then ["v"], {!base}, and ["-dev"]. Every
-    other description is a bare hash, and the answer is ["v"], {!base},
-    ["-dev+"], and that hash.
+    [git describe --always --dirty --match 'v[0-9]*'] gives it, so that only a
+    tag of the tool names a build. It is read only when [package] is [None]. A
+    description that holds a full stop is the name of a tag and is given back as
+    it stands. The description ["unknown"] says that the build read no checkout,
+    and the answer is then ["v"], {!base}, and ["-dev"]. Every other description
+    is a bare hash, and the answer is ["v"], {!base}, ["-dev+"], and that hash.
 
     The function raises nothing, and it returns the empty string for [Some ""]
     alone. *)
