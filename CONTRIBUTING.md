@@ -123,14 +123,16 @@ projects depend on. The rules:
 
 ## Build and check
 
-Install [opam](https://opam.ocaml.org/) and an OCaml switch (5.1 or
-newer). The parser bridge in `bridge/` is a Rust crate, so also
+Install [opam](https://opam.ocaml.org/), and create a switch with the
+compiler that `sinter.opam.locked` pins, 5.5.0, for example with
+`opam switch create 5.5.0`. The install below fails on any other
+compiler. The parser bridge in `bridge/` is a Rust crate, so also
 install the Rust toolchain with [rustup](https://rustup.rs) and
 install `cmake`, which a build script of wasmtime runs. Then, from the
 repository root:
 
 ```
-eval $(opam env)
+eval $(opam env --switch=5.5.0)
 opam install . --deps-only --with-test --with-dev-setup --locked
 dune build
 dune test
@@ -147,7 +149,8 @@ Before you commit, check that all of these pass:
 
 - `dune build`, `dune test`, and `dune build @fmt`. `dune fmt`
   rewrites files in place; commit the files it changes.
-- `reuse lint` (run it with `pipx run reuse lint`).
+- `reuse lint`. Install the tool once, for example with
+  `pipx install reuse`.
 - In `bridge/`: `cargo fmt --check` and
   `cargo clippy --all-targets -- -D warnings`.
 
@@ -231,31 +234,19 @@ change does not lower the coverage.
 ### Mutation testing
 
 Coverage counts the lines that the tests run. It cannot see whether a
-test checks what it runs, so a coverage number rises with tests that
-check nothing. Mutation testing measures that. A tool makes one small
-change to the source, such as `<=` where the code says `<`, and runs
-the suite with that change switched on. The changed program is a
-mutant. A mutant that makes a test fail is killed. A mutant that the
-whole suite passes on has survived, and it names a behaviour that no
-test checks. The mutation score is the share of the mutants that were
-killed. A mutant that makes the suite run past its time limit counts
-as killed, because a run that never ends is a fault the suite found.
+test checks what it runs. Mutation testing measures that. A tool makes
+one small change to the source, such as `<=` where the code says `<`,
+and runs the suite with that change switched on. The changed program
+is a **mutant**. A mutant that makes a test fail is **killed**. A
+mutant that the whole suite passes on **survives**, and it names a
+behaviour that no test checks. A mutant that makes the suite run past
+its time limit counts as killed. The **mutation score** is the share
+of the mutants that were killed.
 
-Sinter measures `lib/` and `bin/` with the project's fork of `mutaml`.
-The released tool does not build on the compiler in
-`sinter.opam.locked`, loses its working files under the current
-`dune`, and makes no mutant of a comparison operator;
+Sinter measures `lib/` and `bin/` with the project's fork of `mutaml`;
 `docs/decisions/mutation-testing.md` gives the reasons for the fork.
-
-`mutaml` needs no command of the system for the run this project
-makes. It needs no `diff` command: `mutaml-report` writes the diff of
-a mutant itself. It needs no `timeout` command: the runner starts each
-test run itself and stops a run that goes on too long. The one option
-that needs a command of the system is `--changed-since`, which asks
-`git` which lines a branch touched; the `mutation` job gives it on a
-pull request, and the pass on a branch below gives it too.
-
-Pin the fork into the project's switch once:
+The fork needs no other command, except `git` for the option
+`--changed-since`. Pin it into the project's switch once:
 
 ```
 opam pin add -y -n mutaml \
@@ -263,16 +254,14 @@ opam pin add -y -n mutaml \
 opam install mutaml
 ```
 
-The pin names a commit and never a branch, so that every run installs
-the same code, as the pin of `bisect_ppx` above does. It does not
-enter `dune-project` or the lock file, because the tool is not a
-dependency of the package. The `mutation` job pins the same commit.
-Moving a pin is a pull request of its own that names the new commit.
-The install adds `mutaml` and the packages it needs, among them
-`ppxlib` 0.36 or newer, which the `bisect_ppx` pin above also asks
-for. It changes no version that the lock file pins.
+The pin names a commit and never a branch, as the pin of `bisect_ppx`
+does, and the `mutation` job pins the same commit. The pin is not in
+`dune-project` or in the lock file, because the tool is not a
+dependency of the package. The install changes no version that the
+lock file pins. A move of the pin is a pull request of its own that
+names the new commit.
 
-Then, from the repository root:
+**A full pass.** From the repository root:
 
 ```
 MUTAML_MUT_RATE=100 MUTAML_SEED=42 \
@@ -288,122 +277,112 @@ mutaml-report --fail-under 95 \
   --json-report _mutations/report.json
 ```
 
-That is the full pass, the one the `mutation` job makes on `main`.
-On a branch, put `--changed-since origin/main` in front of the script
-name in the `mutaml-runner` line, after `git fetch origin`. The runner
-then tests only the mutants that sit on a line the branch changed,
-and records every other mutant as not run and outside the score. The
-score is then a share of what the branch touched, and a survivor in
-it is one the branch made or uncovered. When no mutant sits on a
-changed line, `mutaml-report` says the run has no score and exits 0.
-The `mutation` job makes this pass on a pull request, and it skips
-the job when the pull request changed no file under `lib/` or `bin/`;
-`docs/decisions/mutation-job-scope.md` holds the rule.
+This is the pass that the `mutation` job makes on `main`.
 
-`--instrument-with` is the switch, as it is for coverage. Without it
-the build carries no instrumentation and costs nothing.
-`MUTAML_MUT_RATE=100` puts a mutant at every place that can hold one,
-so that a pass covers the whole set, and `MUTAML_SEED` fixes the draw,
-which decides anything only at a rate below 100. The build writes one
-side file for each instrumented source file, beside the build
-directory in `_build/.mutaml/default`, and the runner reads them.
+**A pass on a branch.** Run `git fetch origin`, and put
+`--changed-since origin/main` in front of the script name in the
+`mutaml-runner` line. The runner then tests only the mutants on the
+lines that the branch changed, and the score is a share of those. When
+no mutant sits on a changed line, `mutaml-report` says that the run has
+no score and exits 0. The `mutation` job makes this pass on a pull
+request, and it skips a pull request that changed no file under `lib/`
+or `bin/` (`docs/decisions/mutation-job-scope.md`).
 
-**Start the runner at the repository root and nowhere else.**
-`--build-context _build/default` names the build directory, and the
-runner looks beside it for the side files and reads the source paths
-in them from the root. Started anywhere else it finds no side file and
-tests nothing; `mutaml-report` then prints `Found no test results` and
-exits 1. Read the number of mutants in the report of every pass. A
-pass over the whole tree makes several hundred, 380 when this was
-written, so a much smaller number means that the pass missed part of
-the tree.
+**What each part does.**
 
-`test/run-mutants.sh` is the test command. The suite reads its
-fixtures from paths relative to its own directory under `_build`, so
-the suite cannot start at the root. The script starts at the root,
-where the runner starts it, and starts the suite where the fixtures
-are.
+- `--instrument-with mutaml` switches the instrumentation on. Without
+  it, a build carries no instrumentation and costs nothing.
+  `MUTAML_MUT_RATE=100` puts a mutant at every place that can hold
+  one. `MUTAML_SEED` fixes the draw, which decides anything only at a
+  rate below 100. The build writes one side file for each instrumented
+  source file in `_build/.mutaml/default`.
+- `test/run-mutants.sh` is the test command. The suite reads its
+  fixtures from paths relative to its own folder under `_build`, so
+  the script starts at the root, where the runner starts it, and runs
+  the suite in that folder.
+- `-j` is the number of mutants that the runner tests at one time: the
+  number of cores less one, and never below 1.
+  `getconf _NPROCESSORS_ONLN` gives the number of cores on macOS and on
+  Linux; the `mutation` job uses `nproc`.
+- `--repeat 3` with `--test-env 'QCHECK_SEED={}'` runs a mutant up to
+  three times. The runner replaces `{}` with the number of the run, so
+  the seeds are 1, 2, and 3. A mutant that any run kills is killed.
+  The property tests draw a new seed on each ordinary run, and one
+  fixed seed can miss a change that another seed catches.
+- `--baseline-env QCHECK_SEED=2` checks the suite itself. The runner
+  runs the suite twice with no mutant, under the seeds 1 and 2, and
+  stops when the two runs disagree, because a suite that answers
+  differently under two seeds gives the score no meaning. Give
+  `--baseline-env` a fixed seed and never `{}`: both runs with no
+  mutant are run number 1, so `{}` would compare a run with itself.
+- The runner sets the time limit of one run: five times the run with
+  no mutant, and never less than 10 seconds. Give `--timeout` only to
+  set the limit yourself, and never near the time that the suite
+  really takes: a run cut short counts as a kill, and the score then
+  reads higher than it is.
+- `mutaml-report` reads `mutaml-report.json`, which the runner writes
+  at the root. It prints the score and, for each survivor, its name
+  and a diff of the change. `--markdown` writes the same report with
+  one row per source file. `--json-report` writes the
+  mutation-testing-elements format that Stryker, Infection, and Mull
+  share. Run the report after a pass of the runner: the runner makes
+  the folder `_mutations/`, and the report does not.
 
-The runner sets the time that one run of the suite may take, and it
-takes that time from the run with no mutant: five times that run, and
-never less than ten seconds. It prints the rule, and not the number
-of seconds the rule gives, after the runs with no mutant, because the
-number follows a measurement and a measurement differs from one
-machine to the next. Give `--timeout` only to set the limit yourself,
-and do not set it near the time the suite really takes: a run cut
-short counts as a kill, and the score then reads higher than it is
-with nothing to show it. Two mutants hang the suite instead of
-failing it, and each of the two costs a pass the whole of the limit.
-The "timed out" column of the report is the check: it counts 2, and a
-larger number on a pass that changed no source means that the machine
-was too busy for a run to finish inside the limit.
+**Rules for a pass.**
 
-`-j` is the number of mutants the runner tests at one time. Set it to
-the number of cores of the machine less one, and never below 1.
-`getconf _NPROCESSORS_ONLN` gives the core count on macOS and on Linux
-both; the `mutation` job works the same number out from `nproc`, which
-Ubuntu has. Hold the one core back. The runner takes the time limit
-from the run with no mutant, and it makes that run before any worker
-starts and therefore on an unloaded machine. On a machine whose every
-core is busy, a later run can pass that limit through waiting alone,
-and a run stopped at the limit counts as a kill, so the score would
-rise for a reason that has nothing to do with the tests. Each worker
-runs a test process of its own, writes only the output file of its own
-mutant, and works under a `TMPDIR` of its own, which the runner
-removes at the end of the pass. The results keep the order of the
-mutants, so the lines the runner prints and the report it writes do
-not depend on which run ends first, and a parallel pass names the same
-survivors as a serial one. Sinter's suite is safe to run this way for
-three reasons: the test command is a script and not `dune`, which
-locks the build directory and which the runner therefore refuses to
-run more than once at a time; every file the suite writes has a name
-from `Filename.temp_file`, which no other worker draws and which lies
-under the worker's own `TMPDIR`; and neither `lib/` nor `bin/` keeps a
-cache on disk, so no two workers can read a half-written one. Keep all
-three true, or lower `-j` to 1. A cache added later must write whole
-files, by writing a temporary file and renaming it, or live under
-`TMPDIR`.
+1. Start the runner at the repository root. Started anywhere else, it
+   finds no side file and tests nothing, and `mutaml-report` then
+   prints `Found no test results` and exits 1. A full pass makes
+   several hundred mutants; a much smaller number means that the pass
+   missed part of the tree.
+2. Run no other `dune` command while a pass runs, and build again with
+   `--instrument-with mutaml` after any ordinary `dune` command. An
+   ordinary build links the executables again without the
+   instrumentation. After an ordinary build of the whole tree, almost
+   every mutant survives. A build beside a pass can leave one
+   executable with the instrumentation and the other without it; every
+   mutant of one source file then reads as a survivor, and that is the
+   sign of this mistake.
+3. A `dune` command during a pass also does a second harm. The suite
+   writes its logs in one folder per run under
+   `_build/default/test/_build/_tests`, and `dune` removes those
+   folders. A run whose folder goes away dies, and the runner counts
+   any run that fails as a kill, so the score then holds kills that no
+   test made. `dune clean`, or the next ordinary build, removes the
+   folders after a pass.
+4. Run `dune clean` first when `MUTAML_MUT_RATE` or `MUTAML_SEED`
+   differs from the last pass. `dune` does not always build again when
+   only an environment variable changed.
+5. Hold one core back. The runner takes the time limit from the run
+   with no mutant, which it makes before any worker starts, on an idle
+   machine. On a machine whose every core is busy, a later run can pass
+   the limit through waiting alone, and the run then counts as a kill.
+   Two mutants of the current tree hang the suite, so the column
+   "timed out" of the report counts 2. A larger number on a pass that
+   changed no source means that the machine was too busy.
+6. Keep the suite safe to run in parallel, or set `-j` to 1. Three
+   facts make it safe: the test command is a script and not `dune`,
+   which locks the build folder; every file that the suite writes has
+   a name from `Filename.temp_file`, under the worker's own `TMPDIR`,
+   which the runner removes at the end of the pass; and neither `lib/`
+   nor `bin/` keeps a cache on disk. A cache added later must write
+   whole files, by writing a temporary file and renaming it, or live
+   under `TMPDIR`.
+7. Keep a value that only a release build can set out of the measured
+   code. A branch of the code that only a release build takes is a
+   branch that no test can reach. Read such a value in `bin/` and pass
+   it to a function of the library, as `bin/main.ml` passes the package
+   version and the output of `git describe` to
+   `Sinter_core.Version.render`, and test that function with each
+   value.
 
-`--repeat 3` gives one mutant three runs, and `--test-env
-QCHECK_SEED={}` gives each of the three a seed of its own: the runner
-replaces the two characters `{}` by the number of the run, counted
-from 1, so the seeds are 1, 2, and 3. A mutant that any one of the
-three runs kills is killed, and only a mutant that all three pass is a
-survivor. Sinter's property tests draw a new seed on each ordinary
-run, which is why a pass fixes one, and one fixed seed can miss a
-change that another seed catches. Without the three runs, such a
-mutant reads as a survivor, and it sends a reader looking for a test
-that the suite already holds. A survivor costs three runs of the
-suite; a killed mutant usually still costs one, because most mutants
-die under the first seed.
-
-`--baseline-env QCHECK_SEED=2` is a check on the suite, not on the
-mutants. The runner runs the suite twice with no mutant and stops
-when the two runs disagree, because a suite that answers differently
-under two seeds gives the score no meaning. The first of the two
-takes its seed from `--test-env`, and the runner counts a run with no
-mutant as run number 1, so `{}` there gives 1; the second takes
-`QCHECK_SEED=2`. The two runs therefore use the seeds 1 and 2, as
-they did before `--repeat`. Give `--baseline-env` a seed of its own
-and never `{}`: both runs with no mutant are run number 1, so `{}`
-would give 1 in each of them and the check would compare a run with
-itself.
-
-`mutaml-report` reads `mutaml-report.json`, which the runner wrote at
-the root, so it needs no path. It prints the score and, for each
-survivor, the name of the mutant and a diff of the change that
-survived. Read a survivor as a question: which test would have failed
-on this change? The answer is the test to write. A few survivors have
-no answer, because no input can tell the change from the original;
-those are equivalent mutants, and the part below says how to mark
-one. `--markdown` writes the same report as a file with a table of
-one row per source file, and `--json-report` writes the
-mutation-testing-elements format that Stryker, Infection, and Mull
-share, which the HTML viewer of that format reads. Both paths above
-are inside `_mutations/`, which git ignores. The runner makes that
-directory in the step above, and `mutaml-report` does not make it, so
-run the report after a pass of the runner and not on its own in a
-clean tree.
+**Read every survivor.** Read the survivors that a report names on
+every run, green or not: a run above the gate can still hold a
+survivor, and nothing else draws a reader to it. Read a survivor as a
+question: which test would have failed on this change? That test is
+the answer. A few survivors have no answer, because no input can tell
+the change from the original. Those are **equivalent mutants**, and
+the next part says how to mark one.
 
 **How to mark a mutant that no test can kill.** Write
 `[@mutaml.skip "reason"]` on the smallest expression that holds the
@@ -434,85 +413,22 @@ as closely as you read the code around it. Never mark a gap. When a
 test could kill the mutant, that test is the answer, and the mark is
 a way of not writing it.
 
-`mutaml-report` exits 0 when the score is at or above `--fail-under`,
-2 when it is below, and 1 when the tool could not do its work. Give it
-the number that the `mutation` job holds in `MUTATION_MINIMUM`, so
-that a pass on your own machine answers as the job does. The job is
-not a required check: it never holds a merge, and a failure stays red
-on the pull request for the author and the reviewer to read. The
-maintainer fixed that number at 95 on 2026-09-16. It does not follow
-the measurement: it does not rise when the score rises and it does not
-fall, and it changes only on another ruling of the maintainer.
+**The gate.** `mutaml-report` exits 0 when the score is at or above
+`--fail-under`, 2 when it is below, and 1 when the tool could not do
+its work. Give it the number that the `mutation` job holds in
+`MUTATION_MINIMUM`, so that a pass on your own machine answers as the
+job does. The job is not a required check: it never holds a merge, and
+a failure stays red on the pull request for the author and the
+reviewer to read. The number is fixed at 95 by a ruling of the
+maintainer (`docs/decisions/mutation-gate.md`). It does not rise when
+the score rises, it does not fall, and it changes only on another
+ruling of the maintainer.
 
 95 is the gate and not the target. **The score to aim for is 100.**
 The job prints the score of every run in its summary and names every
-mutant that survived, so the number a pull request reached is on the
-page whether the gate passed or not. The gap between 95 and 100 is
-there so that one mutant nobody has got to yet does not stop a pull
-request that is sound in every other way; it is not room to leave
-survivors in. Read every survivor the summary names. The answer is
-the test that kills it, or, when no input can tell the change from
-the original, a mark with a reason, as the part above says.
-
-An instrumented build writes over `_build`, as a coverage build does,
-and the next ordinary `dune build` compiles the whole OCaml tree
-again. `dune` does not always build again when only an environment
-variable changed, so run `dune clean` first when the variables of this
-pass differ from those of the last one.
-
-**Build again with `--instrument-with mutaml` after any ordinary
-`dune` command, and never run one while a pass is running.** An
-ordinary build carries no instrumentation and relinks what it builds
-without it. Measured here from a clean tree: after the instrumented
-build, `bin/main.exe` and `test/test_sinter.exe` both carried the
-instrumentation; after a plain `dune build`, neither did.
-
-A pass on a tree in that state measures nothing, and it shows itself
-in two ways. After an ordinary build of the whole tree, nearly every
-mutant survives and the score collapses, which is hard to miss. A
-build that runs beside a pass is the one that hides: the two
-executables can end up in different states, and the pass then reports
-as survivors every mutant of the source that went plain, while the
-rest of the tree reads as usual. That happened here. `bin/main.exe`
-went plain, the test executable kept its instrumentation, and the
-whole of `bin/main.ml` read as surviving with nothing else disturbed.
-So read a whole source file surviving at once as this, and not as a
-gap in the tests.
-
-A pass leaves one directory for each run of the suite under
-`_build/default/test/_build/_tests`, several hundred of them, because
-`alcotest` writes its logs there and nothing removes them while the
-pass runs. `dune` did not put them there, so the next ordinary
-`dune build` removes them. `dune clean` removes them at once.
-
-**This is the second reason not to run `dune` beside a pass, and it
-costs you kills you did not earn.** A `dune` that runs while a pass
-runs removes those directories from under the suite runs that are
-still using them. Such a run dies, the runner sees a non-zero exit,
-and it counts any non-zero exit as a kill. The pass then reports
-mutants as caught that no test caught. This was measured on this
-branch: an ordinary `dune build` started beside a pass left ten runs
-of `lib/bridge/sinter_bridge.ml` at exit status 125, in one unbroken
-block, which read an ordinary test failure in every later pass.
-
-The score does not answer to the state of this checkout, and that is
-worth keeping. `Sinter_core.Version.render` works out the version to
-print from two values that its caller reads for it: the version of
-the package, which only a build of a release carries, and the output
-of `git describe`. It reads neither itself, so its tests hand it a
-bare hash, the name of a tag, and the word `unknown`, and every road
-of it is tested whatever this repository carries. The first release
-tag will therefore change what the tool prints and not what a pass
-reports.
-
-While that logic stood in `bin/main.ml` it was the other way about.
-Seven of its mutants sat on a road that only an installed build
-reaches, so no test could state a fact about them; three more
-answered to whether the repository carried a tag, and a pass on the
-day of the first tag would have lost those three kills for a reason
-that is not in the tests at all. That is the shape to watch for: a
-road that only the build can choose is a road that no test can
-reach, and the score then measures the build and not the suite.
+mutant that survived. The gap between 95 and 100 is there so that one
+mutant that nobody has got to yet does not stop a pull request that is
+sound in every other way; it is not room to leave survivors in.
 
 ## New files
 
