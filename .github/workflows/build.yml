@@ -19,30 +19,46 @@ env:
 
 jobs:
   build:
-    name: Build and test
+    # The names in brackets are the names of two required checks in the
+    # repository's ruleset, so they stay as they are; `image` names the
+    # runner image that each one runs on.
+    name: Build and test (${{ matrix.os }})
     if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          - os: ubuntu-latest
+            image: ubuntu-24.04
+          - os: macos-latest
+            image: macos-26
+    runs-on: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@v6
+      # The runner sets ImageOS to the system of its image, for example
+      # ubuntu24. Every cache key below names it, so that a new image
+      # never restores what an older one built.
+      - name: Name the runner image
+        id: image
+        run: |
+          test -n "$ImageOS"
+          echo "os=$ImageOS" >>"$GITHUB_OUTPUT"
       # The opam switch, with the project's dependencies installed, is
-      # cached under a key that names the platform, the compiler, and
-      # the lock file. A lock change falls back to the previous switch
-      # and installs only the difference. setup-ocaml's own cache is
-      # off, because it would restore a switch without dependencies.
-      # Only the switch is cached, not the opam root: a restored root
-      # holds a git clone of opam-repository that opam init cannot
-      # always update.
+      # cached under a key that names the image, the compiler, and the
+      # lock file. A lock change falls back to the previous switch and
+      # installs only the difference. setup-ocaml's own cache is off,
+      # because it would restore a switch without dependencies. Only
+      # the switch is cached, not the opam root: a restored root holds a
+      # git clone of opam-repository that opam init cannot always
+      # update.
       - name: Restore the opam switch
+        id: opam
         uses: actions/cache@v6
         with:
           path: _opam
-          key: opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
+          key: opam-v3-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
-            opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+            opam-v3-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -59,19 +75,32 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cache/sinter-bridge-build
-          key: cargo-build-${{ matrix.os }}-${{ hashFiles('bridge/Cargo.lock') }}
-          restore-keys: cargo-build-${{ matrix.os }}-
+          key: cargo-build-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('bridge/Cargo.lock') }}
+          restore-keys: cargo-build-${{ steps.image.outputs.os }}-${{ runner.arch }}-
+      # The three steps up to "Put the switch on the path" set up opam
+      # and install into the switch. When the cache held the switch
+      # under its exact key, the switch is complete, and they are
+      # skipped.
       # opam clones opam-repository and walks the clone at once. Git's
       # background maintenance can remove its lock file in that window,
       # and opam then fails on the vanished file. Turn it off.
       - name: Turn off git background maintenance
+        if: steps.opam.outputs.cache-hit != 'true'
         run: git config --global maintenance.auto false
       - uses: ocaml/setup-ocaml@v3
+        if: steps.opam.outputs.cache-hit != 'true'
         with:
           ocaml-compiler: ${{ env.OCAML_VERSION }}
           cache: false
       - name: Install dependencies
+        if: steps.opam.outputs.cache-hit != 'true'
         run: opam install . --deps-only --with-test --with-dev-setup --locked
+      - name: Put the switch on the path
+        run: |
+          prefix="$GITHUB_WORKSPACE/_opam"
+          echo "$prefix/bin" >>"$GITHUB_PATH"
+          echo "OPAM_SWITCH_PREFIX=$prefix" >>"$GITHUB_ENV"
+          echo "CAML_LD_LIBRARY_PATH=$prefix/lib/stublibs:$prefix/lib/ocaml/stublibs" >>"$GITHUB_ENV"
       # Two checkouts that share one cargo build directory can link
       # each other's library. Each checkout must get its own.
       - name: Check that two checkouts do not share a build directory
@@ -86,48 +115,63 @@ jobs:
           echo "two: $two"
           test "$one" != "$two"
       - name: Build
-        run: opam exec -- dune build
+        run: dune build
       # dune-project is the source of sinter.opam, and dune rewrites
       # the file on every build. A build that changes it means the
       # committed copy is stale.
       - name: Check that sinter.opam matches dune-project
         run: git diff --exit-code -- sinter.opam
       - name: Test
-        run: opam exec -- dune test
+        run: dune test
 
   format:
     name: Check formatting
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+      - name: Name the runner image
+        id: image
+        run: |
+          test -n "$ImageOS"
+          echo "os=$ImageOS" >>"$GITHUB_OUTPUT"
       - name: Restore the opam switch
+        id: opam
         uses: actions/cache@v6
         with:
           path: _opam
-          key: opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
+          key: opam-v3-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
-            opam-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+            opam-v3-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
       # opam clones opam-repository and walks the clone at once. Git's
       # background maintenance can remove its lock file in that window,
       # and opam then fails on the vanished file. Turn it off.
       - name: Turn off git background maintenance
+        if: steps.opam.outputs.cache-hit != 'true'
         run: git config --global maintenance.auto false
       - uses: ocaml/setup-ocaml@v3
+        if: steps.opam.outputs.cache-hit != 'true'
         with:
           ocaml-compiler: ${{ env.OCAML_VERSION }}
           cache: false
       - name: Install dependencies
+        if: steps.opam.outputs.cache-hit != 'true'
         run: opam install . --deps-only --with-test --with-dev-setup --locked
+      - name: Put the switch on the path
+        run: |
+          prefix="$GITHUB_WORKSPACE/_opam"
+          echo "$prefix/bin" >>"$GITHUB_PATH"
+          echo "OPAM_SWITCH_PREFIX=$prefix" >>"$GITHUB_ENV"
+          echo "CAML_LD_LIBRARY_PATH=$prefix/lib/stublibs:$prefix/lib/ocaml/stublibs" >>"$GITHUB_ENV"
       - name: Check that the code is formatted
-        run: opam exec -- dune build @fmt
+        run: dune build @fmt
 
   # docs/versioning.md puts the version of the skill pack in two
   # files. They must agree.
   plugin:
     name: Check the plugin manifests
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Check that the two manifests carry one version
@@ -143,9 +187,14 @@ jobs:
   rust:
     name: Check the bridge crate
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+      - name: Name the runner image
+        id: image
+        run: |
+          test -n "$ImageOS"
+          echo "os=$ImageOS" >>"$GITHUB_OUTPUT"
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -160,8 +209,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             bridge/target
-          key: cargo-rust-${{ hashFiles('bridge/Cargo.lock') }}
-          restore-keys: cargo-rust-
+          key: cargo-rust-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('bridge/Cargo.lock') }}
+          restore-keys: cargo-rust-${{ steps.image.outputs.os }}-${{ runner.arch }}-
       - name: Check that the crate is formatted
         run: cargo fmt --check --manifest-path bridge/Cargo.toml
       - name: Check the crate with clippy
@@ -192,7 +241,7 @@ jobs:
   coverage:
     name: Measure coverage
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # This job builds what the build job builds: the same compiler,
     # and the dependencies from the lock file. It adds one tool,
     # bisect_ppx, which rewrites the modules of the library and the
@@ -219,16 +268,22 @@ jobs:
       COVERAGE_MINIMUM: "92"
     steps:
       - uses: actions/checkout@v6
+      - name: Name the runner image
+        id: image
+        run: |
+          test -n "$ImageOS"
+          echo "os=$ImageOS" >>"$GITHUB_OUTPUT"
       # This switch holds the pinned tool as well as the project's
       # dependencies, so it has a cache key of its own, and the key
       # names the pinned commit. A new commit builds a new switch.
       - name: Restore the opam switch
+        id: opam
         uses: actions/cache@v6
         with:
           path: _opam
-          key: opam-coverage-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.BISECT_PPX_COMMIT }}-${{ hashFiles('sinter.opam.locked') }}
+          key: opam-coverage-v3-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.BISECT_PPX_COMMIT }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
-            opam-coverage-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.BISECT_PPX_COMMIT }}-
+            opam-coverage-v3-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.BISECT_PPX_COMMIT }}-
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
@@ -245,18 +300,24 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cache/sinter-bridge-build
-          key: cargo-coverage-${{ hashFiles('bridge/Cargo.lock') }}
-          restore-keys: cargo-coverage-
+          key: cargo-coverage-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('bridge/Cargo.lock') }}
+          restore-keys: cargo-coverage-${{ steps.image.outputs.os }}-${{ runner.arch }}-
+      # When the cache held the switch under its exact key, the switch
+      # holds the dependencies and the pinned bisect_ppx, and the steps
+      # that set up opam and install into the switch are skipped.
       # opam clones opam-repository and walks the clone at once. Git's
       # background maintenance can remove its lock file in that window,
       # and opam then fails on the vanished file. Turn it off.
       - name: Turn off git background maintenance
+        if: steps.opam.outputs.cache-hit != 'true'
         run: git config --global maintenance.auto false
       - uses: ocaml/setup-ocaml@v3
+        if: steps.opam.outputs.cache-hit != 'true'
         with:
           ocaml-compiler: ${{ env.OCAML_VERSION }}
           cache: false
       - name: Install the dependencies
+        if: steps.opam.outputs.cache-hit != 'true'
         run: opam install . --deps-only --with-test --locked
       # The pin goes in after the dependencies, and bisect_ppx is
       # installed on a line of its own. --with-test on the line above
@@ -264,25 +325,32 @@ jobs:
       # for ocamlformat 0.16.0 to run its own tests, which no compiler
       # this new can build.
       - name: Install the pinned bisect_ppx
+        if: steps.opam.outputs.cache-hit != 'true'
         run: |
           set -eu
           opam pin add -y -n bisect_ppx \
             "git+https://github.com/aantron/bisect_ppx.git#$BISECT_PPX_COMMIT"
           opam install -y bisect_ppx
+      - name: Put the switch on the path
+        run: |
+          prefix="$GITHUB_WORKSPACE/_opam"
+          echo "$prefix/bin" >>"$GITHUB_PATH"
+          echo "OPAM_SWITCH_PREFIX=$prefix" >>"$GITHUB_ENV"
+          echo "CAML_LD_LIBRARY_PATH=$prefix/lib/stublibs:$prefix/lib/ocaml/stublibs" >>"$GITHUB_ENV"
       - name: Run the tests with the code instrumented
         run: >
-          opam exec -- dune build @runtest --force
+          dune build @runtest --force
           --instrument-with bisect_ppx
       # bisect-ppx-report reads the counts under _build, so it needs
       # no path.
       - name: Report the coverage
         run: |
           set -eu
-          per_file=$(opam exec -- bisect-ppx-report summary --per-file)
+          per_file=$(bisect-ppx-report summary --per-file)
           printf '%s\n' "$per_file"
           printf '## Coverage\n\n```\n%s\n```\n' "$per_file" \
             >> "$GITHUB_STEP_SUMMARY"
-          total=$(opam exec -- bisect-ppx-report summary |
+          total=$(bisect-ppx-report summary |
             sed -n 's/^Coverage: .*(\([0-9.]*\)%)$/\1/p')
           if [ -z "$total" ]; then
             echo "The report gave no total. The line it prints changed."
@@ -294,7 +362,7 @@ jobs:
 
   mutation:
     name: Measure the mutation score
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # This job is not a required check, by the maintainer's ruling of
     # 2026-09-17: it never holds a merge, and a failure stays red on
     # the pull request for the author and the reviewer to read. The
@@ -373,14 +441,21 @@ jobs:
       # This switch holds the pinned tool as well as the project's
       # dependencies, so it has a cache key of its own, and the key
       # names the pinned commit. A new commit builds a new switch.
+      - name: Name the runner image
+        if: steps.scope.outputs.mode != 'none'
+        id: image
+        run: |
+          test -n "$ImageOS"
+          echo "os=$ImageOS" >>"$GITHUB_OUTPUT"
       - name: Restore the opam switch
         if: steps.scope.outputs.mode != 'none'
+        id: opam
         uses: actions/cache@v6
         with:
           path: _opam
-          key: opam-mutation-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.MUTAML_COMMIT }}-${{ hashFiles('sinter.opam.locked') }}
+          key: opam-mutation-v2-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.MUTAML_COMMIT }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
-            opam-mutation-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.MUTAML_COMMIT }}-
+            opam-mutation-v2-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.MUTAML_COMMIT }}-
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         if: steps.scope.outputs.mode != 'none'
         with:
@@ -399,21 +474,24 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cache/sinter-bridge-build
-          key: cargo-mutation-${{ hashFiles('bridge/Cargo.lock') }}
-          restore-keys: cargo-mutation-
+          key: cargo-mutation-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('bridge/Cargo.lock') }}
+          restore-keys: cargo-mutation-${{ steps.image.outputs.os }}-${{ runner.arch }}-
+      # When the cache held the switch under its exact key, the switch
+      # holds the dependencies and the pinned mutaml, and the steps
+      # that set up opam and install into the switch are skipped.
       # opam clones opam-repository and walks the clone at once. Git's
       # background maintenance can remove its lock file in that window,
       # and opam then fails on the vanished file. Turn it off.
       - name: Turn off git background maintenance
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.scope.outputs.mode != 'none' && steps.opam.outputs.cache-hit != 'true'
         run: git config --global maintenance.auto false
       - uses: ocaml/setup-ocaml@v3
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.scope.outputs.mode != 'none' && steps.opam.outputs.cache-hit != 'true'
         with:
           ocaml-compiler: ${{ env.OCAML_VERSION }}
           cache: false
       - name: Install the dependencies
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.scope.outputs.mode != 'none' && steps.opam.outputs.cache-hit != 'true'
         run: opam install . --deps-only --with-test --locked
       # mutaml is not a dependency of the package, so the line above
       # does not install it. It is pinned here, by commit, and
@@ -421,12 +499,19 @@ jobs:
       # so that opam builds the tool and not the tool's own test
       # suite. The coverage job installs bisect_ppx the same way.
       - name: Install the pinned mutaml
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.scope.outputs.mode != 'none' && steps.opam.outputs.cache-hit != 'true'
         run: |
           set -eu
           opam pin add -y -n mutaml \
             "git+https://github.com/lathrys-at/mutaml.git#$MUTAML_COMMIT"
           opam install -y mutaml
+      - name: Put the switch on the path
+        if: steps.scope.outputs.mode != 'none'
+        run: |
+          prefix="$GITHUB_WORKSPACE/_opam"
+          echo "$prefix/bin" >>"$GITHUB_PATH"
+          echo "OPAM_SWITCH_PREFIX=$prefix" >>"$GITHUB_ENV"
+          echo "CAML_LD_LIBRARY_PATH=$prefix/lib/stublibs:$prefix/lib/ocaml/stublibs" >>"$GITHUB_ENV"
       # This build writes one side file for each instrumented source
       # file, beside the build context in _build/.mutaml/default, and
       # it runs the suite once with no mutant switched on, which also
@@ -442,7 +527,7 @@ jobs:
           MUTAML_MUT_RATE: "100"
           MUTAML_SEED: "42"
         run: >
-          opam exec -- dune build @runtest --force
+          dune build @runtest --force
           --instrument-with mutaml
       # The runner starts at the repository root, so that it finds the
       # side files and resolves the source paths that they name. The
@@ -528,7 +613,7 @@ jobs:
           if [ "$MODE" = changed ]; then
             set -- --changed-since "$BASE" "$@"
           fi
-          opam exec -- mutaml-runner \
+          mutaml-runner \
             --build-context _build/default \
             -j "$workers" \
             --repeat 3 \
@@ -552,7 +637,7 @@ jobs:
           set -eu
           mkdir -p _mutations
           status=0
-          opam exec -- mutaml-report \
+          mutaml-report \
             --fail-under "$MUTATION_MINIMUM" \
             --markdown "$GITHUB_STEP_SUMMARY" \
             --json-report _mutations/report.json || status=$?
