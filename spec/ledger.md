@@ -263,10 +263,12 @@ new stamp is needed. The consequences of the three clauses:
 
 ## 12. `pin` (deferred)
 
-A `pin` entry will endorse the current hash of external content:
+A `pin` entry will endorse the current hash of external content. It
+adds three fields to the common fields of section 4: `stamp`, `ref`,
+and `hash`. The example shows only the fields of the entry's own:
 
 ```json
-{"kind":"pin","stamp":"…","ref":"gh/42","hash":"…"}
+{"hash":"…","kind":"pin","ref":"gh/42","stamp":"…"}
 ```
 
 It is designed but deferred, together with the `@pin` directive.

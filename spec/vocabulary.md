@@ -33,7 +33,11 @@ tags only inside these nodes:
 - In code, the tag-bearing nodes are comments.
 - In markdown, the tag-bearing node is the first paragraph of a
   section. A section is a heading plus the text below it, up to the
-  next heading of the same or higher level.
+  next heading of the same or higher level. Only an ATX heading, a
+  line that starts with one to six `#` characters, opens a section; a
+  setext heading, a line of text underlined with `=` or `-`, does not.
+  The text before the first heading of a file is a section of level 0,
+  with no heading.
 
 The scanner must not read tags inside string literals, code fences, or
 any other node. In Sinter, each language's tag-bearing nodes are
@@ -268,8 +272,11 @@ error. A live `@supersedes` edge retires its target (section 8).
 
 A status tag records that the authors no longer endorse the
 declaration that carries it. A status tag has no target. It has effect
-only inside a declaration's extent. Outside an extent it is inert.
-There is no "done" status.
+only in the tag block of a declaration: the block whose tag lines hold
+the declaration. Anywhere else it is inert. In markdown the extent of
+a declaration is its whole section, but only the first paragraph is
+tag-bearing, so a status tag must stand in that paragraph. There is no
+"done" status.
 
 | tag | applies to | meaning |
 |---|---|---|
@@ -354,7 +361,9 @@ decide whether the citing item is still correct for other reasons.
 
 A decision record must not be deleted. The allowed moves are:
 supersede it, reject it, or defer it. The old text stays, because the
-old reasoning is the record of why the new decision exists.
+old reasoning is the record of why the new decision exists. An edit of
+a decision record is allowed: like every extent edit, it owes a
+revision bump (section 9).
 
 ### 8.4 Historical paths
 
@@ -421,8 +430,12 @@ Every `##` heading that carries at least one plan tag — a `@scope` or a
 promise — is a **step**. A `##` section with no plan tags is prose, not
 a step.
 
-The scanner derives a step's slug from the step's heading text. It
-makes these three changes in order:
+The scanner derives a step's slug from the step's heading text: the
+source text of the heading line, after the `#` characters and the
+spaces that follow them, and without any closing `#` characters. A
+letter or a digit here is an ASCII letter or digit; every other
+character counts as non-alphanumeric. The scanner makes these three
+changes in order:
 
 1. Change every letter to lowercase.
 2. Replace each sequence of non-alphanumeric characters with one

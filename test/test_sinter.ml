@@ -6,6 +6,7 @@ let () =
     [
       ("version", Test_version.tests);
       ("jsonl", Test_jsonl.tests);
+      ("spec examples", Test_spec_examples.tests);
       ("bridge decode", Test_bridge_decode.tests);
       ("parse", Test_parse.tests);
       ("bridge", Test_bridge.tests);

@@ -276,8 +276,16 @@ no strings other than names and globs.
 ## 7. Saved definitions
 
 A saved definition is a name, an optional parameter list, and an
-expression. Built-in definitions ship with the tool. The manifest adds
-or overrides definitions in its `[findings]` table:
+expression. Two built-in definitions ship with the tool, and section 9
+uses both:
+
+- `uncovered(e)` is `kind(req|design) ^ inforce(all) - dst(in($e, all))`:
+  the requirements and design items in force that no edge of kind `e`
+  targets.
+- `unmet(p)` is `promises($p) - met(promises($p))`: the promises of
+  `p` that are not met.
+
+The manifest adds or overrides definitions in its `[findings]` table:
 
 ```toml
 [findings.uncovered]
