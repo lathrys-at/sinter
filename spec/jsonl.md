@@ -43,7 +43,8 @@ The schema restricts values so that JCS stays trivial to implement:
   leading `./`.
 - **Hashes** are lowercase hex. An extent hash (`xh`) is 64 hex
   characters (SHA-256). A tree key or a git revision is 40 hex
-  characters.
+  characters, or 64 in a repository that uses git's SHA-256 object
+  format.
 
 A fact is **located** when it carries a path and a line span (section
 3); otherwise it is **unlocated**. Sinter sorts a file of facts by
