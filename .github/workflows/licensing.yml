@@ -23,7 +23,7 @@ on:
 jobs:
   dco:
     name: DCO sign-off
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
@@ -49,7 +49,7 @@ jobs:
 
   reuse:
     name: REUSE lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Run reuse lint
@@ -57,7 +57,7 @@ jobs:
 
   third-party-manifest:
     name: Third-party manifest
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Check that THIRD_PARTY.md exists and is well-formed
@@ -76,7 +76,7 @@ jobs:
 
   forbidden-licenses:
     name: No forbidden licenses
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Check the dependency list for forbidden licenses
