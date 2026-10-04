@@ -1,7 +1,7 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* @cites exit-codes *)
+(* @cites exit-codes-by-gate *)
 
 (** The loop of the serve mode. The loop answers one request at a time. It reads
     no channel and writes none: the caller gives it one line and writes the

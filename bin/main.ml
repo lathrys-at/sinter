@@ -18,12 +18,11 @@ let findings = Sinter_core.Exit_code.findings
 let usage_error = Sinter_core.Exit_code.usage_error
 let environment_error = Sinter_core.Exit_code.environment_error
 let refused = Sinter_core.Exit_code.refused
-
-let clean_exit =
-  Cmd.Exit.info ~doc:"on success, with no finding to report." clean
+let clean_exit = Cmd.Exit.info ~doc:"on success, when no finding blocks." clean
 
 let findings_exit =
-  Cmd.Exit.info ~doc:"when the command reports at least one finding." findings
+  Cmd.Exit.info
+    ~doc:"when the command reports at least one finding that blocks." findings
 
 let usage_exit =
   Cmd.Exit.info ~doc:"when the command line is wrong." usage_error
