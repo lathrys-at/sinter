@@ -207,7 +207,7 @@ reason.
 Then, from the repository root:
 
 ```
-dune build @runtest --force --instrument-with bisect_ppx
+QCHECK_SEED=1 dune build @runtest --force --instrument-with bisect_ppx
 bisect-ppx-report summary --per-file
 ```
 
@@ -218,16 +218,17 @@ counts under `_build`, so it needs no path. For a page per file, run
 `_build/coverage/index.html`. Write the pages under `_build`, which
 git already ignores.
 
-The properties draw a new seed on each run, so the total moves by up
-to about 0.6 of a per cent between runs of the same tree. Read the
-lowest of several runs, not one run.
+`QCHECK_SEED` fixes the seed of the property tests. Without it, the
+properties draw a new seed on each run, and the total moves between
+runs of the same tree. The `coverage` job sets the same seed, 1, so
+that its total changes only when the tree changes.
 
 An instrumented build writes over `_build`. The next ordinary
 `dune build` compiles the whole OCaml tree again. It does not build
 the Rust crate again: cargo builds outside `_build`, so it finds its
 work done.
 
-CI runs the same commands on `ubuntu-latest` and fails below the
+CI runs the same commands on `ubuntu-24.04` and fails below the
 minimum that the `coverage` job sets. That job holds the number. A
 change does not lower the coverage.
 
@@ -299,7 +300,9 @@ or `bin/` (`docs/decisions/mutation-job-scope.md`).
 - `test/run-mutants.sh` is the test command. The suite reads its
   fixtures from paths relative to its own folder under `_build`, so
   the script starts at the root, where the runner starts it, and runs
-  the suite in that folder.
+  the suite in that folder. The script gives the suite `--bail`, which
+  stops the suite at its first failing test: one failure kills the
+  mutant.
 - `-j` is the number of mutants that the runner tests at one time: the
   number of cores less one, and never below 1.
   `getconf _NPROCESSORS_ONLN` gives the number of cores on macOS and on
@@ -357,8 +360,8 @@ or `bin/` (`docs/decisions/mutation-job-scope.md`).
    with no mutant, which it makes before any worker starts, on an idle
    machine. On a machine whose every core is busy, a later run can pass
    the limit through waiting alone, and the run then counts as a kill.
-   Two mutants of the current tree hang the suite, so the column
-   "timed out" of the report counts 2. A larger number on a pass that
+   One mutant of the current tree hangs the suite, so the column
+   "timed out" of the report counts 1. A larger number on a pass that
    changed no source means that the machine was too busy.
 6. Keep the suite safe to run in parallel, or set `-j` to 1. Three
    facts make it safe: the test command is a script and not `dune`,

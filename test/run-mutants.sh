@@ -24,6 +24,9 @@
 # status is this script's status and a signal reaches the suite. The
 # runner reads that status to tell a killed mutant from a mutant that
 # ran too long or died of a signal.
+#
+# --bail stops the suite at its first failing test. One failure kills
+# the mutant, so the tests after it cannot change the result.
 
 set -eu
 
@@ -55,4 +58,4 @@ if [ ! -x "$suite" ]; then
 fi
 
 cd -- "$root/_build/default/test"
-exec "$suite" "$@"
+exec "$suite" --bail "$@"
