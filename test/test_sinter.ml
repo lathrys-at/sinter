@@ -42,6 +42,7 @@ let () =
       ("git", Test_git.tests);
       ("git diff", Test_git_diff.tests);
       ("fixture", Test_fixture.tests);
+      ("edit distance", Test_edit_distance.tests);
       ( "cases",
         Fixture.tests ~binary mode
           ~on_write:(fun path -> written := path :: !written)
