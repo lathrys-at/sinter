@@ -10,10 +10,10 @@
 type rid =
   | Text of string
   | Number of int
-      (** The caller's tag for one request. The request holds it in the field
-          [rid], and every line of the answer carries it back in the field
-          [rid], as the caller gave it. A [Text] holds valid UTF-8. A [Number]
-          is between [-(2^53-1)] and [2^53-1]. *)
+      (** The request id: the value that the caller gives one request. The
+          request holds it in the field [rid], and every line of the answer
+          carries it back in the field [rid], as the caller gave it. A [Text]
+          holds valid UTF-8. A [Number] is between [-(2^53-1)] and [2^53-1]. *)
 
 type output =
   | Captures of string
@@ -26,7 +26,7 @@ type op =
           more. Every string is valid UTF-8. *)
 
 type t = { rid : rid; op : op }
-(** One request: the caller's tag, and the work to do. *)
+(** One request: its request id, and the work to do. *)
 
 type cause =
   | Not_json
@@ -49,8 +49,9 @@ type cause =
           [Not_text] names a field whose string is not valid UTF-8. *)
 
 type error = { rid : rid option; cause : cause }
-(** Why a line is not a request, and the tag to answer with. [rid] is [None]
-    when the line carries no tag that this module can read back. *)
+(** Why a line is not a request, and the request id to answer with. [rid] is
+    [None] when the line carries no request id that this module can read back.
+*)
 
 val of_line : string -> (t, error) result
 (** [of_line line] reads one line of JSON as a request. [line] may end with a

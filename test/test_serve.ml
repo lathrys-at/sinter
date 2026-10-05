@@ -47,8 +47,8 @@ let sorted record =
 
 (* Generators. *)
 
-(* One tag, as the request writes it and as the answer carries it. *)
-let tag : (Yojson.Safe.t * Jsonl.value) Gen.t =
+(* One request id, as the request writes it and as the answer carries it. *)
+let request_id : (Yojson.Safe.t * Jsonl.value) Gen.t =
   Gen.oneof
     [
       Gen.map
@@ -63,7 +63,7 @@ let tag : (Yojson.Safe.t * Jsonl.value) Gen.t =
    some fail, and the shape of the answer is the same either way. *)
 let well_formed =
   let open Gen in
-  let* rid, expected = tag in
+  let* rid, expected = request_id in
   let* shape =
     oneof
       [
@@ -103,8 +103,8 @@ let ill_formed =
 let answers_a_well_formed_request =
   QCheck2.Test.make ~count:200
     ~name:
-      "a well-formed request gets one control line, last, and a tag on every \
-       line"
+      "a well-formed request gets one control line, last, and the request id \
+       on every line"
     ~print:(fun (_, line) -> String.escaped line)
     well_formed
     (fun (expected, line) ->
@@ -146,7 +146,7 @@ let a_query_request_ends_with_a_done_line () =
 
 let a_query_request_tags_every_capture () =
   let records = Serve.lines (answer (request ~query [ sample ])) in
-  holds "every capture carries the tag"
+  holds "every capture carries the request id"
     (List.for_all
        (fun record -> field "rid" record = Some (Jsonl.string "r1"))
        records)
@@ -214,7 +214,7 @@ let control_says_failed_for_a_line_that_is_not_a_request () =
 let a_line_that_holds_no_tag_gets_an_answer_without_one () =
   let records = Serve.lines (answer "{") in
   holds "one line only" (List.length records = 1);
-  holds "the line carries no tag"
+  holds "the line carries no request id"
     (match last records with
     | Some record -> field "rid" record = None
     | None -> false)
@@ -350,7 +350,7 @@ let tests =
   @ [
       case "a query request ends with a done line"
         a_query_request_ends_with_a_done_line;
-      case "a query request tags every capture"
+      case "a query request puts its request id on every capture"
         a_query_request_tags_every_capture;
       case "a tree request gives one object for each file"
         a_tree_request_gives_one_object_for_each_file;
@@ -366,9 +366,9 @@ let tests =
         control_says_failed_for_an_operation_that_did_not_run;
       case "control says failed for a line that is not a request"
         control_says_failed_for_a_line_that_is_not_a_request;
-      case "a line that holds no tag gets an answer without one"
+      case "a line that holds no request id gets an answer without one"
         a_line_that_holds_no_tag_gets_an_answer_without_one;
-      case "a number tag comes back as a number"
+      case "a number request id comes back as a number"
         a_number_tag_comes_back_as_a_number;
       case "the loop reads a grammar once" the_loop_reads_a_grammar_once;
       case "the loop reads a grammar again when its size changes"

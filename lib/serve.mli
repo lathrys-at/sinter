@@ -54,5 +54,5 @@ val control : response -> control
 val lines : response -> Jsonl.record list
 (** [lines response] is every record of the answer, in the order to write them.
     The last record is the control line. Each record carries the field [rid]
-    with the request's tag, and no record carries it when the line held no tag
-    that the reader could read back. *)
+    with the request id, and no record carries it when the line held no request
+    id that the reader could read back. *)

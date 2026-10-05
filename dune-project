@@ -16,7 +16,7 @@
  (description
   "Sinter reads tags in a repository's own text files. It uses them to check that code, tests, and documents keep the agreements a project made. It reads the state of the work from files and from test results, never from an agent's self-report. The design is in docs/design-notes.md; the formats are specified in spec/.")
  (depends
-  (ocaml (>= 5.1))
+  (ocaml (>= 5.5))
   dune
   (cmdliner (>= 1.3))
   dune-build-info
