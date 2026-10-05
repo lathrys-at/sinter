@@ -44,7 +44,8 @@ let with_nul_bytes =
       "709e80c88487a2411e1ee4dfb9f22a861492d20c4765150c0c794abd70f8147c" );
   ]
 
-(* 2^24 + 3 bytes, each the low eight bits of its offset. *)
+(* More than 16 MiB, and a length that is not a multiple of the 64-byte
+   block of SHA-256. *)
 let large =
   String.init ((1 lsl 24) + 3) (fun index -> Char.chr (index land 0xFF))
 
