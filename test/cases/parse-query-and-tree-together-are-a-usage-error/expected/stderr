@@ -1,0 +1,1 @@
+sinter: --query and --tree exclude each other; give one of the two

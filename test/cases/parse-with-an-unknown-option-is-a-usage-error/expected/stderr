@@ -1,0 +1,3 @@
+Usage: sinter parse [--help] --grammar=GRAMMAR [--query=QUERY] [--tree]
+       [OPTION]… FILE…
+sinter: unknown option '--no-such-option'

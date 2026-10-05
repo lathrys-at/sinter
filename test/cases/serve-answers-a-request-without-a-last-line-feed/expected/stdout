@@ -1,0 +1,2 @@
+{"path":"sample.json","rid":7,"tree":"(document (object (pair key: (string (string_content)) value: (string (string_content))) (pair key: (string (string_content)) value: (string (string_content))) (pair key: (string (string_content)) value: (array (number) (number))) (pair key: (string (string_content)) value: (false))))"}
+{"code":0,"event":"done","rid":7}

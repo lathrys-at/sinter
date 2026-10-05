@@ -1,0 +1,6 @@
+{"cap":"key","col":4,"eb":9,"ecol":8,"eline":2,"line":2,"node":"string_content","pat":0,"path":"sample.json","sb":5,"text":"name"}
+{"cap":"value","col":12,"eb":19,"ecol":18,"eline":2,"line":2,"node":"string_content","pat":0,"path":"sample.json","sb":13,"text":"sinter"}
+{"cap":"key","col":4,"eb":32,"ecol":11,"eline":3,"line":3,"node":"string_content","pat":0,"path":"sample.json","sb":25,"text":"version"}
+{"cap":"value","col":15,"eb":41,"ecol":20,"eline":3,"line":3,"node":"string_content","pat":0,"path":"sample.json","sb":36,"text":"0.1.0"}
+{"cap":"number","col":13,"eb":60,"ecol":17,"eline":4,"line":4,"node":"number","pat":1,"path":"sample.json","sb":56,"text":"8080"}
+{"cap":"number","col":19,"eb":66,"ecol":23,"eline":4,"line":4,"node":"number","pat":1,"path":"sample.json","sb":62,"text":"9090"}

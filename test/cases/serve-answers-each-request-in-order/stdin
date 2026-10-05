@@ -1,0 +1,3 @@
+{"rid":1,"op":"parse","grammar":"grammar.wasm","query":"sample.scm","files":["sample.json"]}
+not a request
+{"rid":"two","op":"parse","grammar":"grammar.wasm","tree":true,"files":["sample.json"]}
