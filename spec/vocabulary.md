@@ -31,13 +31,15 @@ Each language defines a set of **tag-bearing nodes**. The scanner reads
 tags only inside these nodes:
 
 - In code, the tag-bearing nodes are comments.
-- In markdown, the tag-bearing node is the first paragraph of a
-  section. A section is a heading plus the text below it, up to the
-  next heading of the same or higher level. Only an ATX heading, a
-  line that starts with one to six `#` characters, opens a section; a
-  setext heading, a line of text underlined with `=` or `-`, does not.
-  The text before the first heading of a file is a section of level 0,
-  with no heading.
+- In markdown, the tag-bearing nodes are the first paragraph of a
+  section and the first paragraph of a list item. A section is a
+  heading plus the text below it, up to the next heading of the same
+  or higher level. Only an ATX heading, a line that starts with one to
+  six `#` characters, opens a section; a setext heading, a line of
+  text underlined with `=` or `-`, does not. The text before the first
+  heading of a file is a section of level 0, with no heading. A **list
+  item** is one item of a markdown list, ordered or not. It holds its
+  own text and its **sub-items**: the items of the lists inside it.
 
 The scanner must not read tags inside string literals, code fences, or
 any other node. In Sinter, each language's tag-bearing nodes are
@@ -56,15 +58,19 @@ Every tag has one shape:
 @word target [vN]
 ```
 
-`@word` is the tag name. `target` names the thing the tag declares or
-points at. `vN` is a revision (section 5). A description can follow on
-the same line and on later lines (section 3.2).
+`@word` is the tag name. `target` is the **tag target**: it names the
+thing the tag declares or points at. `vN` is a revision (section 5). A
+description can follow on the same line and on later lines (section
+3.2).
 
 ### 3.1 Tag lines and blocks
 
 The scanner finds a **tag line** as follows. Take a line inside a
-tag-bearing node. Remove the comment sigil and the indentation before
-it. The line is a tag line when the remaining text starts with `@`.
+tag-bearing node. In code, remove the comment sigil and the
+indentation before it. On the first line of a list item, remove the
+list marker, such as `-`, `*`, or `1.`, and the indentation before it.
+Then remove the spaces and tabs at the start of the line. The line is
+a tag line when the remaining text starts with `@`.
 
 Every such line is a tag line, whether or not its word is in this
 vocabulary. Unknown words are not part of this vocabulary and have no
@@ -78,7 +84,7 @@ plus the trailing prose that follows those tag lines (section 3.2).
 ### 3.2 Descriptions
 
 A tag's **inline description** is the rest of its own line, after the
-target and the revision.
+tag target and the revision.
 
 A block's **trailing prose** is the sequence of lines that follow the
 last tag line and that do not start with `@`. The sequence ends at a
@@ -91,17 +97,20 @@ Descriptions are part of the extent (section 6). Tools use them when
 they compile human-facing documents. Descriptions have no other
 machine meaning.
 
-## 4. Targets
+## 4. Tag targets
 
-A target is a **slug** or a **ref**.
+A tag target is a **slug** or a **ref**.
 
 ### 4.1 Slugs
 
 A slug must match this pattern:
 
 ```
-[a-z0-9]+(-[a-z0-9]+)*
+[A-Za-z0-9]+([-_.][A-Za-z0-9]+)*
 ```
+
+A slug keeps its case. Two slugs are equal only when they are equal
+byte for byte, so `Auth-Lockout` and `auth-lockout` are two slugs.
 
 Slugs name declared items. There are three separate slug namespaces:
 
@@ -113,21 +122,33 @@ Slugs name declared items. There are three separate slug namespaces:
    plan keeps its slug, and no later plan can reuse it.
 3. **Steps.** Step slugs are scoped to their plan (section 10.3).
 
-Two declarations of one slug in a shared namespace are an error
-(finding class `duplicate`). A slug that fails the pattern is an error
-(finding class `bad-target`).
+Two declarations in one namespace are an error (finding class
+`duplicate`) when their slugs are equal, or when their slugs differ
+only in case. A slug that fails the pattern is an error (finding class
+`bad-target`).
+
+A citation whose tag target differs from a declared slug only in case
+does not resolve, so the citation is dangling (section 7.2). The `fix`
+of its finding ([jsonl.md](jsonl.md) section 8) names the declared
+spelling.
 
 The slug is the identity of an item. There are no hidden machine
 identifiers. To rename an item, delete it and declare a new one.
 Decision slugs are also permanent: a decision is never deleted
 (section 8.3).
 
+A citable declaration can take the slug of a declaration that was
+deleted. The new declaration then continues the old item. Its revision
+must be higher than every revision of the slug that the ledger holds,
+and the ledger's entries for the slug apply to the new declaration.
+
 ### 4.2 Refs
 
 A ref points at something outside the repository, for example an issue.
 A ref must match `<ns>/<id>`, where `ns` is a namespace that the
 repository's manifest declares, and `id` matches the pattern that the
-namespace declares. Example: `gh/42`.
+namespace declares ([manifest.md](manifest.md) section 8.3). Example:
+`gh/42`.
 
 A ref is a pointer, not a declared item. It has no revision, no
 extent, and no approval. A ref whose namespace is not declared, or
@@ -143,12 +164,13 @@ a declaration is `v1`.
 |---|---|
 | `@satisfies`, `@verifies`, `@refines`, `@supersedes` | required |
 | `@cites` | optional |
-| declarations (`@req`, `@design`, `@decision`) | optional; `v1` when omitted |
+| declarations (`@req`, `@design`, `@decision`, `@rule`) | optional; `v1` when omitted |
 | promises in a plan file (section 10) | absent |
 
 On a citation, the revision **pins** the citation to one revision of
-its target. A pinned citation whose target now has a different revision
-is **suspect** (section 9).
+the declaration that its tag target names. A pinned citation is
+**suspect** (section 9) when that declaration now has a different
+revision.
 
 The **diff base** is the git revision that a check compares the
 working tree against ([algebra.md](algebra.md) section 8). When a
@@ -165,14 +187,22 @@ An item's **extent** is the text that its revision covers.
 - In markdown, a declaration in the first paragraph of a section claims
   the whole section as its extent, up to the next heading of the same
   or higher level.
+- In markdown, a declaration in the first paragraph of a list item
+  claims the list item, with its sub-items, as its extent.
+- In a rule file, the extent of the `@rule` declaration is the whole
+  file ([manifest.md](manifest.md) section 15).
 
 Two boundary rules apply in markdown:
 
 1. Two extents that touch never merge into one extent. An extent ends
    where the next declaration begins.
 2. A declaration in a nested section removes that section from the
-   enclosing extent.
+   enclosing extent. A declaration in a list item removes that list
+   item, with its sub-items, from the enclosing extent.
 
+A list item that declares nothing is plain text of the section or the
+list item that holds it. The scanner still reads the tags in its first
+paragraph, and section 7.2 gives the source of each citation there.
 Prose outside every extent is not governed by any revision.
 
 ### 6.1 The extent hash
@@ -186,13 +216,13 @@ text. To normalize, apply these steps in order:
 2. Remove trailing whitespace from every line.
 3. Use LF as the line ending.
 4. Drop every `@ack` line.
-5. On the declaration's own tag line, drop the `@word slug vN` prefix.
+5. On the declaration's own tag line, drop the text `@word slug vN`.
 6. On every citation line, drop the `vN` token.
 7. End the text with one final LF.
 
 The same normalization, applied to any block, gives the **block hash**
-that `@ack` pins (section 7.4). One hash function and one rule set
-serve both uses.
+that an `@ack` records (section 7.4). One hash function and one rule
+set serve both uses.
 
 Steps 5 and 6 have this effect. Three edits do not change the extent
 hash:
@@ -217,7 +247,7 @@ that changed while its comment did not.
 
 ## 7. The vocabulary
 
-The vocabulary has fourteen words. One more word, `@pin`, is designed
+The vocabulary has fifteen words. One more word, `@pin`, is designed
 but deferred (section 7.4).
 
 ### 7.1 Declarations
@@ -230,6 +260,10 @@ A declaration says: this text defines a thing.
 | `@design <slug> [vN]` | design documents |
 | `@decision <slug> [vN]` | decision records |
 | `@plan <slug>` | plan files (section 10) |
+| `@rule <slug> [vN]` | rule files ([manifest.md](manifest.md) section 15) |
+
+`@rule` declares a rule. Its extent is the whole rule file (section
+6).
 
 `@design` and `@req` differ in two ways only. They differ in purpose:
 a design item describes architecture between the requirements and the
@@ -243,40 +277,66 @@ anywhere in the repository.
 
 A citation says: this relates to that.
 
-| tag | source → target |
+| tag | source → tag target |
 |---|---|
-| `@satisfies <slug> vN` | a code site → a `req` or `design` |
+| `@satisfies <slug> vN` | a site → a `req` or `design` |
 | `@verifies <slug> vN` | a test → a `req` or `design` |
 | `@refines <slug> vN` | a `req` or `design` → a `req` or `design` |
 | `@cites <slug or ref> [vN]` | anything → any declaration or ref |
 | `@supersedes <slug> vN` | a declaration → a declaration of the same kind |
 
-The source of a citation depends on its kind:
+The source of a citation depends on its kind and on its place:
 
-- `@satisfies` and `@cites` in code have an anonymous source: the file
-  and the extent of the block. No declaration is needed at the source.
-- `@verifies` has the attached test as its source. The test's identity
-  comes from the language's abstract syntax tree, so no declaration is
-  needed there either.
-- `@refines` and `@supersedes` have the enclosing declaration as their
+- In code, `@satisfies` and `@cites` have an **anonymous source**: a
+  source with no name. It is the file and the extent of the block,
+  and it is called a **code site**. No declaration is needed at the
   source.
+- In code, `@verifies` has the attached test as its source. The
+  test's identity comes from the language's abstract syntax tree, so
+  no declaration is needed there either.
+- In code, `@refines` and `@supersedes` have the enclosing declaration
+  as their source: the declaration whose extent holds the tag line.
+- In markdown, a citation of any kind has as its source the innermost
+  declaration whose extent holds the citation's tag line. When no
+  declaration's extent holds the tag line, the source is the anonymous
+  source of the innermost section that holds the tag line.
 
-A citation is **dangling** when its target does not resolve: no
+A markdown section is an anonymous source when it holds a citation
+outside every declaration's extent. Its block is its first paragraph,
+and its extent is the whole section (section 6). Its id comes from the
+path of the file and the slug of the section's heading
+([jsonl.md](jsonl.md) section 9). A list item is never an anonymous
+source. A code site and such a section are both **sites**.
+
+The slug of a heading comes from the heading's text by the three
+changes of section 10.3. When two or more headings of one file give the
+same slug, the first heading keeps the slug. Each later heading adds
+`-1`, `-2`, and so on, in the order of the file, as GitHub numbers the
+anchors of headings. Example: `example`, `example-1`. Only a heading
+that opens a section counts (section 2).
+
+A citation is an **orphan** (finding class `orphan`) when its kind
+needs a certain source and the citation does not have one. A
+`@verifies` needs a test. A `@refines` or a `@supersedes` needs an
+enclosing declaration.
+
+A citation is **dangling** when its tag target does not resolve: no
 declaration has the slug, or the ref's namespace is not declared, or
 the ref's id fails the namespace's pattern.
 
-A `@supersedes` edge whose source and target have different kinds is an
-error. A live `@supersedes` edge retires its target (section 8).
+A `@supersedes` edge whose source and tag target have different kinds
+is an error. A live `@supersedes` edge retires the declaration that
+its tag target names (section 8).
 
 ### 7.3 Status tags
 
 A status tag records that the authors no longer endorse the
-declaration that carries it. A status tag has no target. It has effect
-only in the tag block of a declaration: the block whose tag lines hold
-the declaration. Anywhere else it is inert. In markdown the extent of
-a declaration is its whole section, but only the first paragraph is
-tag-bearing, so a status tag must stand in that paragraph. There is no
-"done" status.
+declaration that carries it. A status tag has no tag target. It has
+effect only in the tag block of a declaration: the block whose tag
+lines hold the declaration. Anywhere else it is inert. In markdown the
+extent of a declaration is its whole section or its whole list item,
+but only the first paragraph is tag-bearing, so a status tag must
+stand in that paragraph. There is no "done" status.
 
 | tag | applies to | meaning |
 |---|---|---|
@@ -292,13 +352,22 @@ A directive records a judgment in a block.
 text. The judgment is one of two: someone accepted a finding, or
 someone satisfied a rule. The judgment covers the block as it was when
 that person read it. In the grammar, `<hash>` is the last token, and
-`<target>` is everything between `@ack` and the hash. The target is
-one of:
+`<target>` is everything between `@ack` and the hash. This tag target
+is one of:
 
-- a finding class, with an optional subject, exactly as the checking
-  tool reported it — for example `disendorsed cache-ttl` or
-  `disconnected`;
+- a finding class, with an optional subject — for example
+  `disendorsed cache-ttl` or `disconnected`;
 - a rule name — for example `ste-docs`.
+
+The **subject** of a finding is the fact that the finding is about. An
+ack names the subject in the form that the checking tool reports in
+the field `ack_subject` of the finding ([jsonl.md](jsonl.md) section
+8):
+
+- for an edge, the tag target of the edge, as written;
+- for a fact that has a slug (a declaration, a plan, or a step), its
+  slug;
+- for any other fact, its id.
 
 The hash is the first eight or more hex digits of the block hash
 (section 6.1) at the time of the judgment.
@@ -306,9 +375,9 @@ The hash is the first eight or more hex digits of the block hash
 An ack is **live** if and only if both conditions hold:
 
 1. The hash matches the block's current block hash.
-2. The target still names something in this block: a finding of that
-   class, or an obligation of that rule. When the ack gives a subject,
-   the finding must also have that subject.
+2. The tag target of the ack still names something in this block: a
+   finding of that class, or an obligation of that rule. When the ack
+   gives a subject, the finding must also have that subject.
 
 The checking tool removes acked findings at the end of a check. It
 judges condition 2 against the findings and obligations that exist
@@ -337,14 +406,16 @@ finding stays until a person endorses the new hash.
 ### 8.1 In force
 
 An item is **in force** if and only if it carries no status tag and no
-live `@supersedes` edge targets it.
+live `@supersedes` edge points at it.
 
 A `@supersedes` edge is **live** if and only if both conditions hold.
-First: the edge's source is itself in force. Second: when the ledger
-gates the source's kind on approval, the source is approved at its
-current revision. The ledger specification, [ledger.md](ledger.md),
-defines approval. An edge whose source is not approved retires nothing
-yet.
+First: the edge's source is a declaration, and that declaration is
+itself in force. Second: when the source's kind needs approval, the
+source is approved at its current revision. The manifest key
+`ledger.approval-required` lists the kinds that need approval
+([manifest.md](manifest.md) section 11.1). The ledger specification,
+[ledger.md](ledger.md), defines approval. An edge whose source is not
+approved retires nothing yet.
 
 On a `@supersedes` cycle, every member of the cycle counts as in
 force, and the cycle is an error (finding class `cycle`).
@@ -367,10 +438,12 @@ revision bump (section 9).
 
 ### 8.4 Historical paths
 
-The manifest can declare paths as **historical**, for example a devlog.
-In a historical file, a citation still resolves to its target, and
-compiled documents still show it as a link. A citation in a historical
-file generates no findings.
+The manifest can declare paths as **historical**, for example a devlog
+(the key `check.historical`, [manifest.md](manifest.md) section 9.4).
+In a historical file, a citation still resolves to its tag target, and
+compiled documents still show it as a link. No fact in a historical
+file generates a finding of any class ([algebra.md](algebra.md)
+section 9, global rule 1).
 
 ## 9. Revision discipline
 
@@ -385,8 +458,8 @@ into a governed file. Two rules make hand-written pins work:
    edit did not change the meaning", because no tool can check that
    claim.
 2. **A bump makes pinned citations suspect.** A citation pinned to
-   `v2` becomes suspect when its target moves to `v3`. Suspect
-   citations are findings until they are re-pinned.
+   `v2` becomes suspect when the declaration that it names moves to
+   `v3`. Suspect citations are findings until they are re-pinned.
 
 A bump also removes the item's approval until it is stamped again (see
 [ledger.md](ledger.md)).
@@ -451,25 +524,23 @@ advice, not a constraint.
 
 ### 10.4 Scope
 
-A `@scope` line holds comma-separated globs, relative to the
-repository root, in gitignore style:
-
-- `*` matches within one path segment.
-- `**` matches across segments.
-- `!` negates.
-- A trailing `/` means the directory and everything under it.
+A `@scope` line holds comma-separated globs in the glob language of
+[manifest.md](manifest.md) section 7.1. The globs of one line give a
+set of paths by the rule of a path set ([manifest.md](manifest.md)
+section 7.2): a glob that starts with `!` leaves paths out.
 
 A step with no `@scope` inherits the plan's scope. A step's `@scope`
 must be contained in its plan's scope (finding class `bad-scope`). A
 step's **effective scope** is its own scope when it has one, and
 otherwise the plan's scope.
 
-The manifest's `shared` list names paths that every step of every
-plan may touch, for example the dependency and license files at the
-repository root. A change under a shared path is never work outside
-the plan. A shared path does not widen the discharge location of any
-promise: a promised item is met only inside the step's effective
-scope or inside the default location of its kind (section 10.5).
+The manifest key `plan.shared` ([manifest.md](manifest.md) section
+10.3) names paths that every step of every plan can change, for
+example the dependency and license files at the repository root. A
+change under a shared path is never work outside the plan. A shared
+path does not widen the discharge location of any promise: a promised
+item is met only inside the step's effective scope or inside the
+default location of its kind (section 10.5).
 
 ### 10.5 Discharge
 
@@ -477,18 +548,20 @@ A promise is **met** as follows:
 
 - A promised declaration is met if and only if a declaration with that
   slug exists inside the step's effective scope, or inside the default
-  location of its kind. The manifest's `[locations]` table declares
-  one default location per declaration kind, as a scope glob, for
-  example `decision = "docs/decisions/**"`. A kind without an entry
-  has no default location.
+  location of its kind. The manifest key `plan.locations.<kind>` gives
+  the default location of a kind as a path set
+  ([manifest.md](manifest.md) section 10.4), for example
+  `locations.decision = ["docs/decisions/"]` under `[plan]`. A kind
+  without an entry has no default location.
 - A promised `@satisfies`, `@refines`, `@cites`, or `@supersedes` is
   met if and only if at least one such edge exists inside the step's
   effective scope, and that edge is neither dangling nor suspect.
 - A promised `@verifies` is met if and only if such an edge exists
   inside the step's effective scope at evidence rung `passing`. When
-  the manifest sets `evidence.require_attribution = false` (the
-  default), an edge at rung `unattributed` also meets the promise.
-  Rungs are defined in [algebra.md](algebra.md) section 6.7.
+  `evidence.coverage-attribution` is `"optional"`, the default, an
+  edge at rung `unattributed` also meets the promise
+  ([manifest.md](manifest.md) section 12). Rungs are defined in
+  [algebra.md](algebra.md) section 6.7.
 
 Residue that would discharge a promise, but that sits outside both
 the step's scope and the default location of its kind, does not
