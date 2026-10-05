@@ -95,9 +95,13 @@ let fixed_variables home =
     "GIT_COMMITTER_NAME=C O Mitter";
     "GIT_COMMITTER_EMAIL=committer@example.com";
     "GIT_COMMITTER_DATE=1700000000 +0000";
-    "GIT_CONFIG_COUNT=1";
+    "GIT_CONFIG_COUNT=3";
     "GIT_CONFIG_KEY_0=init.defaultBranch";
     "GIT_CONFIG_VALUE_0=main";
+    "GIT_CONFIG_KEY_1=fastimport.unpackLimit";
+    "GIT_CONFIG_VALUE_1=0";
+    "GIT_CONFIG_KEY_2=core.logAllRefUpdates";
+    "GIT_CONFIG_VALUE_2=false";
   ]
 
 (* [make_env ~home ~ceiling] is the environment of the git children of

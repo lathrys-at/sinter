@@ -37,7 +37,10 @@ val env : t -> string array
     - [GIT_CONFIG_GLOBAL=/dev/null] and [GIT_CONFIG_NOSYSTEM=1]
     - [HOME], a directory beside the working tree
     - fixed names, e-mail addresses, and dates of the author and the committer
-    - the setting [init.defaultBranch=main] *)
+    - the settings [init.defaultBranch=main]; [fastimport.unpackLimit=0], so
+      that [git fast-import] keeps its objects in one pack; and
+      [core.logAllRefUpdates=false], so that git keeps no log of references. The
+      last two make a repository of fewer files, which {!copy} copies faster. *)
 
 val git : t -> string list -> string
 (** [git repo args] runs git with [args] in the root of [repo], and gives its

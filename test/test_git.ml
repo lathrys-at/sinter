@@ -3,7 +3,7 @@
 
 open Sinter_core
 module Gen = QCheck2.Gen
-module Fixture = Git_fixture
+module Repo = Git_fixture
 
 let property ?(count = 200) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
@@ -353,15 +353,15 @@ let splits_at_the_first_tab () =
 
 (* The shared repository: {!Git_fixture.shared} lists what it holds. *)
 
-let shared = lazy (Fixture.shared ())
+let shared = lazy (Repo.shared ())
 let hello_id = "ce013625030ba8dba906f756967f9e9ca394464a"
 
 let opened =
   lazy
     (ok
        (Git.open_repo
-          ~env:(Fixture.env (Lazy.force shared))
-          (Fixture.root (Lazy.force shared))))
+          ~env:(Repo.env (Lazy.force shared))
+          (Repo.root (Lazy.force shared))))
 
 (* The file set of the shared repository, and the state of its index
    before and after the call. *)
@@ -369,9 +369,9 @@ let file_set =
   lazy
     (let repo = Lazy.force shared in
      let t = Lazy.force opened in
-     let before = Fixture.index_state repo in
+     let before = Repo.index_state repo in
      let files = ok (Git.files t) in
-     (files, before, Fixture.index_state repo))
+     (files, before, Repo.index_state repo))
 
 let files () =
   let files, _, _ = Lazy.force file_set in
@@ -418,7 +418,7 @@ let caller_variables =
 
 let recorded =
   lazy
-    (let env, script = Fixture.fake_git recording_script in
+    (let env, script = Repo.fake_git recording_script in
      let t =
        ok (Git.open_repo ~env:(Array.append env caller_variables) script)
      in
@@ -457,7 +457,7 @@ let faking_script =
 
 let faked =
   lazy
-    (let env, script = Fixture.fake_git faking_script in
+    (let env, script = Repo.fake_git faking_script in
      ok (Git.open_repo ~env script))
 
 (* Repositories. *)
@@ -466,7 +466,7 @@ let open_repo_finds_the_root () =
   let t = Lazy.force opened in
   Alcotest.(check string)
     "the root"
-    (Fixture.root (Lazy.force shared))
+    (Repo.root (Lazy.force shared))
     (Git.root t);
   holds "the format is SHA-1" (Git.object_format t = Git.Sha1)
 
@@ -474,16 +474,16 @@ let open_repo_finds_the_root_from_a_subdirectory () =
   let repo = Lazy.force shared in
   let t =
     ok
-      (Git.open_repo ~env:(Fixture.env repo)
-         (Filename.concat (Fixture.root repo) "src"))
+      (Git.open_repo ~env:(Repo.env repo)
+         (Filename.concat (Repo.root repo) "src"))
   in
-  Alcotest.(check string) "the root" (Fixture.root repo) (Git.root t)
+  Alcotest.(check string) "the root" (Repo.root repo) (Git.root t)
 
 let open_repo_refuses_a_directory_outside_a_repository () =
-  let dir = Fixture.temp_dir () in
+  let dir = Repo.temp_dir () in
   let repo = Lazy.force shared in
   let env =
-    Array.to_list (Fixture.env repo)
+    Array.to_list (Repo.env repo)
     |> List.filter (fun entry ->
         not (String.starts_with ~prefix:"GIT_CEILING_DIRECTORIES=" entry))
   in
@@ -498,39 +498,36 @@ let open_repo_refuses_a_directory_outside_a_repository () =
 
 let open_repo_refuses_a_missing_directory () =
   let repo = Lazy.force shared in
-  let dir = Filename.concat (Fixture.root repo) "no-such-directory" in
-  match error (Git.open_repo ~env:(Fixture.env repo) dir) with
+  let dir = Filename.concat (Repo.root repo) "no-such-directory" in
+  match error (Git.open_repo ~env:(Repo.env repo) dir) with
   | Not_a_repository { dir = named; _ } ->
       Alcotest.(check string) "the directory" dir named
   | other -> Alcotest.fail (print_error other)
 
 let open_repo_refuses_an_empty_directory_name () =
   let repo = Lazy.force shared in
-  match error (Git.open_repo ~env:(Fixture.env repo) "") with
+  match error (Git.open_repo ~env:(Repo.env repo) "") with
   | Not_a_repository { dir = ""; _ } -> ()
   | other -> Alcotest.fail (print_error other)
 
 let open_repo_refuses_a_directory_name_with_a_nul_byte () =
   let repo = Lazy.force shared in
-  match error (Git.open_repo ~env:(Fixture.env repo) "src\000x") with
+  match error (Git.open_repo ~env:(Repo.env repo) "src\000x") with
   | Not_a_repository { dir = "src\000x"; _ } -> ()
   | other -> Alcotest.fail (print_error other)
 
 let open_repo_needs_git_on_path () =
   let repo = Lazy.force shared in
-  let empty = Fixture.temp_dir () in
-  let env =
-    Array.append (without_path (Fixture.env repo)) [| "PATH=" ^ empty |]
-  in
-  match error (Git.open_repo ~env (Fixture.root repo)) with
+  let empty = Repo.temp_dir () in
+  let env = Array.append (without_path (Repo.env repo)) [| "PATH=" ^ empty |] in
+  match error (Git.open_repo ~env (Repo.root repo)) with
   | Git_not_found _ -> ()
   | other -> Alcotest.fail (print_error other)
 
 let open_repo_needs_a_path_variable () =
   let repo = Lazy.force shared in
   match
-    error
-      (Git.open_repo ~env:(without_path (Fixture.env repo)) (Fixture.root repo))
+    error (Git.open_repo ~env:(without_path (Repo.env repo)) (Repo.root repo))
   with
   | Git_not_found _ -> ()
   | other -> Alcotest.fail (print_error other)
@@ -577,13 +574,13 @@ let child_environment_keeps_the_other_variables () =
    entry, one whose git is not executable, one whose git is a directory,
    the fake git, and a git that always fails. *)
 let open_repo_takes_the_first_executable_git_on_path () =
-  let env, script = Fixture.fake_git "printf 'sha1\\n%s\\n' \"$0\"\n" in
-  let not_executable = Fixture.temp_dir () in
+  let env, script = Repo.fake_git "printf 'sha1\\n%s\\n' \"$0\"\n" in
+  let not_executable = Repo.temp_dir () in
   Out_channel.with_open_bin (Filename.concat not_executable "git")
     (fun channel -> Out_channel.output_string channel "exit 9\n");
-  let directory = Fixture.temp_dir () in
+  let directory = Repo.temp_dir () in
   Unix.mkdir (Filename.concat directory "git") 0o755;
-  let failing = Fixture.temp_dir () in
+  let failing = Repo.temp_dir () in
   Unix.symlink "/usr/bin/false" (Filename.concat failing "git");
   let path =
     String.concat ":"
@@ -595,7 +592,7 @@ let open_repo_takes_the_first_executable_git_on_path () =
     "the root that the fake git printed" script (Git.root t)
 
 let open_repo_reports_output_it_cannot_read () =
-  let env, script = Fixture.fake_git "printf 'sha1\\n'\n" in
+  let env, script = Repo.fake_git "printf 'sha1\\n'\n" in
   match error (Git.open_repo ~env script) with
   | Malformed_output { args; _ } ->
       Alcotest.check strings "the arguments"
@@ -604,7 +601,7 @@ let open_repo_reports_output_it_cannot_read () =
   | other -> Alcotest.fail (print_error other)
 
 let open_repo_gives_what_git_wrote_when_it_fails () =
-  let env, script = Fixture.fake_git "echo 'no repository' >&2; exit 128\n" in
+  let env, script = Repo.fake_git "echo 'no repository' >&2; exit 128\n" in
   match error (Git.open_repo ~env script) with
   | Not_a_repository { dir; detail } ->
       Alcotest.(check string) "the directory" script dir;
@@ -626,7 +623,7 @@ let expected_files =
     "added.txt";
     "bin.dat";
     "bytes.bin";
-    Fixture.quoted_name;
+    Repo.quoted_name;
     "head.txt";
     "mod.txt";
     "mode.sh";
@@ -651,8 +648,8 @@ let files_ignores_the_variables_of_the_caller_that_redirect_git () =
   let t =
     ok
       (Git.open_repo
-         ~env:(Array.append (Fixture.env repo) caller_variables)
-         (Fixture.root repo))
+         ~env:(Array.append (Repo.env repo) caller_variables)
+         (Repo.root repo))
   in
   Alcotest.check strings "the file set" expected_files (ok (Git.files t))
 
@@ -660,7 +657,7 @@ let files_ignores_the_variables_of_the_caller_that_redirect_git () =
    one path, as a merge with a conflict leaves them. *)
 let conflicted =
   lazy
-    (let repo = Fixture.copy (Lazy.force shared) in
+    (let repo = Repo.copy (Lazy.force shared) in
      let stages =
        String.concat ""
          (List.map
@@ -668,9 +665,9 @@ let conflicted =
               Printf.sprintf "100644 %s %d\tconflict.txt\n" hello_id stage)
             [ 1; 2; 3 ])
      in
-     ignore (Fixture.git_input repo [ "update-index"; "--index-info" ] stages);
-     Fixture.write repo "conflict.txt" "<<<<<<<\n";
-     (repo, ok (Git.open_repo ~env:(Fixture.env repo) (Fixture.root repo))))
+     ignore (Repo.git_input repo [ "update-index"; "--index-info" ] stages);
+     Repo.write repo "conflict.txt" "<<<<<<<\n";
+     (repo, ok (Git.open_repo ~env:(Repo.env repo) (Repo.root repo))))
 
 let files_names_a_conflicted_path_once () =
   let _, t = Lazy.force conflicted in
@@ -681,7 +678,7 @@ let files_names_a_conflicted_path_once () =
 
 let files_reports_a_path_whose_type_it_cannot_read () =
   let repo, t = Lazy.force conflicted in
-  let src = Filename.concat (Fixture.root repo) "src" in
+  let src = Filename.concat (Repo.root repo) "src" in
   Unix.chmod src 0o000;
   let result =
     Fun.protect
@@ -710,7 +707,7 @@ let contents_of_main =
     ("README.md", "hello\n");
     ("bin.dat", "\000binary\000\n");
     ("bytes.bin", "\000\001\n\255");
-    (Fixture.quoted_name, "before\n");
+    (Repo.quoted_name, "before\n");
     ("gone.txt", "deleted on disk\n");
     ("head.txt", "a\nb\nc\n");
     ("mod.txt", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n");
@@ -833,7 +830,7 @@ let fold_blobs_reports_a_failed_git () =
    process is a new empty one, and gives what [f] gave and the names in
    that directory after [f]. *)
 let in_temp_dir f =
-  let dir = Fixture.temp_dir () in
+  let dir = Repo.temp_dir () in
   let previous = Filename.get_temp_dir_name () in
   Filename.set_temp_dir_name dir;
   let value =
@@ -846,17 +843,17 @@ let in_temp_dir f =
 let key_run =
   lazy
     (let repo = Lazy.force shared in
-     let before = Fixture.index_state repo in
+     let before = Repo.index_state repo in
      let key, left = in_temp_dir (fun () -> Lazy.force key) in
-     (key, before, Fixture.index_state repo, left))
+     (key, before, Repo.index_state repo, left))
 
 (* A copy of the shared repository, after a real [git add -A] in it, and
    the tree that [git write-tree] then writes. *)
 let added =
   lazy
-    (let repo = Fixture.copy (Lazy.force shared) in
-     ignore (Fixture.git repo [ "add"; "-A" ]);
-     (repo, String.trim (Fixture.git repo [ "write-tree" ])))
+    (let repo = Repo.copy (Lazy.force shared) in
+     ignore (Repo.git repo [ "add"; "-A" ]);
+     (repo, String.trim (Repo.git repo [ "write-tree" ])))
 
 let tree_key_is_the_tree_of_git_add_all () =
   let key, _, _, _ = Lazy.force key_run in
@@ -871,7 +868,7 @@ let tree_key_leaves_no_temporary_file () =
   let _, _, _, left = Lazy.force key_run in
   Alcotest.check strings "the temporary directory" [] left
 
-let copy = lazy (Fixture.copy (Lazy.force shared))
+let copy = lazy (Repo.copy (Lazy.force shared))
 
 (* The opened [copy], and its tree keys: with a new ignored file, then
    also with a new untracked file. Last, the result of [tree_key] when git
@@ -880,12 +877,12 @@ let copy = lazy (Fixture.copy (Lazy.force shared))
 let copy_run =
   lazy
     (let repo = Lazy.force copy in
-     let t = ok (Git.open_repo ~env:(Fixture.env repo) (Fixture.root repo)) in
-     Fixture.write repo "more.log" "ignored\n";
+     let t = ok (Git.open_repo ~env:(Repo.env repo) (Repo.root repo)) in
+     Repo.write repo "more.log" "ignored\n";
      let with_ignored = ok (Git.tree_key t) in
-     Fixture.write repo "more.txt" "new\n";
+     Repo.write repo "more.txt" "new\n";
      let with_untracked = ok (Git.tree_key t) in
-     let file = Filename.concat (Fixture.root repo) "more.txt" in
+     let file = Filename.concat (Repo.root repo) "more.txt" in
      Unix.chmod file 0o000;
      let failed, left =
        Fun.protect
@@ -918,7 +915,7 @@ let tree_key_removes_its_files_when_git_fails () =
 let broken =
   lazy
     (let t, _, _, _, _ = Lazy.force copy_run in
-     Fixture.break (Lazy.force copy);
+     Repo.break (Lazy.force copy);
      t)
 
 let reports_a_failed_git call () =
@@ -936,22 +933,22 @@ let reports_a_failed_git call () =
    working tree. *)
 let sha256 =
   lazy
-    (let repo = Fixture.init ~object_format:"sha256" () in
-     Fixture.import repo
+    (let repo = Repo.init ~object_format:"sha256" () in
+     Repo.import repo
        [
-         Fixture.commit ~ref:"refs/heads/main" ~mark:1 ~message:"first"
-           [ Fixture.File ("README.md", "hello\n") ];
+         Repo.commit ~ref:"refs/heads/main" ~mark:1 ~message:"first"
+           [ Repo.File ("README.md", "hello\n") ];
        ];
-     (repo, ok (Git.open_repo ~env:(Fixture.env repo) (Fixture.root repo))))
+     (repo, ok (Git.open_repo ~env:(Repo.env repo) (Repo.root repo))))
 
 (* The tree key of the SHA-256 repository, and the state of its index
    before and after. *)
 let sha256_key =
   lazy
     (let repo, t = Lazy.force sha256 in
-     let before = Fixture.index_state repo in
+     let before = Repo.index_state repo in
      let key = ok (Git.tree_key t) in
-     (key, before, Fixture.index_state repo))
+     (key, before, Repo.index_state repo))
 
 let sha256_repository_has_the_sha256_format () =
   let _, t = Lazy.force sha256 in
@@ -1059,15 +1056,15 @@ let fold_blobs_reads_the_output_after_an_error () =
   | other -> Alcotest.fail (print_error other)
 
 let open_repo_keeps_the_first_4096_bytes_of_the_standard_error () =
-  let env, script = Fixture.fake_git "printf '%05000d' 0 >&2; exit 3\n" in
+  let env, script = Repo.fake_git "printf '%05000d' 0 >&2; exit 3\n" in
   match error (Git.open_repo ~env script) with
   | Not_a_repository { detail; _ } ->
       Alcotest.(check string) "the detail" (String.make 4096 '0') detail
   | other -> Alcotest.fail (print_error other)
 
 let reports_a_temporary_directory_that_does_not_exist () =
-  let env, script = Fixture.fake_git "printf 'sha1\\n%s\\n' \"$0\"\n" in
-  let missing = Filename.concat (Fixture.temp_dir ()) "missing" in
+  let env, script = Repo.fake_git "printf 'sha1\\n%s\\n' \"$0\"\n" in
+  let missing = Filename.concat (Repo.temp_dir ()) "missing" in
   let previous = Filename.get_temp_dir_name () in
   Filename.set_temp_dir_name missing;
   let result =
@@ -1081,7 +1078,7 @@ let reports_a_temporary_directory_that_does_not_exist () =
 
 let tree_key_reports_an_index_it_cannot_read () =
   let repo, t = Lazy.force conflicted in
-  let index = Filename.concat (Fixture.root repo) ".git/index" in
+  let index = Filename.concat (Repo.root repo) ".git/index" in
   Unix.chmod index 0o000;
   let result =
     Fun.protect
@@ -1094,12 +1091,13 @@ let tree_key_reports_an_index_it_cannot_read () =
         (String.starts_with ~prefix:index detail)
   | other -> Alcotest.fail (print_error other)
 
-(* A fake git closes its output and then lives on for 30 ms, so that
-   [open_repo] waits for it. A timer interrupts that wait after 10 ms. *)
+(* A fake git closes its output and then lives on for 10 ms, so that
+   [open_repo] waits for it. A timer sends a signal every 2 ms while
+   [open_repo] runs, so that some signal comes during that wait. *)
 let open_repo_waits_again_after_a_signal () =
   let env, script =
-    Fixture.fake_git
-      "printf 'sha1\\n%s\\n' \"$0\"\nexec >&-\nexec /bin/sleep 0.03\n"
+    Repo.fake_git
+      "printf 'sha1\\n%s\\n' \"$0\"\nexec >&-\nexec /bin/sleep 0.01\n"
   in
   let previous = Sys.signal Sys.sigalrm (Sys.Signal_handle ignore) in
   let stop = { Unix.it_interval = 0.; it_value = 0. } in
@@ -1111,7 +1109,7 @@ let open_repo_waits_again_after_a_signal () =
       (fun () ->
         ignore
           (Unix.setitimer Unix.ITIMER_REAL
-             { Unix.it_interval = 0.; it_value = 0.01 });
+             { Unix.it_interval = 0.002; it_value = 0.002 });
         Git.open_repo ~env script)
   in
   Alcotest.(check string) "the root" script (Git.root (ok result))
