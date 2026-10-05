@@ -63,16 +63,21 @@ Parse `sinter.toml` and the front matter of rule files with
 manifest specification.
 
 ## Write the pack specification
-@scope spec/**
+@scope spec/**, docs/decisions/**
+@decision runner-adapters
 Write `spec/packs.md`: the query files and their captures, the
 descriptor, the comment sigils, the joining of line comments, the
-attachment of a comment, a parse failure, and the test ID strategies.
+attachment of a comment, a parse failure, the interface of a runner
+adapter, and the default matcher. Add the runners of a pack to the
+manifest specification.
 
 ## Build bridge version 2
 @scope bridge/**, lib/**, bin/**, test/**, docs/decisions/**
 Keep parsed trees and compiled queries as handles, run one query over
 one tree, number the matches, count the errors of a tree from its
-root, and return typed errors. Split `lib/parse.ml` by its jobs.
+root, and return typed errors. Call a function of a wasm module with
+bytes in and out, under limits of time and memory, for runner
+adapters. Split `lib/parse.ml` by its jobs.
 
 ## Scan and check markdown
 @scope lib/**, bin/**, test/**
@@ -82,8 +87,9 @@ mode, and run them on Sinter itself.
 
 ## Fetch language packs
 @scope lib/**, bin/**, test/**, docs/**
-Fetch a pack from the packs repository with `sinter pack add`, record
-it in `sinter.lock`, and keep it in a user cache keyed by its hash.
+Fetch a pack, with its grammars, queries, and runner adapters, from
+the packs repository with `sinter pack add`, record it in
+`sinter.lock`, and keep it in a user cache keyed by its hash.
 
 ## Read TypeScript, Rust, and OCaml
 @scope lib/**, test/**
@@ -92,9 +98,10 @@ that each one declares.
 
 ## Import test evidence
 @scope lib/**, bin/**, test/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, docs/decisions/**
-Read JUnit XML with `sinter evidence import`, bind each result to its
-test by the tree key, and report `never-ran` and `failed`. Write JUnit
-XML from Sinter's own test suite.
+Read test reports with `sinter evidence import` through the runner
+adapters of the packs, bind each result to its test by the tree key,
+and report `never-ran` and `failed`. Write JUnit XML from Sinter's own
+test suite.
 
 ## Write SARIF
 @scope lib/**, bin/**, test/**, docs/decisions/**
