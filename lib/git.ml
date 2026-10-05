@@ -181,6 +181,34 @@ module Decode = struct
     Option.to_result decoded
       ~none:(Printf.sprintf "%S is not a header of git cat-file --batch" header)
 
+  (* Refs. *)
+
+  type ref_entry = {
+    refname : string;
+    kind : kind;
+    id : string;
+    upstream : string;
+  }
+
+  let ref_entry record =
+    let entry =
+      match String.split_on_char '\000' record with
+      | [ refname; kind_field; id; upstream ]
+        when refname <> "" && is_object_id id ->
+          Option.map
+            (fun kind -> { refname; kind; id; upstream })
+            (kind kind_field)
+      | _ -> None
+    in
+    Option.to_result entry
+      ~none:(Printf.sprintf "%S is not a ref of git for-each-ref" record)
+
+  let refs output =
+    if output = "" then Ok []
+    else
+      let* records = line output in
+      all ref_entry (String.split_on_char '\n' records)
+
   (* Diff output. *)
 
   type header = {
@@ -745,54 +773,64 @@ let files t = Result.map (List.map (fun entry -> entry.path)) (file_set t)
 type source = Upstream | Local_branch | Origin_branch
 type target = { source : source; refname : string; commit : string }
 
-(* [upstream repo name] is the full name of the ref that the branch
-   [name] tracks, when [name] is a branch that tracks one that exists. *)
-let upstream t name =
-  answer t
-    [
-      "rev-parse";
-      "--verify";
-      "--quiet";
-      "--symbolic-full-name";
-      "--end-of-options";
-      name ^ "@{upstream}";
-    ]
-    Decode.line
+(* The format of [refs]: the fields that {!Decode.refs} reads. *)
+let ref_format =
+  "--format=%(refname)%00%(objecttype)%00%(objectname)%00%(upstream)"
+
+(* [refs repo patterns] is each ref that [patterns] match. A pattern
+   matches a ref of its own name, and also, as a prefix, the refs under
+   it, and it can hold glob characters. *)
+let refs t patterns =
+  run t ("for-each-ref" :: ref_format :: patterns) Decode.refs
+
+let find refname entries =
+  List.find_opt
+    (fun (entry : Decode.ref_entry) -> String.equal entry.refname refname)
+    entries
 
 let resolve_target t name =
-  (* A name that git does not take as a branch name names no branch, and
-     the check keeps revision syntax such as [^] or [..] away from the
-     names below. *)
-  let* valid =
-    answer t [ "check-ref-format"; "refs/heads/" ^ name ] (fun _ -> Ok ())
-  in
-  if Option.is_none valid then Error (Target_not_found name)
+  let local = "refs/heads/" ^ name in
+  let origin = "refs/remotes/origin/" ^ name in
+  if String.contains name '\000' then Error (Target_not_found name)
   else
-    let* upstream = upstream t name in
-    let candidates =
-      (match upstream with
-        | Some refname -> [ (Upstream, refname) ]
-        | None -> [])
-      @ [
-          (Local_branch, "refs/heads/" ^ name);
-          (Origin_branch, "refs/remotes/origin/" ^ name);
-        ]
+    let* found = refs t [ local; origin ] in
+    let upstream_of entries =
+      match find local entries with
+      | Some { upstream; _ } when upstream <> "" -> Some upstream
+      | _ -> None
     in
-    let rec first = function
-      | [] -> Error (Target_not_found name)
-      | (source, refname) :: rest -> (
-          match commit_of t refname with
-          | Error (Bad_revision _) -> first rest
-          | found ->
-              Result.map (fun commit -> { source; refname; commit }) found)
+    (* An upstream other than the branch of [origin], for example a
+       local branch, needs a second look. *)
+    let* entries =
+      match upstream_of found with
+      | Some upstream when Option.is_none (find upstream found) ->
+          Result.map (fun more -> more @ found) (refs t [ upstream ])
+      | _ -> Ok found
     in
-    first candidates
+    [
+      (Upstream, Option.bind (upstream_of entries) (fun up -> find up entries));
+      (Local_branch, find local entries);
+      (Origin_branch, find origin entries);
+    ]
+    |> List.find_map (fun (source, entry) ->
+        match entry with
+        | Some { Decode.refname; kind = Decode.Commit; id; _ } ->
+            Some { source; refname; commit = id }
+        | _ -> None)
+    |> Option.to_result ~none:(Target_not_found name)
 
 let merge_base t a b =
-  let* first = commit_of t a in
-  let* second = commit_of t b in
-  let* base = answer t [ "merge-base"; first; second ] Decode.object_id in
-  Option.to_result base ~none:(No_merge_base (a, b))
+  match
+    answer t [ "merge-base"; "--end-of-options"; a; b ] Decode.object_id
+  with
+  | Ok (Some base) -> Ok base
+  | Ok None -> Error (No_merge_base (a, b))
+  | Error failure ->
+      (* Git names no revision in its status, so [commit_of] finds the
+         one that names no commit. *)
+      let* _ = commit_of t a in
+      let* _ = commit_of t b in
+      Error failure
 
 (* The base tree. *)
 

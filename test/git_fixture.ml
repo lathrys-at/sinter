@@ -331,6 +331,9 @@ let shared_config =
    [branch \"main\"]\n\
    \tremote = origin\n\
    \tmerge = refs/heads/main\n\
+   [branch \"loc\"]\n\
+   \tremote = .\n\
+   \tmerge = refs/heads/both\n\
    [branch \"gone\"]\n\
    \tremote = origin\n\
    \tmerge = refs/heads/missing\n"
@@ -391,6 +394,7 @@ let shared_repo =
          reset ~ref:"refs/heads/both" ~mark:2;
          reset ~ref:"refs/remotes/origin/both" ~mark:3;
          reset ~ref:"refs/heads/gone" ~mark:2;
+         reset ~ref:"refs/heads/deep/branch" ~mark:2;
        ];
      append_config repo shared_config;
      checkout repo;

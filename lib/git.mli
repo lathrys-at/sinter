@@ -162,16 +162,21 @@ type target = {
 
 val resolve_target : t -> string -> (target, error) result
 (** [resolve_target repo name] is the target branch of the name [name], for
-    example ["main"]. The function tries three refs, in order, and takes the
-    first that names a commit:
+    example ["main"]. The function looks at three refs, in order, and takes the
+    first that points at a commit:
 
-    + the upstream of the local branch [name], as [<name>@{upstream}] gives it
-    + the local branch, [refs/heads/<name>]
-    + the branch of the remote [origin], [refs/remotes/origin/<name>]
+    + the upstream of the local branch [refs/heads/<name>], which
+      [<name>@{upstream}] names: the ref that the configuration of the branch
+      says the branch tracks
+    + the local branch [refs/heads/<name>]
+    + the branch [refs/remotes/origin/<name>] of the remote [origin]
 
-    The error is [Target_not_found name] when none of the three names a commit,
-    and when git cannot take [name] as the name of a branch, for example
-    ["main~1"] or ["a..b"]: no branch can have such a name. *)
+    The function takes [name] as it is: revision syntax such as [~1], and glob
+    characters such as [*], have no meaning in it. A ref that points at an
+    object other than a commit, such as an annotated tag, does not count.
+
+    The error is [Target_not_found name] when none of the three refs points at a
+    commit. *)
 
 val merge_base : t -> string -> string -> (string, error) result
 (** [merge_base repo a b] is the object id of the merge base of the commits that
@@ -307,6 +312,23 @@ module Decode : sig
   val batch_header : string -> (batch_header, string) result
   (** [batch_header line] decodes one header line, without its line feed:
       [<id> <kind> <size>], [<name> missing], or [<name> ambiguous]. *)
+
+  (** {2 Refs} *)
+
+  type ref_entry = {
+    refname : string;  (** the full name of the ref *)
+    kind : kind;  (** the type of the object that the ref points at *)
+    id : string;  (** the object id of that object *)
+    upstream : string;
+        (** the full name of the ref that the branch tracks, or [""] when the
+            ref is no branch with an upstream *)
+  }
+  (** One ref, as [git for-each-ref] prints it with the format
+      [%(refname)%00%(objecttype)%00%(objectname)%00%(upstream)]. *)
+
+  val refs : string -> (ref_entry list, string) result
+  (** [refs output] decodes the output of [git for-each-ref] with that format:
+      one line for each ref. The empty string gives the empty list. *)
 
   (** {2 Diff output} *)
 

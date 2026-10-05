@@ -1063,3 +1063,61 @@ let print_changes changes =
            Printf.sprintf "%S %s" path (print_change change))
          changes)
   ^ "]"
+
+(* The output of git for-each-ref. *)
+
+let kind_name = function
+  | Git.Decode.Blob -> "blob"
+  | Git.Decode.Tree -> "tree"
+  | Git.Decode.Commit -> "commit"
+  | Git.Decode.Tag -> "tag"
+
+let ref_name =
+  Gen.map
+    (fun parts -> String.concat "/" ("refs" :: parts))
+    (Gen.list_size (Gen.int_range 1 3)
+       (Gen.oneof_list [ "heads"; "remotes"; "origin"; "main"; "a b"; "x@y" ]))
+
+let object_id =
+  let open Gen in
+  let* length = oneof_list [ 40; 64 ] in
+  string_size
+    ~gen:(oneof_list (String.to_seq "0123456789abcdef" |> List.of_seq))
+    (pure length)
+
+let ref_entry =
+  let open Gen in
+  let* refname = ref_name in
+  let* kind = oneof_list Git.Decode.[ Blob; Tree; Commit; Tag ] in
+  let* id = object_id in
+  let+ upstream = oneof [ pure ""; ref_name ] in
+  Git.Decode.{ refname; kind; id; upstream }
+
+let render_ref (entry : Git.Decode.ref_entry) =
+  String.concat "\000"
+    [ entry.refname; kind_name entry.kind; entry.id; entry.upstream ]
+  ^ "\n"
+
+let refs_output =
+  Gen.map
+    (fun entries -> (String.concat "" (List.map render_ref entries), entries))
+    (Gen.list_size (Gen.int_bound 4) ref_entry)
+
+let print_refs_output (output, _) = Printf.sprintf "%S" output
+
+let damaged_refs_output =
+  let open Gen in
+  let* output, _ = refs_output in
+  let length = String.length output in
+  oneof
+    [
+      map (fun at -> String.sub output 0 at) (int_bound length);
+      (let* at = int_bound length in
+       let+ piece =
+         string_size
+           ~gen:(oneof_list [ '\000'; '\n'; 'a'; 'g'; ' '; 'c' ])
+           (int_range 1 3)
+       in
+       splice output at piece);
+      string_size (int_range 0 40);
+    ]

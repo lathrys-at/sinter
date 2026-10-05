@@ -98,6 +98,66 @@ let hunk_header_is_total =
     (fun text ->
       match Git.Decode.hunk_header text with Ok _ | Error _ -> true)
 
+(* Refs. *)
+
+let entries =
+  Alcotest.testable
+    (fun formatter value ->
+      Format.pp_print_string formatter
+        (Generators.print_refs_output ("", value)))
+    ( = )
+
+let commit_id_of digit = String.make 40 digit
+
+let refs_reads_each_field () =
+  decoded entries "two refs"
+    (Ok
+       [
+         {
+           refname = "refs/heads/main";
+           kind = Git.Decode.Commit;
+           id = commit_id_of 'a';
+           upstream = "refs/remotes/origin/main";
+         };
+         {
+           refname = "refs/remotes/origin/main";
+           kind = Git.Decode.Tag;
+           id = String.make 64 'b';
+           upstream = "";
+         };
+       ])
+    (Git.Decode.refs
+       ("refs/heads/main\000commit\000" ^ commit_id_of 'a'
+      ^ "\000refs/remotes/origin/main\nrefs/remotes/origin/main\000tag\000"
+      ^ String.make 64 'b' ^ "\000\n"))
+
+let refs_of_no_output_is_empty () =
+  decoded entries "no ref" (Ok []) (Git.Decode.refs "")
+
+let refs_refuses_a_bad_record () =
+  List.iter
+    (fun output -> refused output (Git.Decode.refs output))
+    [
+      "refs/heads/a\000commit\000" ^ commit_id_of 'a' ^ "\000";
+      "refs/heads/a\000commit\000" ^ commit_id_of 'a' ^ "\n";
+      "refs/heads/a\000commit\000" ^ commit_id_of 'a' ^ "\000\000\n";
+      "\000commit\000" ^ commit_id_of 'a' ^ "\000\n";
+      "refs/heads/a\000commit\000" ^ String.make 39 'a' ^ "\000\n";
+      "refs/heads/a\000branch\000" ^ commit_id_of 'a' ^ "\000\n";
+      "\n";
+    ]
+
+let refs_reads_what_git_writes =
+  property ~name:"refs gives back the refs of an output of git for-each-ref"
+    ~print:Generators.print_refs_output Generators.refs_output
+    (fun (output, expected) -> Git.Decode.refs output = Ok expected)
+
+let refs_is_total =
+  property ~name:"refs gives refs or an error for a damaged output"
+    ~print:(fun text -> Printf.sprintf "%S" text)
+    Generators.damaged_refs_output
+    (fun output -> match Git.Decode.refs output with Ok _ | Error _ -> true)
+
 (* Diff output. *)
 
 let lines texts = String.concat "" (List.map (fun line -> line ^ "\n") texts)
@@ -318,8 +378,7 @@ let diff_reads_hunks_with_context =
       Git.Decode.diff output = Ok [ ("f", Git.Modified runs) ])
 
 let diff_is_total =
-  property ~count:1000
-    ~name:"diff gives changes or an error for a damaged output"
+  property ~name:"diff gives changes or an error for a damaged output"
     ~print:(fun text -> Printf.sprintf "%S" text)
     Generators.damaged_diff_output
     (fun output -> match Git.Decode.diff output with Ok _ | Error _ -> true)
@@ -423,17 +482,15 @@ let a_branch_of_origin_alone_is_found =
 let a_local_branch_alone_is_found =
   resolves "gone" Git.Local_branch "refs/heads/gone"
 
-let a_name_with_no_branch_is_not_found () =
-  let _, t = open_shared () in
-  Alcotest.(check (result target error))
-    "no branch" (Error (Git.Target_not_found "nothing"))
-    (Git.resolve_target t "nothing")
+(* The upstream of [loc] is the local branch [both]. *)
+let an_upstream_that_is_a_local_branch_is_found =
+  resolves "loc" Git.Upstream "refs/heads/both"
 
-let a_name_that_is_no_branch_name_is_not_found () =
+let not_found name () =
   let _, t = open_shared () in
   Alcotest.(check (result target error))
-    "the parent of main" (Error (Git.Target_not_found "main~1"))
-    (Git.resolve_target t "main~1")
+    name (Error (Git.Target_not_found name))
+    (Git.resolve_target t name)
 
 (* The merge base. *)
 
@@ -450,6 +507,12 @@ let merge_base_of_unrelated_commits_is_an_error () =
     "no common ancestor"
     (Error (Git.No_merge_base ("main", "lonely")))
     (Git.merge_base t "main" "lonely")
+
+let merge_base_names_a_revision_that_starts_with_a_hyphen () =
+  let _, t = open_shared () in
+  Alcotest.(check (result string error))
+    "an option" (Error (Git.Bad_revision "--all"))
+    (Git.merge_base t "--all" "main")
 
 let merge_base_names_a_bad_second_revision () =
   let _, t = open_shared () in
@@ -621,6 +684,11 @@ let tests =
       a_side_with_no_lines_can_start_at_line_0;
     hunk_header_reads_what_git_writes;
     hunk_header_is_total;
+    case "refs reads each field" refs_reads_each_field;
+    case "refs of no output is empty" refs_of_no_output_is_empty;
+    case "refs refuses a bad record" refs_refuses_a_bad_record;
+    refs_reads_what_git_writes;
+    refs_is_total;
     case "an empty output has no change" empty_output_has_no_change;
     case "an output without a last line feed is refused"
       output_without_a_last_line_feed_is_refused;
@@ -667,14 +735,24 @@ let tests =
       a_local_branch_alone_is_found;
     case "resolve_target finds a branch of origin alone"
       a_branch_of_origin_alone_is_found;
+    case "resolve_target finds an upstream that is a local branch"
+      an_upstream_that_is_a_local_branch_is_found;
     case "resolve_target finds no branch of an unknown name"
-      a_name_with_no_branch_is_not_found;
-    case "resolve_target finds no branch of a name git refuses"
-      a_name_that_is_no_branch_name_is_not_found;
+      (not_found "nothing");
+    case "resolve_target reads no revision syntax in a name"
+      (not_found "main~1");
+    case "resolve_target reads no range in a name" (not_found "main..main");
+    case "resolve_target reads no glob in a name" (not_found "m*");
+    case "resolve_target finds no branch of a prefix of a branch name"
+      (not_found "deep");
+    case "resolve_target finds no branch of a name with a NUL byte"
+      (not_found "ma\000in");
     case "merge_base gives the common ancestor"
       merge_base_gives_the_common_ancestor;
     case "merge_base of unrelated commits is an error"
       merge_base_of_unrelated_commits_is_an_error;
+    case "merge_base names a revision that starts with a hyphen"
+      merge_base_names_a_revision_that_starts_with_a_hyphen;
     case "merge_base names a bad revision"
       merge_base_names_a_bad_second_revision;
     case "diff gives the hunks of a modified file"

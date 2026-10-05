@@ -162,10 +162,11 @@ val shared : unit -> t
     + commit 3, on [refs/remotes/origin/main], from commit 1: adds [origin.txt]
     + commit 4, on [refs/heads/lonely], with no parent: holds only [lonely.txt]
 
-    The branches [loc], [both], and [gone] point at commit 2. The remote
-    branches [origin/orig] and [origin/both] point at commit 3. The upstream of
-    [main] is [origin/main]. The upstream of [gone] is [origin/missing], which
-    does not exist. [HEAD] is [main], commit 2.
+    The branches [loc], [both], [gone], and [deep/branch] point at commit 2. The
+    remote branches [origin/orig] and [origin/both] point at commit 3. The
+    upstream of [main] is [origin/main]. The upstream of [loc] is the local
+    branch [both]. The upstream of [gone] is [origin/missing], which does not
+    exist. [HEAD] is [main], commit 2.
 
     Commit 1 holds:
 

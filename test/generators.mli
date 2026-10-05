@@ -264,3 +264,18 @@ val print_change : Sinter_core.Git.change -> string
 
 val print_changes : (string * Sinter_core.Git.change) list QCheck2.Print.t
 (** The printer for a list of paths and their changes. *)
+
+(** {1 Output of git for-each-ref} *)
+
+val refs_output : (string * Sinter_core.Git.Decode.ref_entry list) QCheck2.Gen.t
+(** The output of [git for-each-ref] with the format that
+    {!Sinter_core.Git.Decode.refs} reads, for up to four refs, and those refs.
+    An object id has 40 or 64 digits, and an upstream is empty at times. *)
+
+val print_refs_output :
+  (string * Sinter_core.Git.Decode.ref_entry list) QCheck2.Print.t
+(** The printer for a counterexample of {!refs_output}. *)
+
+val damaged_refs_output : string QCheck2.Gen.t
+(** An output of {!refs_output} cut short, or with a few bytes written over it;
+    or any bytes. *)
