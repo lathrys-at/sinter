@@ -106,18 +106,17 @@ stops with exit code 3 in each of these cases:
 
 `sinter parse` and `sinter serve` need no manifest.
 
-### 2.5 One law for both trees
+### 2.5 One configuration for both trees
 
-The **law** of a repository is its manifest and its rule files
-(section 15).
+The **configuration** of a repository is its manifest and its rule
+files (section 15).
 
 In diff mode, Sinter reads two trees: the working tree and the base
 tree ([algebra.md](algebra.md) section 8). Sinter reads both trees
-with one law: the law of the working tree. So Sinter reads the base
-tree with the manifest, the rule files, and the packs of the working
-tree. It reads
-the manifest of the base tree only to compare the two laws (section
-14.4).
+with one configuration: the configuration of the working tree. So
+Sinter reads the base tree with the manifest, the rule files, and the
+packs of the working tree. It reads the manifest of the base tree only
+to compare the two configurations (section 14.4).
 
 A manifest that `--manifest` names applies to both trees. Its globs
 stay relative to the repository root.
@@ -262,7 +261,7 @@ sinter: sinter.toml:8:15: 'rollout-cap' takes true or false, not a string
 sinter: sinter.toml:4:1: the dotted key 'b.ct' adds a key to the table 'a.b', which a table header made; write 'ct' under the header [a.b]
 sinter: sinter.toml:1:8: this manifest needs specification 1.2, and this sinter implements 1.1; install a newer sinter
 sinter: sinter.toml:5:1: the pack markdown is built into sinter and takes no version
-sinter: sinter.toml:12:1: 'law-touched' takes no tier; it always reports and never blocks
+sinter: sinter.toml:12:1: 'config-changed' takes no tier; it always reports and never blocks
 sinter: sinter.toml:13:1: 'bad-scope' takes no tier at the gate 'target'
 sinter: sinter.toml:6:12: '.' is not in the id pattern language; put it in a class, for example [.]
 sinter: sinter.toml:6:12: the pattern matches an empty id
@@ -568,7 +567,7 @@ These are errors:
 - `<gate>` is not `turn`, `merge`, or `target`;
 - `<class>` is not a built-in finding class;
 - `<class>` takes no tier at `<gate>`;
-- `<class>` is `law-touched`, which always reports and never blocks;
+- `<class>` is `config-changed`, which always reports and never blocks;
 - `<class>` is `pack-drift`, which takes no tier at any gate.
 
 ### 9.3 The rollout cap and the tier that applies
@@ -744,8 +743,8 @@ specification. The manifest can add names to it (section 11.2).
 
 ### 14.1 Setting facts
 
-The manifest yields facts of the kind `setting`, in the category `law`
-([algebra.md](algebra.md) section 3):
+The manifest yields facts of the kind `setting`, in the category
+`config` ([algebra.md](algebra.md) section 3):
 
 - A key that the manifest writes with one value yields one setting
   fact.
@@ -827,12 +826,12 @@ the path of the manifest, relative to the repository root.
 A manifest outside the repository has no path relative to the
 repository root. Its facts are all unlocated.
 
-### 14.4 `law-touched`
+### 14.4 `config-changed`
 
-`law-touched` is the finding class that reports a change to the law in
-diff mode. It is an *engine* class: the adjudicator emits it
-([algebra.md](algebra.md) section 9). Its tier is `warn` at every gate.
-`check.tiers` cannot set it, and nothing turns it off.
+`config-changed` is the finding class that reports a change to the
+configuration in diff mode. It is an *engine* class: the adjudicator
+emits it ([algebra.md](algebra.md) section 9). Its tier is `warn` at
+every gate. `check.tiers` cannot set it, and nothing turns it off.
 
 **The two sides.** The adjudicator compares the working manifest with
 the **base manifest**: the file at the same path, relative to the
@@ -860,7 +859,7 @@ of the set has an id and a value, by the rules of sections 14.1 and
 **A change.** An id that is in one comparison set only is a change. An
 id whose two values differ is a change. Comments, blank lines, the
 order of lines and of members, and the TOML form are no change. Each
-change gives one `law-touched` finding.
+change gives one `config-changed` finding.
 
 **The subject.** The subject of the finding is the fact of the working
 tree that has the id of the change, when one exists. Such a fact can
@@ -889,12 +888,12 @@ The detail writes a string in double quotes, and a boolean as `true`
 or `false`. When the base manifest exists and is not valid TOML 1.0.0,
 each detail ends with `; the base manifest is not valid TOML`.
 
-**The direction.** A change **tightens** when Sinter checks more after
-it, and **loosens** when Sinter checks less. A change that has no
-single direction **changes**. "Checks more" does not mean "reports
-more findings".
+**The direction.** A change **strengthens** the configuration when
+Sinter checks more after it, and **weakens** it when Sinter checks
+less. A change that has no single direction **changes**. "Checks more"
+does not mean "reports more findings".
 
-| key path | tightens | loosens | changes |
+| key path | strengthens | weakens | changes |
 |---|---|---|---|
 | `target` | | | each change |
 | `scan.packs.<name>.files` | a plain glob added; a `!` glob removed | a plain glob removed; a `!` glob added | |
@@ -912,23 +911,24 @@ A tier rises in the order `off`, `warn`, `block`.
 Examples of details:
 
 ```
-check.rollout-cap: false -> true (loosens)
-check.historical: added "docs/devlog/" (loosens)
-check.tiers.merge.dangling: "block" -> "warn" (loosens)
-scan.refs.jira: added "[A-Z]+-[1-9][0-9]*" (loosens)
-ledger.approval-required: added "req" (tightens)
+check.rollout-cap: false -> true (weakens)
+check.historical: added "docs/devlog/" (weakens)
+check.tiers.merge.dangling: "block" -> "warn" (weakens)
+scan.refs.jira: added "[A-Z]+-[1-9][0-9]*" (weakens)
+ledger.approval-required: added "req" (strengthens)
 ```
 
 **A manifest outside the repository.** A manifest that `--manifest`
 names outside the repository has no file in the base tree to compare
-with, so diff mode reports no `law-touched` finding for it. The `index`
-record names the path of the manifest ([jsonl.md](jsonl.md) section
-10), so a reader of the output sees where the law came from.
+with, so diff mode reports no `config-changed` finding for it. The
+`index` record names the path of the manifest ([jsonl.md](jsonl.md)
+section 10), so a reader of the output sees where the configuration
+came from.
 
 ## 15. Rule files
 
-A **rule file** holds law that a repository writes outside the
-manifest: a rule, or a finding class that the repository defines.
+A **rule file** holds configuration that a repository writes outside
+the manifest: a rule, or a finding class that the repository defines.
 These parts of a rule file are fixed:
 
 1. A rule file is a markdown file that starts with **front matter**: a
