@@ -122,3 +122,18 @@ CAMLprim value sinter_bridge_run_stub(value engine, value language,
   sinter_bridge_result_free(run);
   CAMLreturn(result);
 }
+
+CAMLprim value sinter_bridge_sha256_stub(value data) {
+  CAMLparam1(data);
+  CAMLlocal1(result);
+  sinter_bridge_result *digest = sinter_bridge_sha256(
+      (const uint8_t *)String_val(data), caml_string_length(data));
+  if (digest == NULL) {
+    raise_bridge_error("the bridge could not compute the digest");
+  }
+  /* No OCaml value points into memory that the bridge owns. */
+  result =
+      caml_alloc_initialized_string(digest->len, (const char *)digest->data);
+  sinter_bridge_result_free(digest);
+  CAMLreturn(result);
+}

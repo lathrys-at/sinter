@@ -19,6 +19,8 @@ tree-sitter = { version = "0.25", features = ["wasm"] }
 # tree-sitter re-exports wasmtime. This entry names no second copy of
 # wasmtime: it adds the "cache" feature to the copy tree-sitter builds.
 wasmtime = { version = "29", default-features = false, features = ["cache", "cranelift", "runtime", "std"] }
+# @cites sha256
+sha2 = "=0.10.9"
 
 [profile.release]
 opt-level = 2

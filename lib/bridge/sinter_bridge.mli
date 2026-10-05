@@ -5,7 +5,7 @@
 
 (** The parser bridge. The bridge loads a tree-sitter grammar that is compiled
     to WebAssembly, parses a source text with it, and runs a tree-sitter query
-    over the parse tree. *)
+    over the parse tree. It also computes the SHA-256 digest of a string. *)
 
 exception Error of string
 (** The bridge failed. The string is the message of the failure. *)
@@ -86,3 +86,16 @@ val decode_tree : string -> string
     @raise Error
       if [buffer] is not one whole parse tree result buffer of that layout, or
       if the tree in it is not valid UTF-8. *)
+
+val sha256 : string -> string
+(** [sha256 data] is the SHA-256 digest of the bytes of [data], as 32 bytes.
+
+    @raise Error if the bridge stops on an internal fault. *)
+
+val decode_digest : string -> string
+(** [decode_digest buffer] is the digest that [buffer] holds, as 32 bytes.
+    [buffer] is one result buffer of a digest, in the layout that the bridge
+    writes.
+
+    @raise Error
+      if [buffer] is not one whole digest result buffer of that layout. *)

@@ -7,7 +7,8 @@
 
    The bridge loads a tree-sitter grammar that is compiled to
    WebAssembly, parses a source text with that grammar, and runs a
-   tree-sitter query over the parse tree.
+   tree-sitter query over the parse tree. It also computes the SHA-256
+   digest of a byte string.
 
    Every function that can fail returns NULL. Call
    sinter_bridge_last_error for the reason.
@@ -81,6 +82,16 @@ sinter_bridge_result *sinter_bridge_run(sinter_bridge_engine *engine,
                                         const uint8_t *source,
                                         size_t source_len, const uint8_t *query,
                                         size_t query_len);
+
+/* Compute the SHA-256 digest of a byte string.
+
+   "data" points to "len" bytes; it may be NULL when "len" is 0. The
+   bytes must stay readable until the call returns.
+
+   The result holds the 32 bytes of the digest, in the encoding that
+   README.md beside this crate defines. It is valid until
+   sinter_bridge_result_free frees it. */
+sinter_bridge_result *sinter_bridge_sha256(const uint8_t *data, size_t len);
 
 /* Free a result and the bytes it points to. A NULL pointer is allowed
    and does nothing. */

@@ -185,6 +185,13 @@ let the_collector_frees_an_engine_that_no_value_refers_to () =
     (String.starts_with ~prefix:"(document"
        (Sinter_bridge.tree (Lazy.force json) ~source:"[1]"))
 
+(* The digest needs no engine. *)
+let sha256_gives_the_32_bytes_of_the_digest () =
+  Alcotest.(check string)
+    "the digest of the empty string"
+    "\xe3\xb0\xc4\x42\x98\xfc\x1c\x14\x9a\xfb\xf4\xc8\x99\x6f\xb9\x24\x27\xae\x41\xe4\x64\x9b\x93\x4c\xa4\x95\x99\x1b\x78\x52\xb8\x55"
+    (Sinter_bridge.sha256 "")
+
 let tests =
   [
     property ~name:"a capture is a byte range inside the source" ~print:Fun.id
@@ -218,4 +225,6 @@ let tests =
       a_closed_engine_refuses_every_call;
     Alcotest.test_case "the collector frees an engine that no value refers to"
       `Quick the_collector_frees_an_engine_that_no_value_refers_to;
+    Alcotest.test_case "sha256 gives the 32 bytes of the digest" `Quick
+      sha256_gives_the_32_bytes_of_the_digest;
   ]

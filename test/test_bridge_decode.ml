@@ -43,6 +43,37 @@ let decode_tree_gives_back_what_was_encoded =
     Generators.tree_buffer
     (fun (text, buffer) -> String.equal (Sinter_bridge.decode_tree buffer) text)
 
+let decode_digest_gives_back_what_was_encoded =
+  property ~name:"decode_digest gives back the digest that was encoded"
+    ~print:(fun (digest, buffer) ->
+      Generators.print_buffer digest ^ " " ^ Generators.print_buffer buffer)
+    Generators.digest_buffer
+    (fun (digest, buffer) ->
+      String.equal (Sinter_bridge.decode_digest buffer) digest)
+
+let decode_digest_rejects_a_damaged_buffer =
+  property ~name:"decode_digest raises Error on a damaged digest buffer"
+    ~print:Generators.print_damaged Generators.damaged_digest_buffer
+    (fun (_, buffer) ->
+      raises_error (fun () -> Sinter_bridge.decode_digest buffer))
+
+let decode_digest_is_total =
+  property ~count:2000
+    ~name:"decode_digest gives a digest or an Error for any bytes"
+    ~print:Generators.print_buffer Generators.buffer_bytes (fun buffer ->
+      gives_a_value_or_an_error (fun () -> Sinter_bridge.decode_digest buffer))
+
+let decode_digest_refuses_a_parse_tree_buffer =
+  property ~name:"decode_digest raises Error on a parse tree buffer"
+    ~print:Generators.print_buffer (QCheck2.Gen.map snd Generators.tree_buffer)
+    (fun buffer -> raises_error (fun () -> Sinter_bridge.decode_digest buffer))
+
+let decode_tree_refuses_a_digest_buffer =
+  property ~name:"decode_tree raises Error on a digest buffer"
+    ~print:Generators.print_buffer
+    (QCheck2.Gen.map snd Generators.digest_buffer) (fun buffer ->
+      raises_error (fun () -> Sinter_bridge.decode_tree buffer))
+
 let decode_captures_rejects_a_damaged_buffer =
   property ~name:"decode_captures raises Error on a damaged capture buffer"
     ~print:Generators.print_damaged Generators.damaged_captures_buffer
@@ -114,6 +145,19 @@ let rejects_a_parse_tree_that_is_not_utf_8 () =
     "the message names the parse tree" "the parse tree is not UTF-8 text"
     (error_message (fun () -> Sinter_bridge.decode_tree buffer))
 
+(* A digest buffer with two records is the header and 64 bytes. The
+   decoder names the count it found. *)
+let names_the_count_of_a_digest_buffer_with_two_records () =
+  let one = Generators.encode_digest (String.make 32 '\001') in
+  let buffer = Bytes.of_string (one ^ String.make 32 '\002') in
+  Bytes.set_int32_le buffer 8 2l;
+  Alcotest.(check string)
+    "the message names two records"
+    "the bridge returned a malformed buffer: a digest buffer holds 2 records, \
+     and 1 was expected"
+    (error_message (fun () ->
+         Sinter_bridge.decode_digest (Bytes.to_string buffer)))
+
 (* The header is sixteen bytes. A buffer of fifteen is short by one,
    and the decoder says so rather than read a field that is not
    there. *)
@@ -149,6 +193,8 @@ let tests =
     Alcotest.test_case
       "names the length of a buffer with bytes after its records" `Quick
       names_the_length_of_a_buffer_with_bytes_after_its_records;
+    Alcotest.test_case "names the count of a digest buffer with two records"
+      `Quick names_the_count_of_a_digest_buffer_with_two_records;
     decode_captures_gives_back_what_was_encoded;
     decode_tree_gives_back_what_was_encoded;
     decode_captures_rejects_a_damaged_buffer;
@@ -157,4 +203,9 @@ let tests =
     decode_tree_is_total;
     decode_captures_refuses_a_parse_tree_buffer;
     decode_tree_refuses_a_capture_buffer;
+    decode_digest_gives_back_what_was_encoded;
+    decode_digest_rejects_a_damaged_buffer;
+    decode_digest_is_total;
+    decode_digest_refuses_a_parse_tree_buffer;
+    decode_tree_refuses_a_digest_buffer;
   ]

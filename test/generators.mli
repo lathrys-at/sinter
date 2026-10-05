@@ -68,6 +68,10 @@ val encode_tree : string -> string
 (** [encode_tree text] is a result buffer that holds the one parse tree [text],
     in the layout that the bridge writes. *)
 
+val encode_digest : string -> string
+(** [encode_digest digest] is a result buffer that holds the bytes [digest] as
+    one digest, in the layout that the bridge writes. *)
+
 val capture : Sinter_bridge.capture QCheck2.Gen.t
 (** One capture. Every integer field is in the range of an unsigned 32-bit
     integer, and every string field is valid UTF-8. *)
@@ -77,6 +81,9 @@ val captures_buffer : (Sinter_bridge.capture list * string) QCheck2.Gen.t
 
 val tree_buffer : (string * string) QCheck2.Gen.t
 (** A parse tree text, and the result buffer that holds it. *)
+
+val digest_buffer : (string * string) QCheck2.Gen.t
+(** A digest of 32 bytes, and the result buffer that holds it. *)
 
 (** How a buffer was damaged. *)
 type damage =
@@ -98,6 +105,11 @@ val damaged_tree_buffer : (damage * string) QCheck2.Gen.t
     the way it was damaged. No damaged buffer is a valid parse tree result
     buffer. *)
 
+val damaged_digest_buffer : (damage * string) QCheck2.Gen.t
+(** A digest result buffer that was damaged in one of the five ways that apply
+    to a buffer that holds no string, and the way it was damaged. No damaged
+    buffer is a valid digest result buffer. *)
+
 val print_buffer : string QCheck2.Print.t
 (** The printer for a counterexample that is a result buffer. It gives the bytes
     as hexadecimal. *)
@@ -112,7 +124,8 @@ val print_captures : Sinter_bridge.capture list QCheck2.Print.t
 val buffer_bytes : string QCheck2.Gen.t
 (** Bytes that a decoder of a result buffer must survive: any bytes; the four
     bytes of the magic and then any bytes; a whole buffer with bytes written
-    over a run of it; a whole capture buffer; and a whole parse tree buffer. *)
+    over a run of it; a whole capture buffer; a whole parse tree buffer; and a
+    whole digest buffer. *)
 
 (** {1 Source text, and a capture inside it} *)
 
