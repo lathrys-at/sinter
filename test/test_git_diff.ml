@@ -430,8 +430,8 @@ let open_with env =
   | Ok t -> t
   | Error _ -> Alcotest.fail "the shared repository does not open"
 
-(* The commits of the refs that the tests of the target name, read with
-   one process. *)
+(* The commit of each ref that a test of the target branch or of the
+   merge base expects, read with one process. *)
 let refs =
   [
     "refs/remotes/origin/main";
@@ -464,10 +464,7 @@ let error =
             "Command_failed " ^ String.concat " " args
         | Git.Malformed_output { detail; _ } -> "Malformed_output " ^ detail
         | Git.File_error s -> "File_error " ^ s))
-    (fun a b ->
-      match (a, b) with
-      | Git.Command_failed _, Git.Command_failed _ -> true
-      | a, b -> a = b)
+    ( = )
 
 (* The target branch. *)
 
