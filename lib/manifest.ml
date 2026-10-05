@@ -653,7 +653,9 @@ let layout reading =
                     Ok
                       (path_set reading [ "plan"; "locations"; key.name ]
                          (fun set ->
-                           reading.locations <- (kind, set) :: reading.locations))
+                           if not (Path_set.is_empty set) then
+                             reading.locations <-
+                               (kind, set) :: reading.locations))
                 | None when key.name = "plan" -> Error Plan_location
                 | None -> (
                     match misplaced key.name with

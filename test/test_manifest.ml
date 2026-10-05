@@ -343,14 +343,23 @@ let a_target_branch_reads () =
 let an_empty_array_is_an_absent_key () =
   let manifest =
     read
-      (markdown ^ "[check]\nhistorical = []\n[ledger]\napproval-required = []\n")
+      (markdown
+     ^ "[check]\n\
+        historical = []\n\
+        [ledger]\n\
+        approval-required = []\n\
+        [plan.locations]\n\
+        req = []\n")
   in
   Alcotest.(check bool)
     "historical" true
     (Path_set.is_empty (Manifest.historical manifest));
   Alcotest.(check int)
     "approval" 0
-    (List.length (Manifest.approval_required manifest))
+    (List.length (Manifest.approval_required manifest));
+  Alcotest.(check bool)
+    "no location" true
+    (Option.is_none (Manifest.location manifest Manifest.Req))
 
 let every_form_of_toml_means_the_same () =
   let forms =
