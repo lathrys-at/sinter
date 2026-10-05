@@ -215,25 +215,16 @@ let of_string text =
 
 let to_string pattern = pattern.text
 
-(* A set of places in the id, from 0 to its length, is a list sorted
-   upward with no place twice. *)
-let rec union a b =
-  match (a, b) with
-  | [], set | set, [] -> set
-  | x :: xs, y :: ys ->
-      if x < y then x :: union xs b
-      else if y < x then y :: union a ys
-      else x :: union xs ys
-
 module Places = Set.Make (Int)
 
-(* [ends node from] is the set of places where a match of [node] can
-   end when it starts at a place of [from]. The end places of a set are
-   the union of the end places of its members. So after the rounds that
-   a quantifier needs, a round goes on only from the places that no
-   earlier round reached: a place that a later round reaches again has
-   fewer rounds left, and it can reach no place that its first round
-   did not. *)
+(* A set of places in the id, from 0 to its length, is a list sorted
+   upward with no place twice. [ends node from] is the set of places
+   where a match of [node] can end when it starts at a place of [from].
+   The end places of a set are the union of the end places of its
+   members. So after the rounds that a quantifier needs, a round goes
+   on only from the places that no earlier round reached: a place that
+   a later round reaches again has fewer rounds left, and it can reach
+   no place that its first round did not. *)
 let matches pattern id =
   let length = String.length id in
   let shift accepts from =
@@ -250,7 +241,8 @@ let matches pattern id =
           (fun c -> List.exists (fun (l, h) -> c >= l && c <= h) ranges)
           from
     | Alternation nodes ->
-        List.fold_left (fun set n -> union set (ends n from)) [] nodes
+        List.sort_uniq Int.compare
+          (List.concat_map (fun n -> ends n from) nodes)
     | Sequence nodes -> List.fold_left (fun from n -> ends n from) from nodes
     | Repeat (body, low, high) ->
         let rec exact rounds from =

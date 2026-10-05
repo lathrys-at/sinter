@@ -41,7 +41,10 @@ let alternation_binds_loosest () =
   check_match "ab|c" "c" true;
   check_match "ab|c" "ac" false;
   check_match "a(b|c)" "ac" true;
-  check_match "x|y|z" "z" true
+  check_match "x|y|z" "z" true;
+  check_match "(aa|a)a" "aa" true;
+  check_match "(ab|a)b" "ab" true;
+  check_match "(a|aa)a" "aa" true
 
 let quantifiers_count_their_part () =
   check_match "ab?" "a" true;
