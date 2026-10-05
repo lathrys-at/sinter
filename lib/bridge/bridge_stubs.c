@@ -137,3 +137,18 @@ CAMLprim value sinter_bridge_sha256_stub(value data) {
   sinter_bridge_result_free(digest);
   CAMLreturn(result);
 }
+
+CAMLprim value sinter_bridge_toml_parse_stub(value text) {
+  CAMLparam1(text);
+  CAMLlocal1(result);
+  sinter_bridge_result *parsed = sinter_bridge_toml_parse(
+      (const uint8_t *)String_val(text), caml_string_length(text));
+  if (parsed == NULL) {
+    raise_bridge_error("the bridge could not read the TOML text");
+  }
+  /* No OCaml value points into memory that the bridge owns. */
+  result =
+      caml_alloc_initialized_string(parsed->len, (const char *)parsed->data);
+  sinter_bridge_result_free(parsed);
+  CAMLreturn(result);
+}

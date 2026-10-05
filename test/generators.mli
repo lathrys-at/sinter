@@ -96,6 +96,17 @@ type damage =
   | Trailing_bytes  (** bytes were added after the last record *)
 (** How a buffer was damaged. *)
 
+val damaged :
+  string * (int * int) list ->
+  kind:int ->
+  count:int ->
+  (damage * string) QCheck2.Gen.t
+(** [damaged (buffer, runs) ~kind ~count] is [buffer] damaged in one of the
+    seven ways, and the way it was damaged. [buffer] is a whole result buffer of
+    [kind] that holds [count] records. [runs] gives, for each string in
+    [buffer], the offset of its length field and the length it holds. A buffer
+    with no string can be damaged in five ways only. *)
+
 val damaged_captures_buffer : (damage * string) QCheck2.Gen.t
 (** A capture result buffer that was damaged in one of the seven ways, and the
     way it was damaged. No damaged buffer is a valid capture result buffer. *)

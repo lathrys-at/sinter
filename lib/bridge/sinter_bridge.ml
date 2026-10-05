@@ -19,6 +19,7 @@ external run : engine -> handle -> string -> string -> string
   = "sinter_bridge_run_stub"
 
 external sha256_buffer : string -> string = "sinter_bridge_sha256_stub"
+external toml_buffer : string -> string = "sinter_bridge_toml_parse_stub"
 
 type t = engine
 
@@ -179,6 +180,196 @@ let decode_digest buffer =
   String.sub buffer header_length digest_length
 
 let sha256 data = decode_digest (sha256_buffer data)
+
+(* @cites toml-reader *)
+module Toml_raw = struct
+  type offset = Utc | Minutes of int
+
+  type datetime = {
+    date : (int * int * int) option;
+    time : (int * int * int * int) option;
+    offset : offset option;
+  }
+
+  type value =
+    | String of string
+    | Integer of int64
+    | Float of float
+    | Boolean of bool
+    | Datetime of datetime
+    | Array of item list
+    | Table of table
+    | Inline_table of table
+    | Array_of_tables of table list
+
+  and item = { value : value; start_byte : int; end_byte : int }
+  and table = entry list
+  and entry = { name : string; key_start : int; key_end : int; item : item }
+
+  type error =
+    | Crate_error of { start_byte : int; end_byte : int; message : string }
+    | Header_table of {
+        start_byte : int;
+        end_byte : int;
+        key : string;
+        table : string list;
+        array : bool;
+        rest : string list;
+      }
+
+  let kind_document = 3
+  let kind_error = 4
+
+  (* [read_list buffer offset read] reads a count and then that many
+     elements with [read]. *)
+  let read_list buffer offset read =
+    let count = read_int buffer offset in
+    let rec loop index offset acc =
+      if index = count then (List.rev acc, offset)
+      else
+        let element, offset = read buffer offset in
+        loop (index + 1) offset (element :: acc)
+    in
+    loop 0 (offset + 4) []
+
+  let read_flag buffer offset ~what =
+    match read_int buffer offset with
+    | 0 -> false
+    | 1 -> true
+    | other -> malformed (Printf.sprintf "%s is %d, not 0 or 1" what other)
+
+  (* A span of the text, which is [length] bytes long. *)
+  let read_span buffer offset ~length =
+    let start_byte = read_int buffer offset in
+    let end_byte = read_int buffer (offset + 4) in
+    if start_byte > end_byte then malformed "a span ends before it starts";
+    if end_byte > length then malformed "a span runs past the end of the text";
+    (start_byte, end_byte, offset + 8)
+
+  (* The two's complement of a 32-bit value. *)
+  let signed_32 value =
+    if value >= 0x80000000 then value - 0x100000000 else value
+
+  let read_datetime buffer offset =
+    let parts = read_int buffer offset in
+    let field index = read_int buffer (offset + 4 + (4 * index)) in
+    let date = Some (field 0, field 1, field 2) in
+    let time = Some (field 3, field 4, field 5, field 6) in
+    let offset_value =
+      match field 7 with
+      | 0 -> Utc
+      | 1 -> Minutes (signed_32 (field 8))
+      | other -> malformed (Printf.sprintf "the offset kind is %d" other)
+    in
+    let datetime =
+      match parts with
+      | 1 -> { date; time = None; offset = None }
+      | 2 -> { date = None; time; offset = None }
+      | 3 -> { date; time; offset = None }
+      | 7 -> { date; time; offset = Some offset_value }
+      | other ->
+          malformed (Printf.sprintf "a date or time holds the parts %d" other)
+    in
+    (datetime, offset + 40)
+
+  let rec read_item buffer offset ~length =
+    let tag = read_int buffer offset in
+    let start_byte, end_byte, offset = read_span buffer (offset + 4) ~length in
+    let value, offset =
+      match tag with
+      | 0 ->
+          let text, offset = read_string buffer offset ~what:"a TOML string" in
+          (String text, offset)
+      | 1 ->
+          check buffer offset 8;
+          (Integer (String.get_int64_le buffer offset), offset + 8)
+      | 2 ->
+          check buffer offset 8;
+          ( Float (Int64.float_of_bits (String.get_int64_le buffer offset)),
+            offset + 8 )
+      | 3 -> (Boolean (read_flag buffer offset ~what:"a boolean"), offset + 4)
+      | 4 ->
+          let datetime, offset = read_datetime buffer offset in
+          (Datetime datetime, offset)
+      | 5 ->
+          let items, offset =
+            read_list buffer offset (fun buffer offset ->
+                read_item buffer offset ~length)
+          in
+          (Array items, offset)
+      | 6 ->
+          let table, offset = read_table buffer offset ~length in
+          (Table table, offset)
+      | 7 ->
+          let tables, offset =
+            read_list buffer offset (fun buffer offset ->
+                read_table buffer offset ~length)
+          in
+          (Array_of_tables tables, offset)
+      | 8 ->
+          let table, offset = read_table buffer offset ~length in
+          (Inline_table table, offset)
+      | other -> malformed (Printf.sprintf "a TOML value has the tag %d" other)
+    in
+    ({ value; start_byte; end_byte }, offset)
+
+  and read_table buffer offset ~length =
+    read_list buffer offset (fun buffer offset ->
+        let name, offset = read_string buffer offset ~what:"a TOML key" in
+        let key_start, key_end, offset = read_span buffer offset ~length in
+        let item, offset = read_item buffer offset ~length in
+        ({ name; key_start; key_end; item }, offset))
+
+  let read_name buffer offset = read_string buffer offset ~what:"a TOML key"
+
+  let read_error buffer offset ~length =
+    let form = read_int buffer offset in
+    let start_byte, end_byte, offset = read_span buffer (offset + 4) ~length in
+    match form with
+    | 0 ->
+        let message, offset =
+          read_string buffer offset ~what:"the message of a TOML error"
+        in
+        (Crate_error { start_byte; end_byte; message }, offset)
+    | 1 ->
+        let key, offset = read_string buffer offset ~what:"a TOML key" in
+        let table, offset = read_list buffer offset read_name in
+        let array = read_flag buffer offset ~what:"the array flag" in
+        let rest, offset = read_list buffer (offset + 4) read_name in
+        (Header_table { start_byte; end_byte; key; table; array; rest }, offset)
+    | other -> malformed (Printf.sprintf "a TOML error has the form %d" other)
+
+  let decode ~length buffer =
+    if String.length buffer < header_length then
+      malformed "the buffer is shorter than the header";
+    let kind = read_int buffer 4 in
+    let read_one read =
+      let count = read_header buffer kind in
+      if count <> 1 then
+        malformed
+          (Printf.sprintf "a TOML buffer holds %d records, and 1 was expected"
+             count);
+      let found, offset = read buffer header_length ~length in
+      check_whole buffer offset;
+      found
+    in
+    if kind = kind_document then Ok (read_one read_table)
+    else if kind = kind_error then Error (read_one read_error)
+    else
+      malformed
+        (Printf.sprintf "the kind is %d, and %d or %d was expected" kind
+           kind_document kind_error)
+
+  let parse text =
+    decode
+      ~length:
+        (String.length text
+         [@mutaml.skip
+           "the bridge writes no span that runs past the text it reads, so a \
+            bound one byte larger accepts the same buffers; the tests of \
+            decode check the bound itself"])
+      (toml_buffer text)
+end
 
 let captures language ~source ~query =
   if String.length query = 0 then
