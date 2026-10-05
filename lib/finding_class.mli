@@ -69,7 +69,7 @@ type t =
   | Lease_overlap
   | Unmapped_work
   | Rule_owed
-  | Law_touched
+  | Config_changed
   | Undischarged_plan
   | Ledger_broken
   | Pack_drift

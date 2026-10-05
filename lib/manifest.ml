@@ -254,7 +254,7 @@ let problem_message = function
         (quoted (Finding_class.name finding_class))
         (quoted (Finding_class.gate_name gate))
   | Never_blocks ->
-      "'law-touched' takes no tier; it always reports and never blocks"
+      "'config-changed' takes no tier; it always reports and never blocks"
   | No_tier_at_any_gate -> "'pack-drift' takes no tier at any gate"
   | Unknown_kind { name; nearest } ->
       Printf.sprintf "unknown kind %s in [plan.locations]%s" (quoted name)
@@ -531,7 +531,7 @@ let tier_place reading gate =
   Varying
     (fun key ->
       match Finding_class.of_name key.name with
-      | Some Finding_class.Law_touched -> Error Never_blocks
+      | Some Finding_class.Config_changed -> Error Never_blocks
       | Some Finding_class.Pack_drift -> Error No_tier_at_any_gate
       | Some finding_class -> (
           match Finding_class.builtin_tier finding_class gate with
@@ -555,7 +555,7 @@ let tier_place reading gate =
               let valid =
                 List.filter
                   (fun c ->
-                    c <> Finding_class.Law_touched
+                    c <> Finding_class.Config_changed
                     && Finding_class.builtin_tier c gate <> None)
                   Finding_class.all
                 |> List.map Finding_class.name

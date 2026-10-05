@@ -526,22 +526,22 @@ let names_that_vary () =
   reports "a class with no tier at the gate"
     "[check.tiers.target]\nbad-scope = \"warn\"\n"
     [ "sinter.toml:2:1: 'bad-scope' takes no tier at the gate 'target'" ];
-  reports "law-touched, pack-drift, and an unknown class"
+  reports "config-changed, pack-drift, and an unknown class"
     "[check.tiers.merge]\n\
-     law-touched = \"warn\"\n\
+     config-changed = \"warn\"\n\
      pack-drift = \"warn\"\n\
      xyz = \"warn\"\n"
     [
-      "sinter.toml:2:1: 'law-touched' takes no tier; it always reports and \
+      "sinter.toml:2:1: 'config-changed' takes no tier; it always reports and \
        never blocks";
       "sinter.toml:3:1: 'pack-drift' takes no tier at any gate";
       "sinter.toml:4:1: unknown finding class 'xyz' in [check.tiers.merge]; \
        'tiers' names built-in finding classes only";
     ];
-  reports "law-touched is never a suggestion"
-    "[check.tiers.merge]\nlaw-touchd = \"warn\"\n"
+  reports "config-changed is never a suggestion"
+    "[check.tiers.merge]\nconfig-chnged = \"warn\"\n"
     [
-      "sinter.toml:2:1: unknown finding class 'law-touchd' in \
+      "sinter.toml:2:1: unknown finding class 'config-chnged' in \
        [check.tiers.merge]; 'tiers' names built-in finding classes only";
     ];
   reports "the suggestion is a class that takes a tier at the gate"
@@ -766,8 +766,8 @@ let the_example_messages_of_the_specification () =
     "'rollout-cap' takes true or false, not a string";
   check "[scan.packs.markdown]\nfiles = [\"a\"]\nversion = \"1.0\"\n"
     "the pack markdown is built into sinter and takes no version";
-  check "[check.tiers.merge]\nlaw-touched = \"warn\"\n"
-    "'law-touched' takes no tier; it always reports and never blocks";
+  check "[check.tiers.merge]\nconfig-changed = \"warn\"\n"
+    "'config-changed' takes no tier; it always reports and never blocks";
   check "[check.tiers.target]\nbad-scope = \"warn\"\n"
     "'bad-scope' takes no tier at the gate 'target'";
   check
@@ -1022,7 +1022,7 @@ let line =
       "historical = [\"docs/\"]";
       "tiers.merge.dangling = \"block\"";
       "dangling = \"warn\"";
-      "law-touched = \"warn\"";
+      "config-changed = \"warn\"";
       "ambient = [\"a\", 2]";
       "locations.decision = [\"d/\"]";
       "approval-required = [\"req\"]";

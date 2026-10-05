@@ -54,7 +54,7 @@ type t =
   | Lease_overlap
   | Unmapped_work
   | Rule_owed
-  | Law_touched
+  | Config_changed
   | Undischarged_plan
   | Ledger_broken
   | Pack_drift
@@ -96,7 +96,7 @@ let all =
     Lease_overlap;
     Unmapped_work;
     Rule_owed;
-    Law_touched;
+    Config_changed;
     Undischarged_plan;
     Ledger_broken;
     Pack_drift;
@@ -138,7 +138,7 @@ let name = function
   | Lease_overlap -> "lease-overlap"
   | Unmapped_work -> "unmapped-work"
   | Rule_owed -> "rule-owed"
-  | Law_touched -> "law-touched"
+  | Config_changed -> "config-changed"
   | Undischarged_plan -> "undischarged-plan"
   | Ledger_broken -> "ledger-broken"
   | Pack_drift -> "pack-drift"
@@ -180,7 +180,7 @@ let tiers = function
   | Lease_overlap -> (Some Warn, Some Warn, None)
   | Unmapped_work -> (Some Block, Some Block, None)
   | Rule_owed -> (Some Warn, Some Block, Some Block)
-  | Law_touched -> (Some Warn, Some Warn, Some Warn)
+  | Config_changed -> (Some Warn, Some Warn, Some Warn)
   | Undischarged_plan -> (None, None, Some Block)
   | Ledger_broken -> (None, None, Some Block)
   | Pack_drift -> (None, None, None)

@@ -86,7 +86,7 @@ type problem =
       finding_class : Finding_class.t;
       gate : Finding_class.gate;
     }  (** the class takes no tier at the gate *)
-  | Never_blocks  (** a tier for [law-touched] *)
+  | Never_blocks  (** a tier for [config-changed] *)
   | No_tier_at_any_gate  (** a tier for [pack-drift] *)
   | Unknown_kind of { name : string; nearest : string option }
       (** a name under [plan.locations] that is not a kind *)
