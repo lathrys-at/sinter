@@ -142,6 +142,91 @@ val fold_blobs :
     blob, [f] has seen each id in front of it. An exception that [f] raises
     passes through, after the git process ends. *)
 
+(** {1 Target branch and merge base} *)
+
+(** The rule that found the target branch. *)
+type source =
+  | Upstream  (** the branch that the local branch of the name tracks *)
+  | Local_branch  (** the local branch of the name *)
+  | Origin_branch  (** the branch of the name on the remote [origin] *)
+
+type target = {
+  source : source;
+  refname : string;
+      (** the full name of the ref that gave the commit, for example
+          ["refs/remotes/origin/main"] *)
+  commit : string;  (** the object id of the commit *)
+}
+(** The target branch, and the commit at its tip. *)
+
+val resolve_target : t -> string -> (target, error) result
+(** [resolve_target repo name] is the target branch of the name [name], for
+    example ["main"]. The function tries three refs, in order, and takes the
+    first that names a commit:
+
+    + the upstream of the local branch [name], as [<name>@{upstream}] gives it
+    + the local branch, [refs/heads/<name>]
+    + the branch of the remote [origin], [refs/remotes/origin/<name>]
+
+    The error is [Target_not_found name] when none of the three names a commit,
+    and when git cannot take [name] as the name of a branch, for example
+    ["main~1"] or ["a..b"]: no branch can have such a name. *)
+
+val merge_base : t -> string -> string -> (string, error) result
+(** [merge_base repo a b] is the object id of the merge base of the commits that
+    the revisions [a] and [b] name: a common ancestor of the two commits that is
+    not an ancestor of another common ancestor. When more than one commit is a
+    merge base, the result is the one that [git merge-base] gives.
+
+    The error is [Bad_revision] with the first of [a] and [b] that names no
+    commit, that is empty, or that starts with [-]. It is [No_merge_base (a, b)]
+    when the two commits have no common ancestor. *)
+
+(** {1 Diff} *)
+
+type hunk = {
+  line : int;  (** the first line of the change in the working tree, from 1 *)
+  eline : int;  (** the last line of the change in the working tree *)
+  added : int;  (** the number of lines of the run in the working tree *)
+  removed : int;  (** the number of lines of the base that the run replaces *)
+}
+(** One run of changed lines, in the coordinates of the working tree. A run with
+    lines added spans them: [eline] is [line + added - 1]. A pure deletion has
+    [added = 0] and [line = eline =] the line after the deleted lines. A
+    deletion at the end of a file has [line = eline =] the number of lines of
+    the file plus 1, a line that the file does not hold. *)
+
+(** How one path differs between the base and the working tree. *)
+type change =
+  | Added  (** the base does not hold the path, or git does not track it *)
+  | Deleted  (** the working tree does not hold the path *)
+  | Modified of hunk list
+      (** both hold the path, and the content or the mode differs. The hunks are
+          in the order of their lines. A change of the mode alone gives no hunk.
+      *)
+  | Binary  (** both hold the path, and git found the content to be binary *)
+
+val diff : t -> base:string -> ((string * change) list, error) result
+(** [diff repo ~base] is the change of each path that differs between the commit
+    that the revision [base] names and the working tree as it is on disk. The
+    two sets of files are {!base_tree} of [base] and {!files} of [repo]; a path
+    that is in neither set is not in the result. The rules, in order:
+
+    + A path that only the base holds is [Deleted].
+    + A path that only the working tree holds is [Added].
+    + A path that git does not track is [Added], also when the base holds it.
+    + A path that both hold and that git tracks is [Binary] or [Modified] with
+      the hunks of [git diff], or is not in the result when its content and its
+      mode are the same.
+
+    So a file that git does not track, or a new binary file, is [Added], and a
+    rename is a deletion and an addition. The pairs are sorted by path, in byte
+    order, with no path twice. The hunks do not depend on the git configuration
+    of the repository or of the user.
+
+    The error is [Bad_revision base] when [base] names no commit, is empty, or
+    starts with [-]. *)
+
 (** {1 Tree key} *)
 
 val tree_key : t -> (string, error) result
@@ -221,4 +306,34 @@ module Decode : sig
   val batch_header : string -> (batch_header, string) result
   (** [batch_header line] decodes one header line, without its line feed:
       [<id> <kind> <size>], [<name> missing], or [<name> ambiguous]. *)
+
+  (** {2 Diff output} *)
+
+  type header = {
+    old_start : int;
+    old_count : int;
+    new_start : int;
+    new_count : int;
+  }
+  (** The numbers of a hunk header
+      [@@ -<old_start>,<old_count> +<new_start>,<new_count> @@]. A side with a
+      count of 0 starts at the line in front of the change. *)
+
+  val hunk_header : string -> (header, string) result
+  (** [hunk_header line] decodes one hunk header line, without its line feed. A
+      count that the line leaves out is 1. Text after the closing [@@] and a
+      space does not count. The error is for a line of another form, for a
+      number of more than 15 digits, and for a side that has lines and starts at
+      line 0. *)
+
+  val diff : string -> ((string * change) list, string) result
+  (** [diff output] decodes the output of [git diff] with the options
+      [--no-renames], [--src-prefix=a/], and [--dst-prefix=b/]. Each value is
+      [Binary] for a path whose section says that the files are binary, and
+      [Modified] with the runs of changed lines of the path's hunks otherwise. A
+      context line in a hunk ends a run. Git writes two sections for a file
+      whose type changed; such a path comes once, with the hunks of both
+      sections, and is [Binary] when either section is. A quoted path is
+      unquoted. The pairs are sorted by path, in byte order, with no path twice.
+  *)
 end

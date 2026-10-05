@@ -291,7 +291,23 @@ let first_files =
     Submodule ("sub-as-file", submodule_commit);
   ]
 
-let second_changes = [ File ("second.txt", "second\n") ]
+(* The files of commit 2 that the working tree changes, for the diff. *)
+let quoted_name = "caf\xc3\xa9\tdoc one.txt"
+
+let second_changes =
+  [
+    File ("mod.txt", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n");
+    File ("head.txt", "a\nb\nc\n");
+    File ("tail.txt", "a\nb\nc\n");
+    File ("bin.dat", "\000binary\000\n");
+    File ("mode.sh", "#!/bin/sh\n");
+    File ("removed.txt", "removed from the index\n");
+    File ("old-name.txt", "renamed\n");
+    File ("unstaged.txt", "removed from the index, kept on disk\n");
+    File ("typed.txt", "becomes a link\n");
+    File (quoted_name, "before\n");
+  ]
+
 let origin_changes = [ File ("origin.txt", "origin\n") ]
 let lonely_files = [ File ("lonely.txt", "lonely\n") ]
 
@@ -319,7 +335,32 @@ let change_working_tree repo =
   write repo "nested/.git/HEAD" (submodule_commit ^ "\n");
   write repo "nested/.git/objects/.keep" "";
   write repo "nested/.git/refs/.keep" "";
-  write repo "nested/inner.txt" "inner\n"
+  write repo "nested/inner.txt" "inner\n";
+  write repo "mod.txt" "1\n2\nthree\n4\n5\n8\n9\nnine and a half\n10\n";
+  write repo "head.txt" "c\n";
+  write repo "tail.txt" "a\n";
+  write repo "bin.dat" "\000binary, changed\000\n";
+  make_executable repo "mode.sh";
+  remove repo "removed.txt";
+  remove repo "old-name.txt";
+  write repo "new-name.txt" "renamed\n";
+  write repo "added.txt" "added\n";
+  remove repo "typed.txt";
+  symlink repo ~target:"README.md" "typed.txt";
+  write repo quoted_name "after\n";
+  ignore
+    (git repo
+       [
+         "update-index";
+         "--add";
+         "--remove";
+         "added.txt";
+         "new-name.txt";
+         "old-name.txt";
+         "removed.txt";
+         "--force-remove";
+         "unstaged.txt";
+       ])
 
 let shared_repo =
   lazy

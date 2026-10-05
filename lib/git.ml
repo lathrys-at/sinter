@@ -31,6 +31,9 @@ let root t = t.root
 let object_format t = t.format
 let ( let* ) = Result.bind
 
+type hunk = { line : int; eline : int; added : int; removed : int }
+type change = Added | Deleted | Modified of hunk list | Binary
+
 module Decode = struct
   type kind = Blob | Tree | Commit | Tag
 
@@ -177,6 +180,273 @@ module Decode = struct
     in
     Option.to_result decoded
       ~none:(Printf.sprintf "%S is not a header of git cat-file --batch" header)
+
+  (* Diff output. *)
+
+  type header = {
+    old_start : int;
+    old_count : int;
+    new_start : int;
+    new_count : int;
+  }
+
+  (* A number in a hunk header has at most this many digits, so that a
+     line number, and a line number plus a count of lines, stay inside
+     the range of a JSONL integer. *)
+  let max_digits = 15
+
+  (* [number text i] reads the decimal number at offset [i] of [text],
+     and gives it with the offset after it. *)
+  let number text i =
+    let n = String.length text in
+    let rec stop j =
+      if j < n && text.[j] >= '0' && text.[j] <= '9' then stop (j + 1) else j
+    in
+    let j = stop i in
+    if j = i then Error (Printf.sprintf "%S has no number at offset %d" text i)
+    else if j - i > max_digits then
+      Error (Printf.sprintf "%S has a number too large at offset %d" text i)
+    else Ok (int_of_string (String.sub text i (j - i)), j)
+
+  (* [literal text i word] is the offset after [word] when [text] holds
+     [word] at offset [i]. *)
+  let literal text i word =
+    let n = String.length word in
+    if i + n <= String.length text && String.sub text i n = word then Ok (i + n)
+    else Error (Printf.sprintf "%S has no %S at offset %d" text word i)
+
+  (* A range of a hunk header: a start, and a count that is 1 when the
+     header leaves it out. *)
+  let range text i =
+    let* start, i = number text i in
+    if i < String.length text && text.[i] = ',' then
+      let* count, i = number text (i + 1) in
+      Ok (start, count, i)
+    else Ok (start, 1, i)
+
+  let hunk_header text =
+    let* i = literal text 0 "@@ -" in
+    let* old_start, old_count, i = range text i in
+    let* i = literal text i " +" in
+    let* new_start, new_count, i = range text i in
+    let* i = literal text i " @@" in
+    if i < String.length text && text.[i] <> ' ' then
+      Error (Printf.sprintf "%S has no space after its closing @@" text)
+    else if old_count > 0 && old_start = 0 then
+      Error (Printf.sprintf "%S starts its old lines at line 0" text)
+    else if new_count > 0 && new_start = 0 then
+      Error (Printf.sprintf "%S starts its new lines at line 0" text)
+    else Ok { old_start; old_count; new_start; new_count }
+
+  (* [unquote text i] reads the C-style quoted name whose opening double
+     quote is at offset [i] of [text]. It gives the bytes of the name
+     and the offset after the closing quote. *)
+  let unquote text i =
+    let n = String.length text in
+    let name = Buffer.create 64 in
+    let is_octal c = c >= '0' && c <= '7' in
+    let rec go j =
+      if j >= n then
+        Error (Printf.sprintf "%S has a name with no closing quote" text)
+      else
+        match text.[j] with
+        | '"' -> Ok (Buffer.contents name, j + 1)
+        | '\\' -> escape (j + 1)
+        | c ->
+            Buffer.add_char name c;
+            go (j + 1)
+    and escape j =
+      let byte c =
+        Buffer.add_char name c;
+        go (j + 1)
+      in
+      if j >= n then Error (Printf.sprintf "%S ends inside an escape" text)
+      else
+        match text.[j] with
+        | 'a' -> byte '\007'
+        | 'b' -> byte '\b'
+        | 't' -> byte '\t'
+        | 'n' -> byte '\n'
+        | 'v' -> byte '\011'
+        | 'f' -> byte '\012'
+        | 'r' -> byte '\r'
+        | ('"' | '\\') as c -> byte c
+        | '0' .. '3'
+          when j + 2 < n && is_octal text.[j + 1] && is_octal text.[j + 2] ->
+            let digit k = Char.code text.[k] - Char.code '0' in
+            Buffer.add_char name
+              (Char.chr ((digit j * 64) + (digit (j + 1) * 8) + digit (j + 2)));
+            go (j + 3)
+        | c -> Error (Printf.sprintf "%S holds the escape \\%c" text c)
+    in
+    go (i + 1)
+
+  let without prefix name =
+    if
+      String.length name > String.length prefix
+      && String.starts_with ~prefix name
+    then
+      Ok
+        (String.sub name (String.length prefix)
+           (String.length name - String.length prefix))
+    else Error (Printf.sprintf "the name %S does not start with %S" name prefix)
+
+  (* The path of a line "diff --git a/<path> b/<path>". Git quotes both
+     names, or neither. With renames off, both name the same path. *)
+  let path_of_git_line line =
+    let* i = literal line 0 "diff --git " in
+    let rest = String.sub line i (String.length line - i) in
+    let n = String.length rest in
+    if n > 0 && rest.[0] = '"' then
+      let* a, j = unquote rest 0 in
+      let* j = literal rest j " " in
+      let* b, j =
+        if j < n && rest.[j] = '"' then unquote rest j
+        else Error (Printf.sprintf "%S quotes its first name only" line)
+      in
+      let* path = without "a/" a in
+      let* other = without "b/" b in
+      if j < n then
+        Error (Printf.sprintf "%S holds bytes after its second name" line)
+      else if path <> other then
+        Error (Printf.sprintf "%S names two paths" line)
+      else Ok path
+    else
+      (* Unquoted, [rest] is "a/<path> b/<path>", so its length gives the
+         length of the path. *)
+      let size = (n - 5) / 2 in
+      let twice () =
+        Error (Printf.sprintf "%S does not name one path twice" line)
+      in
+      if size < 1 then twice ()
+      else
+        let path = String.sub rest 2 size in
+        if String.equal rest ("a/" ^ path ^ " b/" ^ path) then Ok path
+        else twice ()
+
+  (* The changes of one section of the diff, before its paths are
+     merged: whether git called the file binary, and the runs of changed
+     lines, latest first. *)
+  type section = { binary : bool; runs : hunk list }
+
+  (* [add_run run runs] puts the run [(line, added, removed)], when there
+     is one, in front of [runs]. *)
+  let add_run run runs =
+    match run with
+    | None -> runs
+    | Some (line, added, removed) ->
+        let eline = if added > 0 then line + added - 1 else line in
+        { line; eline; added; removed } :: runs
+
+  let starts prefix line = String.starts_with ~prefix line
+
+  (* [hunk_lines header runs lines] reads the lines of the hunk that
+     [header] opens. It gives [runs] with the runs of the hunk in front,
+     and the lines after the hunk. [cursor] is the new-side number of the
+     next line that the new side holds. A context line ends a run; git
+     writes an empty context line as an empty line when its
+     configuration asks for that. *)
+  let hunk_lines header runs lines =
+    let misfit line =
+      Error
+        (Printf.sprintf "the line %S does not fit the hunk -%d,%d +%d,%d" line
+           header.old_start header.old_count header.new_start header.new_count)
+    in
+    let rec go old_left new_left cursor run runs = function
+      | line :: rest when starts "\\" line ->
+          go old_left new_left cursor run runs rest
+      | lines when old_left = 0 && new_left = 0 -> Ok (add_run run runs, lines)
+      | [] -> Error "the output ends inside a hunk"
+      | line :: rest when line = "" || starts " " line ->
+          if old_left > 0 && new_left > 0 then
+            go (old_left - 1) (new_left - 1) (cursor + 1) None
+              (add_run run runs) rest
+          else misfit line
+      | line :: rest when starts "-" line ->
+          if old_left > 0 then
+            let run =
+              match run with
+              | None -> (cursor, 0, 1)
+              | Some (start, added, removed) -> (start, added, removed + 1)
+            in
+            go (old_left - 1) new_left cursor (Some run) runs rest
+          else misfit line
+      | line :: rest when starts "+" line ->
+          if new_left > 0 then
+            let run =
+              match run with
+              | None -> (cursor, 1, 0)
+              | Some (start, added, removed) -> (start, added + 1, removed)
+            in
+            go old_left (new_left - 1) (cursor + 1) (Some run) runs rest
+          else misfit line
+      | line :: _ -> misfit line
+    in
+    let cursor =
+      if header.new_count = 0 then header.new_start + 1 else header.new_start
+    in
+    go header.old_count header.new_count cursor None runs lines
+
+  (* [section lines] reads one section from the lines after its
+     "diff --git" line. It gives the section and the lines after it. *)
+  let section lines =
+    let rec headers binary = function
+      | line :: rest when starts "@@" line -> hunks binary [] (line :: rest)
+      | line :: rest when not (starts "diff --git " line) ->
+          headers (binary || starts "Binary files " line) rest
+      | lines -> Ok ({ binary; runs = [] }, lines)
+    and hunks binary runs = function
+      | line :: rest when starts "@@" line ->
+          let* header = hunk_header line in
+          let* runs, rest = hunk_lines header runs rest in
+          hunks binary runs rest
+      | line :: _ when not (starts "diff --git " line) ->
+          Error (Printf.sprintf "the line %S follows a hunk" line)
+      | lines -> Ok ({ binary; runs }, lines)
+    in
+    headers false lines
+
+  let change_of_section { binary; runs } =
+    if binary then Binary else Modified (List.rev runs)
+
+  (* [join later earlier] is one section that holds the changes of two
+     sections of one path, which git writes when the type of the file
+     changed. *)
+  let join later earlier =
+    {
+      binary = later.binary || earlier.binary;
+      runs = later.runs @ earlier.runs;
+    }
+
+  let diff output =
+    let n = String.length output in
+    let* lines =
+      if n = 0 then Ok []
+      else if output.[n - 1] <> '\n' then
+        Error "the output does not end with a line feed"
+      else Ok (String.split_on_char '\n' (String.sub output 0 (n - 1)))
+    in
+    let rec read found = function
+      | [] -> Ok found
+      | line :: rest ->
+          let* path = path_of_git_line line in
+          let* section, rest = section rest in
+          read ((path, section) :: found) rest
+    in
+    let* found = read [] lines in
+    (* [found] is latest first, and the stable sort keeps that order
+       among the sections of one path. *)
+    let rec group done_ = function
+      | (path, later) :: (other, earlier) :: rest when String.equal path other
+        ->
+          group done_ ((path, join later earlier) :: rest)
+      | (path, section) :: rest ->
+          group ((path, change_of_section section) :: done_) rest
+      | [] -> List.rev done_
+    in
+    Ok
+      (group []
+         (List.stable_sort (fun (a, _) (b, _) -> String.compare a b) found))
 end
 
 (* Processes. *)
@@ -417,7 +687,7 @@ let commit_of t rev =
 
 module Paths = Set.Make (String)
 
-type entry = { path : string }
+type entry = { path : string; tracked : bool }
 
 let symbolic_link_mode = 0o120000
 let submodule_mode = 0o160000
@@ -454,9 +724,9 @@ let file_set t =
     List.filter_map
       (fun (entry : Decode.stage_entry) ->
         if Paths.mem entry.path special then None
-        else Some { path = entry.path })
+        else Some { path = entry.path; tracked = true })
       staged
-    @ List.map (fun path -> { path }) others
+    @ List.map (fun path -> { path; tracked = false }) others
   in
   let* kept =
     List.fold_left
@@ -469,6 +739,60 @@ let file_set t =
   Ok (List.sort_uniq (fun a b -> String.compare a.path b.path) kept)
 
 let files t = Result.map (List.map (fun entry -> entry.path)) (file_set t)
+
+(* The target branch and the merge base. *)
+
+type source = Upstream | Local_branch | Origin_branch
+type target = { source : source; refname : string; commit : string }
+
+(* [upstream repo name] is the full name of the ref that the branch
+   [name] tracks, when [name] is a branch that tracks one that exists. *)
+let upstream t name =
+  answer t
+    [
+      "rev-parse";
+      "--verify";
+      "--quiet";
+      "--symbolic-full-name";
+      "--end-of-options";
+      name ^ "@{upstream}";
+    ]
+    Decode.line
+
+let resolve_target t name =
+  (* A name that git does not take as a branch name names no branch, and
+     the check keeps revision syntax such as [^] or [..] away from the
+     names below. *)
+  let* valid =
+    answer t [ "check-ref-format"; "refs/heads/" ^ name ] (fun _ -> Ok ())
+  in
+  if Option.is_none valid then Error (Target_not_found name)
+  else
+    let* upstream = upstream t name in
+    let candidates =
+      (match upstream with
+        | Some refname -> [ (Upstream, refname) ]
+        | None -> [])
+      @ [
+          (Local_branch, "refs/heads/" ^ name);
+          (Origin_branch, "refs/remotes/origin/" ^ name);
+        ]
+    in
+    let rec first = function
+      | [] -> Error (Target_not_found name)
+      | (source, refname) :: rest -> (
+          match commit_of t refname with
+          | Error (Bad_revision _) -> first rest
+          | found ->
+              Result.map (fun commit -> { source; refname; commit }) found)
+    in
+    first candidates
+
+let merge_base t a b =
+  let* first = commit_of t a in
+  let* second = commit_of t b in
+  let* base = answer t [ "merge-base"; first; second ] Decode.object_id in
+  Option.to_result base ~none:(No_merge_base (a, b))
 
 (* The base tree. *)
 
@@ -531,6 +855,58 @@ let fold_blobs t ids ~init ~f =
       match status with
       | Unix.WEXITED 0 -> value
       | _ -> failed args status stderr)
+
+(* The diff. *)
+
+(* The options fix the form of the output and the edges of the hunks
+   against the configuration of the repository and of the person who
+   runs the tool, so that one tree and one base give one diff. *)
+let diff_options =
+  [
+    "diff";
+    "--no-ext-diff";
+    "--no-textconv";
+    "--no-color";
+    "--no-renames";
+    "-U0";
+    "--inter-hunk-context=0";
+    "--diff-algorithm=myers";
+    "--indent-heuristic";
+    "--src-prefix=a/";
+    "--dst-prefix=b/";
+    "--submodule=short";
+    "--ignore-submodules=all";
+  ]
+
+module Path_map = Map.Make (String)
+
+let diff t ~base =
+  let* commit = commit_of t base in
+  let* sections = run t (diff_options @ [ commit; "--" ]) Decode.diff in
+  let* old_files = base_tree_of_commit t commit in
+  let* new_files = file_set t in
+  let changes = Path_map.of_list sections in
+  let in_base = Path_map.of_list old_files in
+  let tracked =
+    Path_map.of_list
+      (List.map (fun entry -> (entry.path, entry.tracked)) new_files)
+  in
+  let change path =
+    match Path_map.find_opt path tracked with
+    | None -> Some Deleted
+    | Some false -> Some Added
+    | Some true ->
+        if Path_map.mem path in_base then Path_map.find_opt path changes
+        else Some Added
+  in
+  let paths =
+    List.sort_uniq String.compare
+      (List.map fst old_files @ List.map (fun entry -> entry.path) new_files)
+  in
+  Ok
+    (List.filter_map
+       (fun path -> Option.map (fun change -> (path, change)) (change path))
+       paths)
 
 (* The tree key. *)
 

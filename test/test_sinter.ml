@@ -39,6 +39,7 @@ let () =
       ("serve", Test_serve.tests);
       ("cli", Test_cli.tests);
       ("git", Test_git.tests);
+      ("git diff", Test_git_diff.tests);
       ("fixture", Test_fixture.tests);
       ( "cases",
         Fixture.tests ~binary mode

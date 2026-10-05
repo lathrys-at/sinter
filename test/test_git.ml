@@ -609,11 +609,19 @@ let expected_files =
   [
     ".gitignore";
     "README.md";
+    "added.txt";
+    "bin.dat";
     "bytes.bin";
+    Fixture.quoted_name;
+    "head.txt";
+    "mod.txt";
+    "mode.sh";
+    "new-name.txt";
     "run.sh";
-    "second.txt";
     "src/main.ml";
+    "tail.txt";
     "tracked.log";
+    "unstaged.txt";
     "untracked.txt";
   ]
 
@@ -686,12 +694,21 @@ let contents_of_main =
   [
     (".gitignore", "*.log\nbuild/\n");
     ("README.md", "hello\n");
+    ("bin.dat", "\000binary\000\n");
     ("bytes.bin", "\000\001\n\255");
+    (Fixture.quoted_name, "before\n");
     ("gone.txt", "deleted on disk\n");
+    ("head.txt", "a\nb\nc\n");
+    ("mod.txt", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n");
+    ("mode.sh", "#!/bin/sh\n");
+    ("old-name.txt", "renamed\n");
+    ("removed.txt", "removed from the index\n");
     ("run.sh", "#!/bin/sh\n");
-    ("second.txt", "second\n");
     ("src/main.ml", "let () = ()\n");
+    ("tail.txt", "a\nb\nc\n");
     ("tracked.log", "kept although ignored\n");
+    ("typed.txt", "becomes a link\n");
+    ("unstaged.txt", "removed from the index, kept on disk\n");
   ]
 
 let base_tree_holds_the_files_of_the_commit () =

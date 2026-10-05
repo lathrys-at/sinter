@@ -224,3 +224,43 @@ val wasm_bytes : string QCheck2.Gen.t
 val grammar_file_path : string QCheck2.Gen.t
 (** A file name of at most twelve pieces. A piece is the hyphen, the dot, the
     slash, the underscore, the space, a letter, or ["tree-sitter-"]. *)
+
+(** {1 Output of git diff} *)
+
+val quote_path : string -> string
+(** [quote_path path] is [path] as git writes it in a ["diff --git"] line: as it
+    is, or in double quotes with C-style escapes when it holds a byte below
+    0x20, a double quote, a backslash, or a byte of 0x7F or above. *)
+
+val hunk_header : (string * Sinter_core.Git.Decode.header) QCheck2.Gen.t
+(** A hunk header line, without its line feed, and the numbers it holds. A count
+    of 1 is left out at times, and text follows the closing [@@] at times. *)
+
+val print_hunk_header : (string * Sinter_core.Git.Decode.header) QCheck2.Print.t
+(** The printer for a counterexample of {!hunk_header}. *)
+
+val damaged_hunk_header : string QCheck2.Gen.t
+(** A hunk header cut short, a hunk header with a few bytes of its own alphabet
+    written over it, or any bytes. *)
+
+val diff_output :
+  (string * (string * Sinter_core.Git.change) list) QCheck2.Gen.t
+(** The output of [git diff -U0] with up to five sections, and the changes that
+    {!Sinter_core.Git.Decode.diff} gives for it. A path can need quotes, and a
+    path can have two sections, as git writes for a file whose type changed. A
+    section is binary or holds up to four hunks. *)
+
+val diff_output_with_context :
+  (string * Sinter_core.Git.hunk list) QCheck2.Gen.t
+(** The output of [git diff] for the one path ["f"], with one hunk that holds
+    context lines between its runs of changed lines, and the runs. *)
+
+val damaged_diff_output : string QCheck2.Gen.t
+(** An output of {!diff_output} cut short, with one line removed or repeated, or
+    with a few bytes written over it; or any bytes. *)
+
+val print_change : Sinter_core.Git.change -> string
+(** [print_change change] is [change] in a short form for a test message. *)
+
+val print_changes : (string * Sinter_core.Git.change) list QCheck2.Print.t
+(** The printer for a list of paths and their changes. *)
