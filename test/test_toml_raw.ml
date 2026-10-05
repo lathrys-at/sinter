@@ -423,6 +423,24 @@ let reads_a_negative_offset () =
       Alcotest.(check bool) "the offset is -1 minute" true (decoded = datetime)
   | _ -> Alcotest.fail "the date and time did not decode"
 
+(* The least offset that 32 bits hold is -2^31 minutes, and the
+   greatest is 2^31 - 1. *)
+let reads_the_corners_of_a_32_bit_offset () =
+  List.iter
+    (fun minutes ->
+      let datetime =
+        {
+          Raw.date = Some (1979, 5, 27);
+          time = Some (7, 32, 0, 0);
+          offset = Some (Raw.Minutes minutes);
+        }
+      in
+      match decode (datetime_buffer datetime) with
+      | Ok [ { item = { value = Raw.Datetime decoded; _ }; _ } ] ->
+          Alcotest.(check bool) (string_of_int minutes) true (decoded = datetime)
+      | _ -> Alcotest.fail "the date and time did not decode")
+    [ -2147483648; 2147483647 ]
+
 let names_an_error_form_it_does_not_know () =
   let buffer =
     fst
@@ -464,12 +482,28 @@ let names_a_kind_that_is_not_a_toml_kind () =
          decode (Generators.encode_digest (String.make 32 'x'))))
 
 let names_a_buffer_shorter_than_the_header () =
+  List.iter
+    (fun buffer ->
+      Alcotest.(check string)
+        (String.escaped buffer)
+        "the bridge returned a malformed buffer: the buffer is shorter than \
+         the header"
+        (error_message (fun () -> decode buffer)))
+    [
+      "SBR1\003";
+      "SBR1\003\000\000\000\001\000\000\000\000\000\000";
+      "SBR1\002\000\000\000\001\000\000\000\000\000\000";
+    ]
+
+(* A header of 16 bytes is no buffer short of its header: the table that
+   it promises is what is missing. *)
+let names_the_missing_table_of_a_bare_header () =
   Alcotest.(check string)
-    "the message names the header"
-    "the bridge returned a malformed buffer: the buffer is shorter than the \
-     header"
+    "the message names the record"
+    "the bridge returned a malformed buffer: a record runs past the end of the \
+     buffer"
     (error_message (fun () ->
-         decode "SBR1\003\000\000\000\001\000\000\000\000\000\000"))
+         decode "SBR1\003\000\000\000\001\000\000\000\000\000\000\000"))
 
 let names_a_document_buffer_with_two_records () =
   let buffer = fst (document_bytes []) in
@@ -588,6 +622,10 @@ let tests =
       names_a_kind_that_is_not_a_toml_kind;
     Alcotest.test_case "names a buffer shorter than the header" `Quick
       names_a_buffer_shorter_than_the_header;
+    Alcotest.test_case "names the missing table of a bare header" `Quick
+      names_the_missing_table_of_a_bare_header;
+    Alcotest.test_case "reads the corners of a 32-bit offset" `Quick
+      reads_the_corners_of_a_32_bit_offset;
     Alcotest.test_case "names a document buffer with two records" `Quick
       names_a_document_buffer_with_two_records;
     Alcotest.test_case "parse gives the keys and their byte spans" `Quick

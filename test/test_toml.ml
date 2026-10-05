@@ -243,6 +243,12 @@ let string_position_of_a_basic_string_with_no_escape () =
     (Some (at 1 9))
     (Toml.string_position (string_node "'''ab'''") 1)
 
+let string_position_of_an_empty_string () =
+  Alcotest.(check (option position))
+    "byte 0 of ''"
+    (Some (at 1 6))
+    (Toml.string_position (string_node "''") 0)
+
 let string_position_is_none_when_the_text_differs () =
   Alcotest.(check (option position))
     "an escape" None
@@ -582,7 +588,21 @@ let read_message_reads_each_duplicate_key () =
       ("duplicate key `a` in table `b.c`", "a");
       ("duplicate key `` in table `b`", "");
       ("duplicate key `x` in table `y` in table `z`", "x");
+      ("duplicate key ``", "");
+      ("duplicate key `x` in table ``", "x");
+      ("duplicate key `abcdefghijk`", "abcdefghijk");
+      ("duplicate key `abcdefghijkl`", "abcdefghijkl");
     ]
+
+let read_message_reads_a_dotted_key_with_an_empty_name () =
+  Alcotest.(check bool)
+    "an empty name" true
+    (Toml.read_message
+       "dotted key `` attempted to extend non-table type (boolean)"
+    = Some
+        ( None,
+          [],
+          Some (Toml.Not_a_table { key = ""; found = Toml.Kind.Boolean }) ))
 
 let read_message_refuses_an_unknown_form () =
   List.iter
@@ -598,7 +618,9 @@ let read_message_refuses_an_unknown_form () =
       "dotted key `a` attempted to extend non-table type (integer";
       "dotted key `a` tried to extend (integer)";
       "duplicate key";
+      "duplicate key `";
       "duplicate key `a";
+      "dotted key `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)";
       "value is out of range\nmore";
     ]
 
@@ -1133,6 +1155,8 @@ let tests =
       string_position_counts_code_points;
     Alcotest.test_case "string_position of a basic string with no escape" `Quick
       string_position_of_a_basic_string_with_no_escape;
+    Alcotest.test_case "string_position of an empty string" `Quick
+      string_position_of_an_empty_string;
     Alcotest.test_case "string_position is None when the text differs" `Quick
       string_position_is_none_when_the_text_differs;
     Alcotest.test_case "string_position refuses an offset outside the string"
@@ -1158,6 +1182,8 @@ let tests =
       read_message_reads_all_three_parts;
     Alcotest.test_case "read_message reads each duplicate key" `Quick
       read_message_reads_each_duplicate_key;
+    Alcotest.test_case "read_message reads a dotted key with an empty name"
+      `Quick read_message_reads_a_dotted_key_with_an_empty_name;
     Alcotest.test_case "read_message refuses an unknown form" `Quick
       read_message_refuses_an_unknown_form;
     Alcotest.test_case "error_message of an unrecognized form" `Quick

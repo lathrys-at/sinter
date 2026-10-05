@@ -360,7 +360,15 @@ module Toml_raw = struct
         (Printf.sprintf "the kind is %d, and %d or %d was expected" kind
            kind_document kind_error)
 
-  let parse text = decode ~length:(String.length text) (toml_buffer text)
+  let parse text =
+    decode
+      ~length:
+        (String.length text
+         [@mutaml.skip
+           "the bridge writes no span that runs past the text it reads, so a \
+            bound one byte larger accepts the same buffers; the tests of \
+            decode check the bound itself"])
+      (toml_buffer text)
 end
 
 let captures language ~source ~query =

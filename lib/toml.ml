@@ -136,7 +136,8 @@ let span_of lines ~start_byte ~end_byte =
 (* The reader gives the span of the last part of a dotted key only. The
    functions below walk back from that part, over the earlier parts of
    the key on the same line, to the first. Each runs on a text that the
-   reader accepted, and each stops at the start of the text. *)
+   reader accepted: an opening quote stands before each closing quote
+   of a key, and no key part starts the text with a backslash. *)
 
 let is_blank char = char = ' ' || char = '\t'
 
@@ -144,15 +145,17 @@ let is_bare_key_char = function
   | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '_' | '-' -> true
   | _ -> false
 
+(* The character before [at], or a line feed at the start of the text. *)
+let char_before text at = if at > 0 then text.[at - 1] else '\n'
+
 (* The offset of the first of the blanks that end just before [at]. *)
 let rec back_over_blanks text at =
-  if at > 0 && is_blank text.[at - 1] then back_over_blanks text (at - 1)
-  else at
+  if is_blank (char_before text at) then back_over_blanks text (at - 1) else at
 
 (* The number of backslashes that end just before [at]. *)
 let backslashes_before text at =
   let rec count at found =
-    if at > 0 && text.[at - 1] = '\\' then count (at - 1) (found + 1) else found
+    if char_before text at = '\\' then count (at - 1) (found + 1) else found
   in
   count at 0
 
@@ -160,33 +163,30 @@ let backslashes_before text at =
    quote that an odd number of backslashes precede is inside a basic
    string; the first one that an even number precede opens it. *)
 let part_start text stop =
-  match text.[stop - 1] with
+  match char_before text stop with
   | '"' ->
       let rec opening at =
-        if at <= 0 then 0
-        else if
-          text.[at - 1] = '"' && backslashes_before text (at - 1) mod 2 = 0
+        if text.[at - 1] = '"' && backslashes_before text (at - 1) mod 2 = 0
         then at - 1
         else opening (at - 1)
       in
       opening (stop - 1)
-  | '\'' -> (
-      match String.rindex_from_opt text (stop - 2) '\'' with
-      | Some at -> at
-      | None -> 0)
+  | '\'' ->
+      let rec opening at =
+        if text.[at - 1] = '\'' then at - 1 else opening (at - 1)
+      in
+      opening (stop - 1)
   | _ ->
       let rec bare at =
-        if at > 0 && is_bare_key_char text.[at - 1] then bare (at - 1) else at
+        if is_bare_key_char (char_before text at) then bare (at - 1) else at
       in
       bare stop
 
 (* The start of the dotted key whose part starts at [at]. *)
 let rec dotted_key_start text at =
   let before = back_over_blanks text at in
-  if before > 0 && text.[before - 1] = '.' then
-    let part_end = back_over_blanks text (before - 1) in
-    if part_end > 0 then dotted_key_start text (part_start text part_end)
-    else at
+  if char_before text before = '.' then
+    dotted_key_start text (part_start text (back_over_blanks text (before - 1)))
   else at
 
 (* The place of the first character inside the quotes of the string
@@ -203,8 +203,7 @@ let verbatim lines ~start_byte ~end_byte decoded =
   in
   let inside = String.length raw - (2 * quotes) in
   if
-    inside >= 0
-    && String.equal (String.sub raw quotes inside) decoded
+    String.equal (String.sub raw quotes inside) decoded
     && not (String.contains decoded '\n' || String.contains decoded '\r')
   then Some (position lines (start_byte + quotes))
   else None
@@ -393,6 +392,17 @@ let between ~prefix ~suffix text =
   then Some (String.sub text (String.length prefix) inside)
   else None
 
+(* The offset of the first [marker] in [text], or None. *)
+let find_marker marker text =
+  let last = String.length text - String.length marker in
+  let rec find at =
+    if at > last then None
+    else if String.equal (String.sub text at (String.length marker)) marker then
+      Some at
+    else find (at + 1)
+  in
+  find 0
+
 let duplicate_key text =
   match between ~prefix:"duplicate key `" ~suffix:"` in document root" text with
   | Some key -> Some key
@@ -401,38 +411,22 @@ let duplicate_key text =
       | None -> None
       | Some inside -> (
           (* "duplicate key `K` in table `T`" *)
-          let marker = "` in table `" in
-          let rec find at =
-            if at + String.length marker > String.length inside then None
-            else if String.sub inside at (String.length marker) = marker then
-              Some at
-            else find (at + 1)
-          in
-          match find 0 with
+          match find_marker "` in table `" inside with
           | Some at -> Some (String.sub inside 0 at)
           | None -> Some inside))
 
 let not_a_table text =
-  let prefix = "dotted key `" in
   let marker = "` attempted to extend non-table type (" in
-  match between ~prefix ~suffix:")" text with
+  match between ~prefix:"dotted key `" ~suffix:")" text with
   | None -> None
   | Some inside -> (
-      let length = String.length inside - String.length marker in
-      let rec find at =
-        if at > length then None
-        else if String.sub inside at (String.length marker) = marker then
-          Some at
-        else find (at + 1)
-      in
-      match find 0 with
+      match find_marker marker inside with
       | None -> None
       | Some at -> (
           let key = String.sub inside 0 at in
+          let after = at + String.length marker in
           let type_name =
-            String.sub inside
-              (at + String.length marker)
-              (String.length inside - at - String.length marker)
+            String.sub inside after (String.length inside - after)
           in
           if String.equal type_name "inline table" then Some (Inline_table key)
           else
@@ -492,24 +486,22 @@ let read_message message =
   | _ -> None
 
 let render_path names =
+  let escape = function
+    | '"' -> "\\\""
+    | '\\' -> "\\\\"
+    | '\b' -> "\\b"
+    | '\t' -> "\\t"
+    | '\n' -> "\\n"
+    | '\012' -> "\\f"
+    | '\r' -> "\\r"
+    | char when Char.code char < 0x20 || char = '\x7F' ->
+        Printf.sprintf "\\u%04X" (Char.code char)
+    | char -> String.make 1 char
+  in
   let quote name =
-    let buffer = Buffer.create (String.length name + 2) in
-    Buffer.add_char buffer '"';
-    String.iter
-      (function
-        | '"' -> Buffer.add_string buffer "\\\""
-        | '\\' -> Buffer.add_string buffer "\\\\"
-        | '\b' -> Buffer.add_string buffer "\\b"
-        | '\t' -> Buffer.add_string buffer "\\t"
-        | '\n' -> Buffer.add_string buffer "\\n"
-        | '\012' -> Buffer.add_string buffer "\\f"
-        | '\r' -> Buffer.add_string buffer "\\r"
-        | char when Char.code char < 0x20 || char = '\x7F' ->
-            Buffer.add_string buffer (Printf.sprintf "\\u%04X" (Char.code char))
-        | char -> Buffer.add_char buffer char)
-      name;
-    Buffer.add_char buffer '"';
-    Buffer.contents buffer
+    "\""
+    ^ String.concat "" (List.map escape (List.of_seq (String.to_seq name)))
+    ^ "\""
   in
   String.concat "."
     (List.map
