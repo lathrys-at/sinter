@@ -108,6 +108,53 @@ let a_byte_order_mark_is_not_a_column () =
     (from (2, 1) (2, 2))
     (key_of table "b").at
 
+(* A line of many two-byte characters puts later places past many
+   counts of 64 bytes, with and without a byte order mark. *)
+let a_column_far_into_a_long_line () =
+  let line =
+    "a = {s = \""
+    ^ String.concat "" (List.init 100 (fun _ -> "\xC3\xA9"))
+    ^ "\", t = 1}\n"
+  in
+  List.iter
+    (fun prefix ->
+      let table = parse_ok (prefix ^ "x = 1\n" ^ line) in
+      Alcotest.check span
+        (String.escaped prefix ^ ": the key after the string")
+        (from (2, 114) (2, 115))
+        (key_of
+           (match Toml.value (find table [ "a" ]) with
+           | Toml.Table inner -> inner
+           | _ -> Alcotest.fail "a is not a table")
+           "t")
+          .at)
+    [ ""; "\xEF\xBB\xBF" ]
+
+(* Each place costs the same however long its line is, so a document
+   on one line reads in time proportional to its length. *)
+let a_long_line_reads_quickly () =
+  let count = 20_000 in
+  let text =
+    "a = {"
+    ^ String.concat ", " (List.init count (Printf.sprintf "k%d = 1"))
+    ^ "}"
+  in
+  let start = Unix.gettimeofday () in
+  let table = parse_ok text in
+  let seconds = Unix.gettimeofday () -. start in
+  let last = Printf.sprintf "k%d" (count - 1) in
+  let inner =
+    match Toml.value (find table [ "a" ]) with
+    | Toml.Table inner -> inner
+    | _ -> Alcotest.fail "a is not a table"
+  in
+  Alcotest.check position "the place of the last key"
+    (at 1 (String.length text - String.length last - 4))
+    (key_of inner last).at.start;
+  Alcotest.(check bool)
+    (Printf.sprintf "read in %.3f s, under 2 s" seconds)
+    true (seconds < 2.0)
+
 let a_carriage_return_ends_no_line () =
   let table = parse_ok "a = 1\r\nb = 2\r\n" in
   Alcotest.check span "the key" (from (2, 1) (2, 2)) (key_of table "b").at
@@ -1198,6 +1245,10 @@ let tests =
     Alcotest.test_case "counts lines from 1" `Quick counts_lines_from_1;
     Alcotest.test_case "a byte order mark is not a column" `Quick
       a_byte_order_mark_is_not_a_column;
+    Alcotest.test_case "a column far into a long line" `Quick
+      a_column_far_into_a_long_line;
+    Alcotest.test_case "a long line reads quickly" `Quick
+      a_long_line_reads_quickly;
     Alcotest.test_case "a carriage return ends no line" `Quick
       a_carriage_return_ends_no_line;
     Alcotest.test_case "a value over lines stops on its last line" `Quick

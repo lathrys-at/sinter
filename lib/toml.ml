@@ -95,20 +95,36 @@ let string_position node i =
   | _ -> None
 
 (* The start of each line of a text, as byte offsets. A byte order
-   mark at the start is no part of the first line. *)
-type lines = { text : string; starts : int array }
+   mark at the start is no part of the first line. [marks.(k)] is the
+   number of code points before the byte [k * mark_every], so that the
+   column of a place costs at most [mark_every] steps, however long its
+   line is. *)
+type lines = { text : string; starts : int array; marks : int array }
 
 let byte_order_mark = "\xEF\xBB\xBF"
+let mark_every = 64
 
 let lines_of text =
   let first =
     if String.starts_with ~prefix:byte_order_mark text then 3 else 0
   in
+  let length = String.length text in
   let starts = ref [ first ] in
-  String.iteri
-    (fun index char -> if char = '\n' then starts := (index + 1) :: !starts)
-    text;
-  { text; starts = Array.of_list (List.rev !starts) }
+  let marks = Array.make ((length / mark_every) + 1) 0 in
+  let count = ref 0 in
+  for index = 0 to length - 1 do
+    if index mod mark_every = 0 then marks.(index / mark_every) <- !count;
+    let char = text.[index] in
+    if Char.code char land 0xC0 <> 0x80 then incr count;
+    if char = '\n' then starts := (index + 1) :: !starts
+  done;
+  if length mod mark_every = 0 then marks.(length / mark_every) <- !count;
+  { text; starts = Array.of_list (List.rev !starts); marks }
+
+(* The number of code points before the byte at [offset]. *)
+let code_points_before lines offset =
+  let mark = offset / mark_every in
+  lines.marks.(mark) + code_points lines.text (mark * mark_every) offset
 
 (* The place of the byte at [offset]. The line is the last line that
    starts at or before [offset]. *)
@@ -126,7 +142,10 @@ let position lines offset =
   let start = lines.starts.(line) in
   {
     line = line + 1;
-    column = 1 + code_points lines.text start (max start offset);
+    column =
+      1
+      + code_points_before lines (max start offset)
+      - code_points_before lines start;
   }
 
 let span_of lines ~start_byte ~end_byte =
