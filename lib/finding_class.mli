@@ -75,7 +75,8 @@ type t =
   | Pack_drift
 
 val all : t list
-(** Every built-in finding class, each once. *)
+(** Every built-in finding class, each once, in the order in which [t] declares
+    them. [compare] on [t] follows this order. *)
 
 val name : t -> string
 (** [name finding_class] is the name of the class, in lower case with [-]

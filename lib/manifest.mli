@@ -200,7 +200,9 @@ val rollout_cap : t -> bool
 val written_tiers :
   t -> (Finding_class.gate * Finding_class.t * Finding_class.tier) list
 (** [written_tiers manifest] is each pair of a gate and a class that
-    [check.tiers] writes, with its tier, sorted by gate and then by class. *)
+    [check.tiers] writes, with its tier, sorted by gate in the order of
+    {!Finding_class.gates}, and then by class in the order of
+    {!Finding_class.all}. *)
 
 val tier :
   t -> Finding_class.gate -> Finding_class.t -> Finding_class.tier option

@@ -52,7 +52,10 @@ let the_classes_are_those_of_the_specification () =
   Alcotest.(check bool) "the table has rows" true (List.length rows > 30);
   Alcotest.(check (list string))
     "the names, in the order of the table" (List.map fst rows)
-    (List.map Finding_class.name Finding_class.all)
+    (List.map Finding_class.name Finding_class.all);
+  Alcotest.(check bool)
+    "compare follows the order of all" true
+    (List.sort compare Finding_class.all = Finding_class.all)
 
 let each_tier_is_that_of_the_specification () =
   List.iter

@@ -86,7 +86,7 @@ val matches : t -> string -> bool
     [pattern] and [id]. It computes, once for each part of the pattern and each
     place in [id], the set of places where a match of the part can end. A
     quantifier with an upper count takes at most that many rounds of its part,
-    and fewer when a round reaches no new place or no place at all. *)
+    and fewer when a round reaches the same places as the round before. *)
 
 val error_offset : error -> int
 (** [error_offset error] is the offset that [error] names. It is [0] for
