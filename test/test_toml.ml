@@ -649,9 +649,61 @@ let render_path_quotes_only_what_it_must () =
   Alcotest.(check string)
     "the path"
     "a.B-9_x.\"\".\"a \
-     b\".\"q\\\"\\\\\".\"\\b\\t\\n\\f\\r\\u001F\\u007F\".\"\xC3\xA9\""
+     b\".\"q\\\"\\\\\".\"\\b\\t\\n\\f\\r\\u001F\\u007F\".\"\xC3\xA9\".\"\\u0085\""
     (Toml.render_path
-       [ "a"; "B-9_x"; ""; "a b"; "q\"\\"; "\b\t\n\012\r\031\127"; "\xC3\xA9" ])
+       [
+         "a";
+         "B-9_x";
+         "";
+         "a b";
+         "q\"\\";
+         "\b\t\n\012\r\031\127";
+         "\xC3\xA9";
+         "\xC2\x85";
+       ])
+
+let basic_string_escapes_each_control_character () =
+  Alcotest.(check string)
+    "the escapes"
+    "\"q\\\"b\\\\ \\b\\t\\n\\f\\r \\u0000\\u001B\\u001F \\u007F \
+     \\u0080\\u0085\\u009F \xC2\xA0\xC3\xA9 \xFF\""
+    (Toml.basic_string
+       "q\"b\\ \b\t\n\
+        \012\r \000\027\031 \127 \xC2\x80\xC2\x85\xC2\x9F \xC2\xA0\xC3\xA9 \xFF");
+  Alcotest.(check string) "the empty string" "\"\"" (Toml.basic_string "")
+
+let quote_keeps_a_name_on_one_line () =
+  List.iter
+    (fun (name, expected) ->
+      Alcotest.(check string) (String.escaped name) expected (Toml.quote name))
+    [
+      ("check", "'check'");
+      ("a b", "'a b'");
+      ("it's", "'it's'");
+      ("", "''");
+      ("\xC3\xA9", "'\xC3\xA9'");
+      ("\xC2\xA0", "'\xC2\xA0'");
+      ("\xFF", "'\xFF'");
+      ("a\nb", "\"a\\nb\"");
+      ("\tx", "\"\\tx\"");
+      ("m\127e", "\"m\\u007Fe\"");
+      ("csi\xC2\x9B", "\"csi\\u009B\"");
+    ]
+
+let a_name_with_a_control_character_stays_on_one_line () =
+  check_error ~name:"a duplicate key" "\"a\\nb\" = 1\n\"a\\nb\" = 2\n" (at 2 1)
+    "the key \"a\\nb\" is already defined";
+  check_error ~name:"a key that holds a value"
+    "\"a\\nb\" = 1\n\"a\\nb\".c = 2\n" (at 2 1)
+    "\"a\\nb\" holds an integer, not a table, so it cannot hold more keys";
+  check_error ~name:"an inline table"
+    "\"a\xC2\x85\" = {}\n\"a\xC2\x85\".c = 1\n" (at 2 1)
+    "\"a\\u0085\" is an inline table, and no other line can add keys to it";
+  check_error ~name:"a dotted key into a table that a header made"
+    "[a.\"b\xC2\x85\".c]\nz = 9\n[a]\n\"b\xC2\x85\".ct = 1\n" (at 4 1)
+    "the dotted key \"\\\"b\\u0085\\\".ct\" adds a key to the table \
+     'a.\"b\\u0085\"', which a table header made; write 'ct' under the header \
+     [a.\"b\\u0085\"]"
 
 (* Properties *)
 
@@ -688,6 +740,8 @@ let names =
     "";
     "dot.ted";
     "t\tab";
+    "n\nl";
+    "c1\xC2\x85";
   ]
 
 let is_bare name =
@@ -1054,20 +1108,37 @@ let damaged_document =
   in
   apply edits text
 
+(* A message holds no control character of C0 or C1, and no U+007F, so
+   it stays on one line. *)
+let one_line message =
+  let rec from offset =
+    offset >= String.length message
+    ||
+    let decoded = String.get_utf_8_uchar message offset in
+    let code = Uchar.to_int (Uchar.utf_decode_uchar decoded) in
+    (not (code < 0x20 || (code >= 0x7F && code <= 0x9F)))
+    && from (offset + Uchar.utf_decode_length decoded)
+  in
+  from 0
+
 let a_damaged_document_gives_a_document_or_an_error_inside_it =
   property ~count:500
     ~name:"a damaged document gives a table or an error inside the text"
     ~print:String.escaped damaged_document (fun text ->
       match Toml.parse text with
       | Ok _ -> true
-      | Error error -> place_is_inside text (Toml.error_position error))
+      | Error error ->
+          place_is_inside text (Toml.error_position error)
+          && one_line (Toml.error_message error))
 
 let any_bytes_give_a_document_or_an_error =
   property ~count:500 ~name:"any bytes give a table or an error inside the text"
     ~print:String.escaped Generators.any_text (fun text ->
       match Toml.parse text with
       | Ok _ -> true
-      | Error error -> place_is_inside text (Toml.error_position error))
+      | Error error ->
+          place_is_inside text (Toml.error_position error)
+          && one_line (Toml.error_message error))
 
 let render_path_reads_back =
   property ~name:"render_path gives a key path that reads back"
@@ -1192,6 +1263,12 @@ let tests =
       `Quick error_message_of_a_cause_out_of_range_with_no_construct;
     Alcotest.test_case "render_path quotes only what it must" `Quick
       render_path_quotes_only_what_it_must;
+    Alcotest.test_case "basic_string escapes each control character" `Quick
+      basic_string_escapes_each_control_character;
+    Alcotest.test_case "quote keeps a name on one line" `Quick
+      quote_keeps_a_name_on_one_line;
+    Alcotest.test_case "a name with a control character stays on one line"
+      `Quick a_name_with_a_control_character_stays_on_one_line;
     a_generated_document_reads_back;
     a_damaged_document_gives_a_document_or_an_error_inside_it;
     any_bytes_give_a_document_or_an_error;

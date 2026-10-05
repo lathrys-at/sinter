@@ -485,29 +485,64 @@ let read_message message =
   | Some expected, Some cause -> Some (construct, expected, cause)
   | _ -> None
 
+(* A control character is a code point of the Unicode category Cc:
+   below U+0020, U+007F, and U+0080 to U+009F. *)
+let is_control code = code < 0x20 || (code >= 0x7F && code <= 0x9F)
+
+(* [fold_code_points f text init] folds [f] over the pieces of [text]:
+   [Ok (code, piece)] for each valid UTF-8 sequence, [Error byte] for
+   each byte outside one. *)
+let fold_code_points f text init =
+  let length = String.length text in
+  let rec walk offset acc =
+    if offset >= length then acc
+    else
+      let decoded = String.get_utf_8_uchar text offset in
+      if Uchar.utf_decode_is_valid decoded then
+        let size = Uchar.utf_decode_length decoded in
+        let code = Uchar.to_int (Uchar.utf_decode_uchar decoded) in
+        walk (offset + size) (f acc (Ok (code, String.sub text offset size)))
+      else walk (offset + 1) (f acc (Error text.[offset]))
+  in
+  walk 0 init
+
+let basic_string text =
+  let buffer = Buffer.create (String.length text + 2) in
+  Buffer.add_char buffer '"';
+  fold_code_points
+    (fun () piece ->
+      Buffer.add_string buffer
+        (match piece with
+        | Ok (0x22, _) -> "\\\""
+        | Ok (0x5C, _) -> "\\\\"
+        | Ok (0x08, _) -> "\\b"
+        | Ok (0x09, _) -> "\\t"
+        | Ok (0x0A, _) -> "\\n"
+        | Ok (0x0C, _) -> "\\f"
+        | Ok (0x0D, _) -> "\\r"
+        | Ok (code, _) when is_control code -> Printf.sprintf "\\u%04X" code
+        | Ok (_, piece) -> piece
+        | Error byte -> String.make 1 byte))
+    text ();
+  Buffer.add_char buffer '"';
+  Buffer.contents buffer
+
+let quote name =
+  let control =
+    fold_code_points
+      (fun found piece ->
+        found
+        || match piece with Ok (code, _) -> is_control code | Error _ -> false)
+      name false
+  in
+  if control then basic_string name else "'" ^ name ^ "'"
+
 let render_path names =
-  let escape = function
-    | '"' -> "\\\""
-    | '\\' -> "\\\\"
-    | '\b' -> "\\b"
-    | '\t' -> "\\t"
-    | '\n' -> "\\n"
-    | '\012' -> "\\f"
-    | '\r' -> "\\r"
-    | char when Char.code char < 0x20 || char = '\x7F' ->
-        Printf.sprintf "\\u%04X" (Char.code char)
-    | char -> String.make 1 char
-  in
-  let quote name =
-    "\""
-    ^ String.concat "" (List.map escape (List.of_seq (String.to_seq name)))
-    ^ "\""
-  in
   String.concat "."
     (List.map
        (fun name ->
          if name <> "" && String.for_all is_bare_key_char name then name
-         else quote name)
+         else basic_string name)
        names)
 
 let construct_name = function
@@ -550,13 +585,15 @@ let one_of words =
   | last :: others -> String.concat ", " (List.rev others) ^ ", or " ^ last
 
 let cause_message construct = function
-  | Duplicate_key key -> Printf.sprintf "the key '%s' is already defined" key
+  | Duplicate_key key ->
+      Printf.sprintf "the key %s is already defined" (quote key)
   | Not_a_table { key; found } ->
-      Printf.sprintf "'%s' holds %s, not a table, so it cannot hold more keys"
-        key (Kind.name found)
+      Printf.sprintf "%s holds %s, not a table, so it cannot hold more keys"
+        (quote key) (Kind.name found)
   | Inline_table key ->
       Printf.sprintf
-        "'%s' is an inline table, and no other line can add keys to it" key
+        "%s is an inline table, and no other line can add keys to it"
+        (quote key)
   | Out_of_range ->
       Printf.sprintf "the %s is out of range"
         (Option.fold ~none:"value" ~some:construct_name construct)
@@ -569,9 +606,9 @@ let error_message = function
   | Header_table { key; table; array; rest; _ } ->
       let path = render_path table in
       Printf.sprintf
-        "the dotted key '%s' adds a key to the table '%s', which a table \
-         header made; write '%s' under the header %s"
-        key path (render_path rest)
+        "the dotted key %s adds a key to the table '%s', which a table header \
+         made; write '%s' under the header %s"
+        (quote key) path (render_path rest)
         (if array then "[[" ^ path ^ "]]" else "[" ^ path ^ "]")
   | Unrecognized _ -> "the text is not valid TOML here"
   | Syntax { construct; expected; cause; _ } -> (

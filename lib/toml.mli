@@ -131,7 +131,7 @@ type construct =
 type expected =
   | End_of_line
   | Comment
-  | Character of char  (** one character, for example [']'] *)
+  | Character of char  (** one character, for example ['\]'] *)
   | Double_bracket  (** [\]\]] *)
   | Digit
   | Leading_digit  (** a digit at the start of a number *)
@@ -200,5 +200,17 @@ val parse : string -> (table, error) result
 
 val render_path : string list -> string
 (** [render_path names] is the key path of [names] as TOML writes it: each name
-    bare when it is a bare key, in double quotes otherwise, and the names joined
-    with [.]. *)
+    bare when it is a bare key, as {!basic_string} gives it otherwise, and the
+    names joined with [.]. *)
+
+val basic_string : string -> string
+(** [basic_string text] is [text] as a TOML basic string: in double quotes, with
+    an escape for each double quote, each backslash, and each control character.
+    A control character is a code point below U+0020, U+007F, or a code point
+    from U+0080 to U+009F. A byte that is not part of a valid UTF-8 sequence
+    stays as it is. *)
+
+val quote : string -> string
+(** [quote name] is [name] as a message writes it: in single quotes, or, when
+    [name] holds a control character, as {!basic_string} gives it. So the
+    message stays on one line. *)
