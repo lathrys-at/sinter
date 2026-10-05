@@ -197,14 +197,10 @@ let instant (date, time, offset) =
   | _ -> None
 
 let same_datetime kind want have =
-  match
-    (Option.map read_datetime (Some want), Option.map read_datetime (Some have))
-  with
-  | Some want, Some have ->
-      if String.equal kind "datetime" then
-        Option.equal ( = ) (instant want) (instant have)
-      else want = have
-  | _ -> false
+  let want = read_datetime want and have = read_datetime have in
+  if String.equal kind "datetime" then
+    Option.equal ( = ) (instant want) (instant have)
+  else want = have
 
 let is_value fields =
   List.length fields = 2

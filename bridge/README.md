@@ -12,7 +12,8 @@ digest of a byte string, and reads a TOML document with the crate
 eight functions.
 
 The bridge knows about grammars, source text, queries, captures,
-digests, and TOML documents. It holds no Sinter vocabulary. The reasons are in
+digests, and TOML documents. It holds no Sinter vocabulary. The
+reasons are in
 [docs/decisions/parser-bridge.md](../docs/decisions/parser-bridge.md).
 
 ## Build
