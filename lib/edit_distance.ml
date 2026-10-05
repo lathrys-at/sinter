@@ -18,6 +18,12 @@ let characters text =
   in
   go 0 []
 
+module Rows = Map.Make (struct
+  type t = character
+
+  let compare = compare
+end)
+
 (* The algorithm of Lowrance and Wagner. [d.(i).(j)] is the distance
    between the first [i] characters of [a] and the first [j] of [b].
    [last_row] maps a character to the last row of [a] that holds it;
@@ -31,11 +37,11 @@ let distance a b =
         Array.init (columns + 1) (fun j ->
             if i = 0 then j else if j = 0 then i else max_int))
   in
-  let last_row = ref [] in
+  let last_row = ref Rows.empty in
   for i = 1 to rows do
     let last_column = ref 0 in
     for j = 1 to columns do
-      let i1 = Option.value (List.assoc_opt b.(j - 1) !last_row) ~default:0 in
+      let i1 = Option.value (Rows.find_opt b.(j - 1) !last_row) ~default:0 in
       let j1 = !last_column in
       let cost =
         if a.(i - 1) = b.(j - 1) then begin
@@ -54,13 +60,22 @@ let distance a b =
           (min (d.(i - 1).(j - 1) + cost) (d.(i).(j - 1) + 1))
           (min (d.(i - 1).(j) + 1) transposed)
     done;
-    last_row := (a.(i - 1), i) :: !last_row
+    last_row := Rows.add a.(i - 1) i !last_row
   done;
   d.(rows).(columns)
 
+(* The distance is at least the difference of the two lengths, so a
+   candidate whose length differs by more than [most] is not within
+   [most] edits. *)
 let nearest name candidates =
-  List.map (fun candidate -> (distance name candidate, candidate)) candidates
-  |> List.filter (fun (edits, _) -> edits <= 2)
+  let most = 2 in
+  let length text = Array.length (characters text) in
+  let name_length = length name in
+  List.filter
+    (fun candidate -> abs (length candidate - name_length) <= most)
+    candidates
+  |> List.map (fun candidate -> (distance name candidate, candidate))
+  |> List.filter (fun (edits, _) -> edits <= most)
   |> List.sort compare
   |> function
   | [] -> None

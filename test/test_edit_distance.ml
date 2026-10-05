@@ -134,7 +134,21 @@ let nearest_finds_nothing_beyond_two_edits () =
 
 let nearest_takes_a_name_at_two_edits () =
   nearest "abcd is two edits from abxy" (Some "abxy")
-    (Edit_distance.nearest "abcd" [ "abxy" ])
+    (Edit_distance.nearest "abcd" [ "abxy" ]);
+  nearest "ab is two insertions from abcd" (Some "abcd")
+    (Edit_distance.nearest "ab" [ "abcd" ]);
+  nearest "abcd is two deletions from ab" (Some "ab")
+    (Edit_distance.nearest "abcd" [ "ab" ]);
+  nearest "three characters of two bytes are two deletions from one"
+    (Some "\xc3\xa9")
+    (Edit_distance.nearest "\xc3\xa9\xc3\xa9\xc3\xa9" [ "\xc3\xa9" ])
+
+let long_names_answer_quickly () =
+  distance "a name of 2000 characters and one of 20" 2000
+    (Edit_distance.distance (String.make 2000 'x') (String.make 20 'y'));
+  nearest "a name of 100000 characters" None
+    (Edit_distance.nearest (String.make 100_000 'x')
+       [ "check"; "evidence"; "ledger"; "plan"; "scan"; "spec"; "target" ])
 
 let nearest_breaks_a_tie_by_byte_order () =
   nearest "tier is one edit from both" (Some "tied")
@@ -248,6 +262,7 @@ let tests =
     case "nearest prefers the smaller distance"
       nearest_prefers_the_smaller_distance;
     case "nearest of no candidates is none" nearest_of_no_candidates_is_none;
+    case "long names answer quickly" long_names_answer_quickly;
     distance_is_zero_only_for_equal_names;
     distance_is_symmetric;
     distance_obeys_the_triangle_inequality;
