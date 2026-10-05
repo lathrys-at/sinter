@@ -272,7 +272,7 @@ module Decode = struct
      so far, latest first. *)
   let unquote text i =
     let n = String.length text in
-    let is_octal c = c >= '0' && c <= '7' in
+    let octal_at k = k < n && text.[k] >= '0' && text.[k] <= '7' in
     let rec go bytes j =
       if j >= n then
         Error (Printf.sprintf "%S has a name with no closing quote" text)
@@ -294,8 +294,7 @@ module Decode = struct
         | 'f' -> byte '\012'
         | 'r' -> byte '\r'
         | ('"' | '\\') as c -> byte c
-        | '0' .. '3'
-          when j + 2 < n && is_octal text.[j + 1] && is_octal text.[j + 2] ->
+        | '0' .. '3' when octal_at (j + 1) && octal_at (j + 2) ->
             let digit k = Char.code text.[k] - Char.code '0' in
             let c =
               Char.chr ((digit j * 64) + (digit (j + 1) * 8) + digit (j + 2))
@@ -321,7 +320,7 @@ module Decode = struct
     let* i = literal line 0 "diff --git " in
     let rest = String.sub line i (String.length line - i) in
     let n = String.length rest in
-    if n > 0 && rest.[0] = '"' then
+    if String.starts_with ~prefix:"\"" rest then
       let* a, j = unquote rest 0 in
       let* j = literal rest j " " in
       let* b, j =
@@ -358,7 +357,7 @@ module Decode = struct
     match run with
     | None -> runs
     | Some (line, added, removed) ->
-        let eline = if added > 0 then line + added - 1 else line in
+        let eline = if added = 0 then line else line + added - 1 in
         { line; eline; added; removed } :: runs
 
   let starts prefix line = String.starts_with ~prefix line

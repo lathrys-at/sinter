@@ -24,6 +24,14 @@ let decoded what = Alcotest.(check (result what string))
 let is_error = function Ok _ -> false | Error _ -> true
 let refused name result = Alcotest.(check bool) name true (is_error result)
 
+(* [fails_with message result] checks that [result] is the error
+   [message]. A test of the message tells two errors apart that a test
+   of the kind alone cannot. *)
+let fails_with message result =
+  Alcotest.(check (option string))
+    "the error" (Some message)
+    (match result with Ok _ -> None | Error text -> Some text)
+
 (* Hunk headers. *)
 
 let a_header_gives_both_ranges () =
@@ -78,7 +86,16 @@ let a_header_with_a_wrong_mark_is_refused () =
 
 let a_side_with_lines_that_starts_at_line_0_is_refused () =
   refused "old side" (Git.Decode.hunk_header "@@ -0,1 +1 @@");
-  refused "new side" (Git.Decode.hunk_header "@@ -1 +0,2 @@")
+  refused "new side" (Git.Decode.hunk_header "@@ -1 +0,2 @@");
+  refused "new side of one line" (Git.Decode.hunk_header "@@ -1 +0 @@")
+
+let a_header_names_what_is_missing () =
+  fails_with "\"@@ -1\" has no \" +\" at offset 5"
+    (Git.Decode.hunk_header "@@ -1")
+
+let a_header_names_a_missing_count () =
+  fails_with "\"@@ -1,\" has no number at offset 6"
+    (Git.Decode.hunk_header "@@ -1,")
 
 let a_side_with_no_lines_can_start_at_line_0 () =
   decoded header "both sides empty at line 0"
@@ -331,6 +348,7 @@ let a_bad_git_line_is_refused () =
       "diff --git \"a/\\4\" \"b/\\4\"";
       "diff --git \"a/\\400\" \"b/\\400\"";
       "diff --git \"a/\\08\" \"b/\\08\"";
+      "diff --git \"a/\\081\" \"b/\\081\"";
       "diff --git \"a/\\0\" \"b/\\0\"";
       "diff -git a/x b/x";
       "index 1234567..89abcde";
@@ -346,16 +364,22 @@ let a_hunk_that_ends_early_is_refused () =
 
 let a_line_that_does_not_fit_its_hunk_is_refused () =
   List.iter
-    (fun (name, body) ->
-      refused name (Git.Decode.diff (lines (section "f" body))))
+    (fun (body, message) ->
+      fails_with message (Git.Decode.diff (lines (section "f" body))))
     [
-      ("a removed line too many", [ "@@ -1 +1 @@"; "-a"; "-b"; "+c" ]);
-      ("an added line too many", [ "@@ -1 +1,0 @@"; "+a" ]);
-      ("a context line with no old line left", [ "@@ -1,0 +1 @@"; " a" ]);
-      ("a context line with no new line left", [ "@@ -1 +1,0 @@"; " a" ]);
-      ("a line with no mark", [ "@@ -1 +1 @@"; "a"; "+b" ]);
-      ("text after a hunk", [ "@@ -1 +1 @@"; "-a"; "+b"; "index 1..2" ]);
-      ("a bad hunk header", [ "@@ -1 +1 @"; "-a"; "+b" ]);
+      ( [ "@@ -1 +1 @@"; "-a"; "-b"; "+c" ],
+        "the line \"-b\" does not fit the hunk -1,1 +1,1" );
+      ( [ "@@ -1 +1,0 @@"; "+a" ],
+        "the line \"+a\" does not fit the hunk -1,1 +1,0" );
+      ( [ "@@ -1,0 +1 @@"; " a" ],
+        "the line \" a\" does not fit the hunk -1,0 +1,1" );
+      ( [ "@@ -1 +1,0 @@"; " a" ],
+        "the line \" a\" does not fit the hunk -1,1 +1,0" );
+      ( [ "@@ -1 +1 @@"; "a"; "+b" ],
+        "the line \"a\" does not fit the hunk -1,1 +1,1" );
+      ( [ "@@ -1 +1 @@"; "-a"; "+b"; "index 1..2" ],
+        "the line \"index 1..2\" follows a hunk" );
+      ([ "@@ -1 +1 @"; "-a"; "+b" ], "\"@@ -1 +1 @\" has no \" @@\" at offset 8");
     ]
 
 let output_that_does_not_start_with_a_section_is_refused () =
@@ -680,6 +704,8 @@ let tests =
       a_header_with_a_wrong_mark_is_refused;
     case "a side with lines that starts at line 0 is refused"
       a_side_with_lines_that_starts_at_line_0_is_refused;
+    case "a header names what is missing" a_header_names_what_is_missing;
+    case "a header names a missing count" a_header_names_a_missing_count;
     case "a side with no lines can start at line 0"
       a_side_with_no_lines_can_start_at_line_0;
     hunk_header_reads_what_git_writes;
