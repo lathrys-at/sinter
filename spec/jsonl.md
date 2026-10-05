@@ -347,7 +347,7 @@ the repository is unlocated.
 
 ## 8. Finding records
 
-**`finding`** — located at its subject. A `law-touched` finding takes
+**`finding`** — located at its subject. A `config-changed` finding takes
 the position that [manifest.md](manifest.md) section 14.4 gives.
 
 | field | type | meaning |

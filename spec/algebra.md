@@ -55,7 +55,7 @@ kind or a category.
 | `ref` | `ref` | no |
 | `promise` | `promise` | yes |
 | `evidence` | `run` `cov` `judgment` | no |
-| `law` | `rule` `gate` `setting` | see below |
+| `config` | `rule` `gate` `setting` | see below |
 | `ack` | `ack` | yes |
 | `ledger` | `lease` `decline` | no |
 | `hunk` | `hunk` | yes; diff mode only |
@@ -148,12 +148,12 @@ evaluation:
   category, tombstones and hunks included. `active` → `{node}`.
   `findings` → `{finding}`.
 - `out`, `in` → `{edge}`. `src`, `dst`, `deps`, `rdeps`, `paths` →
-  `{node, ref, law}` (the `src` of a rule's origin edge is a rule).
+  `{node, ref, config}` (the `src` of a rule's origin edge is a rule).
   `subject` → every category a finding can be about. `scope` → the
   located categories plus `hunk`; its argument also accepts `lease`.
   `promises`, `met` → `{promise}`. `done` → `{node}`. A predicate →
   the category set of its argument, intersected with what it accepts.
-  `owed`, `judged` → every category. `triggered` → `{law}`.
+  `owed`, `judged` → every category. `triggered` → `{config}`.
 - `S + T` → the union of the two category sets. `S ^ T` → the
   intersection. `S - T` → the left side's set.
 
@@ -194,7 +194,7 @@ declaration. "Declaration" means a `req`, `design`, or `decision`.
 
 | function | accepts | denotes |
 |---|---|---|
-| `out(K, S)` | `S`: node, law | edges `e` with `kind(e) ∈ K` and `src(e) ∈ S` |
+| `out(K, S)` | `S`: node, config | edges `e` with `kind(e) ∈ K` and `src(e) ∈ S` |
 | `in(K, S)` | `S`: node, ref | edges `e` with `kind(e) ∈ K` and `dst(e) ∈ S` |
 | `src(E)` | edge | the sources of the edges in `E` |
 | `dst(E)` | edge | the facts that the tag targets of the edges in `E` resolve to; a dangling edge contributes nothing |
@@ -207,9 +207,9 @@ follows suspect edges, because a stale citation is still a citation.
 
 | function | accepts | denotes |
 |---|---|---|
-| `deps(K, S)` | node, law | the least `X ⊇ S` with `dst(out(K, X)) ⊆ X` |
+| `deps(K, S)` | node, config | the least `X ⊇ S` with `dst(out(K, X)) ⊆ X` |
 | `rdeps(K, S)` | node, ref | the least `X ⊇ S` with `src(in(K, X)) ⊆ X` |
-| `paths(S, T)` | node, ref, law | `deps(edge, S) ^ rdeps(edge, T)`: every node on some path from `S` to `T` over any edge kind |
+| `paths(S, T)` | node, ref, config | `deps(edge, S) ^ rdeps(edge, T)`: every node on some path from `S` to `T` over any edge kind |
 
 ### 6.4 Plan functions
 
@@ -262,12 +262,12 @@ the aggregate coverage fact for `s`.
 | `unattributed(E)` | All three of these conditions hold: every run passes; `sites(e) ≠ ∅`; no attributed coverage for `t` exists. And one of these two conditions holds: some `agg(s).hit > 0`; or the evidence set holds no coverage data at all |
 | `passing(E)` | every run passes, and either `sites(e) = ∅` or some `cov(t, s).hit > 0` |
 
-### 6.8 Law functions
+### 6.8 Rule functions
 
 | function | accepts | denotes |
 |---|---|---|
-| `owed(R)` | law | `⋃` over `r ∈ R` of `eval(trigger(r)) - eval(discharge(r))`: the obligation subjects of each rule. Rule expressions are evaluated in the same universe. A rule whose trigger or discharge mentions `owed` is an error in its rule file ([manifest.md](manifest.md) section 15); there is no recursion through the law |
-| `triggered(R)` | law | the rules in `R` whose trigger evaluates to a non-empty set |
+| `owed(R)` | config | `⋃` over `r ∈ R` of `eval(trigger(r)) - eval(discharge(r))`: the obligation subjects of each rule. Rule expressions are evaluated in the same universe. A rule whose trigger or discharge mentions `owed` is an error in its rule file ([manifest.md](manifest.md) section 15); no rule depends on another rule through `owed` |
+| `triggered(R)` | config | the rules in `R` whose trigger evaluates to a non-empty set |
 | `judged(n)` | — | subjects with a `judgment` evidence fact for rule `n` whose verdict is `pass` and whose recorded hash matches the subject's current extent hash (or commitment-set hash) |
 
 For a rule whose discharge is `acked(<rule>)`, an ack is live when
@@ -342,7 +342,7 @@ subtraction compares finding identities ([jsonl.md](jsonl.md), section
 "Identity").
 
 The tool evaluates `F(b)` on the base tree. It reads that tree from
-git objects without a checkout. It uses the law of the working tree
+git objects without a checkout. It uses the configuration of the working tree
 ([manifest.md](manifest.md) section 2.5), the same ledger, and an
 **empty evidence set**. So at the base, every finding that comes from an
 evidence predicate is `never-ran`. A test that was already
@@ -353,7 +353,7 @@ test, and Sinter accepts it.
 A finding that exists at the base and still exists in the working tree
 is pre-existing; diff mode does not report it. A finding absent at the
 base is what the diff introduced. The diff-relative classes —
-`rev-owed`, `unmapped-work`, `law-touched`, `code-drift`, `renamed` —
+`rev-owed`, `unmapped-work`, `config-changed`, `code-drift`, `renamed` —
 have `F(b) = ∅` by construction and appear in both modes.
 
 ## 9. Built-in finding classes
@@ -431,7 +431,7 @@ the cap ([manifest.md](manifest.md) section 9.3).
 | `lease-overlap` | step | *engine*: a step's scope intersects the scope of another branch's lease | tree | · | · | warn, warn, — |
 | `unmapped-work` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient - shared`. The engine also exempts hunks that are wholly mechanical repairs — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
 | `rule-owed` | any | `owed(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's discharge is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
-| `law-touched` | law or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 14.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
+| `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 14.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
 | `undischarged-plan` | plan | *engine*: an open plan on the target branch that fails the discharge condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |
 | `ledger-broken` | ledger | *engine*: ledger verification fails | tree | · | · | —, —, block |
 | `pack-drift` | pack | *engine*: the hash of a fetched pack in the cache does not match the hash that the lock file `sinter.lock` fixes for it. The built-in pack `markdown` is not in the lock file. The class takes no tier at any gate: the tool stops with exit code 3 | tree | · | · | — |
