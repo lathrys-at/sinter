@@ -63,25 +63,35 @@ let of_string text =
 
 let to_string glob = glob.text
 
-(* The match of one name against one segment, with one point to go back
-   to: the last '*' seen, and the byte of the name where it started. A
-   pattern with '*' as its only wildcard needs no other. *)
+(* The first offset at or after [from] where [part] occurs in [name]
+   and ends at or before [limit]. *)
+let rec find name part ~from ~limit =
+  if from + String.length part > limit then None
+  else if String.sub name from (String.length part) = part then Some from
+  else find name part ~from:(from + 1) ~limit
+
+(* The match of one name against one segment. The segment is pieces
+   between the '*' of it: the name starts with the first piece, ends
+   with the last, and holds the pieces between them in order, each at
+   its first place after the one before. *)
 let name_matches pattern name =
-  let pattern_length = String.length pattern in
-  let name_length = String.length name in
-  let rec only_stars p =
-    p >= pattern_length || (pattern.[p] = '*' && only_stars (p + 1))
-  in
-  let rec go p n ~star ~start =
-    if n >= name_length then only_stars p
-    else if p < pattern_length && pattern.[p] = '*' then
-      go (p + 1) n ~star:(p + 1) ~start:n
-    else if p < pattern_length && pattern.[p] = name.[n] then
-      go (p + 1) (n + 1) ~star ~start
-    else if star >= 0 then go star (start + 1) ~star ~start:(start + 1)
-    else false
-  in
-  go 0 0 ~star:(-1) ~start:0
+  match String.split_on_char '*' pattern with
+  | [] | [ _ ] -> String.equal pattern name
+  | first :: rest ->
+      let last = List.nth rest (List.length rest - 1) in
+      let middle = List.filteri (fun i _ -> i < List.length rest - 1) rest in
+      let limit = String.length name - String.length last in
+      let rec inside from = function
+        | [] -> true
+        | part :: parts -> (
+            match find name part ~from ~limit with
+            | Some at -> inside (at + String.length part) parts
+            | None -> false)
+      in
+      String.length first <= limit
+      && String.starts_with ~prefix:first name
+      && String.ends_with ~suffix:last name
+      && inside (String.length first) middle
 
 (* [reachable.(j)] is [true] when the segments read so far match the
    first [j] names. *)

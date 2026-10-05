@@ -27,7 +27,7 @@ type kind = Req | Design | Decision | Plan
 val kind_name : kind -> string
 (** [kind_name kind] is ["req"], ["design"], ["decision"], or ["plan"]. *)
 
-(** Which rungs of a [@verifies] edge complete a promise. *)
+(** Which rungs of an edge of the kind [verifies] complete a promise. *)
 type coverage_attribution =
   | Optional  (** the rungs [passing] and [unattributed] *)
   | Required  (** the rung [passing] alone *)

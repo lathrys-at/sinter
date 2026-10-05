@@ -1,8 +1,9 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* Each node has a number of its own, from 0, which keys the table of
-   [matches]. [Class] holds ranges; a single member [c] is [(c, c)].
+(* Each node has a number of its own, from 0, which is its index in
+   [nodes]. A node has a smaller number than every node that holds it.
+   [Class] holds ranges; a single member [c] is [(c, c)].
    [Repeat (body, n, None)] has no upper count. *)
 type node = { number : int; shape : shape }
 
@@ -13,7 +14,7 @@ and shape =
   | Alternation of node list
   | Repeat of node * int * int option
 
-type t = { text : string; root : node }
+type t = { text : string; root : node; nodes : node array }
 
 type error =
   | Not_allowed of { offset : int; character : string }
@@ -69,10 +70,10 @@ exception Stop of error
 let parse text =
   let length = String.length text in
   let at = ref 0 in
-  let count = ref 0 in
+  let made = ref [] in
   let make shape =
-    let node = { number = !count; shape } in
-    incr count;
+    let node = { number = List.length !made; shape } in
+    made := node :: !made;
     node
   in
   let peek () = if !at < length then Some text.[!at] else None in
@@ -207,7 +208,7 @@ let parse text =
   in
   let root = alternation () in
   if !at < length then fail (Unopened_group !at);
-  root
+  (root, Array.of_list (List.rev !made))
 
 let rec nullable node =
   match node.shape with
@@ -219,8 +220,8 @@ let rec nullable node =
 let of_string text =
   match parse text with
   | exception Stop error -> Error error
-  | root when nullable root -> Error Matches_empty
-  | root -> Ok { text; root }
+  | root, _ when nullable root -> Error Matches_empty
+  | root, nodes -> Ok { text; root; nodes }
 
 let to_string pattern = pattern.text
 
@@ -234,23 +235,20 @@ let rec union a b =
       else if y < x then y :: union a ys
       else x :: union xs ys
 
+(* [ends.(number).(start)] is the set of places where a match of the
+   node [number] that starts at [start] can end. The table is filled in
+   the order of the numbers, so the sets of the parts of a node are
+   there before the node needs them. *)
 let matches pattern id =
   let length = String.length id in
-  let memo = Hashtbl.create 64 in
-  (* [ends node start] is the set of places where a match of [node]
-     that starts at [start] can end. *)
-  let rec ends node start =
-    match Hashtbl.find_opt memo (node.number, start) with
-    | Some set -> set
-    | None ->
-        let set = compute node start in
-        Hashtbl.add memo (node.number, start) set;
-        set
-  and step node from =
+  let table = Array.make (Array.length pattern.nodes) [||] in
+  let ends node start = table.(node.number).(start) in
+  let step node from =
     List.fold_left (fun set place -> union set (ends node place)) [] from
+  in
   (* Every place that some number of rounds of [body] reaches from a
      place of [from], zero rounds included. Each place is read once. *)
-  and closure body from =
+  let closure body from =
     let seen = Array.make (length + 1) false in
     let rec visit = function
       | [] -> ()
@@ -261,7 +259,8 @@ let matches pattern id =
     in
     visit from;
     List.filter (fun place -> seen.(place)) (List.init (length + 1) Fun.id)
-  and compute node start =
+  in
+  let compute node start =
     let one accepts =
       if start < length && accepts id.[start] then [ start + 1 ] else []
     in
@@ -273,23 +272,29 @@ let matches pattern id =
         List.fold_left (fun set n -> union set (ends n start)) [] nodes
     | Sequence nodes ->
         List.fold_left (fun from n -> step n from) [ start ] nodes
-    | Repeat (body, low, high) ->
-        (* [current] is the set after [rounds] rounds of [body]. The
-           next set is a function of the current one alone, so a set
-           that comes back unchanged stays so for every later round. *)
-        let rec round rounds current =
-          if rounds >= low && high = None then closure body current
-          else
-            let found = if rounds >= low then current else [] in
-            if high = Some rounds then found
-            else
-              match step body current with
-              | [] -> found
-              | next when next = current -> current
-              | next -> union found (round (rounds + 1) next)
+    | Repeat (body, low, high) -> (
+        (* [after rounds current] is the set after [rounds] more rounds
+           of [body]; [from rounds current] joins the sets of the
+           rounds from [rounds] to [high]. The next set is a function of
+           the current one alone, so a set that comes back unchanged
+           stays so for every later round. *)
+        let rec after rounds current =
+          if rounds = 0 then current else after (rounds - 1) (step body current)
         in
-        round 0 [ start ]
+        let first = after low [ start ] in
+        match high with
+        | None -> closure body first
+        | Some high ->
+            let rec from rounds current =
+              let next = step body current in
+              if rounds = high || next = current then current
+              else union current (from (rounds + 1) next)
+            in
+            from low first)
   in
+  Array.iter
+    (fun node -> table.(node.number) <- Array.init (length + 1) (compute node))
+    pattern.nodes;
   String.for_all is_printable id && List.mem length (ends pattern.root 0)
 
 let error_offset = function
