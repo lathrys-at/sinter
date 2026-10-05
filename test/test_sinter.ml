@@ -44,6 +44,7 @@ let () =
       ("fixture", Test_fixture.tests);
       ("edit distance", Test_edit_distance.tests);
       ("glob", Test_glob.tests);
+      ("id pattern", Test_id_pattern.tests);
       ( "cases",
         Fixture.tests ~binary mode
           ~on_write:(fun path -> written := path :: !written)
