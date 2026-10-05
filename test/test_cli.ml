@@ -254,15 +254,15 @@ let the_version_starts_with_the_release_version () =
     true
     (String.starts_with ~prefix text)
 
-let parse_request tag rest =
-  Printf.sprintf {|{"rid":%s,"op":"parse","grammar":"%s",%s}|} tag grammar rest
+let parse_request rid rest =
+  Printf.sprintf {|{"rid":%s,"op":"parse","grammar":"%s",%s}|} rid grammar rest
 
-let captures_request tag =
-  parse_request tag
+let captures_request rid =
+  parse_request rid
     (Printf.sprintf {|"query":"%s","files":["%s"]|} query sample)
 
-let tree_request tag =
-  parse_request tag (Printf.sprintf {|"tree":true,"files":["%s"]|} sample)
+let tree_request rid =
+  parse_request rid (Printf.sprintf {|"tree":true,"files":["%s"]|} sample)
 
 (* Three requests, and the second of them is not a request at all.
    The fixture gives six captures, so the first answer is seven lines,
@@ -283,7 +283,7 @@ let a_session_answers_each_request_in_order () =
   List.iter
     (fun index ->
       Alcotest.(check bool)
-        "a capture line carries the tag of its request" true
+        "a capture line carries the request id of its request" true
         (contains {|"rid":1|} (line index)))
     [ 0; 1; 2; 3; 4; 5 ];
   Alcotest.(check string)
@@ -294,10 +294,10 @@ let a_session_answers_each_request_in_order () =
     (String.starts_with ~prefix:{|{"code":2,"event":"error","message":"|}
        (line 7));
   Alcotest.(check bool)
-    "that error line carries no tag" false
+    "that error line carries no request id" false
     (contains {|"rid"|} (line 7));
   Alcotest.(check bool)
-    "the tree of the third request carries its path and its tag" true
+    "the tree of the third request carries its path and its request id" true
     (String.starts_with
        ~prefix:{|{"path":"fixtures/sample.json","rid":"two","tree":"(document|}
        (line 8));
@@ -517,7 +517,7 @@ let unwrapped text =
    and each of them holds "req". A search for "req" alone would find
    one of those, so each check below names the field with the words
    around it. *)
-let the_help_of_serve_names_the_request_tag () =
+let the_help_of_serve_names_the_request_id () =
   let status, text = run "serve --help=plain" in
   code "the exit code is 0" 0 status;
   let text = unwrapped text in
@@ -615,6 +615,6 @@ let tests =
       a_closed_standard_error_keeps_the_exit_code;
     Alcotest.test_case "the help of serve names only the codes it returns"
       `Quick the_help_of_serve_names_only_the_codes_it_returns;
-    Alcotest.test_case "the help of serve names the request tag" `Quick
-      the_help_of_serve_names_the_request_tag;
+    Alcotest.test_case "the help of serve names the request id" `Quick
+      the_help_of_serve_names_the_request_id;
   ]

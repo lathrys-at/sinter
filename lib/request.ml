@@ -51,7 +51,7 @@ let value_of_rid = function
   | Number number -> Jsonl.int number
 
 (* @cites json-handling *)
-(* The canonical form allows an integer in this range only, so a tag
+(* The canonical form allows an integer in this range only, so a request id
    outside it could not be written back. *)
 let max_number = 9007199254740991
 let min_number = -9007199254740991

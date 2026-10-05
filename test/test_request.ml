@@ -149,7 +149,7 @@ let a_rid_above_the_allowed_range_is_an_error () =
     (parse_line ~rid:(`Int 9007199254740992) ~tree:(`Bool true) ())
 
 (* The corners of the range belong to it. A reader that left either
-   corner out would refuse a tag that the canonical form allows. *)
+   corner out would refuse a request id that the canonical form allows. *)
 let a_rid_at_the_bottom_of_the_range_is_read () =
   holds "the rid -(2^53-1) comes back as that number"
     (rid_of (parse_line ~rid:(`Int (-9007199254740991)) ~tree:(`Bool true) ())
@@ -165,11 +165,11 @@ let a_rid_that_is_not_utf_8_is_an_error () =
     "{\"rid\":\"\xff\",\"op\":\"parse\",\"grammar\":\"g\",\"tree\":true,\"files\":[\"a\"]}"
 
 let an_error_without_a_readable_rid_carries_no_tag () =
-  holds "the error names no tag"
+  holds "the error names no request id"
     (tag_of (parse_line ~rid:(`Bool true) ~tree:(`Bool true) ()) = None)
 
 let an_error_after_the_rid_carries_the_tag () =
-  holds "the error names the tag"
+  holds "the error names the request id"
     (tag_of (parse_line ~rid:(`String "r7") ~op:(`String "scan") ())
     = Some (Request.Text "r7"))
 
@@ -351,9 +351,9 @@ let tests =
         a_rid_at_the_top_of_the_range_is_read;
       case "a rid that is not UTF-8 is an error"
         a_rid_that_is_not_utf_8_is_an_error;
-      case "an error without a readable rid carries no tag"
+      case "an error without a readable rid carries no request id"
         an_error_without_a_readable_rid_carries_no_tag;
-      case "an error after the rid carries the tag"
+      case "an error after the rid carries the request id"
         an_error_after_the_rid_carries_the_tag;
       case "a rid given twice is an error" a_rid_given_twice_is_an_error;
       case "a field given twice is an error" a_field_given_twice_is_an_error;

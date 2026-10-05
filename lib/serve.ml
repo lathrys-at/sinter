@@ -78,14 +78,14 @@ let language state path =
 let printable message =
   if Jsonl.is_utf_8 message then message else String.escaped message
 
-let record_of_item tag = function
-  | Parse.Capture record -> ("rid", tag) :: record
+let record_of_item rid = function
+  | Parse.Capture record -> ("rid", rid) :: record
   | Parse.Tree { path; sexp } ->
-      [ ("rid", tag); ("path", Jsonl.string path); ("tree", Jsonl.string sexp) ]
+      [ ("rid", rid); ("path", Jsonl.string path); ("tree", Jsonl.string sexp) ]
 
-let run state tag (op : Request.op) =
+let run state rid (op : Request.op) =
   let collected = ref [] in
-  let emit item = collected := record_of_item tag item :: !collected in
+  let emit item = collected := record_of_item rid item :: !collected in
   let outcome =
     match op with
     | Request.Parse { grammar; output; files } -> (
@@ -106,7 +106,7 @@ let run state tag (op : Request.op) =
         | exception Sys_error message ->
             Failed (Exit_code.environment_error, printable message))
   in
-  { rid = Some tag; output = List.rev !collected; outcome }
+  { rid = Some rid; output = List.rev !collected; outcome }
 
 let respond state line =
   if state.closed then
@@ -124,19 +124,19 @@ let respond state line =
 let control response = response.outcome
 
 let lines response =
-  let tag =
+  let rid =
     match response.rid with None -> [] | Some value -> [ ("rid", value) ]
   in
   let last =
     match response.outcome with
     | Done code ->
-        [ ("code", Jsonl.int code); ("event", Jsonl.string "done") ] @ tag
+        [ ("code", Jsonl.int code); ("event", Jsonl.string "done") ] @ rid
     | Failed (code, message) ->
         [
           ("code", Jsonl.int code);
           ("event", Jsonl.string "error");
           ("message", Jsonl.string message);
         ]
-        @ tag
+        @ rid
   in
   response.output @ [ last ]

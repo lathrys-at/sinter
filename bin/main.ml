@@ -136,8 +136,8 @@ let serve_cmd =
          fields:";
       `I
         ( "$(b,rid)",
-          "the caller's tag for the request: a string or an integer. Every \
-           line of the answer carries it back in the field $(b,rid)" );
+          "the request id, which the caller chooses: a string or an integer. \
+           Every line of the answer carries it back in the field $(b,rid)" );
       `I
         ( "$(b,op)",
           "the operation to run: the name of a command of this tool. \
