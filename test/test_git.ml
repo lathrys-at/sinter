@@ -317,6 +317,8 @@ let decoder_examples =
       ("100644 " ^ id ^ " 0 a");
     case "ls_files_stage refuses an id in capitals" stage
       ("100644 " ^ String.uppercase_ascii (String.make 40 'f') ^ " 0\ta");
+    case "ls_tree refuses a mode with an underscore" tree
+      ("1006_4 blob " ^ id ^ "\ta");
     case "ls_tree refuses an unknown kind" tree ("100644 file " ^ id ^ "\ta");
     case "ls_tree refuses an empty path" tree ("100644 blob " ^ id ^ "\t");
     case "ls_tree refuses an id of 41 digits" tree ("100644 blob " ^ id ^ "a\ta");
@@ -447,10 +449,11 @@ let faking_script =
     \  %s) printf 'garbage\\n' ;;\n\
     \  %s) printf '%%s blob 3\\nabc\\n' \"$id\"; exit 2 ;;\n\
     \  %s) printf '%%s missing\\n' \"$id\"; printf '%%0300000d' 0 ;;\n\
+    \  %s) printf '%%s blob 10000000000000000\\nabc\\n' \"$id\" ;;\n\
     \  esac ;;\n\
      esac\n"
     (id_of '2') (id_of '3') (id_of '4') (id_of '5') (id_of '6') (id_of '7')
-    (id_of '8')
+    (id_of '8') (id_of '9')
 
 let faked =
   lazy
@@ -505,6 +508,12 @@ let open_repo_refuses_an_empty_directory_name () =
   let repo = Lazy.force shared in
   match error (Git.open_repo ~env:(Fixture.env repo) "") with
   | Not_a_repository { dir = ""; _ } -> ()
+  | other -> Alcotest.fail (print_error other)
+
+let open_repo_refuses_a_directory_name_with_a_nul_byte () =
+  let repo = Lazy.force shared in
+  match error (Git.open_repo ~env:(Fixture.env repo) "src\000x") with
+  | Not_a_repository { dir = "src\000x"; _ } -> ()
   | other -> Alcotest.fail (print_error other)
 
 let open_repo_needs_git_on_path () =
@@ -1142,6 +1151,8 @@ let tests =
         open_repo_refuses_a_missing_directory;
       quick "open_repo refuses an empty directory name"
         open_repo_refuses_an_empty_directory_name;
+      quick "open_repo refuses a directory name with a NUL byte"
+        open_repo_refuses_a_directory_name_with_a_nul_byte;
       quick "open_repo needs git on PATH" open_repo_needs_git_on_path;
       quick "open_repo needs a PATH variable" open_repo_needs_a_path_variable;
       quick "open_repo reads the root and the format"
@@ -1198,6 +1209,10 @@ let tests =
       quick "base_tree refuses a name that starts with a hyphen"
         (base_tree_refuses "-main");
       quick "base_tree refuses an empty name" (base_tree_refuses "");
+      quick "base_tree refuses an unknown name of one letter"
+        (base_tree_refuses "x");
+      quick "base_tree refuses a name with a NUL byte"
+        (base_tree_refuses "main\000x");
       quick "base_tree refuses the id of a blob" (base_tree_refuses hello_id);
       quick "fold_blobs reads the content of each blob"
         fold_blobs_reads_the_content_of_each_blob;
@@ -1216,6 +1231,8 @@ let tests =
         fold_blobs_stops_at_an_id_that_names_no_object;
       quick "fold_blobs refuses an id that names a tree"
         fold_blobs_refuses_an_id_that_names_a_tree;
+      quick "fold_blobs reports a size larger than the output"
+        (fold_blobs_reports_output_it_cannot_read '9');
       quick "fold_blobs reports a blob cut short"
         (fold_blobs_reports_output_it_cannot_read '2');
       quick "fold_blobs reports a blob with no line feed after it"

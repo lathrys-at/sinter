@@ -80,8 +80,8 @@ val open_repo : env:string array -> string -> (t, error) result
 
     The error is [Git_not_found] when [env] holds no [PATH], or when no
     directory of [PATH] holds an executable file named [git]. It is
-    [Not_a_repository] when [dir] is empty, when it is not a directory, or when
-    git finds no working tree that holds it. *)
+    [Not_a_repository] when [dir] is empty, when it holds a NUL byte, when it is
+    not a directory, or when git finds no working tree that holds it. *)
 
 val root : t -> string
 (** [root repo] is the absolute path of the root of the working tree, as git
@@ -124,8 +124,8 @@ val base_tree : t -> string -> ((string * string) list, error) result
     byte order, with no path twice.
 
     The error is [Bad_revision rev] when [rev] names no commit, when [rev] is
-    empty, or when [rev] starts with [-]. Git never sees an empty name, or a
-    name that starts with [-]. *)
+    empty, when it starts with [-], or when it holds a NUL byte. Git never sees
+    such a name. *)
 
 val fold_blobs :
   t ->

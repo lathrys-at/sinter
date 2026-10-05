@@ -490,7 +490,13 @@ let with_temp_file suffix f =
 (* [with_fd path flags f] calls [f] with a descriptor of the file at
    [path], and closes it when [f] returns or raises. *)
 let with_fd path flags f =
-  match Unix.openfile path (Unix.O_CLOEXEC :: flags) 0o600 with
+  match
+    Unix.openfile path (Unix.O_CLOEXEC :: flags)
+      (0o600
+      [@mutaml.skip
+        "openfile reads the permission only when it creates the file; no \
+         caller passes O_CREAT, and every file that it opens exists"])
+  with
   | exception Unix.Unix_error (error, _, _) -> Error (file_error path error)
   | fd -> Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> f fd)
 
@@ -518,6 +524,30 @@ let rec wait pid =
   match Unix.waitpid [] pid with
   | _, status -> status
   | exception Unix.Unix_error (Unix.EINTR, _, _) -> wait pid
+
+(* [read_exactly channel size] is the next [size] bytes of [channel]. It
+   reads them in pieces, so that it never holds more than [channel] gives,
+   whatever [size] says.
+
+   @raise End_of_file if [channel] ends first. *)
+let read_exactly channel size =
+  let piece =
+    Bytes.create
+      (65536
+      [@mutaml.skip
+        "the size of a piece changes how many reads fill the content, and not \
+         the content"])
+  in
+  let rec read left pieces =
+    if left = 0 then String.concat "" (List.rev pieces)
+    else
+      match
+        In_channel.input channel piece 0 (min left (Bytes.length piece))
+      with
+      | 0 -> raise End_of_file
+      | count -> read (left - count) (Bytes.sub_string piece 0 count :: pieces)
+  in
+  read size []
 
 let rec drain channel =
   match In_channel.input_char channel with
@@ -667,6 +697,9 @@ let open_repo ~env dir =
   let env = child_env env in
   if dir = "" then
     Error (Not_a_repository { dir; detail = "the directory name is empty" })
+  else if String.contains dir '\000' then
+    Error
+      (Not_a_repository { dir; detail = "the directory name holds a NUL byte" })
   else
     let args =
       [ "-C"; dir; "rev-parse"; "--show-object-format"; "--show-toplevel" ]
@@ -695,9 +728,11 @@ let answer t args decode =
 
 (* [commit_of repo rev] is the object id of the commit that [rev] names. A
    revision that starts with a hyphen names no commit here, so that git
-   never reads [rev] as an option. *)
+   never reads [rev] as an option, and nor does one that holds a NUL
+   byte, which no argument of a process can hold. *)
 let commit_of t rev =
-  if rev = "" || rev.[0] = '-' then Error (Bad_revision rev)
+  if rev = "" || rev.[0] = '-' || String.contains rev '\000' then
+    Error (Bad_revision rev)
   else
     let* commit =
       answer t
@@ -873,7 +908,7 @@ let fold_blobs t ids ~init ~f =
                 match header with
                 | Decode.Missing _ -> Error (Bad_revision id)
                 | Decode.Object { id = read_id; kind; size } ->
-                    let content = really_input_string channel size in
+                    let content = read_exactly channel size in
                     if input_char channel <> '\n' then
                       malformed "an object does not end with a line feed"
                     else if read_id <> id then
