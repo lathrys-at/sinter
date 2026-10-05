@@ -46,6 +46,7 @@ let () =
       ("glob", Test_glob.tests);
       ("id pattern", Test_id_pattern.tests);
       ("branch name", Test_branch_name.tests);
+      ("finding class", Test_finding_class.tests);
       ( "cases",
         Fixture.tests ~binary mode
           ~on_write:(fun path -> written := path :: !written)
