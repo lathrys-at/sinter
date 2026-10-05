@@ -38,6 +38,7 @@ let () =
       ("sha256", Test_sha256.tests);
       ("toml raw", Test_toml_raw.tests);
       ("toml", Test_toml.tests);
+      ("toml conformance", Test_toml_conformance.tests);
       ("request", Test_request.tests);
       ("serve", Test_serve.tests);
       ("cli", Test_cli.tests);

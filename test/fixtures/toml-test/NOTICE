@@ -1,0 +1,6 @@
+The files in this folder come from the repository
+https://github.com/toml-lang/toml-test, release tag v2.2.0, commit
+ce08da1. They are the two lists files-toml-1.0.0 and files-toml-1.1.0
+of the folder tests/ of that release, and the cases that the two lists
+name. The license is MIT (SPDX-License-Identifier: MIT); the file
+LICENSE beside this file is the license text of that release.

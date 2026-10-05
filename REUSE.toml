@@ -21,3 +21,11 @@ path = ["test/fixtures/tree-sitter-json/**"]
 precedence = "override"
 SPDX-FileCopyrightText = "2014 Max Brunsfeld"
 SPDX-License-Identifier = "MIT"
+
+# The cases of the TOML test suite, toml-test, and its license text.
+# The file NOTICE beside them names the repository and the release tag.
+[[annotations]]
+path = ["test/fixtures/toml-test/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "2018 TOML authors"
+SPDX-License-Identifier = "MIT"

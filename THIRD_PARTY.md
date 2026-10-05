@@ -31,6 +31,7 @@ the release binary. Each one keeps its own license file beside it.
 | component | license | link |
 |---|---|---|
 | tree-sitter-json grammar, release v0.24.8, a test fixture | MIT | https://github.com/tree-sitter/tree-sitter-json |
+| toml-test, the TOML test suite, release v2.2.0, test fixtures | MIT | https://github.com/toml-lang/toml-test |
 
 ## Test dependencies
 
