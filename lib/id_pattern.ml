@@ -126,17 +126,18 @@ let parse text =
     | Some '{' -> Some (counts !at)
     | _ -> None
   in
-  let rec members start acc ~first =
+  let rec members start acc =
     match peek () with
     | None -> fail (Unclosed_class start)
     | Some ']' ->
         incr at;
         List.rev acc
     | Some '-' ->
+        let first = !at = start + 1 in
         let last = !at + 1 >= length || text.[!at + 1] = ']' in
         if not (first || last) then fail (Misplaced_hyphen !at);
         incr at;
-        members start (('-', '-') :: acc) ~first:false
+        members start (('-', '-') :: acc)
     | Some c when is_member c ->
         let offset = !at in
         if
@@ -148,11 +149,11 @@ let parse text =
           if kind c = Other || kind c <> kind high || c > high then
             fail (Bad_range offset);
           at := offset + 3;
-          members start ((c, high) :: acc) ~first:false
+          members start ((c, high) :: acc)
         end
         else begin
           incr at;
-          members start ((c, c) :: acc) ~first:false
+          members start ((c, c) :: acc)
         end
     | Some _ -> not_allowed !at
   in
@@ -199,7 +200,7 @@ let parse text =
     | '[' ->
         incr at;
         if peek () = Some ']' then fail (Empty_class offset);
-        make (Class (members offset [] ~first:true))
+        make (Class (members offset []))
     | '?' | '*' | '+' | '{' -> fail (Quantifier_without_part offset)
     | c when is_literal c ->
         incr at;

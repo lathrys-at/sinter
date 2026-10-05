@@ -78,6 +78,8 @@ let classes_match_their_members () =
   check_match "[-]" "-" true;
   check_match "[--]" "-" true;
   check_match "[a-c]" "b" true;
+  check_match "[a-a]" "a" true;
+  check_match "x[-]" "x-" true;
   check_match "[a-c]" "d" false;
   check_match "[A-F0-9]+" "C0FFEE" true;
   check_match "[+*?|$(){}]+" "+*?|$(){}" true
@@ -160,6 +162,7 @@ let class_errors () =
   check_error "[a" (Id_pattern.Unclosed_class 0);
   check_error "x[" (Id_pattern.Unclosed_class 1);
   check_error "[a-" (Id_pattern.Unclosed_class 0);
+  check_error "[a-z" (Id_pattern.Unclosed_class 0);
   check_error "[]" (Id_pattern.Empty_class 0);
   check_error "x[]" (Id_pattern.Empty_class 1)
 

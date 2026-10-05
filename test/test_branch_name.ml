@@ -147,7 +147,9 @@ let each_error_has_its_message () =
     "a branch name cannot start with 'refs/'; write the name of the branch \
      alone, such as 'main'";
   message "a b" "a branch name cannot hold a space";
+  message "a\x00b" "a branch name cannot hold a control character";
   message "a\tb" "a branch name cannot hold a control character";
+  message "a\x1fb" "a branch name cannot hold a control character";
   message "a\x7fb" "a branch name cannot hold a control character";
   message "a~1" "a branch name cannot hold '~'";
   message "a..b" "a branch name cannot hold '..'";

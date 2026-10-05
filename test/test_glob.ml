@@ -44,6 +44,18 @@ let a_star_matches_the_empty_sequence () =
   check_match "a*b*c" "axxbyyc" true;
   check_match "a*b*c" "axxbyy" false
 
+let pieces_between_stars_do_not_overlap () =
+  check_match "a*a" "a" false;
+  check_match "a*a" "aa" true;
+  check_match "*b*b" "b" false;
+  check_match "*b*b" "bb" true;
+  check_match "*ab*b*" "ab" false;
+  check_match "*ab*b*" "abb" true;
+  check_match "a*b*a" "aba" true;
+  check_match "a*b*a" "aa" false;
+  check_match "ab*ba" "aba" false;
+  check_match "ab*ba" "abba" true
+
 let a_star_goes_back_after_a_false_start () =
   check_match "*ab" "aab" true;
   check_match "*ab" "abab" true;
@@ -170,6 +182,8 @@ let each_error_has_its_message () =
      root";
   message "a//b" "a glob cannot hold two '/' together";
   message "a/../b" "a glob cannot hold the segment '..'";
+  message "a/**x"
+    "the segment '**x' holds '**' and other characters; write '**/*x'";
   message "src/**.ts"
     "the segment '**.ts' holds '**' and other characters; write '**/*.ts'";
   message "a**"
@@ -235,7 +249,23 @@ let reference_matches text path =
 let valid_glob =
   Gen.(
     let segment =
-      oneof_list [ "**"; "*"; "a"; "b"; "a*"; "*b"; ".a"; "*a*"; "ab" ]
+      oneof_list
+        [
+          "**";
+          "*";
+          "a";
+          "b";
+          "a*";
+          "*b";
+          ".a";
+          "*a*";
+          "ab";
+          "a*a";
+          "*a*a";
+          "*ab*b*";
+          "a*b*a";
+          "*b*b";
+        ]
     in
     map2
       (fun segments final ->
@@ -247,7 +277,20 @@ let path =
   Gen.(
     map (String.concat "/")
       (list_size (1 -- 4)
-         (oneof_list [ "a"; "b"; "ab"; ".a"; "ba"; "aab"; "bab" ])))
+         (oneof_list
+            [
+              "a";
+              "b";
+              "ab";
+              ".a";
+              "ba";
+              "aab";
+              "bab";
+              "aa";
+              "aba";
+              "abab";
+              "abba";
+            ])))
 
 let property ?(count = 500) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
@@ -508,6 +551,8 @@ let tests =
     case "a star matches the empty sequence" a_star_matches_the_empty_sequence;
     case "a star goes back after a false start"
       a_star_goes_back_after_a_false_start;
+    case "pieces between stars do not overlap"
+      pieces_between_stars_do_not_overlap;
     case "a double star in the middle matches zero or more folders"
       a_double_star_in_the_middle_matches_zero_or_more_folders;
     case "a final double star matches one or more names"

@@ -98,6 +98,7 @@ let name_matches pattern name =
 let matches glob path =
   let names = Array.of_list (String.split_on_char '/' path) in
   let count = Array.length names in
+  let none () = Array.make (count + 1) false in
   let rec walk reachable = function
     | [] -> reachable.(count)
     | [ Any_names ] ->
@@ -106,21 +107,20 @@ let matches glob path =
         in
         some_before 0
     | Any_names :: rest ->
-        let next = Array.make (count + 1) false in
-        let seen = ref false in
-        for j = 0 to count do
-          seen := !seen || reachable.(j);
-          next.(j) <- !seen
-        done;
+        let _, next =
+          Array.fold_left_map
+            (fun seen here -> (seen || here, seen || here))
+            false reachable
+        in
         walk next rest
     | Name pattern :: rest ->
-        let next = Array.make (count + 1) false in
+        let next = none () in
         for j = 0 to count - 1 do
           next.(j + 1) <- reachable.(j) && name_matches pattern names.(j)
         done;
         walk next rest
   in
-  let start = Array.make (count + 1) false in
+  let start = none () in
   start.(0) <- true;
   walk start glob.segments
 

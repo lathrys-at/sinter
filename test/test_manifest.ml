@@ -568,7 +568,9 @@ let names_that_vary () =
      \"a-\" = \"x\"\n\
      \"-a\" = \"x\"\n\
      \"\" = \"x\"\n\
-     \"1a\" = \"x\"\n"
+     \"1a\" = \"x\"\n\
+     aB = \"x\"\n\
+     a_b = \"x\"\n"
     [
       "sinter.toml:1:13: 'Markdown' is not a pack name; a pack name is \
        lower-case letters and digits, in words joined by '-', such as 'ocaml' \
@@ -583,6 +585,11 @@ let names_that_vary () =
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
       "sinter.toml:8:1: '1a' is not a ref namespace; a namespace is lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
+      "sinter.toml:9:1: 'aB' is not a ref namespace; a namespace is lower-case \
+       letters and digits, in words joined by '-', such as 'gh' or 'jira'";
+      "sinter.toml:10:1: 'a_b' is not a ref namespace; a namespace is \
+       lower-case letters and digits, in words joined by '-', such as 'gh' or \
+       'jira'";
     ];
   reports "names with words and digits"
     (markdown

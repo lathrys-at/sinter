@@ -72,7 +72,7 @@ let message = function
       "a branch name cannot start with 'refs/'; write the name of the branch \
        alone, such as 'main'"
   | Bad_character { character = ' '; _ } -> "a branch name cannot hold a space"
-  | Bad_character { character; _ } when character < ' ' || character = '\127' ->
+  | Bad_character { character = '\000' .. '\031' | '\127'; _ } ->
       "a branch name cannot hold a control character"
   | Bad_character { character; _ } ->
       Printf.sprintf "a branch name cannot hold '%c'" character

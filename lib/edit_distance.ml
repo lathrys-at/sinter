@@ -59,17 +59,9 @@ let distance a b =
   d.(rows).(columns)
 
 let nearest name candidates =
-  let better (distance_a, a) (distance_b, b) =
-    distance_a < distance_b
-    || (distance_a = distance_b && String.compare a b < 0)
-  in
-  List.fold_left
-    (fun best candidate ->
-      let found = (distance name candidate, candidate) in
-      if fst found > 2 then best
-      else
-        match best with
-        | Some known when not (better found known) -> best
-        | _ -> Some found)
-    None candidates
-  |> Option.map snd
+  List.map (fun candidate -> (distance name candidate, candidate)) candidates
+  |> List.filter (fun (edits, _) -> edits <= 2)
+  |> List.sort compare
+  |> function
+  | [] -> None
+  | (_, candidate) :: _ -> Some candidate
