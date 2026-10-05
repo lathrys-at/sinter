@@ -645,6 +645,19 @@ let values () =
        class, for example [.]";
       "sinter.toml:8:14: the pattern matches an empty id";
     ];
+  reports "a pack with files and a bad version"
+    (markdown
+   ^ "packs.ocaml.files = [\"**/*.ml\"]\npacks.ocaml.version = \"v1\"\n")
+    [
+      "sinter.toml:4:23: 'version' takes a version of the form MAJOR.MINOR, \
+       such as \"1.0\", not \"v1\"";
+    ];
+  reports "a pack with a bad glob and a version"
+    (markdown ^ "packs.ocaml.files = [\"?\"]\npacks.ocaml.version = \"1.0\"\n")
+    [
+      "sinter.toml:3:23: \"?\" is not a glob: a glob cannot hold '?'; '*' \
+       matches any characters inside one name";
+    ];
   reports "a ! glob that is not a glob"
     (markdown ^ "[check]\nhistorical = [\"a\", \"!/b\"]\n")
     [
