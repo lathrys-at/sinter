@@ -42,7 +42,7 @@ agents write most of Sinter, and Sinter's own method applies to Sinter.
 | `bin/` | the `sinter` executable | Apache-2.0 |
 | `bridge/` | the Rust crate that loads grammars through wasmtime | Apache-2.0 |
 | `test/` | the test suite and its fixtures | Apache-2.0 |
-| `spec/` | the four normative specifications | CC-BY-4.0 |
+| `spec/` | the five normative specifications | CC-BY-4.0 |
 | `docs/` | the design notes, the roadmap, the decision records | CC-BY-4.0 |
 | `.plans/` | plan files and their journals | Apache-2.0 |
 | `plugins/` | the Claude Code plugin with the project's skills | Apache-2.0 |
