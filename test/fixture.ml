@@ -167,14 +167,14 @@ let guarded f =
    them and from files under HOME and XDG_CONFIG_HOME, so the fixed
    values give the same commit id and the same output of git on every
    machine. Cmdliner colors its own errors when TERM names a terminal,
-   and NO_COLOR stops that. The other variables of the suite stay: the
-   mutation runner switches a mutant on in the run through one of
-   them. *)
-let environment ~home =
+   and NO_COLOR stops that. PWD names [root], the folder where each
+   of them starts. The other variables of the suite stay: the mutation
+   runner switches a mutant on in the run through one of them. *)
+let environment ~home ~root =
   let replaced binding =
     List.exists
       (fun prefix -> String.starts_with ~prefix binding)
-      [ "GIT_"; "HOME="; "XDG_CONFIG_HOME="; "NO_COLOR=" ]
+      [ "GIT_"; "HOME="; "XDG_CONFIG_HOME="; "NO_COLOR="; "PWD=" ]
   in
   Array.append
     (Array.of_list
@@ -183,6 +183,7 @@ let environment ~home =
           (Array.to_list (Unix.environment ()))))
     [|
       "HOME=" ^ home;
+      "PWD=" ^ root;
       "NO_COLOR=1";
       "GIT_CONFIG_GLOBAL=/dev/null";
       "GIT_CONFIG_NOSYSTEM=1";
@@ -260,7 +261,7 @@ type workspace = { root : string; environment : string array; scratch : string }
 let prepare temporary =
   let home = make_folder temporary "home" in
   let root = make_folder temporary "work" in
-  { root; environment = environment ~home; scratch = temporary }
+  { root; environment = environment ~home ~root; scratch = temporary }
 
 (* Diff cases. *)
 

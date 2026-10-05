@@ -187,6 +187,24 @@ let the_working_folder_shows_as_root () =
     (case_files ~stdout:"<root>\n" ~stderr:"<root>/f\n"
        "pwd; echo \"$PWD/f\" >&2")
 
+let the_run_gets_the_fixed_variables () =
+  let names =
+    [ "NO_COLOR"; "GIT_CONFIG_GLOBAL"; "GIT_CONFIG_NOSYSTEM"; "PWD" ]
+  in
+  let program =
+    "BEGIN { "
+    ^ String.concat "; "
+        (List.map (Printf.sprintf "print ENVIRON[\"%s\"]") names)
+    ^ " }"
+  in
+  with_case
+    (("args", program ^ "\n")
+    :: List.remove_assoc "args"
+         (case_files ~stdout:"1\n/dev/null\n1\n<root>\n" ""))
+    (fun case ->
+      Alcotest.check outcome "awk prints the fixed values" (Ok [])
+        (Fixture.run ~binary:"/usr/bin/awk" Fixture.Compare case))
+
 let a_run_leaves_the_case_unchanged () =
   with_case (("tree/f", "x") :: case_files "rm f; echo y > g") (fun case ->
       Alcotest.check outcome "the run passes" (Ok []) (run case);
@@ -490,6 +508,8 @@ let tests =
       `Quick the_copy_leaves_out_gitkeep_and_keeps_its_folder;
     Alcotest.test_case "the working folder shows as <root>" `Quick
       the_working_folder_shows_as_root;
+    Alcotest.test_case "the run gets the fixed variables" `Quick
+      the_run_gets_the_fixed_variables;
     Alcotest.test_case "a run leaves the case unchanged" `Quick
       a_run_leaves_the_case_unchanged;
     Alcotest.test_case "a run removes its temporary folder" `Quick
