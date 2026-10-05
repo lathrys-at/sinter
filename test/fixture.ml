@@ -124,13 +124,15 @@ let rec copy_folder source target =
     (entries source)
 
 (* Removes [path] and, for a folder, everything in it. A symbolic
-   link is removed, not followed. *)
+   link is removed, not followed. A file that vanishes between the
+   listing of its folder and its removal counts as removed. *)
 let rec remove path =
   match (Unix.lstat path).Unix.st_kind with
   | Unix.S_DIR ->
       List.iter (fun name -> remove (Filename.concat path name)) (entries path);
       Unix.rmdir path
   | _ -> Sys.remove path
+  | exception Unix.Unix_error (Unix.ENOENT, _, _) -> ()
 
 let make_folder parent name =
   let path = Filename.concat parent name in
@@ -170,7 +172,11 @@ let coverage_prefix = Filename.concat (Sys.getcwd ()) "bisect"
    reads its configuration, its ignore rules, and its identity from
    them and from files under HOME and XDG_CONFIG_HOME, so the fixed
    values give the same commit id and the same output of git on every
-   machine. Cmdliner colors its own errors when TERM names a terminal,
+   machine. After a commit, git starts its background maintenance,
+   which writes and removes lock files in the repository while the
+   harness removes the repository; the configuration in the
+   environment turns that off. Cmdliner colors its own errors when
+   TERM names a terminal,
    and NO_COLOR stops that. PWD names [root], the folder where each
    of them starts. The other variables of the suite stay: the mutation
    runner switches a mutant on in the run through one of them. *)
@@ -194,6 +200,9 @@ let environment ~home ~root =
       "NO_COLOR=1";
       "GIT_CONFIG_GLOBAL=/dev/null";
       "GIT_CONFIG_NOSYSTEM=1";
+      "GIT_CONFIG_COUNT=1";
+      "GIT_CONFIG_KEY_0=maintenance.auto";
+      "GIT_CONFIG_VALUE_0=false";
       "GIT_AUTHOR_NAME=Sinter Fixture";
       "GIT_AUTHOR_EMAIL=fixture@sinter.invalid";
       "GIT_AUTHOR_DATE=1767225600 +0000";

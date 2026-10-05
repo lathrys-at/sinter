@@ -186,7 +186,15 @@ let the_working_folder_shows_as_root () =
 
 let the_run_gets_the_fixed_variables () =
   let names =
-    [ "NO_COLOR"; "GIT_CONFIG_GLOBAL"; "GIT_CONFIG_NOSYSTEM"; "PWD" ]
+    [
+      "NO_COLOR";
+      "GIT_CONFIG_GLOBAL";
+      "GIT_CONFIG_NOSYSTEM";
+      "PWD";
+      "GIT_CONFIG_COUNT";
+      "GIT_CONFIG_KEY_0";
+      "GIT_CONFIG_VALUE_0";
+    ]
   in
   let program =
     "BEGIN { "
@@ -197,7 +205,9 @@ let the_run_gets_the_fixed_variables () =
   with_case
     (("args", program ^ "\n")
     :: List.remove_assoc "args"
-         (case_files ~stdout:"1\n/dev/null\n1\n<root>\n" ""))
+         (case_files
+            ~stdout:"1\n/dev/null\n1\n<root>\n1\nmaintenance.auto\nfalse\n" "")
+    )
     (fun case ->
       Alcotest.check outcome "awk prints the fixed values" (Ok [])
         (Fixture.run ~binary:"/usr/bin/awk" Fixture.Compare case))
@@ -484,6 +494,12 @@ let git repository arguments =
   | Ok output -> output
   | Error error -> Alcotest.fail (Fixture.message ~case:"diff" error)
 
+let a_diff_repository_runs_no_background_maintenance () =
+  with_diff_repository (fun repository ->
+      Alcotest.(check string)
+        "git reads maintenance.auto as false" "false\n"
+        (git repository [ "config"; "--get"; "maintenance.auto" ]))
+
 let a_diff_case_commits_base_and_leaves_tree_uncommitted () =
   with_diff_repository (fun repository ->
       Alcotest.(check string)
@@ -605,6 +621,8 @@ let tests =
       a_folder_of_cases_that_cannot_be_read_is_one_failing_test;
     Alcotest.test_case "a failed git command shows its arguments and output"
       `Quick a_failed_git_command_shows_its_arguments_and_output;
+    Alcotest.test_case "a diff repository runs no background maintenance" `Quick
+      a_diff_repository_runs_no_background_maintenance;
     Alcotest.test_case "a diff case commits base and leaves tree uncommitted"
       `Quick a_diff_case_commits_base_and_leaves_tree_uncommitted;
     Alcotest.test_case "a diff case runs at the root of the repository" `Quick
