@@ -647,6 +647,8 @@ let values () =
       "sinter.toml:2:30: \"src/**.ts\" is not a glob: the segment '**.ts' \
        holds '**' and other characters; write '**/*.ts'";
       "sinter.toml:2:44: \"!x\" occurs twice in 'files'";
+      "sinter.toml:3:7: the pack 'x' needs 'version', the release that the \
+       repository uses, such as \"1.0\"";
       "sinter.toml:3:17: 'files' holds only '!' globs, so it holds no path; \
        add a glob without '!'";
       "sinter.toml:4:7: the pack 'y' needs 'files', the globs of the files \
@@ -655,6 +657,8 @@ let values () =
        such as \"1.0\", not \"1\"";
       "sinter.toml:5:7: the pack 'z' needs 'files', the globs of the files \
        that it reads";
+      "sinter.toml:5:7: the pack 'z' needs 'version', the release that the \
+       repository uses, such as \"1.0\"";
       "sinter.toml:6:7: the pack 'w' needs 'version', the release that the \
        repository uses, such as \"1.0\"";
       "sinter.toml:7:12: '.' is not in the id pattern language; put it in a \

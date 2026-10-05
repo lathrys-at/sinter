@@ -841,27 +841,24 @@ let new_reading () =
     coverage_attribution = Optional;
   }
 
-(* The packs, each with its files and its version, and an error for a
-   pack that lacks one of them. A value that the manifest writes and
+(* The packs, each with its files and its version, and an error for
+   each of the two that a pack lacks. A value that the manifest writes and
    that is not valid is [Some None]: its error is already reported. *)
 let packs_of reading =
-  let lacks position problem =
-    value_error reading position problem;
-    None
-  in
   List.sort compare reading.pack_keys
   |> List.filter_map (fun (name, position) ->
-      match
-        ( List.assoc_opt name reading.files,
-          List.assoc_opt name reading.versions,
-          name = "markdown" )
-      with
-      | None, _, _ -> lacks position (Missing_files name)
-      | Some None, _, _ | _, Some None, _ -> None
-      | Some (Some files), None, true -> Some { name; files; version = None }
-      | Some (Some _), None, false -> lacks position (Missing_version name)
-      | Some (Some files), Some (Some version), _ ->
-          Some { name; files; version = Some version })
+      let files = List.assoc_opt name reading.files
+      and version = List.assoc_opt name reading.versions
+      and builtin = name = "markdown" in
+      if files = None then value_error reading position (Missing_files name);
+      if version = None && not builtin then
+        value_error reading position (Missing_version name);
+      match (files, version) with
+      | Some (Some files), None when builtin ->
+          Some { name; files; version = None }
+      | Some (Some files), Some (Some version) ->
+          Some { name; files; version = Some version }
+      | _ -> None)
 
 let of_string text =
   match Toml.parse text with
