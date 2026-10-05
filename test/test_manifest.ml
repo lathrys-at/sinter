@@ -758,6 +758,37 @@ let the_names_come_before_the_values () =
       "sinter.toml:3:15: 'rollout-cap' takes true or false, not an integer";
     ]
 
+let a_large_manifest_reads_quickly () =
+  let strings format count =
+    "[" ^ String.concat ", " (List.init count (Printf.sprintf format)) ^ "]"
+  in
+  let packs =
+    String.concat ""
+      (List.init 1_000 (fun i ->
+           Printf.sprintf
+             "packs.p%d.files = [\"a\"]\npacks.p%d.version = \"1.0\"\n" i i))
+  in
+  let manifest =
+    read
+      (markdown ^ packs ^ "[check]\nhistorical = " ^ strings "\"d%d/\"" 2_000
+     ^ "\n[ledger]\nharness-markers = " ^ strings "\"M%d\"" 2_000 ^ "\n")
+  in
+  Alcotest.(check int) "packs" 1_001 (List.length (Manifest.packs manifest));
+  Alcotest.(check int)
+    "markers" 2_000
+    (List.length (Manifest.harness_markers manifest));
+  let repeated =
+    markdown ^ "[ledger]\nharness-markers = " ^ strings "\"M%d\"" 2_000
+    ^ "\n[check]\nhistorical = " ^ strings "\"d%d/\"" 1_999
+    |> fun text -> String.sub text 0 (String.length text - 1) ^ ", \"d0/\"]\n"
+  in
+  match Manifest.of_string repeated with
+  | Error [ error ] ->
+      Alcotest.(check string)
+        "the repeated member at the end" "\"d0/\" occurs twice in 'historical'"
+        (Manifest.message error)
+  | _ -> Alcotest.fail "one error was expected"
+
 let errors_come_in_the_order_of_their_places () =
   reports "keys written out of order"
     "[check]\nzz = 1\naa = 2\n[ledger]\nbb = 3\n"
@@ -1296,6 +1327,7 @@ let tests =
     case "values" values;
     case "a manifest with no pack" a_manifest_with_no_pack;
     case "the names come before the values" the_names_come_before_the_values;
+    case "a large manifest reads quickly" a_large_manifest_reads_quickly;
     case "errors come in the order of their places"
       errors_come_in_the_order_of_their_places;
     case "the example messages of the specification"

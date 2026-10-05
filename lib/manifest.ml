@@ -405,30 +405,34 @@ let misplaced name =
   List.assoc_opt name fixed_places
   |> Option.map (fun place -> Misplaced_key { name; place })
 
+module Names = Set.Make (String)
+module By_name = Map.Make (String)
+
 let first_repeated texts =
   let rec go seen = function
     | [] -> []
     | (node, text) :: rest ->
-        if List.mem text seen then (node, text) :: go seen rest
-        else go (text :: seen) rest
+        if Names.mem text seen then (node, text) :: go seen rest
+        else go (Names.add text seen) rest
   in
-  go [] texts
+  go Names.empty texts
 
 let read_path_set reading ~key array members set =
   match Path_set.of_strings (List.map snd members) with
   | Ok path_set -> set path_set
   | Error errors ->
+      let members = Array.of_list members in
       List.iter
         (fun error ->
           match error with
           | Path_set.Bad_glob { index; start = offset; error } ->
-              let node, member = List.nth members index in
+              let node, member = members.(index) in
               value_error reading
                 (inside node (offset + Glob.error_offset error))
                 (Bad_glob { member; error })
           | Path_set.Repeated { index; member } ->
               value_error reading
-                (start (fst (List.nth members index)))
+                (start (fst members.(index)))
                 (Repeated_member { key; member })
           | Path_set.No_plain_glob ->
               value_error reading (start array) (No_plain_glob key))
@@ -831,10 +835,13 @@ let new_reading () =
    each of the two that a pack lacks. A value that the manifest writes and
    that is not valid is [Some None]: its error is already reported. *)
 let packs_of reading =
+  let by_name pairs = By_name.of_seq (List.to_seq pairs) in
+  let files_by_name = by_name reading.files
+  and versions_by_name = by_name reading.versions in
   List.sort compare reading.pack_keys
   |> List.filter_map (fun (name, position) ->
-      let files = List.assoc_opt name reading.files
-      and version = List.assoc_opt name reading.versions
+      let files = By_name.find_opt name files_by_name
+      and version = By_name.find_opt name versions_by_name
       and builtin = name = "markdown" in
       if files = None then value_error reading position (Missing_files name);
       if version = None && not builtin then

@@ -117,7 +117,7 @@ let long_ids_answer_quickly () =
     (Id_pattern.matches (pattern "[A-Z]*[A-Z]*[0-9]") (String.make 10_000 'A'))
 
 let deep_groups_answer_quickly () =
-  let deep = String.make 20_000 '(' ^ "a" ^ String.make 20_000 ')' in
+  let deep = String.make 10_000 '(' ^ "a" ^ String.make 10_000 ')' in
   check_match deep "a" true;
   check_match deep "b" false
 

@@ -21,19 +21,22 @@ let read_member index text =
   | Ok glob -> Ok (make glob)
   | Error error -> Error (Bad_glob { index; start; error })
 
+module Texts = Set.Make (String)
+
 let of_strings texts =
   let rec read index seen members errors = function
     | [] -> (List.rev members, List.rev errors)
     | text :: rest -> (
         match read_member index text with
         | Error error -> read (index + 1) seen members (error :: errors) rest
-        | Ok _ when List.mem text seen ->
+        | Ok _ when Texts.mem text seen ->
             let error = Repeated { index; member = text } in
             read (index + 1) seen members (error :: errors) rest
         | Ok member ->
-            read (index + 1) (text :: seen) (member :: members) errors rest)
+            read (index + 1) (Texts.add text seen) (member :: members) errors
+              rest)
   in
-  let members, errors = read 0 [] [] [] texts in
+  let members, errors = read 0 Texts.empty [] [] texts in
   let plain = function Plain _ -> true | Excluded _ -> false in
   match errors with
   | [] when members <> [] && not (List.exists plain members) ->
