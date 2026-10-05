@@ -104,6 +104,11 @@ let nested_quantifiers_answer_quickly () =
   check_match "(a*)*b" (String.make 200 'a' ^ "c") false;
   check_match "(a*)*c" (String.make 200 'a' ^ "c") true
 
+let deep_groups_answer_quickly () =
+  let deep = String.make 20_000 '(' ^ "a" ^ String.make 20_000 ')' in
+  check_match deep "a" true;
+  check_match deep "b" false
+
 let to_string_gives_the_text_back () =
   Alcotest.(check string)
     "as written" "[1-9][0-9]*"
@@ -516,6 +521,7 @@ let tests =
     case "an id with a space or a control character matches nothing"
       an_id_with_a_space_or_a_control_character_matches_nothing;
     case "nested quantifiers answer quickly" nested_quantifiers_answer_quickly;
+    case "deep groups answer quickly" deep_groups_answer_quickly;
     case "to_string gives the text back" to_string_gives_the_text_back;
     case "characters outside the language are errors"
       characters_outside_the_language_are_errors;

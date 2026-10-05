@@ -70,9 +70,10 @@ exception Stop of error
 let parse text =
   let length = String.length text in
   let at = ref 0 in
-  let made = ref [] in
+  let made = ref [] and count = ref 0 in
   let make shape =
-    let node = { number = List.length !made; shape } in
+    let node = { number = !count; shape } in
+    incr count;
     made := node :: !made;
     node
   in
