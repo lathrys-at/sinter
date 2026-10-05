@@ -237,67 +237,64 @@ let rec union a b =
       else if y < x then y :: union a ys
       else x :: union xs ys
 
-(* [ends.(number).(start)] is the set of places where a match of the
-   node [number] that starts at [start] can end. The table is filled in
-   the order of the numbers, so the sets of the parts of a node are
-   there before the node needs them. *)
+module Places = Set.Make (Int)
+module Kept = Map.Make (Int)
+
+(* [ends node from] is the set of places where a match of [node] can
+   end when it starts at a place of [from]. [ends_at body start] is
+   [ends body [start]] for the body of a quantifier; [kept] holds it
+   once it is computed, so each body is computed at most once for each
+   place. After the rounds that a quantifier needs, a round goes on only
+   from the places that no earlier round reached: a place that a later
+   round reaches again has fewer rounds left, so it can reach no new
+   place. *)
 let matches pattern id =
   let length = String.length id in
-  let table = Array.make (Array.length pattern.nodes) [||] in
-  let ends node start = table.(node.number).(start) in
-  let step node from =
-    List.fold_left (fun set place -> union set (ends node place)) [] from
+  let kept = Array.make (Array.length pattern.nodes) Kept.empty in
+  let shift accepts from =
+    List.filter_map
+      (fun place ->
+        if place < length && accepts id.[place] then Some (place + 1) else None)
+      from
   in
-  (* Every place that some number of rounds of [body] reaches from a
-     place of [from], zero rounds included. Each place is read once. *)
-  let closure body from =
-    let seen = Array.make (length + 1) false in
-    let rec visit = function
-      | [] -> ()
-      | place :: rest when seen.(place) -> visit rest
-      | place :: rest ->
-          seen.(place) <- true;
-          visit (List.rev_append (ends body place) rest)
-    in
-    visit from;
-    List.filter (fun place -> seen.(place)) (List.init (length + 1) Fun.id)
-  in
-  let compute node start =
-    let one accepts =
-      if start < length && accepts id.[start] then [ start + 1 ] else []
-    in
+  let rec ends node from =
     match node.shape with
-    | Literal c -> one (Char.equal c)
+    | Literal c -> shift (Char.equal c) from
     | Class ranges ->
-        one (fun c -> List.exists (fun (l, h) -> c >= l && c <= h) ranges)
+        shift
+          (fun c -> List.exists (fun (l, h) -> c >= l && c <= h) ranges)
+          from
     | Alternation nodes ->
-        List.fold_left (fun set n -> union set (ends n start)) [] nodes
-    | Sequence nodes ->
-        List.fold_left (fun from n -> step n from) [ start ] nodes
-    | Repeat (body, low, high) -> (
-        (* [after rounds current] is the set after [rounds] more rounds
-           of [body]; [from rounds current] joins the sets of the
-           rounds from [rounds] to [high]. The next set is a function of
-           the current one alone, so a set that comes back unchanged
-           stays so for every later round. *)
-        let rec after rounds current =
-          if rounds = 0 then current else after (rounds - 1) (step body current)
+        List.fold_left (fun set n -> union set (ends n from)) [] nodes
+    | Sequence nodes -> List.fold_left (fun from n -> ends n from) from nodes
+    | Repeat (body, low, high) ->
+        let step from =
+          List.sort_uniq Int.compare (List.concat_map (ends_at body) from)
         in
-        let first = after low [ start ] in
-        match high with
-        | None -> closure body first
-        | Some high ->
-            let rec from rounds current =
-              let next = step body current in
-              if rounds = high || next = current then current
-              else union current (from (rounds + 1) next)
+        let rec exact rounds from =
+          if rounds = 0 then from else exact (rounds - 1) (step from)
+        in
+        let rec grow rounds reached frontier =
+          if frontier = [] || Some rounds = high then reached
+          else
+            let next =
+              List.filter
+                (fun place -> not (Places.mem place reached))
+                (step frontier)
             in
-            from low first)
+            grow (rounds + 1) (Places.union reached (Places.of_list next)) next
+        in
+        let first = exact low from in
+        Places.elements (grow low (Places.of_list first) first)
+  and ends_at body start =
+    match Kept.find_opt start kept.(body.number) with
+    | Some set -> set
+    | None ->
+        let set = ends body [ start ] in
+        kept.(body.number) <- Kept.add start set kept.(body.number);
+        set
   in
-  Array.iter
-    (fun node -> table.(node.number) <- Array.init (length + 1) (compute node))
-    pattern.nodes;
-  String.for_all is_printable id && List.mem length (ends pattern.root 0)
+  String.for_all is_printable id && List.mem length (ends pattern.root [ 0 ])
 
 let error_offset = function
   | Matches_empty -> 0

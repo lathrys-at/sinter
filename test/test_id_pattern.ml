@@ -104,6 +104,18 @@ let nested_quantifiers_answer_quickly () =
   check_match "(a*)*b" (String.make 200 'a' ^ "c") false;
   check_match "(a*)*c" (String.make 200 'a' ^ "c") true
 
+let long_ids_answer_quickly () =
+  let digits = "1" ^ String.make 10_000 '0' in
+  Alcotest.(check bool)
+    "[1-9][0-9]* against 10001 digits" true
+    (Id_pattern.matches (pattern "[1-9][0-9]*") digits);
+  Alcotest.(check bool)
+    "[A-Z]+-[1-9][0-9]* against 10000 letters" false
+    (Id_pattern.matches (pattern "[A-Z]+-[1-9][0-9]*") (String.make 10_000 'A'));
+  Alcotest.(check bool)
+    "[A-Z]*[A-Z]*[0-9] against 10000 letters" false
+    (Id_pattern.matches (pattern "[A-Z]*[A-Z]*[0-9]") (String.make 10_000 'A'))
+
 let deep_groups_answer_quickly () =
   let deep = String.make 20_000 '(' ^ "a" ^ String.make 20_000 ')' in
   check_match deep "a" true;
@@ -391,6 +403,7 @@ let quantifier =
       (1, None, "{1,}");
       (0, Some 2, "{0,2}");
       (1, Some 3, "{1,3}");
+      (2, Some 3, "{2,3}");
       (0, Some 0, "{0}");
     ]
 
@@ -522,6 +535,7 @@ let tests =
       an_id_with_a_space_or_a_control_character_matches_nothing;
     case "nested quantifiers answer quickly" nested_quantifiers_answer_quickly;
     case "deep groups answer quickly" deep_groups_answer_quickly;
+    case "long ids answer quickly" long_ids_answer_quickly;
     case "to_string gives the text back" to_string_gives_the_text_back;
     case "characters outside the language are errors"
       characters_outside_the_language_are_errors;

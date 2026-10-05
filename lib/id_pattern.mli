@@ -83,10 +83,14 @@ val matches : t -> string -> bool
     pattern.
 
     The function does not backtrack, so its time is polynomial in the lengths of
-    [pattern] and [id]. It computes, once for each part of the pattern and each
-    place in [id], the set of places where a match of the part can end. A
-    quantifier with an upper count takes at most that many rounds of its part,
-    and fewer when a round reaches the same places as the round before. *)
+    [pattern] and [id]. It follows, part by part from the start of [id], the set
+    of places where a match can stand. It computes the end places of the part of
+    a quantifier at most once for each place in [id]. After the rounds that a
+    quantifier needs, each round goes on only from the places that no earlier
+    round reached, and stops at the upper count or when it reaches no new place.
+    So a part such as [[0-9]*] takes time in proportion to the length of [id].
+    An id that holds a space or a character outside printable ASCII gets its
+    answer before any part is matched. *)
 
 val error_offset : error -> int
 (** [error_offset error] is the offset that [error] names. It is [0] for
