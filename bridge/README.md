@@ -6,11 +6,12 @@
 The bridge is a Rust crate. It links the tree-sitter library and the
 wasmtime runtime. It loads a tree-sitter grammar that is compiled to
 WebAssembly, parses a source text with that grammar, and runs a
-tree-sitter query over the parse tree. It gives the results to OCaml
-through a C interface of six functions.
+tree-sitter query over the parse tree. It also computes the SHA-256
+digest of a byte string. It gives the results to OCaml through a C
+interface of seven functions.
 
-The bridge knows about grammars, source text, queries, and captures.
-It holds no Sinter vocabulary. The reasons are in
+The bridge knows about grammars, source text, queries, captures, and
+digests. It holds no Sinter vocabulary. The reasons are in
 [docs/decisions/parser-bridge.md](../docs/decisions/parser-bridge.md).
 
 ## Build
@@ -67,7 +68,7 @@ not part of CI, because it builds the crate twice from nothing.
 
 ## The C interface
 
-[include/sinter_bridge.h](include/sinter_bridge.h) declares six
+[include/sinter_bridge.h](include/sinter_bridge.h) declares seven
 functions:
 
 | function | purpose |
@@ -76,6 +77,7 @@ functions:
 | `sinter_bridge_engine_free` | free an engine and its languages |
 | `sinter_bridge_language_load` | load a grammar from wasm bytes |
 | `sinter_bridge_run` | parse a source text and run a query |
+| `sinter_bridge_sha256` | compute the SHA-256 digest of a byte string |
 | `sinter_bridge_result_free` | free a result |
 | `sinter_bridge_last_error` | read the message of the last failure |
 
@@ -93,11 +95,12 @@ One thread at a time may use one engine.
 
 ## The result buffer
 
-`sinter_bridge_run` returns one flat buffer. The buffer holds a header
-and then the records. Every integer is unsigned, 32 bits wide, and
-little-endian. No field is padded and no field is aligned: a reader
-must copy the four bytes of an integer before it reads them. Every
-string is UTF-8 and carries no terminating NUL byte.
+`sinter_bridge_run` and `sinter_bridge_sha256` return one flat buffer.
+The buffer holds a header and then the records. Every integer is
+unsigned, 32 bits wide, and little-endian. No field is padded and no
+field is aligned: a reader must copy the four bytes of an integer
+before it reads them. Every string is UTF-8 and carries no terminating
+NUL byte.
 
 The 32 bits bound what the bridge can report. A source of 2^32 bytes
 or more fails with a message before the bridge reads it, and so does
@@ -111,7 +114,7 @@ The header is 16 bytes.
 | offset | size | field | meaning |
 |---|---|---|---|
 | 0 | 4 | magic | the ASCII bytes `S`, `B`, `R`, `1` |
-| 4 | 4 | kind | `0` for captures, `1` for a parse tree |
+| 4 | 4 | kind | `0` for captures, `1` for a parse tree, `2` for a digest |
 | 8 | 4 | count | the number of records that follow |
 | 12 | 4 | reserved | always `0` |
 
@@ -139,6 +142,11 @@ bytes.
 
 The buffer holds one record. The record is a length in bytes and then
 that many bytes: the parse tree as an S-expression.
+
+### A digest record, when kind is 2
+
+The buffer holds one record: the 32 bytes of the SHA-256 digest. No
+length comes before them.
 
 ## The wasm surface of a grammar
 

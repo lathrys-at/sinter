@@ -200,6 +200,7 @@ let print_record fields =
 
 let kind_captures = 0
 let kind_tree = 1
+let kind_digest = 2
 let add_u32 buffer value = Buffer.add_int32_le buffer (Int32.of_int value)
 
 (* Record the offset of each length field, and the length it holds, so
@@ -241,8 +242,15 @@ let tree_bytes text =
   add_run buffer runs text;
   (Buffer.contents buffer, List.rev !runs)
 
+let digest_bytes digest =
+  let buffer = Buffer.create 48 in
+  add_header buffer ~kind:kind_digest ~count:1;
+  Buffer.add_string buffer digest;
+  (Buffer.contents buffer, [])
+
 let encode_captures captures = fst (captures_bytes captures)
 let encode_tree text = fst (tree_bytes text)
+let encode_digest digest = fst (digest_bytes digest)
 let u32 = Gen.oneof [ Gen.nat_small; Gen.int_range 0 0xFFFFFFFF ]
 
 let capture =
@@ -276,6 +284,11 @@ let captures_buffer =
     (Gen.list_size (Gen.int_range 0 4) capture)
 
 let tree_buffer = Gen.map (fun text -> (text, encode_tree text)) utf_8_string
+
+let digest_buffer =
+  Gen.map
+    (fun digest -> (digest, encode_digest digest))
+    (Gen.string_size (Gen.return 32))
 
 type damage =
   | Truncated
@@ -355,6 +368,11 @@ let damaged_tree_buffer =
   let* text = utf_8_string in
   damaged (tree_bytes text) ~kind:kind_tree ~count:1
 
+let damaged_digest_buffer =
+  let open Gen in
+  let* digest = string_size (return 32) in
+  damaged (digest_bytes digest) ~kind:kind_digest ~count:1
+
 let print_buffer buffer =
   String.concat ""
     (List.init (String.length buffer) (fun index ->
@@ -404,6 +422,7 @@ let buffer_bytes =
        splice buffer at piece);
       whole;
       map (fun (_, buffer) -> buffer) tree_buffer;
+      map (fun (_, buffer) -> buffer) digest_buffer;
     ]
 
 (* Source text, and a capture inside it. *)

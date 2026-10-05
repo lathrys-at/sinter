@@ -18,6 +18,8 @@ external language_load : engine -> string -> string -> handle
 external run : engine -> handle -> string -> string -> string
   = "sinter_bridge_run_stub"
 
+external sha256_buffer : string -> string = "sinter_bridge_sha256_stub"
+
 type t = engine
 
 (* The engine owns the grammar, so the record keeps the engine alive
@@ -53,6 +55,8 @@ let magic = "SBR1"
 let header_length = 16
 let kind_captures = 0
 let kind_tree = 1
+let kind_digest = 2
+let digest_length = 32
 
 let malformed reason =
   raise (Error ("the bridge returned a malformed buffer: " ^ reason))
@@ -164,6 +168,17 @@ let decode_tree buffer =
   let text, offset = read_string buffer header_length ~what:"the parse tree" in
   check_whole buffer offset;
   text
+
+let decode_digest buffer =
+  let count = read_header buffer kind_digest in
+  if count <> 1 then
+    malformed
+      (Printf.sprintf "a digest buffer holds %d records, and 1 was expected"
+         count);
+  check_whole buffer (header_length + digest_length);
+  String.sub buffer header_length digest_length
+
+let sha256 data = decode_digest (sha256_buffer data)
 
 let captures language ~source ~query =
   if String.length query = 0 then

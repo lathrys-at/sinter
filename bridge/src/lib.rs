@@ -8,7 +8,8 @@
 //! The bridge loads a tree-sitter grammar that is compiled to
 //! WebAssembly, parses a source text with that grammar, and runs a
 //! tree-sitter query over the parse tree. It returns the captures, or
-//! the parse tree as an S-expression, in one flat buffer.
+//! the parse tree as an S-expression, in one flat buffer. It also
+//! computes the SHA-256 digest of a byte string.
 
 #![warn(unsafe_op_in_unsafe_fn)]
 
@@ -23,6 +24,7 @@ compile_error!("the bridge needs unwinding panics; do not build it with panic = 
 use std::cell::RefCell;
 use std::ffi::{c_char, CStr, CString};
 
+use sha2::{Digest, Sha256};
 use tree_sitter::{
     wasmtime, Language, Node, Parser, Query, QueryCursor, StreamingIterator, WasmStore,
 };
@@ -35,6 +37,9 @@ const KIND_CAPTURES: u32 = 0;
 
 /// The `kind` field of a buffer that holds a parse tree.
 const KIND_TREE: u32 = 1;
+
+/// The `kind` field of a buffer that holds a SHA-256 digest.
+const KIND_DIGEST: u32 = 2;
 
 thread_local! {
     static LAST_ERROR: RefCell<CString> = RefCell::new(CString::default());
@@ -506,21 +511,48 @@ pub unsafe extern "C" fn sinter_bridge_run(
     })
 }
 
+/// Hash a byte string with SHA-256. Returns null on failure.
+///
+/// # Safety
+///
+/// `data` must point to `len` readable bytes, or be null when `len` is
+/// 0.
+// @cites sha256
+#[no_mangle]
+pub unsafe extern "C" fn sinter_bridge_sha256(
+    data: *const u8,
+    len: usize,
+) -> *mut SinterBridgeResult {
+    guard(std::ptr::null_mut(), move || {
+        if data.is_null() && len != 0 {
+            set_error("a required argument is null");
+            return std::ptr::null_mut();
+        }
+        // Safety: the caller gives len readable bytes at data.
+        let bytes = unsafe { slice_of(data, len) };
+        let mut buffer = Vec::with_capacity(16 + 32);
+        put_header(&mut buffer, KIND_DIGEST);
+        buffer.extend_from_slice(&Sha256::digest(bytes));
+        set_count(&mut buffer, 1);
+        into_result(buffer)
+    })
+}
+
 /// Free a result.
 ///
 /// # Safety
 ///
-/// `result` must be null, or a pointer that `sinter_bridge_run`
-/// returned and that was not freed before. The buffer that `data`
-/// points to becomes invalid.
+/// `result` must be null, or a pointer that `sinter_bridge_run` or
+/// `sinter_bridge_sha256` returned and that was not freed before. The
+/// buffer that `data` points to becomes invalid.
 #[no_mangle]
 pub unsafe extern "C" fn sinter_bridge_result_free(result: *mut SinterBridgeResult) {
     guard((), move || {
         if result.is_null() {
             return;
         }
-        // Safety: the caller passes a pointer from sinter_bridge_run and
-        // does not use it again.
+        // Safety: the caller passes a pointer from sinter_bridge_run or
+        // sinter_bridge_sha256 and does not use it again.
         let result = unsafe { Box::from_raw(result) };
         drop(unsafe { Vec::from_raw_parts(result.data, result.len, result.capacity) });
     })
@@ -860,6 +892,65 @@ mod tests {
         let tree = take_string(&bytes, &mut at);
         assert_eq!(tree, "(document (array (number)))");
         assert_eq!(at, bytes.len());
+    }
+
+    /// The digest of `data` through the C function, as lowercase hex.
+    fn sha256_hex(data: &[u8]) -> String {
+        let result = unsafe { sinter_bridge_sha256(data.as_ptr(), data.len()) };
+        assert!(!result.is_null());
+        let bytes = unsafe { std::slice::from_raw_parts((*result).data, (*result).len) }.to_vec();
+        unsafe { sinter_bridge_result_free(result) };
+        let mut at = 0;
+        assert_eq!(take_u32(&bytes, &mut at), MAGIC);
+        assert_eq!(take_u32(&bytes, &mut at), KIND_DIGEST);
+        assert_eq!(take_u32(&bytes, &mut at), 1);
+        assert_eq!(take_u32(&bytes, &mut at), 0);
+        assert_eq!(bytes.len(), at + 32);
+        bytes[at..].iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    /// The test values that NIST publishes for SHA-256.
+    #[test]
+    fn the_digest_matches_the_published_test_values() {
+        assert_eq!(
+            sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(
+            sha256_hex(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+            "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+        );
+        assert_eq!(
+            sha256_hex(b"abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu"),
+            "cf5b16a778af8380036ce59e7b0492370b249b11e8f07a51afac45037afee9d1"
+        );
+        assert_eq!(
+            sha256_hex(&[b'a'; 1_000_000]),
+            "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
+        );
+    }
+
+    #[test]
+    fn a_null_pointer_hashes_as_the_empty_string_when_the_length_is_0() {
+        let result = unsafe { sinter_bridge_sha256(std::ptr::null(), 0) };
+        assert!(!result.is_null());
+        unsafe { sinter_bridge_result_free(result) };
+    }
+
+    #[test]
+    fn a_null_pointer_with_a_length_fails_with_a_message() {
+        set_error("");
+        let result = unsafe { sinter_bridge_sha256(std::ptr::null(), 1) };
+        assert!(result.is_null());
+        let message = unsafe { CStr::from_ptr(sinter_bridge_last_error()) }
+            .to_str()
+            .unwrap()
+            .to_owned();
+        assert_eq!(message, "a required argument is null");
     }
 
     #[test]
