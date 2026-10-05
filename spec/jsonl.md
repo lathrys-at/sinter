@@ -37,8 +37,10 @@ The schema restricts values so that JCS stays trivial to implement:
 - **Value types:** string; integer in `[-(2^53-1), 2^53-1]`; boolean;
   or an array of those. No floats, no nulls, no nested objects. An
   absent value is an omitted key, never `null`.
-- **Strings:** the scanner normalizes strings that come from file text
-  to Unicode NFC. It does not normalize ids and paths.
+- **Strings:** the scanner normalizes strings that come from the text
+  of a governed file to Unicode NFC. It does not normalize ids, paths,
+  the strings of the manifest, or the strings of the front matter of a
+  rule file ([manifest.md](manifest.md) sections 2.2 and 15).
 - **Paths** are repository-relative, with forward slashes and no
   leading `./`.
 - **Hashes** are lowercase hex. An extent hash (`xh`) is 64 hex
@@ -66,20 +68,23 @@ Every fact carries:
 | `v` | int | schema version (`1`) |
 | `kind` | string | a kind from [algebra.md](algebra.md) section 3, or `index`, `summary`, or a ledger kind |
 | `id` | string | stable identity (section 9) |
-| `pack` | string | for facts extracted from a governed file: the pack that produced the fact |
+| `pack` | string | for facts extracted from a governed file: the pack that produced the fact; omitted on the facts of the manifest |
 
 Located facts add:
 
 | field | type | meaning |
 |---|---|---|
 | `path` | string | file |
-| `line` `col` | int | 1-based start |
+| `line` `col` | int | start |
 | `eline` `ecol` | int | inclusive end line; exclusive end column |
 
+Lines and columns count from 1. A column counts Unicode code points
+(characters), not bytes.
+
 For a declaration in markdown, this span is the tag line only. The
-record carries the extent — the whole section — separately, in `xline`
-and `xeline`. A tool can therefore highlight the tag without
-highlighting the whole section.
+record carries the extent separately, in `xline` and `xeline`: the
+whole section, or the whole list item with its sub-items. A tool can
+therefore highlight the tag without highlighting the whole extent.
 
 Sinter computes the fields marked *derived* below from the ledger, the
 evidence, the session, or the base — not from the file. Sinter emits
@@ -97,19 +102,19 @@ conformance fixtures ship their own ledger and evidence.
 | `rev` | int | `N` from `vN` |
 | `xh` | string | extent hash ([vocabulary.md](vocabulary.md) section 6.1) |
 | `xline` `xeline` | int | extent span |
-| `title` | string | markdown: the heading text; code: omitted |
+| `title` | string | a declaration in a markdown section: the heading text; otherwise omitted |
 | `desc` | string | the description; omitted when empty |
 | `status` | string | `deprecated`, `rejected`, or `deferred`; omitted when none |
 | `inforce` | bool | *derived* |
 | `approved` | bool | *derived* |
-| `stamp` | string | *derived*: the ledger stamp id, when approved |
-| `gated` | bool | whether the manifest gates this kind on approval |
+| `stamp` | string | *derived*: the id of the ledger stamp that approves the declaration; omitted when none |
+| `approval_required` | bool | whether the kind needs approval: `ledger.approval-required` lists it ([manifest.md](manifest.md) section 11.1) |
 | `declined` | bool | *derived*: a live decline exists for `(slug, xh)` |
 
 Example:
 
 ```json
-{"approved":true,"col":1,"desc":"Five consecutive failures within ten minutes freeze the account.","ecol":21,"eline":13,"gated":true,"id":"req:auth-lockout","inforce":true,"kind":"req","line":13,"pack":"markdown","path":"docs/auth.md","rev":2,"slug":"auth-lockout","stamp":"s-41","title":"Lock account after 5 failed attempts","v":1,"xeline":29,"xh":"9f3a…","xline":12}
+{"approval_required":true,"approved":true,"col":1,"desc":"Five consecutive failures within ten minutes freeze the account.","ecol":21,"eline":13,"id":"req:auth-lockout","inforce":true,"kind":"req","line":13,"pack":"markdown","path":"docs/auth.md","rev":2,"slug":"auth-lockout","stamp":"s-41","title":"Lock account after 5 failed attempts","v":1,"xeline":29,"xh":"9f3a…","xline":12}
 ```
 
 **`plan`**
@@ -118,7 +123,7 @@ Example:
 |---|---|---|
 | `slug` `title` | string | |
 | `scope` | array of string | plan-level globs |
-| `approved` | bool | *derived*: the current commitment set is approved against the last stamp ([ledger.md](ledger.md) section 11) |
+| `approved` | bool | *derived*: the plan is approved ([algebra.md](algebra.md) section 6.5) |
 | `stamp` | string | *derived* |
 | `active` | bool | *derived* from the session |
 | `open` | bool | *derived*: the plan is open — the ledger holds no `discharged` entry and no `abandoned` entry for it ([ledger.md](ledger.md) section 10) |
@@ -146,14 +151,18 @@ Example:
 | `parents` | array of string | `describe`-style ancestry where the language has it, outermost first |
 | `dline` `deline` | int | span of the test's body |
 
-**`site`**
+**`site`** — an anonymous source: a code site, or a markdown section
+that holds a citation outside every declaration's extent
+([vocabulary.md](vocabulary.md) section 7.2). For a markdown section,
+the span of the record is the first paragraph of the section.
 
 | field | type | meaning |
 |---|---|---|
-| `name` | string | the name of the attached definition, when the pack captured a name. In a language that nests definitions, the name carries the path of the containing impls, classes, or modules |
-| `node` | string | the tree-sitter node type of the attached definition, for example `function_item` |
-| `dline` `deline` | int | the span of the attached definition's body. Coverage for this site is measured over this span |
-| `ch` | string | code hash ([vocabulary.md](vocabulary.md) section 6.2) |
+| `name` | string | code: the name of the attached definition, when the pack captured a name. In a language that nests definitions, the name carries the path of the containing impls, classes, or modules. Markdown: the slug of the section's heading, numbered as [vocabulary.md](vocabulary.md) section 7.2 says; omitted for the section of level 0 |
+| `node` | string | code only: the tree-sitter node type of the attached definition, for example `function_item` |
+| `dline` `deline` | int | code only: the span of the attached definition's body. Coverage for this site is measured over this span |
+| `ch` | string | code only: code hash ([vocabulary.md](vocabulary.md) section 6.2) |
+| `xline` `xeline` | int | markdown only: the span of the extent, the whole section |
 
 ## 5. Edge, ref, and promise records
 
@@ -163,8 +172,8 @@ Example:
 | field | type | meaning |
 |---|---|---|
 | `src` | string | id of the source fact (a node or a rule) |
-| `target` | string | the target as written: a slug or `ns/id` |
-| `dst` | string | *derived*: id of the resolved target; omitted when dangling |
+| `target` | string | the tag target as written: a slug or `ns/id` |
+| `dst` | string | *derived*: id of the fact that the tag target resolves to; omitted when dangling |
 | `rev` | int | the pinned revision; omitted when unpinned |
 | `desc` | string | inline description; omitted when empty |
 | `suspect` `dangling` | bool | *derived* |
@@ -180,7 +189,7 @@ Example:
 {"col":5,"dst":"req:auth-lockout","ecol":31,"eline":40,"id":"verifies:test:auth::lockout::tests::locks_after_five_failures->auth-lockout","kind":"verifies","line":40,"pack":"rust","path":"src/auth/lockout.rs","rev":2,"rung":"passing","src":"test:auth::lockout::tests::locks_after_five_failures","target":"auth-lockout","v":1}
 ```
 
-**`ref`** — unlocated; one record per distinct target.
+**`ref`** — unlocated; one record per distinct ref.
 
 | field | type | meaning |
 |---|---|---|
@@ -193,7 +202,7 @@ Example:
 |---|---|---|
 | `plan` `step` | string | slugs |
 | `word` | string | `req`, `design`, `decision`, `satisfies`, `verifies`, `refines`, `cites`, or `supersedes` |
-| `target` | string | as written |
+| `target` | string | the tag target, as written |
 | `met` | bool | *derived* |
 | `by` | string | *derived*: id of the discharging fact, when met |
 | `out_of_scope` | bool | *derived*: `true` when residue that would discharge the promise exists, but every such fact sits outside the step's scope. In this case `met` stays `false`. Residue is defined in [vocabulary.md](vocabulary.md) section 10.2 |
@@ -236,7 +245,7 @@ into the evidence directory, never into the tree.
 | `hash` | string | the subject's extent hash (or commitment-set hash) at judgment time. The judgment is live while the hash matches, so unrelated edits do not void it |
 | `reason` | string | one line |
 
-## 7. Ledger-projection, rule, gate, ack, hunk, and tombstone records
+## 7. Ledger-projection, rule, gate, setting, ack, hunk, and tombstone records
 
 **`lease`** — unlocated. Sinter projects lease records from the
 ledger. It emits one record for each stamped plan that meets all three
@@ -267,7 +276,8 @@ ledger. It emits live entries only.
 | `by` `ts` | string | |
 | `entry` | string | ledger entry id |
 
-**`rule`** — located in the manifest.
+**`rule`** — located in its rule file ([manifest.md](manifest.md)
+section 15).
 
 | field | type | meaning |
 |---|---|---|
@@ -277,24 +287,41 @@ ledger. It emits live entries only.
 | `triggered` | bool | *derived* |
 | `owed` | int | *derived* obligation count |
 
-**`gate`** — located in the manifest. Sinter emits one record for each
-`(gate, class)` pair. When the manifest does not set a pair, Sinter
-still emits the record, with the default tier and `default` set to
-`true`.
+**`gate`** — Sinter emits one record for each pair of a gate and a
+finding class that takes a tier at that gate ([manifest.md](manifest.md)
+section 14.2). A record whose pair `check.tiers` writes is located at
+that entry of the manifest. A record whose pair the manifest does not
+write is unlocated. Every fact of a manifest outside the repository
+is unlocated.
 
 | field | type | meaning |
 |---|---|---|
-| `gate` | string | `turn`, `pr`, or `main` |
+| `gate` | string | `turn`, `merge`, or `target` |
 | `class` | string | finding class |
-| `tier` | string | `off`, `warn`, or `block` |
-| `default` | bool | `true` when the manifest does not set this pair |
+| `tier` | string | the tier that applies ([manifest.md](manifest.md) section 9.3): `off`, `warn`, or `block` |
+| `default` | bool | `true` when `check.tiers` does not write this pair |
+| `capped` | bool | `true` when the rollout cap lowered the tier |
+
+**`setting`** — one value of the manifest ([manifest.md](manifest.md)
+section 14.1). A setting fact that the manifest writes is located in
+the manifest ([manifest.md](manifest.md) section 14.3). A default fact
+and a built-in fact are unlocated. Every fact of a manifest outside
+the repository is unlocated.
+
+| field | type | meaning |
+|---|---|---|
+| `key` | string | the key path |
+| `value` | string | a string as TOML decodes it; `true` or `false` for a boolean; for a built-in member, its glob or its path |
+| `member` | bool | `true` when the fact is one member of an array |
+| `default` | bool | `true` when the manifest does not write the key, and the fact holds the default value |
+| `builtin` | bool | `true` when the fact is a built-in member |
 
 **`ack`**
 
 | field | type | meaning |
 |---|---|---|
 | `block` | string | id of the block's primary fact: the declaration, site, or test the block belongs to |
-| `target` | string | as written, for example `disendorsed cache-ttl` or `ste-docs` |
+| `target` | string | the tag target, as written, for example `disendorsed cache-ttl` or `ste-docs` |
 | `hash` | string | as written |
 | `live` | bool | *derived* |
 | `void` | string | *derived*: `hash` or `target`, naming the failed condition; omitted when live |
@@ -307,7 +334,7 @@ still emits the record, with the default tier and `default` set to
 |---|---|---|
 | `added` `removed` | int | |
 | `ambient` | bool | *derived* |
-| `shared` | bool | *derived*: the hunk is under a manifest `shared` path |
+| `shared` | bool | *derived*: the hunk is under a shared path (`plan.shared`, [manifest.md](manifest.md) section 10.3) |
 | `mapped` | array of string | *derived*: ids of the steps or rules whose scope covers the hunk; empty when unmapped |
 
 **`tombstone`** — base coordinates.
@@ -320,18 +347,20 @@ still emits the record, with the default tier and `default` set to
 
 ## 8. Finding records
 
-**`finding`** — located at its subject.
+**`finding`** — located at its subject. A `law-touched` finding takes
+the position that [manifest.md](manifest.md) section 14.4 gives.
 
 | field | type | meaning |
 |---|---|---|
 | `class` | string | a class from [algebra.md](algebra.md) section 9 |
 | `subject` | string | id of the fact the finding is about |
+| `ack_subject` | string | the subject in the form that an `@ack` names it ([vocabulary.md](vocabulary.md) section 7.4) |
 | `rule` | string | `rule-owed` findings only |
 | `detail` | string | one line, human-facing, deterministic |
 | `fix` | string | the exact `@ack` line to paste, or a one-line instruction; omitted when none |
 | `ackable` | bool | |
 | `acked` | bool | present only when acked findings are requested |
-| `tier` `gate` | string | the tier under the gate the check ran with |
+| `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3) |
 | `mode` | string | `tree` or `diff` |
 
 ## 9. Identity
@@ -347,8 +376,8 @@ uses a position in the file only when no content can name the fact.
 | `req` `design` `decision` `plan` | `<kind>:<slug>` | |
 | `step` | `step:<plan>/<step>` | |
 | `test` | `test:<name>` | `name` can contain spaces |
-| `site` | `site:<path>#<name>` | the fallback `site:<path>@L<line>` is positional and carries `"positional":true` |
-| edges | `<kind>:<src-id>-><target>` | parse from the right: a target cannot contain `->` |
+| `site` | `site:<path>#<name>` | code: the fallback `site:<path>@L<line>` is positional and carries `"positional":true`. Markdown: `<name>` is the slug of the section's heading; the section of level 0 has the id `site:<path>` |
+| edges | `<kind>:<src-id>-><target>` | `<target>` is the tag target. Parse from the right: a tag target cannot contain `->` |
 | `ref` | `ref:<ns>/<id>` | |
 | `promise` | `promise:<step-id>:<word>:<target>` | parse from the right |
 | `run` | `run:<test-id>@<tree>` | |
@@ -358,6 +387,7 @@ uses a position in the file only when no content can name the fact.
 | `decline` | `decline:<entry-id>` | |
 | `rule` | `rule:<name>` | |
 | `gate` | `gate:<gate>/<class>` | |
+| `setting` | `setting:<key path>` for one value; `setting:<key path>=<member>` for one member of an array | parse from the left: a key path cannot contain `=` |
 | `ack` | `ack:<block-id>:<target>` | anchored to the block, not to a line |
 | `hunk` | `hunk:<path>:<line>-<eline>` | positional by nature |
 | `tombstone` | `tombstone:<was>` | |
@@ -366,7 +396,7 @@ uses a position in the file only when no content can name the fact.
 An id is stable under re-indentation, reformatting, line shifts, and
 re-pinning. It changes under a slug rename (rename is deletion plus
 declaration), under moving a site to a different named definition, and
-under retargeting an edge.
+under a change of an edge's tag target.
 
 ## 10. Header and summary records
 
@@ -377,10 +407,11 @@ excludes it.
 |---|---|---|
 | `tree` | string | tree key |
 | `base` | string | resolved base revision |
-| `target` | string | target branch |
+| `target_branch` | string | the target branch |
+| `manifest` | string | the path of the manifest: relative to the repository root when the manifest is in the repository, otherwise absolute |
 | `ledger` | string | ledger tip commit; omitted when the ref is absent |
 | `evidence` | bool | whether evidence exists for `tree` |
-| `packs` | array of string | `name@version#hash`, from the lockfile |
+| `packs` | array of string | `name@version#hash` for each fetched pack, as the lock file `sinter.lock` fixes it. The built-in pack `markdown` is not in the lock file and has no entry |
 | `tool` | string | tool version |
 | `mode` | string | `tree` or `diff` |
 
