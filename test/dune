@@ -1,13 +1,17 @@
 ; SPDX-License-Identifier: Apache-2.0
 ; Copyright 2026 The Sinter Authors
 
+(data_only_dirs cases)
+
 (test
  (name test_sinter)
  (modes exe)
  (deps
   %{exe:../bin/main.exe}
   (glob_files_rec fixtures/*)
-  (glob_files ../spec/*.md))
+  (glob_files ../spec/*.md)
+  (source_tree cases)
+  (env_var SINTER_PROMOTE))
  (libraries
   sinter_core
   sinter_bridge
