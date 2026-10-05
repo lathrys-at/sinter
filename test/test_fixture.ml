@@ -202,6 +202,20 @@ let the_run_gets_the_fixed_variables () =
       Alcotest.check outcome "awk prints the fixed values" (Ok [])
         (Fixture.run ~binary:"/usr/bin/awk" Fixture.Compare case))
 
+let the_run_writes_coverage_beside_the_suite () =
+  let expected =
+    match Sys.getenv_opt "BISECT_FILE" with
+    | Some place -> place
+    | None -> Filename.concat (Sys.getcwd ()) "bisect"
+  in
+  with_case
+    (("args", "BEGIN { print ENVIRON[\"BISECT_FILE\"] }\n")
+    :: List.remove_assoc "args" (case_files ~stdout:(expected ^ "\n") ""))
+    (fun case ->
+      Alcotest.check outcome "awk prints the place of the coverage counts"
+        (Ok [])
+        (Fixture.run ~binary:"/usr/bin/awk" Fixture.Compare case))
+
 let a_run_leaves_the_case_unchanged () =
   with_case (("tree/f", "x") :: case_files "rm f; echo y > g") (fun case ->
       Alcotest.check outcome "the run passes" (Ok []) (run case);
@@ -541,6 +555,8 @@ let tests =
       the_working_folder_shows_as_root;
     Alcotest.test_case "the run gets the fixed variables" `Quick
       the_run_gets_the_fixed_variables;
+    Alcotest.test_case "the run writes coverage beside the suite" `Quick
+      the_run_writes_coverage_beside_the_suite;
     Alcotest.test_case "a run leaves the case unchanged" `Quick
       a_run_leaves_the_case_unchanged;
     Alcotest.test_case "a run removes its temporary folder" `Quick

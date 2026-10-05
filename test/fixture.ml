@@ -157,6 +157,14 @@ let guarded f =
            (Printf.sprintf "%s %s: %s" call argument (Unix.error_message code)))
   | Fun.Finally_raised failure -> Error (System (Printexc.to_string failure))
 
+(* bisect_ppx, which measures coverage, writes the counts of a process
+   into a file in the folder where the process starts, unless
+   BISECT_FILE names another place. A run starts in a temporary folder
+   that the harness removes, so a run whose suite names no place
+   writes its counts beside the suite's own, where the report reads
+   them. *)
+let coverage_prefix = Filename.concat (Sys.getcwd ()) "bisect"
+
 (* Every git command, and the run itself, gets the environment of
    the suite with the variables below taken out and set anew. Git
    reads its configuration, its ignore rules, and its identity from
@@ -172,11 +180,14 @@ let environment ~home ~root =
       (fun prefix -> String.starts_with ~prefix binding)
       [ "GIT_"; "HOME="; "XDG_CONFIG_HOME="; "NO_COLOR="; "PWD=" ]
   in
+  let suite = Array.to_list (Unix.environment ()) in
+  let coverage =
+    if List.exists (String.starts_with ~prefix:"BISECT_FILE=") suite then []
+    else [ "BISECT_FILE=" ^ coverage_prefix ]
+  in
   Array.append
     (Array.of_list
-       (List.filter
-          (fun binding -> not (replaced binding))
-          (Array.to_list (Unix.environment ()))))
+       (List.filter (fun binding -> not (replaced binding)) suite @ coverage))
     [|
       "HOME=" ^ home;
       "PWD=" ^ root;
