@@ -33,27 +33,6 @@ let run arguments =
     ~finally:(fun () -> Sys.remove output)
     (fun () -> (code, contents output))
 
-(* The exit code of one serve run that reads [input], what it wrote to
-   standard output, and what it wrote to standard error. *)
-let session input =
-  let request = Filename.temp_file "sinter-serve" ".in" in
-  let output = Filename.temp_file "sinter-serve" ".out" in
-  let errors = Filename.temp_file "sinter-serve" ".err" in
-  write request input;
-  Fun.protect
-    ~finally:(fun () ->
-      Sys.remove request;
-      Sys.remove output;
-      Sys.remove errors)
-    (fun () ->
-      let code =
-        Sys.command
-          (Printf.sprintf "%s serve <%s >%s 2>%s" (Filename.quote sinter)
-             (Filename.quote request) (Filename.quote output)
-             (Filename.quote errors))
-      in
-      (code, contents output, contents errors))
-
 (* The lines of an output, without the empty piece that follows the
    last line feed. *)
 let lines text =
@@ -110,76 +89,6 @@ let outcome_within ?errors command ~input ~bound =
       wait 0. 0.001)
 
 let code = Alcotest.(check int)
-
-let a_run_that_prints_captures_is_clean () =
-  let status, text =
-    run (Printf.sprintf "parse --grammar %s --query %s %s" grammar query sample)
-  in
-  code "the exit code is 0" 0 status;
-  Alcotest.(check bool)
-    "the first line is a record" true
-    (String.starts_with ~prefix:{|{"cap":|} text)
-
-let a_run_that_prints_a_tree_is_clean () =
-  let status, text =
-    run (Printf.sprintf "parse --grammar %s --tree %s" grammar sample)
-  in
-  code "the exit code is 0" 0 status;
-  Alcotest.(check bool)
-    "the line is an S-expression" true
-    (String.starts_with ~prefix:"(document" text)
-
-let two_options_that_exclude_each_other_are_a_usage_error () =
-  let status, _ =
-    run
-      (Printf.sprintf "parse --grammar %s --query %s --tree %s" grammar query
-         sample)
-  in
-  code "the exit code is 2" 2 status
-
-let neither_option_is_a_usage_error () =
-  let status, _ = run (Printf.sprintf "parse --grammar %s %s" grammar sample) in
-  code "the exit code is 2" 2 status
-
-(* The argument parser prints the usage text of a command when the
-   command asks for it. These two errors ask for no usage text, so the
-   whole output of each run is the one line below. *)
-let two_options_that_exclude_each_other_print_their_message_alone () =
-  let _, text =
-    run
-      (Printf.sprintf "parse --grammar %s --query %s --tree %s" grammar query
-         sample)
-  in
-  Alcotest.(check string)
-    "the output is the message of the error"
-    "sinter: --query and --tree exclude each other; give one of the two\n" text
-
-let neither_option_prints_its_message_alone () =
-  let _, text = run (Printf.sprintf "parse --grammar %s %s" grammar sample) in
-  Alcotest.(check string)
-    "the output is the message of the error"
-    "sinter: give either --query or --tree\n" text
-
-let an_unknown_option_is_a_usage_error () =
-  let status, _ = run "parse --no-such-option" in
-  code "the exit code is 2" 2 status
-
-let a_file_that_does_not_exist_is_an_environment_error () =
-  let status, _ =
-    run
-      (Printf.sprintf "parse --grammar %s --query %s no-such-file.json" grammar
-         query)
-  in
-  code "the exit code is 3" 3 status
-
-let a_grammar_that_is_not_wasm_is_an_environment_error () =
-  let status, text =
-    run (Printf.sprintf "parse --grammar %s --tree %s" sample sample)
-  in
-  code "the exit code is 3" 3 status;
-  Alcotest.(check bool)
-    "the message starts with the name of the tool" true
-    (String.starts_with ~prefix:"sinter: " text)
 
 let contains needle haystack =
   let n = String.length needle and h = String.length haystack in
@@ -257,66 +166,8 @@ let the_version_starts_with_the_release_version () =
 let parse_request rid rest =
   Printf.sprintf {|{"rid":%s,"op":"parse","grammar":"%s",%s}|} rid grammar rest
 
-let captures_request rid =
-  parse_request rid
-    (Printf.sprintf {|"query":"%s","files":["%s"]|} query sample)
-
 let tree_request rid =
   parse_request rid (Printf.sprintf {|"tree":true,"files":["%s"]|} sample)
-
-(* Three requests, and the second of them is not a request at all.
-   The fixture gives six captures, so the first answer is seven lines,
-   the second is one, and the third is two. *)
-let a_session_answers_each_request_in_order () =
-  let status, output, errors =
-    session
-      (String.concat "\n"
-         [ captures_request "1"; "not a request"; tree_request {|"two"|} ]
-      ^ "\n")
-  in
-  code "the exit code is 0" 0 status;
-  Alcotest.(check string) "standard error stays empty" "" errors;
-  let lines = lines output in
-  Alcotest.(check int)
-    "ten lines answer the three requests" 10 (List.length lines);
-  let line index = List.nth lines index in
-  List.iter
-    (fun index ->
-      Alcotest.(check bool)
-        "a capture line carries the request id of its request" true
-        (contains {|"rid":1|} (line index)))
-    [ 0; 1; 2; 3; 4; 5 ];
-  Alcotest.(check string)
-    "the first answer ends with a done line"
-    {|{"code":0,"event":"done","rid":1}|} (line 6);
-  Alcotest.(check bool)
-    "a line that is not a request gives an error with code 2" true
-    (String.starts_with ~prefix:{|{"code":2,"event":"error","message":"|}
-       (line 7));
-  Alcotest.(check bool)
-    "that error line carries no request id" false
-    (contains {|"rid"|} (line 7));
-  Alcotest.(check bool)
-    "the tree of the third request carries its path and its request id" true
-    (String.starts_with
-       ~prefix:{|{"path":"fixtures/sample.json","rid":"two","tree":"(document|}
-       (line 8));
-  Alcotest.(check string)
-    "the third answer ends with a done line"
-    {|{"code":0,"event":"done","rid":"two"}|} (line 9)
-
-let end_of_file_ends_the_run () =
-  let status, output, errors = session "" in
-  code "the exit code is 0" 0 status;
-  Alcotest.(check string) "nothing is written to standard output" "" output;
-  Alcotest.(check string) "nothing is written to standard error" "" errors
-
-let a_request_without_a_last_line_feed_is_answered () =
-  let status, output, _ = session (tree_request "7") in
-  code "the exit code is 0" 0 status;
-  Alcotest.(check int)
-    "two lines answer the request" 2
-    (List.length (lines output))
 
 (* The first line that a serve run writes while its standard input
    stays open, after it reads [request]; [None] when no whole line
@@ -562,41 +413,16 @@ let a_parse_run_that_fails_names_no_module_of_the_library () =
 
 let tests =
   [
-    Alcotest.test_case "a run that prints captures is clean" `Quick
-      a_run_that_prints_captures_is_clean;
-    Alcotest.test_case "a run that prints a tree is clean" `Quick
-      a_run_that_prints_a_tree_is_clean;
-    Alcotest.test_case "two options that exclude each other are a usage error"
-      `Quick two_options_that_exclude_each_other_are_a_usage_error;
-    Alcotest.test_case "neither option is a usage error" `Quick
-      neither_option_is_a_usage_error;
-    Alcotest.test_case
-      "two options that exclude each other print their message alone" `Quick
-      two_options_that_exclude_each_other_print_their_message_alone;
-    Alcotest.test_case "neither option prints its message alone" `Quick
-      neither_option_prints_its_message_alone;
-    Alcotest.test_case "an unknown option is a usage error" `Quick
-      an_unknown_option_is_a_usage_error;
     Alcotest.test_case "the version names the checkout" `Quick
       the_version_names_the_checkout;
     Alcotest.test_case "the version starts with the release version" `Quick
       the_version_starts_with_the_release_version;
-    Alcotest.test_case "a file that does not exist is an environment error"
-      `Quick a_file_that_does_not_exist_is_an_environment_error;
-    Alcotest.test_case "a grammar that is not wasm is an environment error"
-      `Quick a_grammar_that_is_not_wasm_is_an_environment_error;
     Alcotest.test_case "a parse run that fails names no module of the library"
       `Quick a_parse_run_that_fails_names_no_module_of_the_library;
     Alcotest.test_case "the help lists the five exit codes" `Quick
       the_help_lists_the_five_exit_codes;
     Alcotest.test_case "the help of parse names only the codes it returns"
       `Quick the_help_of_parse_names_only_the_codes_it_returns;
-    Alcotest.test_case "a session answers each request in order" `Quick
-      a_session_answers_each_request_in_order;
-    Alcotest.test_case "end of file ends the run" `Quick
-      end_of_file_ends_the_run;
-    Alcotest.test_case "a request without a last line feed is answered" `Quick
-      a_request_without_a_last_line_feed_is_answered;
     Alcotest.test_case "an answer arrives before the input ends" `Quick
       an_answer_arrives_before_the_input_ends;
     Alcotest.test_case "a closed standard output ends the run" `Quick

@@ -1,0 +1,7 @@
+parse
+--grammar
+grammar.wasm
+--query
+sample.scm
+--tree
+sample.json
