@@ -349,6 +349,8 @@ let a_bad_git_line_is_refused () =
       "diff --git \"a/\\400\" \"b/\\400\"";
       "diff --git \"a/\\08\" \"b/\\08\"";
       "diff --git \"a/\\081\" \"b/\\081\"";
+      "diff --git \"a/\\018\" \"b/\\018\"";
+      "diff --git \"a/\\00/\" \"b/\\00/\"";
       "diff --git \"a/\\0\" \"b/\\0\"";
       "diff -git a/x b/x";
       "index 1234567..89abcde";
@@ -532,6 +534,18 @@ let merge_base_of_unrelated_commits_is_an_error () =
     (Error (Git.No_merge_base ("main", "lonely")))
     (Git.merge_base t "main" "lonely")
 
+let merge_base_names_a_revision_with_a_nul_byte () =
+  let _, t = open_shared () in
+  Alcotest.(check (result string error))
+    "a NUL byte" (Error (Git.Bad_revision "ma\000in"))
+    (Git.merge_base t "main" "ma\000in")
+
+let diff_names_a_base_with_a_nul_byte () =
+  let _, t = open_shared () in
+  Alcotest.(check (result changes error))
+    "a NUL byte" (Error (Git.Bad_revision "ma\000in"))
+    (Git.diff t ~base:"ma\000in")
+
 let merge_base_names_a_revision_that_starts_with_a_hyphen () =
   let _, t = open_shared () in
   Alcotest.(check (result string error))
@@ -566,6 +580,9 @@ let configured_env repo =
       ("diff.renames", "copies");
       ("color.ui", "always");
       ("core.quotePath", "false");
+      ("diff.context", "5");
+      ("diff.external", "/bin/false");
+      ("color.diff", "always");
     ]
   in
   let counted prefix entry = String.starts_with ~prefix entry in
@@ -777,6 +794,9 @@ let tests =
       merge_base_gives_the_common_ancestor;
     case "merge_base of unrelated commits is an error"
       merge_base_of_unrelated_commits_is_an_error;
+    case "merge_base names a revision with a NUL byte"
+      merge_base_names_a_revision_with_a_nul_byte;
+    case "diff names a base with a NUL byte" diff_names_a_base_with_a_nul_byte;
     case "merge_base names a revision that starts with a hyphen"
       merge_base_names_a_revision_that_starts_with_a_hyphen;
     case "merge_base names a bad revision"

@@ -176,7 +176,7 @@ val resolve_target : t -> string -> (target, error) result
     object other than a commit, such as an annotated tag, does not count.
 
     The error is [Target_not_found name] when none of the three refs points at a
-    commit. *)
+    commit, and when [name] holds a NUL byte. *)
 
 val merge_base : t -> string -> string -> (string, error) result
 (** [merge_base repo a b] is the object id of the merge base of the commits that
@@ -185,8 +185,8 @@ val merge_base : t -> string -> string -> (string, error) result
     merge base, the result is the one that [git merge-base] gives.
 
     The error is [Bad_revision] with the first of [a] and [b] that names no
-    commit, that is empty, or that starts with [-]. It is [No_merge_base (a, b)]
-    when the two commits have no common ancestor. *)
+    commit, that is empty, that starts with [-], or that holds a NUL byte. It is
+    [No_merge_base (a, b)] when the two commits have no common ancestor. *)
 
 (** {1 Diff} *)
 
@@ -230,8 +230,8 @@ val diff : t -> base:string -> ((string * change) list, error) result
     order, with no path twice. The hunks do not depend on the git configuration
     of the repository or of the user.
 
-    The error is [Bad_revision base] when [base] names no commit, is empty, or
-    starts with [-]. *)
+    The error is [Bad_revision base] when [base] names no commit, is empty,
+    starts with [-], or holds a NUL byte. *)
 
 (** {1 Tree key} *)
 
