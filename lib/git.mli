@@ -60,8 +60,9 @@ type object_format = Sha1 | Sha256
 
 val open_repo : env:string array -> string -> (t, error) result
 (** [open_repo ~env dir] is the repository whose working tree holds the
-    directory [dir]. [env] is the environment for each git child process, in the
-    form of [Unix.environment ()].
+    directory [dir]. A relative [dir] names a directory under the current
+    directory of the process. [env] is the environment for each git child
+    process, in the form of [Unix.environment ()].
 
     The function finds the [git] executable through the variable [PATH] of
     [env], and through no other place. It takes the first directory of [PATH]

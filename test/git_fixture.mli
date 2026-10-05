@@ -30,6 +30,10 @@ val env : t -> string array
     is the environment of the test process without each variable whose name
     starts with [GIT_], without [HOME], and without [XDG_CONFIG_HOME], with:
 
+    - [PATH] with the directory of the programs of git in front, so that the
+      tests start git itself and not a program that finds git first
+    - [GIT_CEILING_DIRECTORIES], the temporary directory of [repo], so that git
+      looks for a repository in no directory above it
     - [GIT_CONFIG_GLOBAL=/dev/null] and [GIT_CONFIG_NOSYSTEM=1]
     - [HOME], a directory beside the working tree
     - fixed names, e-mail addresses, and dates of the author and the committer

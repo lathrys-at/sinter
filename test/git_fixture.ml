@@ -1,7 +1,7 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-type t = { root : string; env : string array }
+type t = { root : string; home : string; env : string array }
 
 let root repo = repo.root
 let env repo = repo.env
@@ -100,7 +100,12 @@ let fixed_variables home =
     "GIT_CONFIG_VALUE_0=main";
   ]
 
-let make_env home =
+(* [make_env ~home ~ceiling] is the environment of the git children of
+   one test directory. Git looks for a repository in no directory above
+   [ceiling], so that a test directory under the project's own working
+   tree, as the mutation runner makes, never reaches the project's
+   repository. *)
+let make_env ~home ~ceiling =
   let inherited =
     Array.to_list (Unix.environment ())
     |> List.filter (fun entry ->
@@ -115,7 +120,11 @@ let make_env home =
     | Some dir -> dir ^ ":" ^ search_path
     | None -> search_path
   in
-  Array.of_list (inherited @ (("PATH=" ^ path) :: fixed_variables home))
+  Array.of_list
+    (inherited
+    @ ("PATH=" ^ path)
+      :: ("GIT_CEILING_DIRECTORIES=" ^ Unix.realpath ceiling)
+      :: fixed_variables home)
 
 let run_git ~env ~dir ?(input = "") args = spawn real_git args ~env ~dir ~input
 
@@ -139,12 +148,12 @@ let init ?(object_format = "sha1") () =
   let base = temp_dir () in
   let home = Filename.concat base "home" in
   Unix.mkdir home 0o700;
-  let env = make_env home in
+  let env = make_env ~home ~ceiling:base in
   let args =
     [ "init"; "-q"; "--template="; "--object-format=" ^ object_format; "repo" ]
   in
   ignore (checked args (run_git ~env ~dir:base args));
-  { root = Unix.realpath (Filename.concat base "repo"); env }
+  { root = Unix.realpath (Filename.concat base "repo"); home; env }
 
 (* The working tree. *)
 
@@ -195,7 +204,11 @@ let copy repo =
   let base = temp_dir () in
   let target = Filename.concat base "repo" in
   copy_tree repo.root target;
-  { root = Unix.realpath target; env = repo.env }
+  {
+    root = Unix.realpath target;
+    home = repo.home;
+    env = make_env ~home:repo.home ~ceiling:base;
+  }
 
 let index_state repo =
   let index = Filename.concat repo.root ".git/index" in
@@ -265,7 +278,7 @@ let fake_git script =
   let home = Filename.concat dir "home" in
   Unix.mkdir home 0o700;
   let env =
-    Array.to_list (make_env home)
+    Array.to_list (make_env ~home ~ceiling:dir)
     |> List.filter (fun entry -> not (String.starts_with ~prefix:"PATH=" entry))
   in
   (Array.of_list (("PATH=" ^ bin) :: env), path)

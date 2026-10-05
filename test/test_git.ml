@@ -428,8 +428,9 @@ let recorded =
 
 (* A fake git for the decoders of [fold_blobs] and [files]. The id that
    [fold_blobs] asks for chooses the output of [cat-file]. For the id of
-   eights, a megabyte follows the header [missing]: more than a pipe
-   holds, so git waits until the reader takes it. *)
+   eights, 300000 bytes follow the header [missing]: more than a pipe and
+   the buffer of a channel hold, so git waits until the reader takes
+   them. *)
 let id_of digit = String.make 40 digit
 
 let faking_script =
@@ -445,7 +446,7 @@ let faking_script =
     \  %s) printf '%s blob 3\\nabc\\n' ;;\n\
     \  %s) printf 'garbage\\n' ;;\n\
     \  %s) printf '%%s blob 3\\nabc\\n' \"$id\"; exit 2 ;;\n\
-    \  %s) printf '%%s missing\\n' \"$id\"; printf '%%01000000d' 0 ;;\n\
+    \  %s) printf '%%s missing\\n' \"$id\"; printf '%%0300000d' 0 ;;\n\
     \  esac ;;\n\
      esac\n"
     (id_of '2') (id_of '3') (id_of '4') (id_of '5') (id_of '6') (id_of '7')
@@ -479,8 +480,12 @@ let open_repo_refuses_a_directory_outside_a_repository () =
   let dir = Fixture.temp_dir () in
   let repo = Lazy.force shared in
   let env =
-    Array.append (Fixture.env repo)
-      [| "GIT_CEILING_DIRECTORIES=" ^ Filename.dirname dir |]
+    Array.to_list (Fixture.env repo)
+    |> List.filter (fun entry ->
+        not (String.starts_with ~prefix:"GIT_CEILING_DIRECTORIES=" entry))
+  in
+  let env =
+    Array.of_list (("GIT_CEILING_DIRECTORIES=" ^ Filename.dirname dir) :: env)
   in
   match error (Git.open_repo ~env dir) with
   | Not_a_repository { dir = named; detail } ->
@@ -857,13 +862,15 @@ let tree_key_leaves_no_temporary_file () =
   let _, _, _, left = Lazy.force key_run in
   Alcotest.check strings "the temporary directory" [] left
 
-(* A copy of the shared repository, and its tree keys: with a new
-   ignored file, then also with a new untracked file. Last, the result of
-   [tree_key] when git cannot read the untracked file, and the names left
-   in the temporary directory after that call. *)
+let copy = lazy (Fixture.copy (Lazy.force shared))
+
+(* The opened [copy], and its tree keys: with a new ignored file, then
+   also with a new untracked file. Last, the result of [tree_key] when git
+   cannot read the untracked file, and the names left in the temporary
+   directory after that call. *)
 let copy_run =
   lazy
-    (let repo = Fixture.copy (Lazy.force shared) in
+    (let repo = Lazy.force copy in
      let t = ok (Git.open_repo ~env:(Fixture.env repo) (Fixture.root repo)) in
      Fixture.write repo "more.log" "ignored\n";
      let with_ignored = ok (Git.tree_key t) in
@@ -876,34 +883,33 @@ let copy_run =
          ~finally:(fun () -> Unix.chmod file 0o644)
          (fun () -> in_temp_dir (fun () -> Git.tree_key t))
      in
-     (with_ignored, with_untracked, failed, left))
+     (t, with_ignored, with_untracked, failed, left))
 
 let tree_key_does_not_change_with_an_ignored_file () =
   let key, _, _, _ = Lazy.force key_run in
-  let with_ignored, _, _, _ = Lazy.force copy_run in
+  let _, with_ignored, _, _, _ = Lazy.force copy_run in
   Alcotest.(check string) "the tree" key with_ignored
 
 let tree_key_changes_with_an_untracked_file () =
-  let with_ignored, with_untracked, _, _ = Lazy.force copy_run in
+  let _, with_ignored, with_untracked, _, _ = Lazy.force copy_run in
   holds "the key differs" (with_untracked <> with_ignored)
 
 let tree_key_reports_a_failed_git_add () =
-  let _, _, failed, _ = Lazy.force copy_run in
+  let _, _, _, failed, _ = Lazy.force copy_run in
   match error failed with
   | Command_failed { args; _ } -> holds "git add failed" (List.mem "add" args)
   | other -> Alcotest.fail (print_error other)
 
 let tree_key_removes_its_files_when_git_fails () =
-  let _, _, _, left = Lazy.force copy_run in
+  let _, _, _, _, left = Lazy.force copy_run in
   Alcotest.check strings "the temporary directory" [] left
 
-(* A broken repository: a copy whose .git directory went away after it
-   was opened. *)
+(* A broken repository: the copy of [copy_run], whose .git directory went
+   away after [copy_run] opened it. *)
 let broken =
   lazy
-    (let repo = Fixture.copy (Lazy.force shared) in
-     let t = ok (Git.open_repo ~env:(Fixture.env repo) (Fixture.root repo)) in
-     Fixture.break repo;
+    (let t, _, _, _, _ = Lazy.force copy_run in
+     Fixture.break (Lazy.force copy);
      t)
 
 let reports_a_failed_git call () =
@@ -1065,9 +1071,8 @@ let reports_a_temporary_directory_that_does_not_exist () =
   | other -> Alcotest.fail (print_error other)
 
 let tree_key_reports_an_index_it_cannot_read () =
-  let repo = Fixture.copy (Lazy.force shared) in
+  let repo, t = Lazy.force conflicted in
   let index = Filename.concat (Fixture.root repo) ".git/index" in
-  let t = ok (Git.open_repo ~env:(Fixture.env repo) (Fixture.root repo)) in
   Unix.chmod index 0o000;
   let result =
     Fun.protect
