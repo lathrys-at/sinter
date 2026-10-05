@@ -268,26 +268,21 @@ module Decode = struct
 
   (* [unquote text i] reads the C-style quoted name whose opening double
      quote is at offset [i] of [text]. It gives the bytes of the name
-     and the offset after the closing quote. *)
+     and the offset after the closing quote. [bytes] holds the bytes read
+     so far, latest first. *)
   let unquote text i =
     let n = String.length text in
-    let name = Buffer.create 64 in
     let is_octal c = c >= '0' && c <= '7' in
-    let rec go j =
+    let rec go bytes j =
       if j >= n then
         Error (Printf.sprintf "%S has a name with no closing quote" text)
       else
         match text.[j] with
-        | '"' -> Ok (Buffer.contents name, j + 1)
-        | '\\' -> escape (j + 1)
-        | c ->
-            Buffer.add_char name c;
-            go (j + 1)
-    and escape j =
-      let byte c =
-        Buffer.add_char name c;
-        go (j + 1)
-      in
+        | '"' -> Ok (String.of_seq (List.to_seq (List.rev bytes)), j + 1)
+        | '\\' -> escape bytes (j + 1)
+        | c -> go (c :: bytes) (j + 1)
+    and escape bytes j =
+      let byte c = go (c :: bytes) (j + 1) in
       if j >= n then Error (Printf.sprintf "%S ends inside an escape" text)
       else
         match text.[j] with
@@ -302,12 +297,13 @@ module Decode = struct
         | '0' .. '3'
           when j + 2 < n && is_octal text.[j + 1] && is_octal text.[j + 2] ->
             let digit k = Char.code text.[k] - Char.code '0' in
-            Buffer.add_char name
-              (Char.chr ((digit j * 64) + (digit (j + 1) * 8) + digit (j + 2)));
-            go (j + 3)
+            let c =
+              Char.chr ((digit j * 64) + (digit (j + 1) * 8) + digit (j + 2))
+            in
+            go (c :: bytes) (j + 3)
         | c -> Error (Printf.sprintf "%S holds the escape \\%c" text c)
     in
-    go (i + 1)
+    go [] (i + 1)
 
   let without prefix name =
     if
@@ -352,9 +348,8 @@ module Decode = struct
         if String.equal rest ("a/" ^ path ^ " b/" ^ path) then Ok path
         else twice ()
 
-  (* The changes of one section of the diff, before its paths are
-     merged: whether git called the file binary, and the runs of changed
-     lines, latest first. *)
+  (* The changes of one section of the diff: whether git called the file
+     binary, and the runs of changed lines, latest first. *)
   type section = { binary : bool; runs : hunk list }
 
   (* [add_run run runs] puts the run [(line, added, removed)], when there
@@ -370,10 +365,10 @@ module Decode = struct
 
   (* [hunk_lines header runs lines] reads the lines of the hunk that
      [header] opens. It gives [runs] with the runs of the hunk in front,
-     and the lines after the hunk. [cursor] is the new-side number of the
-     next line that the new side holds. A context line ends a run; git
-     writes an empty context line as an empty line when its
-     configuration asks for that. *)
+     and the lines after the hunk. In [go], [cursor] is the number, in the
+     working tree, of the next line that the working tree holds. A
+     context line ends a run; git writes an empty context line as an
+     empty line when its configuration asks for that. *)
   let hunk_lines header runs lines =
     let misfit line =
       Error
