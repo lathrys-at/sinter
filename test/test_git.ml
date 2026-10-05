@@ -430,9 +430,9 @@ let recorded =
 
 (* A fake git for the decoders of [fold_blobs] and [files]. The id that
    [fold_blobs] asks for chooses the output of [cat-file]. For the id of
-   eights, 300000 bytes follow the header [missing]: more than a pipe and
-   the buffer of a channel hold, so git waits until the reader takes
-   them. *)
+   eights, 300000 bytes follow the header [missing], and for the id of
+   [a]s, they follow one blob: more than a pipe and the buffer of a
+   channel hold, so git waits until the reader takes them. *)
 let id_of digit = String.make 40 digit
 
 let faking_script =
@@ -450,10 +450,11 @@ let faking_script =
     \  %s) printf '%%s blob 3\\nabc\\n' \"$id\"; exit 2 ;;\n\
     \  %s) printf '%%s missing\\n' \"$id\"; printf '%%0300000d' 0 ;;\n\
     \  %s) printf '%%s blob 10000000000000000\\nabc\\n' \"$id\" ;;\n\
+    \  %s) printf '%%s blob 3\\nabc\\n' \"$id\"; printf '%%0300000d' 0 ;;\n\
     \  esac ;;\n\
      esac\n"
     (id_of '2') (id_of '3') (id_of '4') (id_of '5') (id_of '6') (id_of '7')
-    (id_of '8') (id_of '9')
+    (id_of '8') (id_of '9') (id_of 'a')
 
 let faked =
   lazy
@@ -1044,6 +1045,16 @@ let base_tree_reports_a_git_that_does_not_start () =
   | Git_not_found _ -> ()
   | other -> Alcotest.fail (print_error other)
 
+(* When [f] raises, git still has output to write, and it must end when
+   the reader closes the pipe. A hang here is the failure. *)
+let fold_blobs_ends_git_when_f_raises () =
+  Alcotest.check_raises "the exception of f" Exit (fun () ->
+      ignore
+        (Git.fold_blobs (Lazy.force faked)
+           [ id_of 'a' ]
+           ~init:()
+           ~f:(fun () _ _ -> raise Exit)))
+
 let fold_blobs_reads_the_output_after_an_error () =
   match
     error
@@ -1277,6 +1288,8 @@ let tests =
       quick "no call leaves a child" no_call_leaves_a_child;
       quick "base_tree reports a git that does not start"
         base_tree_reports_a_git_that_does_not_start;
+      quick "fold_blobs ends git when f raises"
+        fold_blobs_ends_git_when_f_raises;
       quick "fold_blobs reads the output after an error"
         fold_blobs_reads_the_output_after_an_error;
       quick "open_repo keeps the first 4096 bytes of the standard error"
