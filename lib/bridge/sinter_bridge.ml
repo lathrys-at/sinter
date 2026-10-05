@@ -175,7 +175,6 @@ let decode_digest buffer =
     malformed
       (Printf.sprintf "a digest buffer holds %d records, and 1 was expected"
          count);
-  check buffer header_length digest_length;
   check_whole buffer (header_length + digest_length);
   String.sub buffer header_length digest_length
 

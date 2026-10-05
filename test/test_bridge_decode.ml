@@ -158,6 +158,17 @@ let names_the_count_of_a_digest_buffer_with_two_records () =
     (error_message (fun () ->
          Sinter_bridge.decode_digest (Bytes.to_string buffer)))
 
+(* A digest buffer with 31 bytes after its header is one byte short,
+   and the decoder names where the record should end. *)
+let names_the_end_of_a_digest_that_is_one_byte_short () =
+  let whole = Generators.encode_digest (String.make 32 '\001') in
+  let buffer = String.sub whole 0 (String.length whole - 1) in
+  Alcotest.(check string)
+    "the message names byte 48 and a buffer of 47 bytes"
+    "the bridge returned a malformed buffer: the records end at byte 48 and \
+     the buffer holds 47 bytes"
+    (error_message (fun () -> Sinter_bridge.decode_digest buffer))
+
 (* The header is sixteen bytes. A buffer of fifteen is short by one,
    and the decoder says so rather than read a field that is not
    there. *)
@@ -195,6 +206,8 @@ let tests =
       names_the_length_of_a_buffer_with_bytes_after_its_records;
     Alcotest.test_case "names the count of a digest buffer with two records"
       `Quick names_the_count_of_a_digest_buffer_with_two_records;
+    Alcotest.test_case "names the end of a digest that is one byte short" `Quick
+      names_the_end_of_a_digest_that_is_one_byte_short;
     decode_captures_gives_back_what_was_encoded;
     decode_tree_gives_back_what_was_encoded;
     decode_captures_rejects_a_damaged_buffer;
