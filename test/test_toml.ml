@@ -130,6 +130,23 @@ let a_column_far_into_a_long_line () =
           .at)
     [ ""; "\xEF\xBB\xBF" ]
 
+(* A text of 64 or 128 bytes with no line break at its end: the value
+   stops one past the last byte of the text. *)
+let a_value_stops_at_the_end_of_a_text_of_64_bytes () =
+  List.iter
+    (fun (inside, stop) ->
+      let text = "a = \"" ^ inside ^ "\"" in
+      let table = parse_ok text in
+      Alcotest.check span
+        (Printf.sprintf "%d bytes" (String.length text))
+        (from (1, 5) (1, stop))
+        (Toml.span (find table [ "a" ])))
+    [
+      (String.make 58 'x', 65);
+      (String.concat "" (List.init 29 (fun _ -> "\xC3\xA9")), 36);
+      (String.make 122 'x', 129);
+    ]
+
 (* Each place costs the same however long its line is, so a document
    on one line reads in time proportional to its length. *)
 let a_long_line_reads_quickly () =
@@ -1249,6 +1266,8 @@ let tests =
       a_column_far_into_a_long_line;
     Alcotest.test_case "a long line reads quickly" `Quick
       a_long_line_reads_quickly;
+    Alcotest.test_case "a value stops at the end of a text of 64 bytes" `Quick
+      a_value_stops_at_the_end_of_a_text_of_64_bytes;
     Alcotest.test_case "a carriage return ends no line" `Quick
       a_carriage_return_ends_no_line;
     Alcotest.test_case "a value over lines stops on its last line" `Quick

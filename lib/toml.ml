@@ -109,17 +109,19 @@ let lines_of text =
     if String.starts_with ~prefix:byte_order_mark text then 3 else 0
   in
   let length = String.length text in
-  let starts = ref [ first ] in
-  let marks = Array.make ((length / mark_every) + 1) 0 in
-  let count = ref 0 in
+  let starts = ref [ first ] and marks = ref [] and count = ref 0 in
   for index = 0 to length - 1 do
-    if index mod mark_every = 0 then marks.(index / mark_every) <- !count;
+    if index mod mark_every = 0 then marks := !count :: !marks;
     let char = text.[index] in
     if Char.code char land 0xC0 <> 0x80 then incr count;
     if char = '\n' then starts := (index + 1) :: !starts
   done;
-  if length mod mark_every = 0 then marks.(length / mark_every) <- !count;
-  { text; starts = Array.of_list (List.rev !starts); marks }
+  if length mod mark_every = 0 then marks := !count :: !marks;
+  {
+    text;
+    starts = Array.of_list (List.rev !starts);
+    marks = Array.of_list (List.rev !marks);
+  }
 
 (* The number of code points before the byte at [offset]. *)
 let code_points_before lines offset =
@@ -526,25 +528,22 @@ let fold_code_points f text init =
   walk 0 init
 
 let basic_string text =
-  let buffer = Buffer.create (String.length text + 2) in
-  Buffer.add_char buffer '"';
-  fold_code_points
-    (fun () piece ->
-      Buffer.add_string buffer
-        (match piece with
-        | Ok (0x22, _) -> "\\\""
-        | Ok (0x5C, _) -> "\\\\"
-        | Ok (0x08, _) -> "\\b"
-        | Ok (0x09, _) -> "\\t"
-        | Ok (0x0A, _) -> "\\n"
-        | Ok (0x0C, _) -> "\\f"
-        | Ok (0x0D, _) -> "\\r"
-        | Ok (code, _) when is_control code -> Printf.sprintf "\\u%04X" code
-        | Ok (_, piece) -> piece
-        | Error byte -> String.make 1 byte))
-    text ();
-  Buffer.add_char buffer '"';
-  Buffer.contents buffer
+  let escape = function
+    | Ok (0x22, _) -> "\\\""
+    | Ok (0x5C, _) -> "\\\\"
+    | Ok (0x08, _) -> "\\b"
+    | Ok (0x09, _) -> "\\t"
+    | Ok (0x0A, _) -> "\\n"
+    | Ok (0x0C, _) -> "\\f"
+    | Ok (0x0D, _) -> "\\r"
+    | Ok (code, _) when is_control code -> Printf.sprintf "\\u%04X" code
+    | Ok (_, piece) -> piece
+    | Error byte -> String.make 1 byte
+  in
+  let pieces =
+    fold_code_points (fun pieces piece -> escape piece :: pieces) text []
+  in
+  "\"" ^ String.concat "" (List.rev pieces) ^ "\""
 
 let quote name =
   let control =
