@@ -92,23 +92,22 @@ let outcome_within ?errors command ~input ~bound =
           from_file to_nowhere
           (Option.value to_errors ~default:to_nowhere)
       in
-      let step = 0.05 in
-      let rec wait waited =
+      let rec wait waited pause =
         match Unix.waitpid [ Unix.WNOHANG ] pid with
         | 0, _ when waited >= bound ->
             Unix.kill pid Sys.sigkill;
             ignore (Unix.waitpid [] pid);
             Printf.sprintf "still running after %g seconds" bound
         | 0, _ ->
-            Unix.sleepf step;
-            wait (waited +. step)
+            Unix.sleepf pause;
+            wait (waited +. pause) (Float.min (2. *. pause) 0.05)
         | _, Unix.WEXITED code -> Printf.sprintf "exited %d" code
         | _, Unix.WSIGNALED signal ->
             Printf.sprintf "killed by signal %d" signal
         | _, Unix.WSTOPPED signal ->
             Printf.sprintf "stopped by signal %d" signal
       in
-      wait 0.)
+      wait 0. 0.001)
 
 let code = Alcotest.(check int)
 

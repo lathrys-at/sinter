@@ -7,10 +7,12 @@ on:
   pull_request:
   push:
     branches: [main]
-  # The daily run is for the mutation job alone; the other jobs skip
-  # it. It measures main whole once a day, so that a change in the
-  # toolchain or a kill that only one seed makes shows up without a
-  # pull request.
+  # The daily run measures main whole once a day, so that a change in
+  # the toolchain or a kill that only one seed makes shows up without
+  # a pull request. It also runs every job that restores a cache, so
+  # that a run reads each cache of main every day: GitHub removes a
+  # cache that no run reads for seven days. The plugin job restores no
+  # cache and skips the daily run.
   schedule:
     - cron: "17 6 * * *"
 
@@ -23,7 +25,6 @@ jobs:
     # repository's ruleset, so they stay as they are; `image` names the
     # runner image that each one runs on.
     name: Build and test (${{ matrix.os }})
-    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -126,7 +127,6 @@ jobs:
 
   format:
     name: Check formatting
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -186,7 +186,6 @@ jobs:
 
   rust:
     name: Check the bridge crate
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -240,7 +239,6 @@ jobs:
 
   coverage:
     name: Measure coverage
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     # This job builds what the build job builds: the same compiler,
     # and the dependencies from the lock file. It adds one tool,
