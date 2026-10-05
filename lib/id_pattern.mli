@@ -82,15 +82,16 @@ val matches : t -> string -> bool
     id that holds a space, or a character outside printable ASCII, matches no
     pattern.
 
-    The function does not backtrack, so its time is polynomial in the lengths of
-    [pattern] and [id]. It follows, part by part from the start of [id], the set
-    of places where a match can stand. It computes the end places of the part of
-    a quantifier at most once for each place in [id]. After the rounds that a
+    The function does not backtrack. It follows, part by part from the start of
+    [id], the set of places where a match can stand. After the rounds that a
     quantifier needs, each round goes on only from the places that no earlier
-    round reached, and stops at the upper count or when it reaches no new place.
-    So a part such as [[0-9]*] takes time in proportion to the length of [id].
-    An id that holds a space or a character outside printable ASCII gets its
-    answer before any part is matched. *)
+    round reached, and the quantifier stops at its upper count or when a round
+    reaches no new place. So a quantifier makes at most [n + 1] such rounds for
+    an id of [n] characters, and a pattern with no quantifier inside another
+    takes time about in proportion to [n]. With [d] quantifiers nested, the
+    rounds are at most about [n + 2] to the power [d]. An id that holds a space
+    or a character outside printable ASCII gets its answer before any part is
+    matched. *)
 
 val error_offset : error -> int
 (** [error_offset error] is the offset that [error] names. It is [0] for

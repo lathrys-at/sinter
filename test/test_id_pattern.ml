@@ -114,7 +114,18 @@ let long_ids_answer_quickly () =
     (Id_pattern.matches (pattern "[A-Z]+-[1-9][0-9]*") (String.make 10_000 'A'));
   Alcotest.(check bool)
     "[A-Z]*[A-Z]*[0-9] against 10000 letters" false
-    (Id_pattern.matches (pattern "[A-Z]*[A-Z]*[0-9]") (String.make 10_000 'A'))
+    (Id_pattern.matches (pattern "[A-Z]*[A-Z]*[0-9]") (String.make 10_000 'A'));
+  Alcotest.(check bool)
+    "([0-9]+-?)+ against 10001 digits" true
+    (Id_pattern.matches (pattern "([0-9]+-?)+") digits);
+  Alcotest.(check bool)
+    "(A{0,255})*B against 10000 letters" false
+    (Id_pattern.matches (pattern "(A{0,255})*B") (String.make 10_000 'A'));
+  Alcotest.(check bool)
+    "((a{0,255}){0,255}){0,255}b against 2000 letters" false
+    (Id_pattern.matches
+       (pattern "((a{0,255}){0,255}){0,255}b")
+       (String.make 2_000 'a'))
 
 let deep_groups_answer_quickly () =
   let deep = String.make 10_000 '(' ^ "a" ^ String.make 10_000 ')' in

@@ -1,20 +1,16 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* Each node has a number of its own, from 0, which is its index in
-   [nodes]. A node has a smaller number than every node that holds it.
-   [Class] holds ranges; a single member [c] is [(c, c)].
+(* [Class] holds ranges; a single member [c] is [(c, c)].
    [Repeat (body, n, None)] has no upper count. *)
-type node = { number : int; shape : shape }
-
-and shape =
+type node =
   | Literal of char
   | Class of (char * char) list
   | Sequence of node list
   | Alternation of node list
   | Repeat of node * int * int option
 
-type t = { text : string; root : node; nodes : node array }
+type t = { text : string; root : node }
 
 type error =
   | Not_allowed of { offset : int; character : string }
@@ -70,13 +66,6 @@ exception Stop of error
 let parse text =
   let length = String.length text in
   let at = ref 0 in
-  let made = ref [] and count = ref 0 in
-  let make shape =
-    let node = { number = !count; shape } in
-    incr count;
-    made := node :: !made;
-    node
-  in
   let peek () = if !at < length then Some text.[!at] else None in
   let fail error = raise (Stop error) in
   let not_allowed offset =
@@ -167,7 +156,7 @@ let parse text =
           more (sequence () :: acc)
       | _ -> List.rev acc
     in
-    make (Alternation (more [ first ]))
+    Alternation (more [ first ])
   and sequence () =
     let rec parts acc =
       match peek () with
@@ -176,13 +165,13 @@ let parse text =
     in
     match parts [] with
     | [] -> fail (Empty_alternative !at)
-    | parts -> make (Sequence parts)
+    | parts -> Sequence parts
   and quantified c =
     let part = atom c in
     match quantifier () with
     | None -> part
     | Some (low, high) -> (
-        let quantified = make (Repeat (part, low, high)) in
+        let quantified = Repeat (part, low, high) in
         match peek () with
         | Some ('?' | '*' | '+' | '{') -> fail (Two_quantifiers !at)
         | _ -> quantified)
@@ -201,19 +190,18 @@ let parse text =
     | '[' ->
         incr at;
         if peek () = Some ']' then fail (Empty_class offset);
-        make (Class (members offset []))
+        Class (members offset [])
     | '?' | '*' | '+' | '{' -> fail (Quantifier_without_part offset)
     | c when is_literal c ->
         incr at;
-        make (Literal c)
+        Literal c
     | _ -> not_allowed offset
   in
   let root = alternation () in
   if !at < length then fail (Unopened_group !at);
-  (root, Array.of_list (List.rev !made))
+  root
 
-let rec nullable node =
-  match node.shape with
+let rec nullable = function
   | Literal _ | Class _ -> false
   | Sequence nodes -> List.for_all nullable nodes
   | Alternation nodes -> List.exists nullable nodes
@@ -222,8 +210,8 @@ let rec nullable node =
 let of_string text =
   match parse text with
   | exception Stop error -> Error error
-  | root, _ when nullable root -> Error Matches_empty
-  | root, nodes -> Ok { text; root; nodes }
+  | root when nullable root -> Error Matches_empty
+  | root -> Ok { text; root }
 
 let to_string pattern = pattern.text
 
@@ -238,19 +226,16 @@ let rec union a b =
       else x :: union xs ys
 
 module Places = Set.Make (Int)
-module Kept = Map.Make (Int)
 
 (* [ends node from] is the set of places where a match of [node] can
-   end when it starts at a place of [from]. [ends_at body start] is
-   [ends body [start]] for the body of a quantifier; [kept] holds it
-   once it is computed, so each body is computed at most once for each
-   place. After the rounds that a quantifier needs, a round goes on only
-   from the places that no earlier round reached: a place that a later
-   round reaches again has fewer rounds left, so it can reach no new
-   place. *)
+   end when it starts at a place of [from]. The end places of a set are
+   the union of the end places of its members. So after the rounds that
+   a quantifier needs, a round goes on only from the places that no
+   earlier round reached: a place that a later round reaches again has
+   fewer rounds left, and it can reach no place that its first round
+   did not. *)
 let matches pattern id =
   let length = String.length id in
-  let kept = Array.make (Array.length pattern.nodes) Kept.empty in
   let shift accepts from =
     List.filter_map
       (fun place ->
@@ -258,7 +243,7 @@ let matches pattern id =
       from
   in
   let rec ends node from =
-    match node.shape with
+    match node with
     | Literal c -> shift (Char.equal c) from
     | Class ranges ->
         shift
@@ -268,11 +253,9 @@ let matches pattern id =
         List.fold_left (fun set n -> union set (ends n from)) [] nodes
     | Sequence nodes -> List.fold_left (fun from n -> ends n from) from nodes
     | Repeat (body, low, high) ->
-        let step from =
-          List.sort_uniq Int.compare (List.concat_map (ends_at body) from)
-        in
         let rec exact rounds from =
-          if rounds = 0 then from else exact (rounds - 1) (step from)
+          if rounds = 0 || from = [] then from
+          else exact (rounds - 1) (ends body from)
         in
         let rec grow rounds reached frontier =
           if frontier = [] || Some rounds = high then reached
@@ -280,19 +263,12 @@ let matches pattern id =
             let next =
               List.filter
                 (fun place -> not (Places.mem place reached))
-                (step frontier)
+                (ends body frontier)
             in
             grow (rounds + 1) (Places.union reached (Places.of_list next)) next
         in
         let first = exact low from in
         Places.elements (grow low (Places.of_list first) first)
-  and ends_at body start =
-    match Kept.find_opt start kept.(body.number) with
-    | Some set -> set
-    | None ->
-        let set = ends body [ start ] in
-        kept.(body.number) <- Kept.add start set kept.(body.number);
-        set
   in
   String.for_all is_printable id && List.mem length (ends pattern.root [ 0 ])
 
