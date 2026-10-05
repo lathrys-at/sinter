@@ -187,7 +187,17 @@ let each_error_has_its_message () =
   message "a]" "a glob cannot hold ']'; write one glob for each name";
   message "a{" "a glob cannot hold '{'; write one glob for each choice";
   message "a}" "a glob cannot hold '}'; write one glob for each choice";
-  message "a\\" "a glob cannot hold '\\'"
+  message "a\\" "a glob cannot hold '\\'";
+  List.iter
+    (fun segment ->
+      Alcotest.(check string)
+        ("the message for the segment " ^ segment)
+        (Printf.sprintf
+           "the segment '%s' holds '**' and other characters; '**' must be a \
+            whole segment, and '*' matches characters inside one name"
+           segment)
+        (Glob.message (Glob.Double_star_in_segment { offset = 0; segment })))
+    [ "**"; "*"; ""; "a*b" ]
 
 (* A second reading of the rules, written for the test, to compare
    with the module on generated globs and paths. *)
@@ -402,6 +412,10 @@ let a_bad_glob_names_its_member_and_start () =
       Path_set.Bad_glob { index = 2; start = 1; error = Glob.Leading_slash };
     ]
 
+let an_empty_member_is_an_empty_glob () =
+  check_errors [ "" ]
+    [ Path_set.Bad_glob { index = 0; start = 0; error = Glob.Empty } ]
+
 let a_lone_exclamation_mark_is_an_empty_glob () =
   check_errors [ "a"; "!" ]
     [ Path_set.Bad_glob { index = 1; start = 1; error = Glob.Empty } ]
@@ -534,6 +548,7 @@ let tests =
     case "members are plain or excluded" members_are_plain_or_excluded;
     case "a bad glob names its member and start"
       a_bad_glob_names_its_member_and_start;
+    case "an empty member is an empty glob" an_empty_member_is_an_empty_glob;
     case "a lone exclamation mark is an empty glob"
       a_lone_exclamation_mark_is_an_empty_glob;
     case "a repeated member is an error" a_repeated_member_is_an_error;

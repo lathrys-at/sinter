@@ -294,6 +294,11 @@ let each_error_has_its_message () =
     "a control character is not in the id pattern language, and no id holds one";
   message "a\xc2\x85"
     "a control character is not in the id pattern language, and no id holds one";
+  message "a\xc2\xa0" "'\xc2\xa0' is not printable ASCII, and no id holds it";
+  Alcotest.(check string)
+    "an empty character"
+    "the pattern holds a character that is not in the id pattern language"
+    (Id_pattern.message (Id_pattern.Not_allowed { offset = 0; character = "" }));
   message "a\x7f"
     "a control character is not in the id pattern language, and no id holds one";
   message "a\xff" "a byte that is not UTF-8 is not in the id pattern language";

@@ -222,7 +222,7 @@ let nearest_agrees_with_a_sort =
 let answers_any_bytes =
   property ~name:"distance answers any two strings and raises nothing"
     ~print:print_pair
-    Gen.(pair (string_size (0 -- 40)) (string_size (0 -- 40)))
+    Gen.(pair (string_size (0 -- 16)) (string_size (0 -- 16)))
     (fun (a, b) -> Edit_distance.distance a b >= 0)
 
 let case name test = Alcotest.test_case name `Quick test

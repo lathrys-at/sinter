@@ -95,6 +95,8 @@ let each_rule_gives_its_error () =
   check_error "" Branch_name.Empty;
   check_error "refs/heads/main" Branch_name.Full_ref_name;
   check_error "refs/x" Branch_name.Full_ref_name;
+  check_error "refs/" Branch_name.Full_ref_name;
+  check_error "x/b.lock/c" (Branch_name.Component_ends_with_lock 3);
   check_error "a~1" (Branch_name.Bad_character { offset = 1; character = '~' });
   check_error "ab c" (Branch_name.Bad_character { offset = 2; character = ' ' });
   check_error "a..b" (Branch_name.Two_dots 1);

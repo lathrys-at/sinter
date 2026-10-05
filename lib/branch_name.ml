@@ -18,10 +18,6 @@ let is_bad = function
       true
   | _ -> false
 
-let starts_with ~prefix text =
-  String.length text >= String.length prefix
-  && String.sub text 0 (String.length prefix) = prefix
-
 (* [component name start] checks the component of [name] that starts
    at [start], and gives the offset of the '/' or of the end of
    [name] that closes it. *)
@@ -40,7 +36,9 @@ let component name start =
   | Error _ as error -> error
   | Ok stop when stop = start -> Error (Empty_component start)
   | Ok _ when name.[start] = '.' -> Error (Component_starts_with_dot start)
-  | Ok stop when stop - start >= 5 && String.sub name (stop - 5) 5 = ".lock" ->
+  | Ok stop
+    when String.ends_with ~suffix:".lock" (String.sub name start (stop - start))
+    ->
       Error (Component_ends_with_lock (stop - 5))
   | Ok stop -> Ok stop
 
@@ -54,7 +52,7 @@ let check name =
     | Ok _ -> Ok ()
   in
   if name = "" then Error Empty
-  else if starts_with ~prefix:"refs/" name then Error Full_ref_name
+  else if String.starts_with ~prefix:"refs/" name then Error Full_ref_name
   else components 0
 
 let error_offset = function

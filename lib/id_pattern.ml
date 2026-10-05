@@ -310,34 +310,39 @@ let error_offset = function
   | Counts_out_of_order offset ->
       offset
 
-let describe character =
-  let decoded = String.get_utf_8_uchar character 0 in
-  let code = Uchar.to_int (Uchar.utf_decode_uchar decoded) in
-  if not (Uchar.utf_decode_is_valid decoded) then
-    "a byte that is not UTF-8 is not in the id pattern language"
-  else if code < 0x20 || (code >= 0x7F && code < 0xA0) then
-    "a control character is not in the id pattern language, and no id holds one"
-  else if code = 0x20 then
-    "a space is not in the id pattern language, and no id holds one"
-  else if code > 0x7F then
-    Printf.sprintf "'%s' is not printable ASCII, and no id holds it" character
-  else
-    match character with
-    | "." | "}" ->
-        Printf.sprintf
-          "'%s' is not in the id pattern language; put it in a class, for \
-           example [%s]"
-          character character
-    | "$" ->
-        "'$' is not in the id pattern language; a pattern always matches the \
-         whole id"
-    | "^" ->
-        "'^' is not in the id pattern language; a pattern always matches the \
-         whole id, and a class cannot leave characters out"
-    | _ ->
-        Printf.sprintf
-          "'%s' is not in the id pattern language, and no pattern matches it"
+let describe = function
+  | "" -> "the pattern holds a character that is not in the id pattern language"
+  | character -> (
+      let decoded = String.get_utf_8_uchar character 0 in
+      let code = Uchar.to_int (Uchar.utf_decode_uchar decoded) in
+      if not (Uchar.utf_decode_is_valid decoded) then
+        "a byte that is not UTF-8 is not in the id pattern language"
+      else if code < 0x20 || (code >= 0x7F && code < 0xA0) then
+        "a control character is not in the id pattern language, and no id \
+         holds one"
+      else if code >= 0xA0 then
+        Printf.sprintf "'%s' is not printable ASCII, and no id holds it"
           character
+      else if code = 0x20 then
+        "a space is not in the id pattern language, and no id holds one"
+      else
+        match character with
+        | "." | "}" ->
+            Printf.sprintf
+              "'%s' is not in the id pattern language; put it in a class, for \
+               example [%s]"
+              character character
+        | "$" ->
+            "'$' is not in the id pattern language; a pattern always matches \
+             the whole id"
+        | "^" ->
+            "'^' is not in the id pattern language; a pattern always matches \
+             the whole id, and a class cannot leave characters out"
+        | _ ->
+            Printf.sprintf
+              "'%s' is not in the id pattern language, and no pattern matches \
+               it"
+              character)
 
 let message = function
   | Not_allowed { character; _ } -> describe character

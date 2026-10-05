@@ -293,11 +293,13 @@ let harness_markers_keep_their_order () =
   let manifest =
     read
       (markdown
-     ^ "[ledger]\nharness-markers = [\"B_1\", \"_a\", \"CLAUDECODE\"]\n")
+     ^ "[ledger]\n\
+        harness-markers = [\"B_1\", \"_a\", \"CLAUDECODE\", \"z\", \"Zz_09\", \
+        \"A9\"]\n")
   in
   Alcotest.(check (list string))
     "the markers"
-    [ "B_1"; "_a"; "CLAUDECODE" ]
+    [ "B_1"; "_a"; "CLAUDECODE"; "z"; "Zz_09"; "A9" ]
     (Manifest.harness_markers manifest)
 
 let approval_kinds_keep_their_order () =
@@ -586,7 +588,9 @@ let names_that_vary () =
     (markdown
    ^ "packs.tree-sitter2.files = [\"a\"]\n\
       packs.tree-sitter2.version = \"1.0\"\n\
-      refs.a1-b2 = \"x\"\n")
+      refs.a1-b2 = \"x\"\n\
+      refs.z9-a0 = \"x\"\n\
+      refs.z = \"x\"\n")
     [ "no error" ];
   reports "a version for markdown"
     "[scan.packs.markdown]\nfiles = [\"**/*.md\"]\nversion = \"1.0\"\n"
@@ -802,10 +806,10 @@ let every_problem_has_a_message () =
 let a_value_in_a_message_is_a_toml_string () =
   Alcotest.(check string)
     "the escapes"
-    "\"a\\\"b\\\\c\\nd\\te\\u0001f\\u007Fg\xc3\xa9\" is not a name of an \
+    "\"a\\\"b\\\\c\\nd\\te\\u0001f\\u007Fg\xc3\xa9 h\" is not a name of an \
      environment variable; a name holds letters, digits, and '_', and does not \
      start with a digit"
-    (message (Manifest.Bad_marker "a\"b\\c\nd\te\001f\127g\xc3\xa9"))
+    (message (Manifest.Bad_marker "a\"b\\c\nd\te\001f\127g\xc3\xa9 h"))
 
 let a_table_with_an_empty_name () =
   Alcotest.(check string)

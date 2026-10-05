@@ -1,8 +1,10 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* A code point is its scalar value, from 0. A byte outside a valid
-   sequence is -1 less the byte, so it differs from every code point. *)
+(* A character is a code point, or one byte outside a valid UTF-8
+   sequence. *)
+type character = Code_point of Uchar.t | Stray of char
+
 let characters text =
   let rec go i acc =
     if i >= String.length text then Array.of_list (List.rev acc)
@@ -11,8 +13,8 @@ let characters text =
       if Uchar.utf_decode_is_valid decoded then
         go
           (i + Uchar.utf_decode_length decoded)
-          (Uchar.to_int (Uchar.utf_decode_uchar decoded) :: acc)
-      else go (i + 1) ((-1 - Char.code text.[i]) :: acc)
+          (Code_point (Uchar.utf_decode_uchar decoded) :: acc)
+      else go (i + 1) (Stray text.[i] :: acc)
   in
   go 0 []
 
@@ -24,18 +26,16 @@ let characters text =
 let distance a b =
   let a = characters a and b = characters b in
   let rows = Array.length a and columns = Array.length b in
-  let d = Array.make_matrix (rows + 1) (columns + 1) 0 in
-  for i = 0 to rows do
-    d.(i).(0) <- i
-  done;
-  for j = 0 to columns do
-    d.(0).(j) <- j
-  done;
-  let last_row = Hashtbl.create 16 in
+  let d =
+    Array.init (rows + 1) (fun i ->
+        Array.init (columns + 1) (fun j ->
+            if i = 0 then j else if j = 0 then i else max_int))
+  in
+  let last_row = ref [] in
   for i = 1 to rows do
     let last_column = ref 0 in
     for j = 1 to columns do
-      let i1 = Option.value (Hashtbl.find_opt last_row b.(j - 1)) ~default:0 in
+      let i1 = Option.value (List.assoc_opt b.(j - 1) !last_row) ~default:0 in
       let j1 = !last_column in
       let cost =
         if a.(i - 1) = b.(j - 1) then begin
@@ -54,7 +54,7 @@ let distance a b =
           (min (d.(i - 1).(j - 1) + cost) (d.(i).(j - 1) + 1))
           (min (d.(i - 1).(j) + 1) transposed)
     done;
-    Hashtbl.replace last_row a.(i - 1) i
+    last_row := (a.(i - 1), i) :: !last_row
   done;
   d.(rows).(columns)
 
