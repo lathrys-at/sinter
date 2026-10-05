@@ -17,8 +17,6 @@ let () =
         prerr_endline reason;
         exit 2
   in
-  (* Alcotest shows no output of a test that passes, so the list of the
-     files that a promotion wrote follows the summary of the run. *)
   let written = ref [] in
   (match mode with
   | Fixture.Compare -> ()

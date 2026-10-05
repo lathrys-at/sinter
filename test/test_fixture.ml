@@ -1,9 +1,6 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* These tests run the harness with /bin/sh as the binary, so that a
-   case states any output it needs with one line of shell. *)
-
 let sh = "/bin/sh"
 
 let error =
@@ -302,6 +299,12 @@ let an_entry_of_the_wrong_kind_fails_the_case () =
     (("args/", "")
     :: List.filter (fun (path, _) -> path <> "args") (case_files "true"))
 
+let a_relative_binary_is_refused () =
+  with_case (case_files "true") (fun case ->
+      Alcotest.check_raises "the run refuses the binary"
+        (Invalid_argument "Fixture.run: the binary is not an absolute path")
+        (fun () -> ignore (Fixture.run ~binary:"sh" Fixture.Compare case)))
+
 let a_case_that_is_not_a_folder_fails () =
   Fixture.with_temporary_folder (fun folder ->
       let case = Filename.concat folder "case" in
@@ -420,6 +423,27 @@ let each_entry_of_the_folder_of_cases_is_one_test () =
               ~on_write:(fun _ -> ())
               folder)))
 
+let a_folder_of_cases_that_cannot_be_read_is_one_failing_test () =
+  Fixture.with_temporary_folder (fun folder ->
+      match
+        Fixture.tests ~binary:sh Fixture.Compare
+          ~on_write:(fun _ -> ())
+          (Filename.concat folder "missing")
+      with
+      | [ (name, _, test) ] -> (
+          Alcotest.(check string) "the test is named cases" "cases" name;
+          match test () with
+          | () -> Alcotest.fail "the test passed"
+          | exception _ -> ())
+      | tests -> Alcotest.failf "%d tests instead of one" (List.length tests))
+
+let a_failed_git_command_shows_its_arguments_and_output () =
+  Alcotest.(check string)
+    "the message" "case diff: git log --oneline failed:\nfatal: no commit\n"
+    (Fixture.message ~case:"diff"
+       (Fixture.Git_failed
+          { arguments = [ "log"; "--oneline" ]; output = "fatal: no commit\n" }))
+
 (* Diff cases. *)
 
 let base =
@@ -464,6 +488,12 @@ let a_diff_case_commits_base_and_leaves_tree_uncommitted () =
       Alcotest.(check string)
         "the branch is main" "refs/heads/main\n"
         (git repository [ "symbolic-ref"; "HEAD" ]);
+      (match Fixture.git repository [ "no-such-command" ] with
+      | Error (Fixture.Git_failed { arguments; _ }) ->
+          Alcotest.(check (list string))
+            "a failed git command gives its arguments" [ "no-such-command" ]
+            arguments
+      | _ -> Alcotest.fail "a failed git command gave no Git_failed");
       (* The id covers the files, the parents, the author, the
          committer, the dates, and the message, and nothing of the
          machine. *)
@@ -475,7 +505,8 @@ let a_diff_case_runs_at_the_root_of_the_repository () =
   check_run "the run starts beside .git, in the files of tree" (Ok [])
     (base @ tree
     @ List.remove_assoc "tree/"
-        (case_files ~stdout:"<root>\n.git\nadded\nkept\nsame\n" "pwd; ls -A"))
+        (case_files ~stdout:"<root>\n.git\nadded\nkept\nsame\n"
+           "pwd; LC_ALL=C ls -A"))
 
 let tests =
   [
@@ -532,6 +563,8 @@ let tests =
       `Quick a_reserved_entry_says_the_harness_does_not_read_it_yet;
     Alcotest.test_case "an entry of the wrong kind fails the case" `Quick
       an_entry_of_the_wrong_kind_fails_the_case;
+    Alcotest.test_case "a relative binary is refused" `Quick
+      a_relative_binary_is_refused;
     Alcotest.test_case "a case that is not a folder fails" `Quick
       a_case_that_is_not_a_folder_fails;
     Alcotest.test_case "promotion writes the output into the expected files"
@@ -551,6 +584,11 @@ let tests =
       promotion_needs_the_variable_set_to_1;
     Alcotest.test_case "each entry of the folder of cases is one test" `Quick
       each_entry_of_the_folder_of_cases_is_one_test;
+    Alcotest.test_case
+      "a folder of cases that cannot be read is one failing test" `Quick
+      a_folder_of_cases_that_cannot_be_read_is_one_failing_test;
+    Alcotest.test_case "a failed git command shows its arguments and output"
+      `Quick a_failed_git_command_shows_its_arguments_and_output;
     Alcotest.test_case "a diff case commits base and leaves tree uncommitted"
       `Quick a_diff_case_commits_base_and_leaves_tree_uncommitted;
     Alcotest.test_case "a diff case runs at the root of the repository" `Quick

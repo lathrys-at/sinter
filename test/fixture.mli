@@ -87,7 +87,8 @@ val run :
   ?bound:float -> binary:string -> mode -> string -> (string list, error) result
 (** [run ~binary mode case] runs the case folder [case] once and compares or
     promotes its output, as [mode] says. [binary] is the absolute path of the
-    executable that the run starts, with the arguments of [args].
+    executable that the run starts, with the arguments of [args]. It raises
+    [Invalid_argument] when [binary] is a relative path.
 
     The run copies [tree/] into a new folder under the temporary folder of
     [Filename.get_temp_dir_name], and starts [binary] in that copy. The copy
@@ -119,8 +120,9 @@ val with_temporary_folder : (string -> 'a) -> 'a
 (** [with_temporary_folder f] calls [f] with the real path of a new, empty
     folder under the temporary folder of [Filename.get_temp_dir_name], and
     removes the folder and everything in it when [f] returns or raises. An
-    exception that [f] raises passes through. [Sys_error] or [Unix.Unix_error]
-    passes through when the folder cannot be made or removed. *)
+    exception that [f] raises passes through. It raises [Sys_error] when the
+    folder cannot be made, [Unix.Unix_error] when its real path cannot be read,
+    and [Fun.Finally_raised] when the folder cannot be removed. *)
 
 (** {1 Diff cases} *)
 
@@ -140,8 +142,9 @@ val with_repository :
     returns or raises. The rule of {!run} on the working folder of the process
     holds here too.
 
-    An exception that [f] raises passes through. [Sys_error] passes through when
-    the temporary folder cannot be made or removed. *)
+    An exception that [f] raises passes through. It raises the exceptions of
+    {!with_temporary_folder} when the temporary folder cannot be made or
+    removed. *)
 
 val root : repository -> string
 (** The real path of the root of the repository. *)

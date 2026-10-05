@@ -96,8 +96,6 @@ let mode_of_environment ~promote ~source_root =
          test."
   | _ -> Ok Compare
 
-(* Files and folders. *)
-
 let entries folder =
   List.sort String.compare (Array.to_list (Sys.readdir folder))
 
@@ -159,8 +157,6 @@ let guarded f =
            (Printf.sprintf "%s %s: %s" call argument (Unix.error_message code)))
   | Fun.Finally_raised failure -> Error (System (Printexc.to_string failure))
 
-(* Processes. *)
-
 (* Every git command, and the run itself, gets the environment of
    the suite with the variables below taken out and set anew. Git
    reads its configuration, its ignore rules, and its identity from
@@ -195,9 +191,7 @@ let environment ~home ~root =
       "GIT_COMMITTER_DATE=1767225600 +0000";
     |]
 
-(* Waits [bound] seconds at most for [pid] to end, and kills it after.
-   The check repeats each millisecond, so that a run of a few
-   milliseconds costs no more than that. *)
+(* Waits [bound] seconds at most for [pid] to end, and kills it after. *)
 let wait pid ~bound =
   let deadline = Unix.gettimeofday () +. bound in
   let rec loop () =
@@ -263,8 +257,6 @@ let prepare temporary =
   let root = make_folder temporary "work" in
   { root; environment = environment ~home ~root; scratch = temporary }
 
-(* Diff cases. *)
-
 type repository = { workspace : workspace; program : string }
 
 let root repository = repository.workspace.root
@@ -282,11 +274,9 @@ let git repository arguments =
     Error
       (Git_failed { arguments; output = read_file output ^ read_file errors })
 
-(* The path of the git program, or "git" when the lookup fails. On
-   macOS the git on the PATH is a launcher that takes about 60 ms on
-   its first run under each new HOME, and every repository has a HOME
-   of its own. The folder that git --exec-path names holds the program
-   itself. The lookup runs under the suite's own HOME. *)
+(* The git program in the folder that git --exec-path names, or "git"
+   when the lookup fails. The lookup runs in the suite's own
+   environment. *)
 let program workspace =
   let output = Filename.concat workspace.scratch "exec-path"
   and errors = Filename.concat workspace.scratch "exec-path-errors" in
@@ -302,7 +292,10 @@ let program workspace =
 (* [workspace.root] exists and is empty. *)
 let build workspace ~base ~tree =
   let repository = { workspace; program = program workspace } in
-  let* _ = git repository [ "init"; "--quiet"; "--template="; "-b"; "main" ] in
+  let* _ =
+    git repository
+      [ "init"; "--quiet"; "--template="; "--object-format=sha1"; "-b"; "main" ]
+  in
   copy_folder base workspace.root;
   let* _ = git repository [ "add"; "--all" ] in
   let* _ =
@@ -322,8 +315,6 @@ let with_repository ~base ~tree f =
         guarded (fun () -> build (prepare temporary) ~base ~tree)
       in
       Ok (f repository))
-
-(* Cases. *)
 
 type layout = {
   args : string;
@@ -475,6 +466,8 @@ let settle mode ~name ~expected actual =
            actual)
 
 let run ?(bound = 10.) ~binary mode case =
+  if Filename.is_relative binary then
+    invalid_arg "Fixture.run: the binary is not an absolute path";
   guarded (fun () ->
       let* layout = read_layout mode case in
       let arguments = arguments (read_file layout.args) in
