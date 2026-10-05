@@ -51,6 +51,7 @@ let () =
       ("branch name", Test_branch_name.tests);
       ("finding class", Test_finding_class.tests);
       ("major minor", Test_major_minor.tests);
+      ("manifest", Test_manifest.tests);
       ( "cases",
         Fixture.tests ~binary mode
           ~on_write:(fun path -> written := path :: !written)
