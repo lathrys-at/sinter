@@ -33,12 +33,6 @@ never change and never move.
 Unlike the derived JSONL of a scan, ledger entries carry timestamps
 and authorship. The ledger is history, not a derivation.
 
-When the repository's manifest sets `ledger.sign`, every ledger commit
-carries a signature. Verification can then enforce an allowlist of
-signer keys. A deployment that wants the host's push restrictions to
-protect the ledger can place the ref under `refs/heads/sinter/ledger`
-instead.
-
 ## 3. Entry identity
 
 An entry's id is `e-` plus the first twelve hex digits of a SHA-256
@@ -78,8 +72,8 @@ Every entry carries:
 Four writers exist. The approval command writes `stamp` entries, with
 their `stamped-scope` and `stamped-promise` lines. The decline command
 writes `decline`. The abandon command writes `abandoned`. A person
-runs these three commands. The fourth writer is the CI job on the main
-branch, which writes `discharged` (section 8).
+runs these three commands. The fourth writer is the CI job on the
+target branch, which writes `discharged` (section 8).
 
 ## 5. `stamp`
 
@@ -93,9 +87,12 @@ A stamp records an approval.
 | `note` | omitted when none |
 
 Approval attaches to the `(slug, rev, xh)` triple, never to a
-document. A declaration of a gated kind is **approved** if and only if
-the ledger holds a stamp for its current `(slug, rev, xh)`. A revision
-bump therefore removes approval until the item is stamped again.
+document. A declaration of a kind that needs approval
+([manifest.md](manifest.md) section 11.1) is **approved** if and only
+if the ledger holds a stamp for its current `(slug, rev, xh)`. A
+revision bump therefore removes approval until the item is stamped
+again. A declaration of a kind that does not need approval counts as
+approved.
 
 **Revision reservation.** A writer must refuse to write a stamp for
 `(slug, rev)` when the ledger already holds a stamp for that pair with
@@ -151,16 +148,16 @@ when the person overrides their own earlier refusal.
 A `discharged` entry closes a plan whose promises all produced their
 residue ([vocabulary.md](vocabulary.md) section 10.2).
 
-The CI job on the main branch writes the entry. The job runs on every
-push to the target branch. It finds the open plans that are now on
-that branch. It checks each of those plans against the discharge
+The CI job on the target branch writes the entry. The job runs on
+every push to the target branch. It finds the open plans that are now
+on that branch. It checks each of those plans against the discharge
 condition below. It appends one entry for each plan that meets the
 condition.
 
 | field | meaning |
 |---|---|
 | `subject` | `plan:<slug>` |
-| `stamp` | the plan's latest stamp at the time it closed |
+| `stamp` | the plan's latest stamp at the time it closed; omitted when the plan has no stamp |
 | `merge` | the merge commit |
 | `report` | SHA-256 of the report compiled at discharge |
 
@@ -171,16 +168,17 @@ these statements are true:
 - Every promised edge exists, and that edge is neither dangling nor
   suspect.
 - When the job imports evidence: every promised `verifies` edge is at
-  rung `passing`, or at rung `unattributed` where the manifest allows
-  it.
+  rung `passing`, or at rung `unattributed` when
+  `evidence.coverage-attribution` is `"optional"`
+  ([manifest.md](manifest.md) section 12).
 - When the job imports no evidence: a promised `verifies` edge can be
-  at any rung. Rung enforcement happened earlier, at the merge gate.
+  at any rung. Rung enforcement happened earlier, at the gate `merge`.
 
 An open plan on the target branch that fails this condition is the
 finding `undischarged-plan`: a person merged a plan whose work is not
-complete. Two corrections remove the finding. The first is a new
-stamp for the plan with a smaller commitment set. The second is a
-revert of the merge commit.
+complete. Two corrections remove the finding. The first is a smaller
+commitment set for the plan, with a new stamp when the kind `plan`
+needs approval. The second is a revert of the merge commit.
 
 The job's write is idempotent: a second run for the same plan adds no
 second entry. The plan's stamps and the repository tree hold the facts
@@ -221,8 +219,11 @@ the user to fetch it.
 
 A plan's **commitment set** is the set of canonical facts about the
 plan: the promises of each step, the scope of each step, and the plan
-scope. The tool compares the current set `C` against the stamped set
-`C₀`. The plan is approved if and only if all three clauses hold:
+scope. When the kind `plan` does not need approval
+([manifest.md](manifest.md) section 11.1), every plan counts as
+approved, and this section does not apply. Otherwise the tool compares
+the current set `C` against the stamped set `C₀`. The plan is approved
+if and only if all three clauses hold:
 
 1. The multiset of `(word, target)` over all promises is equal in `C`
    and `C₀`.
@@ -247,7 +248,7 @@ When the checker cannot prove that a glob satisfies one of these three
 cases, the checker treats the new scope as wider than the stamped
 scope. The rule is decidable and deterministic. When the checker
 cannot prove containment, the checker asks a person for a new stamp,
-which is the safe result for an approval gate.
+which is the safe result for approval.
 
 An amendment is **free** when the plan stays approved after it and no
 new stamp is needed. The consequences of the three clauses:
@@ -283,5 +284,4 @@ A verifier must check:
 3. No entry id repeats.
 
 Against a remote, the local ref must also be an ancestor of the
-remote's ref, or equal to it. With a signer allowlist, every commit
-must carry a valid signature from a listed key.
+remote's ref, or equal to it.
