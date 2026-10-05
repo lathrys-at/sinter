@@ -36,6 +36,7 @@ let () =
       ("parse", Test_parse.tests);
       ("bridge", Test_bridge.tests);
       ("sha256", Test_sha256.tests);
+      ("toml raw", Test_toml_raw.tests);
       ("request", Test_request.tests);
       ("serve", Test_serve.tests);
       ("cli", Test_cli.tests);

@@ -8,7 +8,7 @@
    The bridge loads a tree-sitter grammar that is compiled to
    WebAssembly, parses a source text with that grammar, and runs a
    tree-sitter query over the parse tree. It also computes the SHA-256
-   digest of a byte string.
+   digest of a byte string, and reads a TOML document.
 
    Every function that can fail returns NULL. Call
    sinter_bridge_last_error for the reason.
@@ -92,6 +92,19 @@ sinter_bridge_result *sinter_bridge_run(sinter_bridge_engine *engine,
    README.md beside this crate defines. It is valid until
    sinter_bridge_result_free frees it. */
 sinter_bridge_result *sinter_bridge_sha256(const uint8_t *data, size_t len);
+
+/* Read a TOML 1.0.0 document.
+
+   "text" points to "len" bytes of UTF-8 text; it may be NULL when
+   "len" is 0. The bytes must stay readable until the call returns.
+
+   The result holds the document, or the error that makes the text not
+   a TOML document, in the encoding that README.md beside this crate
+   defines. It is valid until sinter_bridge_result_free frees it. The
+   call fails when the text is not UTF-8, and when it is 2^32 bytes or
+   more: the encoding holds every offset in 32 bits. */
+sinter_bridge_result *sinter_bridge_toml_parse(const uint8_t *text,
+                                               size_t len);
 
 /* Free a result and the bytes it points to. A NULL pointer is allowed
    and does nothing. */
