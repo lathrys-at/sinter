@@ -184,6 +184,16 @@ let each_error_has_its_message () =
   message "a/../b" "a glob cannot hold the segment '..'";
   message "a/**x"
     "the segment '**x' holds '**' and other characters; write '**/*x'";
+  message "a/**\n"
+    "the segment \"**\\n\" holds '**' and other characters; write \"**/*\\n\"";
+  message "** x"
+    "the segment '** x' holds '**' and other characters; write '**/* x'";
+  message "**\127"
+    "the segment \"**\\u007F\" holds '**' and other characters; write \
+     \"**/*\\u007F\"";
+  message "\t**"
+    "the segment \"\\t**\" holds '**' and other characters; '**' must be a \
+     whole segment, and '*' matches characters inside one name";
   message "src/**.ts"
     "the segment '**.ts' holds '**' and other characters; write '**/*.ts'";
   message "a**"
@@ -355,7 +365,7 @@ let reference_error text =
 let any_glob_text =
   Gen.(
     string_size
-      ~gen:(oneof_list [ 'a'; '*'; '/'; '.'; '?'; '{'; '\\'; '!' ])
+      ~gen:(oneof_list [ 'a'; '*'; '/'; '.'; '?'; '{'; '\\'; '!'; '\n' ])
       (0 -- 8))
 
 let of_string_agrees_with_the_rules =
@@ -378,6 +388,15 @@ let of_string_answers_any_bytes =
           offset >= 0
           && (offset < String.length text || text = "")
           && String.length (Glob.message e) > 0)
+
+let a_message_is_one_line =
+  property ~name:"a message is one line" ~print:QCheck2.Print.string
+    any_glob_text (fun text ->
+      match Glob.of_string text with
+      | Ok _ -> true
+      | Error e ->
+          let message = Glob.message e in
+          not (String.contains message '\n' || String.contains message '\r'))
 
 let matches_answers_any_path =
   property ~name:"matches answers any string as a path"
@@ -581,6 +600,7 @@ let tests =
     matches_agrees_with_a_second_reading;
     of_string_agrees_with_the_rules;
     of_string_answers_any_bytes;
+    a_message_is_one_line;
     matches_answers_any_path;
     case "a path in a plain glob is in the set"
       a_path_in_a_plain_glob_is_in_the_set;

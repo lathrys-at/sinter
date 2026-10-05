@@ -151,11 +151,11 @@ let message = function
       Printf.sprintf "a glob cannot hold the segment '%s'" segment
   | Double_star_in_segment { segment; _ } -> (
       let start =
-        Printf.sprintf "the segment '%s' holds '**' and other characters"
-          segment
+        Printf.sprintf "the segment %s holds '**' and other characters"
+          (Toml.quote segment)
       in
       match suggestion segment with
-      | Some better -> Printf.sprintf "%s; write '%s'" start better
+      | Some better -> Printf.sprintf "%s; write %s" start (Toml.quote better)
       | None ->
           start
           ^ "; '**' must be a whole segment, and '*' matches characters inside \

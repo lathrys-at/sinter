@@ -132,22 +132,6 @@ type error = At of Toml.position * problem | No_pack
 
 (* Messages. *)
 
-let quoted name = "'" ^ name ^ "'"
-
-(* A string as a TOML basic string writes it. *)
-let toml_string text =
-  let escape = function
-    | '"' -> "\\\""
-    | '\\' -> "\\\\"
-    | '\n' -> "\\n"
-    | '\t' -> "\\t"
-    | c when c < ' ' || c = '\127' -> Printf.sprintf "\\u%04X" (Char.code c)
-    | c -> String.make 1 c
-  in
-  "\""
-  ^ String.concat "" (List.map escape (List.of_seq (String.to_seq text)))
-  ^ "\""
-
 let last key = match List.rev key with name :: _ -> name | [] -> ""
 
 let table_name path =
@@ -188,8 +172,8 @@ let problem_message = function
   | Syntax error -> Toml.error_message error
   | Not_a_version { key; text } ->
       Printf.sprintf "%s takes %s, not %s"
-        (quoted (last key))
-        (expected_text A_version) (toml_string text)
+        (Toml.quote (last key))
+        (expected_text A_version) (Toml.basic_string text)
   | Spec_too_new version ->
       Printf.sprintf
         "this manifest needs specification %s, and this sinter implements %s; \
@@ -209,106 +193,108 @@ let problem_message = function
       Printf.sprintf
         "%s needs specification %s, and the manifest states spec = %s; write \
          spec = %s"
-        (quoted (Toml.render_path key))
+        (Toml.quote (Toml.render_path key))
         (Major_minor.to_string since)
-        (toml_string (Major_minor.to_string spec))
-        (toml_string (Major_minor.to_string since))
+        (Toml.basic_string (Major_minor.to_string spec))
+        (Toml.basic_string (Major_minor.to_string since))
   | Unknown_key { name; table; nearest } ->
-      Printf.sprintf "unknown key %s %s%s" (quoted name) (in_table table)
-        (did_you_mean ~quote:quoted nearest)
+      Printf.sprintf "unknown key %s %s%s" (Toml.quote name) (in_table table)
+        (did_you_mean ~quote:Toml.quote nearest)
   | Misplaced_key { name; place = [] } when is_table_name name ->
       Printf.sprintf
         "%s is a table of the top level; write its keys under the header [%s]"
-        (quoted name) name
+        (Toml.quote name) name
   | Misplaced_key { name; place = [] } ->
       Printf.sprintf "%s belongs at the top level, above the first table header"
-        (quoted name)
+        (Toml.quote name)
   | Misplaced_key { name; place } ->
-      Printf.sprintf "%s belongs in %s" (quoted name) (table_name place)
+      Printf.sprintf "%s belongs in %s" (Toml.quote name) (table_name place)
   | Bad_pack_name name ->
-      Printf.sprintf "%s is not a pack name; a pack name is %s" (quoted name)
+      Printf.sprintf "%s is not a pack name; a pack name is %s"
+        (Toml.quote name)
         (name_rule ~examples:"'ocaml' or 'tree-sitter'")
   | Bad_namespace name ->
       Printf.sprintf "%s is not a ref namespace; a namespace is %s"
-        (quoted name)
+        (Toml.quote name)
         (name_rule ~examples:"'gh' or 'jira'")
   | Unknown_gate { name; nearest } ->
-      Printf.sprintf "unknown gate %s in [check.tiers]%s" (quoted name)
+      Printf.sprintf "unknown gate %s in [check.tiers]%s" (Toml.quote name)
         (match nearest with
-        | Some _ -> did_you_mean ~quote:quoted nearest
+        | Some _ -> did_you_mean ~quote:Toml.quote nearest
         | None ->
             "; the gates are "
             ^ choice
                 (List.map
-                   (fun gate -> quoted (Finding_class.gate_name gate))
+                   (fun gate -> Toml.quote (Finding_class.gate_name gate))
                    Finding_class.gates))
   | Unknown_class { name; gate; nearest } ->
       Printf.sprintf "unknown finding class %s in [check.tiers.%s]%s"
-        (quoted name)
+        (Toml.quote name)
         (Finding_class.gate_name gate)
         (match nearest with
-        | Some _ -> did_you_mean ~quote:quoted nearest
+        | Some _ -> did_you_mean ~quote:Toml.quote nearest
         | None -> "; 'tiers' names built-in finding classes only")
   | No_tier_at_gate { finding_class; gate } ->
       Printf.sprintf "%s takes no tier at the gate %s"
-        (quoted (Finding_class.name finding_class))
-        (quoted (Finding_class.gate_name gate))
+        (Toml.quote (Finding_class.name finding_class))
+        (Toml.quote (Finding_class.gate_name gate))
   | Never_blocks ->
       "'config-changed' takes no tier; it always reports and never blocks"
   | No_tier_at_any_gate -> "'pack-drift' takes no tier at any gate"
   | Unknown_kind { name; nearest } ->
-      Printf.sprintf "unknown kind %s in [plan.locations]%s" (quoted name)
+      Printf.sprintf "unknown kind %s in [plan.locations]%s" (Toml.quote name)
         (match nearest with
-        | Some _ -> did_you_mean ~quote:quoted nearest
+        | Some _ -> did_you_mean ~quote:Toml.quote nearest
         | None ->
             "; the kinds are "
-            ^ choice (List.map (fun k -> quoted (kind_name k)) location_kinds))
+            ^ choice
+                (List.map (fun k -> Toml.quote (kind_name k)) location_kinds))
   | Plan_location ->
       "'plan' takes no location; plan files always live under .plans/"
   | Markdown_version ->
       "the pack markdown is built into sinter and takes no version"
   | Wrong_type { key; expected; found } ->
       Printf.sprintf "%s takes %s, not %s"
-        (quoted (last key))
+        (Toml.quote (last key))
         (expected_text expected) (Toml.Kind.name found)
   | Wrong_member_type { key; found } ->
       Printf.sprintf "%s takes an array of strings, and this member is %s"
-        (quoted (last key))
+        (Toml.quote (last key))
         (Toml.Kind.name found)
   | Not_a_branch { name; error } ->
-      Printf.sprintf "%s is not a branch name; %s" (toml_string name)
+      Printf.sprintf "%s is not a branch name; %s" (Toml.basic_string name)
         (Branch_name.message error)
   | Bad_glob { member; error } ->
-      Printf.sprintf "%s is not a glob: %s" (toml_string member)
+      Printf.sprintf "%s is not a glob: %s" (Toml.basic_string member)
         (Glob.message error)
   | Repeated_member { key; member } ->
-      Printf.sprintf "%s occurs twice in %s" (toml_string member)
-        (quoted (last key))
+      Printf.sprintf "%s occurs twice in %s" (Toml.basic_string member)
+        (Toml.quote (last key))
   | No_plain_glob key ->
       Printf.sprintf
         "%s holds only '!' globs, so it holds no path; add a glob without '!'"
-        (quoted (last key))
+        (Toml.quote (last key))
   | Missing_files pack ->
       Printf.sprintf
         "the pack %s needs 'files', the globs of the files that it reads"
-        (quoted pack)
+        (Toml.quote pack)
   | Missing_version pack ->
       Printf.sprintf
         "the pack %s needs 'version', the release that the repository uses, \
          such as \"1.0\""
-        (quoted pack)
+        (Toml.quote pack)
   | Bad_id_pattern { error; _ } -> Id_pattern.message error
   | Unknown_value { key; value; choices; nearest } ->
       Printf.sprintf "%s takes %s, not %s%s"
-        (quoted (last key))
-        (choice (List.map toml_string choices))
-        (toml_string value)
-        (did_you_mean ~quote:toml_string nearest)
+        (Toml.quote (last key))
+        (choice (List.map Toml.basic_string choices))
+        (Toml.basic_string value)
+        (did_you_mean ~quote:Toml.basic_string nearest)
   | Bad_marker name ->
       Printf.sprintf
         "%s is not a name of an environment variable; a name holds letters, \
          digits, and '_', and does not start with a digit"
-        (toml_string name)
+        (Toml.basic_string name)
 
 let no_pack_advice =
   "add a line such as packs.markdown.files = [\"**/*.md\"] under [scan]"

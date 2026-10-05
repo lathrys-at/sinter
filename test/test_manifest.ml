@@ -471,6 +471,24 @@ let unknown_keys () =
   reports "a tie goes to the first name in byte order" "[plan]\nshare = []\n"
     [ "sinter.toml:2:1: unknown key 'share' in [plan]; did you mean 'shared'?" ]
 
+let a_name_with_a_control_character_is_escaped () =
+  reports "an unknown key" "\"a\\nb\" = 1\n"
+    [ "sinter.toml:1:1: unknown key \"a\\nb\" at the top level" ];
+  reports "a space is no control character" "\"a b\" = 1\n"
+    [ "sinter.toml:1:1: unknown key 'a b' at the top level" ];
+  reports "an unknown gate and a pack name"
+    (markdown
+   ^ "packs.\"x\\ty\".files = [\"a\"]\n\
+      [check.tiers]\n\
+      \"m\\u007Fe\".dangling = \"warn\"\n")
+    [
+      "sinter.toml:3:7: \"x\\ty\" is not a pack name; a pack name is \
+       lower-case letters and digits, in words joined by '-', such as 'ocaml' \
+       or 'tree-sitter'";
+      "sinter.toml:5:1: unknown gate \"m\\u007Fe\" in [check.tiers]; the gates \
+       are 'turn', 'merge', or 'target'";
+    ]
+
 let keys_at_the_wrong_place () =
   reports "a top-level key under a table" "[evidence]\ntarget = \"trunk\"\n"
     [
@@ -1044,6 +1062,8 @@ let line =
       "historic = 1";
       "a = {";
       "b.c = 'x'";
+      "\"x\\ny\" = 1";
+      "tiers.\"m\\re\\u001B\" = {}";
       "# a comment";
       "";
     ]
@@ -1076,7 +1096,7 @@ let place_of = function
 
 let of_string_answers_any_text =
   property ~count:400
-    ~name:"of_string answers any text with sorted errors in it"
+    ~name:"of_string answers any text with sorted one-line errors in it"
     ~print:QCheck2.Print.string
     Gen.(oneof [ text; damaged ])
     (fun text ->
@@ -1093,7 +1113,11 @@ let of_string_answers_any_text =
           && List.length (List.sort_uniq compare errors) = List.length errors
           && List.mem Manifest.No_pack errors = (errors = [ Manifest.No_pack ])
           && List.for_all
-               (fun e -> String.length (Manifest.message e) > 0)
+               (fun e ->
+                 let message = Manifest.message e in
+                 String.length message > 0
+                 && (not (String.contains message '\n'))
+                 && not (String.contains message '\r'))
                errors)
 
 (* A manifest as a list of settings, each a key path and the TOML text of
@@ -1264,6 +1288,8 @@ let tests =
     case "spec errors" spec_errors;
     case "the version comes before the names" the_version_comes_before_the_names;
     case "unknown keys" unknown_keys;
+    case "a name with a control character is escaped"
+      a_name_with_a_control_character_is_escaped;
     case "keys at the wrong place" keys_at_the_wrong_place;
     case "wrong types" wrong_types;
     case "names that vary" names_that_vary;
