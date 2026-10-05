@@ -10,7 +10,7 @@ license: "Apache-2.0"
 homepage: "https://github.com/lathrys-at/sinter"
 bug-reports: "https://github.com/lathrys-at/sinter/issues"
 depends: [
-  "ocaml" {>= "5.1"}
+  "ocaml" {>= "5.5"}
   "dune" {>= "3.16"}
   "cmdliner" {>= "1.3"}
   "dune-build-info"
