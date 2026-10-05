@@ -102,14 +102,27 @@ let string_position node i =
 type lines = { text : string; starts : int array; marks : int array }
 
 let byte_order_mark = "\xEF\xBB\xBF"
-let mark_every = 64
+
+let mark_every =
+  (64
+  [@mutaml.skip
+    "any step gives the same columns: a column is read from the nearest mark \
+     before it, and only the cost of that read depends on the step"])
 
 let lines_of text =
   let first =
     if String.starts_with ~prefix:byte_order_mark text then 3 else 0
   in
   let length = String.length text in
-  let starts = ref [ first ] and marks = ref [] and count = ref 0 in
+  let starts = ref [ first ]
+  and marks = ref []
+  and count =
+    ref
+      (0
+      [@mutaml.skip
+        "a column is the difference of two counts, so a start value that every \
+         count shares cancels out"])
+  in
   for index = 0 to length - 1 do
     if index mod mark_every = 0 then marks := !count :: !marks;
     let char = text.[index] in
