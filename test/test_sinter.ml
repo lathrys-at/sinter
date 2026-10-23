@@ -71,6 +71,7 @@ let () =
       ("finding class", Test_finding_class.tests);
       ("major minor", Test_major_minor.tests);
       ("manifest", Test_manifest.tests);
+      ("facts", Test_facts.tests);
       ( "cases",
         Fixture.tests ~binary mode
           ~on_write:(fun path -> written := path :: !written)
