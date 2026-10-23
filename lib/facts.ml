@@ -849,6 +849,12 @@ let discharge facts plan step (promise : promise) =
   in
   { by = List.find_opt inside residue; residue }
 
+let step_id (plan : plan) (step : step) = "step:" ^ plan.slug ^ "/" ^ step.slug
+
+let promise_id plan step (promise : promise) =
+  String.concat ":"
+    [ "promise"; step_id plan step; promise.word; promise.target ]
+
 let plan_records facts ~changed plan =
   let required = Manifest.approval_required facts.manifest in
   let plan_record =
@@ -868,7 +874,7 @@ let plan_records facts ~changed plan =
   let step_records (step : step) =
     let scope = effective_scope plan step in
     let in_scope = Path_set.mem (path_set scope) in
-    let step_id = "step:" ^ plan.slug ^ "/" ^ step.slug in
+    let step_id = step_id plan step in
     let promises =
       List.map
         (fun (promise : promise) ->
@@ -907,9 +913,7 @@ let plan_records facts ~changed plan =
     :: List.map
          (fun ((promise : promise), by, out_of_scope) ->
            located ~kind:"promise"
-             ~id:
-               (String.concat ":"
-                  [ "promise"; step_id; promise.word; promise.target ])
+             ~id:(promise_id plan step promise)
              ~path:plan.path ~span:promise.span
              ([
                 ("plan", Jsonl.string plan.slug);

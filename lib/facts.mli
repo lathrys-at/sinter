@@ -126,6 +126,19 @@ type plan = private {
 }
 (** One plan file. *)
 
+val declaration_id : declaration -> string
+(** [declaration_id declaration] is [<kind>:<slug>]. *)
+
+val edge_id : edge -> string
+(** [edge_id edge] is [<word>:<src>-><tag target>]. *)
+
+val step_id : plan -> step -> string
+(** [step_id plan step] is [step:<plan slug>/<step slug>]. *)
+
+val promise_id : plan -> step -> promise -> string
+(** [promise_id plan step promise] is [promise:<step id>:<word>:<tag target>].
+*)
+
 val declarations : t -> declaration list
 (** [declarations facts] is every declaration, in the order of the files of
     {!make} and then of the lines. The index of a declaration in this list is
