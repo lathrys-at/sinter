@@ -73,6 +73,8 @@ let takes_a_bad_revision_as_description =
       (" a v", { target = Some "a"; revision = None; description = " v" });
       (" a V2", { target = Some "a"; revision = None; description = " V2" });
       (" a v2x", { target = Some "a"; revision = None; description = " v2x" });
+      (" a v1_0", { target = Some "a"; revision = None; description = " v1_0" });
+      (" a v0x1", { target = Some "a"; revision = None; description = " v0x1" });
       ( " a v9007199254740992",
         {
           target = Some "a";
