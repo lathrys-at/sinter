@@ -122,6 +122,23 @@ jobs:
       # committed copy is stale.
       - name: Check that sinter.opam matches dune-project
         run: git diff --exit-code -- sinter.opam
+      - name: Diagnose the adapter tests (temporary)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          set +e
+          sw_vers; uname -a
+          dune build test/test_sinter.exe
+          cd _build/default/test
+          ./test_sinter.exe test adapter --verbose --show-errors
+          echo "exit status of the adapter group: $?"
+          RUST_BACKTRACE=full ./test_sinter.exe test adapter 3 --verbose
+          echo "exit status of adapter 3: $?"
+          ./test_sinter.exe test adapter 4-30 --verbose
+          echo "exit status of adapter 4-30: $?"
+          cd ../../../bridge
+          cargo test --offline adapter 2>&1 | tail -40
+          echo "exit status of cargo test adapter: $?"
       - name: Test
         run: dune test
 
