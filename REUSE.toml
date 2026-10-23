@@ -22,6 +22,15 @@ precedence = "override"
 SPDX-FileCopyrightText = "2014 Max Brunsfeld"
 SPDX-License-Identifier = "MIT"
 
+# The prebuilt block grammar of tree-sitter-markdown, which the binary
+# embeds, and its license text. The file NOTICE beside them names the
+# repository and the release tag.
+[[annotations]]
+path = ["lib/markdown/tree-sitter-markdown.wasm", "lib/markdown/LICENSE", "lib/markdown/NOTICE"]
+precedence = "override"
+SPDX-FileCopyrightText = "2021 Matthias Deiml"
+SPDX-License-Identifier = "MIT"
+
 # The cases of the TOML test suite, toml-test, and its license text.
 # The file NOTICE beside them names the repository and the release tag.
 [[annotations]]

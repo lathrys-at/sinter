@@ -38,3 +38,18 @@
    git_version.mli
    (echo
     "val describe : string\n(** The description of the checkout that built this library, as\n    [git describe --always --dirty --match 'v[0-9]*'] gives it. It is [\"unknown\"] when the\n    build read no checkout. *)\n"))))
+
+; markdown_pack.ml embeds the grammar and the query of the pack
+; markdown in the library, as two strings.
+
+(rule
+ (targets markdown_pack.ml)
+ (action
+  (with-stdout-to
+   markdown_pack.ml
+   (run
+    %{exe:embed/embed.exe}
+    grammar
+    %{dep:markdown/tree-sitter-markdown.wasm}
+    query
+    %{dep:markdown/blocks.scm}))))
