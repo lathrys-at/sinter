@@ -27,27 +27,31 @@ let trim text =
   let rec first index =
     if index < length && is_blank text.[index] then first (index + 1) else index
   in
+  (* [text.[start]] is not blank, so the search back stops there. *)
   let rec last index =
-    if index > 0 && is_blank text.[index - 1] then last (index - 1) else index
+    if is_blank text.[index] then last (index - 1) else index
   in
   let start = first 0 in
-  let stop = last length in
-  if stop <= start then "" else String.sub text start (stop - start)
+  if start = length then ""
+  else String.sub text start (last (length - 1) - start + 1)
 
-(* The tokens of [text], each with its byte offset: the runs of
+(* The tag target and the hash of the text after an [@ack] word: the
+   hash is its last token, and the tag target is everything before it,
+   without the spaces and tabs at its ends. A token is a run of
    characters that are neither a space nor a tab. *)
-let tokens text =
-  let length = String.length text in
-  let rec skip index found =
-    if index >= length then List.rev found
-    else if is_blank text.[index] then skip (index + 1) found
-    else take index index found
-  and take start index found =
-    if index < length && not (is_blank text.[index]) then
-      take start (index + 1) found
-    else skip index ((start, String.sub text start (index - start)) :: found)
+let ack_parts rest =
+  let text = trim rest in
+  let blank =
+    match (String.rindex_opt text ' ', String.rindex_opt text '\t') with
+    | Some space, Some tab -> Some (max space tab)
+    | (Some _ as one), None | None, (Some _ as one) -> one
+    | None, None -> None
   in
-  skip 0 []
+  Option.map
+    (fun blank ->
+      ( trim (String.sub text 0 blank),
+        String.sub text (blank + 1) (String.length text - blank - 1) ))
+    blank
 
 (* The globs of the text after a [@scope] word: the parts between
    commas, without the spaces and tabs at their ends, empty parts left
@@ -173,20 +177,17 @@ let ordinary_file ~base ~path (document : Markdown.t) =
   let tags = document.tags in
   let count = Array.length tags in
   let indices = List.init count Fun.id in
-  (* [number.(index)] is the index in the declarations of the whole
-     tree of the declaration at the tag [index]. *)
-  let number = Array.make count (-1) in
-  let declared =
-    List.filter
-      (fun index -> Option.is_some tags.(index).Markdown.extent)
-      indices
+  (* Each declaration, by the index of its tag, with its index in the
+     declarations of the whole tree. *)
+  let numbers =
+    List.mapi
+      (fun n index -> (index, base + n))
+      (List.filter
+         (fun index -> Option.is_some tags.(index).Markdown.extent)
+         indices)
   in
-  List.iteri (fun n index -> number.(index) <- base + n) declared;
-  let owner (tag : Markdown.tag) =
-    match tag.owner with
-    | Some index when number.(index) >= 0 -> Some index
-    | Some _ | None -> None
-  in
+  let declared = List.map fst numbers in
+  let owner (tag : Markdown.tag) = tag.owner in
   let id_of index =
     let tag = tags.(index) in
     tag.word ^ ":" ^ Option.value tag.target ~default:""
@@ -215,9 +216,13 @@ let ordinary_file ~base ~path (document : Markdown.t) =
           status.(index) <- Some tag.word
       | Some _ | None -> ())
     tags;
-  (* The last declaration of each block takes its trailing prose. *)
-  let last = Array.make (Array.length document.blocks) (-1) in
-  List.iter (fun index -> last.(tags.(index).block) <- index) declared;
+  (* The last declaration of the block [block], which takes its
+     trailing prose. *)
+  let last block =
+    List.fold_left
+      (fun found index -> if List.mem index declared then Some index else found)
+      None document.blocks.(block).tags
+  in
   let declarations =
     List.filter_map
       (fun index ->
@@ -233,7 +238,7 @@ let ordinary_file ~base ~path (document : Markdown.t) =
                     document.sections.(tag.section).heading
             in
             let prose =
-              if last.(tag.block) = index then
+              if last tag.block = Some index then
                 List.map trim document.blocks.(tag.block).prose
               else []
             in
@@ -262,7 +267,7 @@ let ordinary_file ~base ~path (document : Markdown.t) =
         | Some target_text when is_citation tag ->
             let src, source =
               match owner tag with
-              | Some index -> (id_of index, Some number.(index))
+              | Some index -> (id_of index, Some (List.assoc index numbers))
               | None -> (site_id path document.sections.(tag.section), None)
             in
             Some
@@ -321,22 +326,9 @@ let ordinary_file ~base ~path (document : Markdown.t) =
                 Some (site_id path document.sections.(tag.section))
               else None
         in
-        match (tag.word, block, List.rev (tokens tag.rest)) with
-        | "ack", Some block, (_, hash) :: (offset, last) :: before ->
-            let start =
-              match List.rev before with
-              | (start, _) :: _ -> start
-              | [] -> offset
-            in
-            let stop = offset + String.length last in
-            Some
-              {
-                path;
-                span = tag.span;
-                block;
-                target = String.sub tag.rest start (stop - start);
-                hash;
-              }
+        match (tag.word, block, ack_parts tag.rest) with
+        | "ack", Some block, Some (target, hash) ->
+            Some { path; span = tag.span; block; target; hash }
         | _ -> None)
       (Array.to_list tags)
   in
@@ -368,9 +360,10 @@ let first_scope (document : Markdown.t) indices =
    or that is that section. *)
 let rec step_section (document : Markdown.t) index =
   let section = document.sections.(index) in
-  if section.level = 2 then Some index
-  else if section.level < 2 then None
-  else Option.bind section.parent (step_section document)
+  match section.level with
+  | 2 -> Some index
+  | 0 | 1 -> None
+  | _ -> Option.bind section.parent (step_section document)
 
 (* The promises of the tags [indices], each word and target once. *)
 let promises_of (document : Markdown.t) indices =
@@ -449,19 +442,24 @@ let compare_declarations (a : declaration) (b : declaration) =
     (a.kind, a.path, a.span.start.line, a.span.start.column)
     (b.kind, b.path, b.span.start.line, b.span.start.column)
 
-let resolve manifest declarations edges =
+module Slugs = Map.Make (String)
+
+let resolve manifest (declarations : declaration array) edges =
   (* The first declaration of each citable slug, in the order of the
      records. *)
-  let by_slug = Hashtbl.create 64 in
-  Array.iteri
-    (fun index (declaration : declaration) ->
-      if List.mem declaration.kind declaration_words then
-        match Hashtbl.find_opt by_slug declaration.slug with
-        | Some other
-          when compare_declarations declarations.(other) declaration <= 0 ->
-            ()
-        | Some _ | None -> Hashtbl.replace by_slug declaration.slug index)
-    declarations;
+  let by_slug =
+    List.fold_left
+      (fun map index ->
+        Slugs.update declarations.(index).slug
+          (function None -> Some index | kept -> kept)
+          map)
+      Slugs.empty
+      (List.stable_sort
+         (fun a b -> compare_declarations declarations.(a) declarations.(b))
+         (List.filter
+            (fun index -> List.mem declarations.(index).kind declaration_words)
+            (List.init (Array.length declarations) Fun.id)))
+  in
   let namespaces = Manifest.ref_namespaces manifest in
   List.map
     (fun edge ->
@@ -476,7 +474,7 @@ let resolve manifest declarations edges =
           | Some pattern when Id_pattern.matches pattern id -> Ref { ns; id }
           | Some _ | None -> Unresolved { dangling = false })
       | None -> (
-          match Hashtbl.find_opt by_slug text with
+          match Slugs.find_opt text by_slug with
           | Some index -> Declaration index
           | None -> Unresolved { dangling = Slug.is_valid text }))
     edges
@@ -538,45 +536,19 @@ let in_force ~approved declarations edges targets =
           predecessors.(target) <- source :: predecessors.(target)
       | _ -> ())
     edges targets;
-  (* Tarjan's algorithm: a declaration is on a cycle when its strongly
-     connected component holds another declaration too, or when it has an
-     edge to itself. *)
-  let on_cycle = Array.make count false in
-  let number = Array.make count (-1) in
-  let low = Array.make count 0 in
-  let stacked = Array.make count false in
-  let stack = ref [] in
-  let next = ref 0 in
-  let rec visit node =
-    number.(node) <- !next;
-    low.(node) <- !next;
-    incr next;
-    stack := node :: !stack;
-    stacked.(node) <- true;
-    List.iter
-      (fun successor ->
-        if number.(successor) < 0 then (
-          visit successor;
-          low.(node) <- min low.(node) low.(successor))
-        else if stacked.(successor) then
-          low.(node) <- min low.(node) number.(successor))
-      successors.(node);
-    if low.(node) = number.(node) then
-      let rec pop members =
-        match !stack with
-        | top :: rest ->
-            stack := rest;
-            stacked.(top) <- false;
-            if top = node then top :: members else pop (top :: members)
-        | [] -> members
-      in
-      match pop [] with
-      | [ single ] -> on_cycle.(single) <- List.mem single successors.(single)
-      | members -> List.iter (fun member -> on_cycle.(member) <- true) members
+  (* A declaration is on a cycle when it reaches itself along the
+     edges. *)
+  let on_cycle node =
+    let rec search seen = function
+      | [] -> false
+      | next :: rest ->
+          next = node
+          ||
+          if List.mem next seen then search seen rest
+          else search (next :: seen) (successors.(next) @ rest)
+    in
+    search [] successors.(node)
   in
-  for node = 0 to count - 1 do
-    if number.(node) < 0 then visit node
-  done;
   (* Off the cycles, the edges form no cycle, so the recursion ends. *)
   let memo = Array.make count None in
   let rec force node =
@@ -585,7 +557,7 @@ let in_force ~approved declarations edges targets =
     | None ->
         let value =
           Option.is_none declarations.(node).status
-          && (on_cycle.(node)
+          && (on_cycle node
              || List.for_all
                   (fun source -> not (approved source && force source))
                   predecessors.(node))
@@ -597,28 +569,16 @@ let in_force ~approved declarations edges targets =
 
 (* {1 Records} *)
 
-(* A record and the key that orders it. *)
-type key =
-  | Located of { kind : string; path : string; line : int; col : int }
-  | Unlocated
-
-type fact = { key : key; id : string; record : Jsonl.record }
-
-let compare_facts a b =
-  match (a.key, b.key) with
-  | Located x, Located y ->
-      compare
-        (x.kind, x.path, x.line, x.col, a.id)
-        (y.kind, y.path, y.line, y.col, b.id)
-  | Located _, Unlocated -> -1
-  | Unlocated, Located _ -> 1
-  | Unlocated, Unlocated -> String.compare a.id b.id
+(* A located record and its key of order: the kind, the path, the line,
+   the column, and the id. *)
+type fact = {
+  key : string * string * int * int * string;
+  record : Jsonl.record;
+}
 
 let located ~kind ~id ~path ~(span : Markdown.span) fields =
   {
-    key =
-      Located { kind; path; line = span.start.line; col = span.start.column };
-    id;
+    key = (kind, path, span.start.line, span.start.column, id);
     record =
       [
         ("v", Jsonl.int 1);
@@ -642,7 +602,8 @@ let text_unless_empty name text =
 (* The canonical JSON text of an array of strings. *)
 let json_strings strings =
   let wrapped = Jsonl.to_string [ ("a", Jsonl.strings strings) ] in
-  (* [wrapped] is {"a":[...]}. *)
+  (* A record of the one key [a] is written as {"a": and the array and
+     the closing brace. *)
   String.sub wrapped 5 (String.length wrapped - 6)
 
 let canonical globs = List.sort_uniq String.compare globs
@@ -745,26 +706,24 @@ let edge_records facts ~inforce ~approved =
         else []))
     facts.edges facts.targets
 
+(* The records of the refs that the edges resolve to, sorted by id. *)
 let ref_records facts =
   List.map
-    (fun (ns, ref_id) ->
-      let id = "ref:" ^ ns ^ "/" ^ ref_id in
-      {
-        key = Unlocated;
-        id;
-        record =
-          [
-            ("v", Jsonl.int 1);
-            ("kind", Jsonl.string "ref");
-            ("id", Jsonl.string id);
-            ("pack", Jsonl.string "markdown");
-            ("ns", Jsonl.string ns);
-            ("ref", Jsonl.string ref_id);
-          ];
-      })
-    (List.sort_uniq compare
+    (fun (id, (ns, ref_id)) ->
+      [
+        ("v", Jsonl.int 1);
+        ("kind", Jsonl.string "ref");
+        ("id", Jsonl.string id);
+        ("pack", Jsonl.string "markdown");
+        ("ns", Jsonl.string ns);
+        ("ref", Jsonl.string ref_id);
+      ])
+    (List.sort_uniq
+       (fun (a, _) (b, _) -> String.compare a b)
        (List.filter_map
-          (function Ref { ns; id } -> Some (ns, id) | _ -> None)
+          (function
+            | Ref { ns; id } -> Some ("ref:" ^ ns ^ "/" ^ id, (ns, id))
+            | _ -> None)
           facts.targets))
 
 let site_records facts =
@@ -936,16 +895,17 @@ let records facts ~changed =
   in
   List.map
     (fun fact -> fact.record)
-    (List.stable_sort compare_facts
+    (List.stable_sort
+       (fun a b -> compare a.key b.key)
        (List.concat
           [
             declaration_records facts ~inforce ~approved;
             edge_records facts ~inforce ~approved;
-            ref_records facts;
             site_records facts;
             ack_records facts;
             List.concat_map (plan_records facts ~changed) facts.plans;
           ]))
+  @ ref_records facts
 
 let index ~tree ~base ~target_branch ~manifest ~tool =
   [

@@ -293,6 +293,21 @@ let a_ref_of_a_declared_namespace_resolves () =
        (fun index _ -> index >= 4)
        (List.map Jsonl.to_string records))
 
+let a_resolved_ref_is_not_dangling () =
+  check_field
+    (records [ ("a.md", "# A\n\n@cites gh/12\n") ])
+    "cites:site:a.md#a->gh/12" "dangling" (bool false)
+
+let refs_come_in_the_order_of_their_ids () =
+  Alcotest.(check (list string))
+    "the ids of the refs, in byte order"
+    [ "ref:a-b/1"; "ref:a/1"; "ref:gh/2" ]
+    (List.filter
+       (fun id -> String.starts_with ~prefix:"ref:" id)
+       (ids
+          (records ~extra:"refs.a = \"[0-9]\"\nrefs.a-b = \"[0-9]\"\n"
+             [ ("a.md", "# A\n\n@cites gh/2\n@cites a/1\n@cites a-b/1\n") ])))
+
 let a_ref_that_does_not_resolve_gives_no_record () =
   let records = records [ ("a.md", "# A\n\n@cites jira/12\n@cites gh/0x\n") ] in
   check_field records "cites:site:a.md#a->jira/12" "dst" None;
@@ -374,6 +389,25 @@ let a_retired_source_retires_nothing () =
   check_field records "supersedes:decision:b->a" "live" (bool false);
   check_field records "decision:a" "inforce" (bool true)
 
+let declarations_of_two_files_keep_their_own_numbers () =
+  let records =
+    records
+      [
+        ("a.md", "# A\n\n@decision x\n@deprecated\n");
+        ("b.md", "# B\n\n@decision y\n@supersedes z v1\n\n# Z\n\n@decision z\n");
+      ]
+  in
+  check_field records "supersedes:decision:y->z" "live" (bool true);
+  check_field records "decision:z" "inforce" (bool false)
+
+let a_rule_that_supersedes_retires_its_target () =
+  check_field
+    (records
+       [
+         ("a.md", "# R\n\n@rule r v1\n@supersedes d v1\n\n# D\n\n@decision d\n");
+       ])
+    "decision:d" "inforce" (bool false)
+
 let every_member_of_a_supersedes_cycle_is_in_force () =
   let records =
     records
@@ -423,6 +457,17 @@ let an_ack_names_the_fact_of_its_block () =
      cache-ttl\",\"v\":1}"
     (Jsonl.to_string (find "ack:req:a:disendorsed  cache-ttl" records));
   check_field records "ack:site:a.md#b:stale" "block" (str "site:a.md#b")
+
+let the_hash_of_an_ack_follows_its_last_blank () =
+  let records =
+    records
+      [
+        ( "a.md",
+          "# A\n\n@req a\n@ack x y\tH1 \t\n\n# B\n\n@req b\n@ack p\tq R2\n" );
+      ]
+  in
+  check_field records "ack:req:a:x y" "hash" (str "H1");
+  check_field records "ack:req:b:p\tq" "hash" (str "R2")
 
 let an_ack_with_no_fact_or_no_hash_gives_no_record () =
   Alcotest.(check (list string))
@@ -575,6 +620,27 @@ let a_step_with_no_promise_is_done_when_the_diff_changes_its_scope () =
     (records [ (".plans/p.md", refactor) ])
     "step:p/clean" "refactor" (bool true)
 
+let a_ref_meets_a_promised_citation () =
+  check_field
+    (records
+       [
+         ( ".plans/p.md",
+           "# P\n\n@plan p\n@scope docs/**\n\n## C\n\n@cites gh/7\n" );
+         ("docs/a.md", "# A\n\n@cites gh/7\n");
+       ])
+    "promise:step:p/c:cites:gh/7" "by"
+    (str "cites:site:docs/a.md#a->gh/7")
+
+let only_a_verifies_edge_in_the_scope_keeps_a_step_from_done () =
+  check_field
+    (records ~changed:[ "lib/y.ml" ]
+       [
+         (".plans/p.md", refactor);
+         ("lib/a.md", "# A\n\n@cites x v1\n");
+         ("doc/a.md", "# A\n\n@verifies x v1\n");
+       ])
+    "step:p/clean" "done" (bool true)
+
 let a_verifies_edge_in_the_scope_keeps_a_step_from_done () =
   check_field
     (records ~changed:[ "lib/y.ml" ]
@@ -640,7 +706,8 @@ let a_glob_with_a_bang_narrows_the_scope_of_a_step () =
     records
       [
         ( ".plans/p.md",
-          "# P\n\n@plan p\n\n## S\n\n@scope src/**, !src/gen/, [x\n@req r\n" );
+          "# P\n\n@plan p\n\n## S\n\n@scope src/**, !src/gen/, [x, !\n@req r\n"
+        );
         (path, "# R\n\n@req r\n");
       ]
   in
@@ -858,6 +925,9 @@ let tests =
     case "a malformed target is not dangling" a_malformed_target_is_not_dangling;
     case "a ref of a declared namespace resolves"
       a_ref_of_a_declared_namespace_resolves;
+    case "a resolved ref is not dangling" a_resolved_ref_is_not_dangling;
+    case "refs come in the order of their ids"
+      refs_come_in_the_order_of_their_ids;
     case "a ref that does not resolve gives no record"
       a_ref_that_does_not_resolve_gives_no_record;
     case "a pin to another revision is suspect"
@@ -871,11 +941,17 @@ let tests =
     case "a source that is not approved retires nothing"
       a_source_that_is_not_approved_retires_nothing;
     case "a retired source retires nothing" a_retired_source_retires_nothing;
+    case "declarations of two files keep their own numbers"
+      declarations_of_two_files_keep_their_own_numbers;
+    case "a rule that supersedes retires its target"
+      a_rule_that_supersedes_retires_its_target;
     case "every member of a supersedes cycle is in force"
       every_member_of_a_supersedes_cycle_is_in_force;
     case "a supersedes edge from a site is not live"
       a_supersedes_edge_from_a_site_is_not_live;
     case "an ack names the fact of its block" an_ack_names_the_fact_of_its_block;
+    case "the hash of an ack follows its last blank"
+      the_hash_of_an_ack_follows_its_last_blank;
     case "an ack with no fact or no hash gives no record"
       an_ack_with_no_fact_or_no_hash_gives_no_record;
     case "a plan file gives its plan, steps, and promises"
@@ -895,6 +971,9 @@ let tests =
       a_verifies_promise_is_never_met_in_markdown;
     case "a step with no promise is done when the diff changes its scope"
       a_step_with_no_promise_is_done_when_the_diff_changes_its_scope;
+    case "a ref meets a promised citation" a_ref_meets_a_promised_citation;
+    case "only a verifies edge in the scope keeps a step from done"
+      only_a_verifies_edge_in_the_scope_keeps_a_step_from_done;
     case "a verifies edge in the scope keeps a step from done"
       a_verifies_edge_in_the_scope_keeps_a_step_from_done;
     case "only a step with no promise needs the changes"
