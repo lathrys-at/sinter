@@ -142,15 +142,24 @@ let parts_rebuild_the_rest =
                 rest
               && not (String.equal (Tag_line.without_revision rest) rest)))
 
+(* Between the target and the description, only the revision token and
+   the blanks before it go. *)
 let without_revision_keeps_the_target_and_the_description =
   property ~name:"without_revision leaves the target and the description"
     ~print:String.escaped rest (fun rest ->
       let parts = Tag_line.parts rest in
       let changed = Tag_line.without_revision rest in
-      let again = Tag_line.parts changed in
-      again.target = parts.target
-      && again.revision = None
-      && (parts.revision = None || again.description = parts.description))
+      match (parts.target, parts.revision) with
+      | _, None -> String.equal changed rest
+      | None, Some _ -> false
+      | Some target, Some _ ->
+          let length =
+            String.length changed - String.length parts.description
+          in
+          length >= 0
+          && String.ends_with ~suffix:parts.description changed
+          && String.ends_with ~suffix:target (String.sub changed 0 length)
+          && String.length changed < String.length rest)
 
 let tests =
   [
