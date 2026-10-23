@@ -683,9 +683,9 @@ let acked facts documents (edge : Facts.edge) =
     (Facts.acks facts)
 
 let historical manifest (finding : Finding.t) =
-  match finding.place with
-  | Some { path; _ } -> Manifest.is_historical manifest path
-  | None -> false
+  List.exists
+    (fun (place : Finding.place) -> Manifest.is_historical manifest place.path)
+    (Option.to_list finding.place)
 
 let tree manifest documents ~not_text =
   let facts = Facts.make manifest documents in

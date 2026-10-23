@@ -128,12 +128,12 @@ let bad_target_names_why_the_target_fails () =
          @satisfies b_ v1\n\
          @ack disendorsed x 1234abcd\n\
          @deprecated now\n" );
-      (".plans/p.md", "# P\n\n@plan p/q\n\n## S\n\n@req Q!\n");
+      (".plans/p.md", "# P\n\n@plan p/q\n\n## S\n\n@scope lib/**\n@req Q!\n");
     ]
     [
       ".plans/p.md:3:1-3:10 | finding:bad-target:tag:.plans/p.md@L3C1 | p/q is \
        not a valid slug";
-      ".plans/p.md:7:1-7:8 | finding:bad-target:tag:.plans/p.md@L7C1 | Q! is \
+      ".plans/p.md:8:1-8:8 | finding:bad-target:tag:.plans/p.md@L8C1 | Q! is \
        not a valid slug";
       "docs/a.md:3:1-3:11 | finding:bad-target:tag:docs/a.md@L3C1 | a! is not \
        a valid slug";

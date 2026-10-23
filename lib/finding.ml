@@ -54,17 +54,13 @@ let ackable finding =
   | Finding_class.Disendorsed | Finding_class.Disconnected -> true
   | _ -> false
 
+(* The key of order of a finding: [false] before [true] puts a finding
+   with a place first. Stdlib.compare orders strings in byte order. *)
 let key finding =
-  match finding.place with
-  | Some { path; span } -> Some (path, span.start.line, span.start.column)
-  | None -> None
+  ( Option.is_none finding.place,
+    Option.map
+      (fun { path; span } -> (path, span.start.line, span.start.column))
+      finding.place,
+    id finding )
 
-let compare a b =
-  match (key a, key b) with
-  | Some _, None -> -1
-  | None, Some _ -> 1
-  | None, None -> String.compare (id a) (id b)
-  | Some ka, Some kb -> (
-      match Stdlib.compare ka kb with
-      | 0 -> String.compare (id a) (id b)
-      | order -> order)
+let compare a b = Stdlib.compare (key a) (key b)
