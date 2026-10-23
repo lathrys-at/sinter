@@ -1,0 +1,4 @@
+target = "trunk"
+
+[scan]
+packs.markdown.files = ["**/*.md"]

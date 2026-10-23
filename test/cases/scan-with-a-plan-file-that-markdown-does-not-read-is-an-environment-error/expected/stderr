@@ -1,0 +1,1 @@
+sinter: .plans/p.md is under .plans/, and the pack markdown does not read it; add ".plans/" to its files

@@ -1,0 +1,1 @@
+sinter: sinter.toml names no pack; add a line such as packs.markdown.files = ["**/*.md"] under [scan]
