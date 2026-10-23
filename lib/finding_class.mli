@@ -36,6 +36,7 @@ val tier_of_name : string -> tier option
 type t =
   | Parse_error
   | Typo_tag
+  | Unread_tag
   | Bad_target
   | Duplicate
   | Bad_scope
@@ -59,6 +60,7 @@ type t =
   | Failed
   | Disconnected
   | Unattributed
+  | Ambiguous_result
   | Uncovered
   | Unmet
   | Promise_out_of_scope
