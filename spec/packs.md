@@ -575,13 +575,18 @@ that block is a list, a code block, an HTML block, a table, a block
 quote, or a thematic break, the section or the list item has no first
 paragraph.
 
+Nothing inside a block quote is tag-bearing
+([vocabulary.md](vocabulary.md) section 2). A list item inside a block
+quote has no tag-bearing paragraph.
+
 Sinter reads tags in no other paragraph. A section or a list item
 holds a paragraph **directly** when no list item and no block quote
 inside it holds the paragraph. Take a paragraph that a section or a
 list item holds directly, and that is not its first paragraph. When
 the first line of that paragraph is a tag line, Sinter reports one
 finding of the class `unread-tag` at that line
-([algebra.md](algebra.md) section 9).
+([algebra.md](algebra.md) section 9). Sinter reports no `unread-tag`
+inside a block quote.
 
 ### 7.3 Tag lines
 
@@ -594,10 +599,16 @@ Sinter does not parse the inline content of a paragraph.
 ### 7.4 Front matter
 
 A file can start with **front matter**: a first line that holds only
-`+++`, then lines of text, then a line that holds only `+++`
-([manifest.md](manifest.md) section 15). The front matter is one node.
-It holds no tag line, and it is not a block for the rules of section
-7.2.
+`+++` or only `---`, then lines of text, then the next line that holds
+only the same three characters. Spaces and tabs can follow the three
+characters on the first and on the last line of the front matter.
+
+Only front matter that starts with `+++` holds TOML. A rule file starts
+with front matter of this form ([manifest.md](manifest.md) section
+15). Front matter that starts with `---` has no meaning for Sinter.
+
+The front matter is one node. It holds no tag line, and it is not a
+block for the rules of section 7.2.
 
 ## 8. Tests
 

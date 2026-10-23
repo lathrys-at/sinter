@@ -86,10 +86,14 @@ the start of a file is part of no line, and it counts in no column. A
 span ends at its last character that is not part of a line ending
 ([packs.md](packs.md) section 5.3).
 
+The span of a tag line starts at its `@`. On the first line of a list
+item, the list marker and the task marker are no part of the span.
+
 For a declaration in markdown, this span is the tag line only. The
 record carries the extent separately, in `xline` and `xeline`: the
-whole section, or the whole list item with its sub-items. A tool can
-therefore highlight the tag without highlighting the whole extent.
+first and the last line of the extent ([vocabulary.md](vocabulary.md)
+section 6). The last line of an extent is never a blank line. A tool
+can therefore highlight the tag without highlighting the whole extent.
 
 Sinter computes the fields marked *derived* below from the ledger, the
 evidence, the session, or the base — not from the file. Sinter emits
@@ -107,7 +111,7 @@ conformance fixtures ship their own ledger and evidence.
 | `rev` | int | `N` from `vN` |
 | `xh` | string | extent hash ([vocabulary.md](vocabulary.md) section 6.1) |
 | `xline` `xeline` | int | extent span |
-| `title` | string | a declaration in a markdown section: the heading text; otherwise omitted |
+| `title` | string | a declaration in a markdown section: the heading text of the section ([vocabulary.md](vocabulary.md) section 10.3); otherwise omitted |
 | `desc` | string | the description; omitted when empty |
 | `status` | string | `deprecated`, `rejected`, or `deferred`; omitted when none |
 | `inforce` | bool | *derived* |
@@ -126,7 +130,8 @@ Example:
 
 | field | type | meaning |
 |---|---|---|
-| `slug` `title` | string | |
+| `slug` | string | |
+| `title` | string | the heading text of the section that holds the `@plan` tag ([vocabulary.md](vocabulary.md) section 10.3); omitted for the section of level 0 |
 | `scope` | array of string | plan-level globs |
 | `approved` | bool | *derived*: the plan is approved ([algebra.md](algebra.md) section 6.5) |
 | `stamp` | string | *derived* |
@@ -140,7 +145,7 @@ Example:
 | field | type | meaning |
 |---|---|---|
 | `plan` | string | plan slug |
-| `slug` `title` | string | slug derived per [vocabulary.md](vocabulary.md) section 10.3 |
+| `slug` `title` | string | the slug and the heading text of the step's heading, per [vocabulary.md](vocabulary.md) section 10.3 |
 | `scope` | array of string | the *effective* scope |
 | `own_scope` | bool | whether the step declared its own `@scope` |
 | `refactor` | bool | the step has no promises |
@@ -170,7 +175,7 @@ the span of the record is the first paragraph of the section.
 | `node` | string | code only: the tree-sitter node type of the attachment target, for example `function_item`; omitted when the block attaches to nothing |
 | `dline` `deline` | int | code only: the span of the body of the attachment target. Coverage for this site is measured over this span. Omitted when the block attaches to nothing |
 | `ch` | string | code only: code hash ([vocabulary.md](vocabulary.md) section 6.2); omitted when the block attaches to nothing |
-| `xline` `xeline` | int | markdown only: the span of the extent, the whole section |
+| `xline` `xeline` | int | markdown only: the first and the last line of the extent of the section ([vocabulary.md](vocabulary.md) section 6) |
 
 ## 5. Edge, ref, and promise records
 

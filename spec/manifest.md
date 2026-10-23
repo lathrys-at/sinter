@@ -972,10 +972,11 @@ the manifest: a rule, or a finding class that the repository defines.
 These parts of a rule file are fixed:
 
 1. A rule file is a markdown file that starts with **front matter**: a
-   first line that holds only `+++`, then TOML text, then a line that
-   holds only `+++`. The markdown after the front matter follows the
-   rules of every markdown file ([vocabulary.md](vocabulary.md)
-   section 2).
+   first line that holds only `+++`, then TOML text, then the next
+   line that holds only `+++`. Spaces and tabs can follow `+++` on
+   these two lines ([packs.md](packs.md) section 7.4). The markdown
+   after the front matter follows the rules of every markdown file
+   ([vocabulary.md](vocabulary.md) section 2).
 2. The front matter holds what Sinter evaluates. The markdown holds
    the reason, for people to read.
 3. A tag line `@rule <slug> vN` declares the rule.

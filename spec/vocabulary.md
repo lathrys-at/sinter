@@ -47,11 +47,15 @@ tags only inside these nodes:
 The **first paragraph** of a section is the block right after its
 heading, when that block is a paragraph. For the section of level 0,
 it is the first block of the file after its front matter
-([manifest.md](manifest.md) section 15), when that block is a
+([packs.md](packs.md) section 7.4), when that block is a
 paragraph. The first paragraph of a list item is the block right after
 its list marker, and after its task marker when it has one, when that
 block is a paragraph. Sinter reads tags in no other paragraph
 ([packs.md](packs.md) section 7.2).
+
+Nothing inside a block quote is tag-bearing. A heading inside a block
+quote opens no section, and the first paragraph of a list item inside
+a block quote is not a tag-bearing node.
 
 The scanner must not read tags inside string literals, code fences, or
 any other node. In Sinter, each language's tag-bearing nodes are
@@ -83,10 +87,10 @@ The scanner finds a **tag line** as follows. Take a line inside a
 tag-bearing node. In code, remove the indentation and the comment
 sigils, as [packs.md](packs.md) section 6.3 says. On the first line of
 a list item, remove the list marker, such as `-`, `*`, or `1.`, and
-the indentation before it, and then the task marker, `[ ]` or `[x]`,
-when the item has one. Then remove the spaces and tabs at the start of
-the line. The line is a tag line when the remaining text starts with
-`@`.
+the indentation before it, and then the task marker, `[ ]`, `[x]`, or
+`[X]`, when the item has one. Then remove the spaces and tabs at the
+start of the line. The line is a tag line when the remaining text
+starts with `@`.
 
 Every such line is a tag line, whether or not its word is in this
 vocabulary. Unknown words are not part of this vocabulary and have no
@@ -210,13 +214,18 @@ An item's **extent** is the text that its revision covers.
 - In a rule file, the extent of the `@rule` declaration is the whole
   file ([manifest.md](manifest.md) section 15).
 
-Two boundary rules apply in markdown:
+Three boundary rules apply in markdown:
 
 1. Two extents that touch never merge into one extent. An extent ends
    where the next declaration begins.
 2. A declaration in a nested section removes that section from the
    enclosing extent. A declaration in a list item removes that list
    item, with its sub-items, from the enclosing extent.
+3. After rules 1 and 2, an extent ends at its last line that is not
+   blank. A blank line holds only spaces and tabs. The blank lines at
+   the end of a section or a list item are no part of the extent, so
+   adding or removing them does not change the extent hash (section
+   6.1).
 
 A list item that declares nothing is plain text of the section or the
 list item that holds it. The scanner still reads the tags in its first
@@ -331,7 +340,7 @@ path of the file and the slug of the section's heading
 ([jsonl.md](jsonl.md) section 9). A list item is never an anonymous
 source. A code site and such a section are both **sites**.
 
-The slug of a heading comes from the heading's text by the three
+The slug of a heading comes from its heading text by the three
 changes of section 10.3. When two or more headings of one file give the
 same slug, the first heading keeps the slug. Each later heading adds
 `-1`, `-2`, and so on, in the order of the file, as GitHub numbers the
@@ -526,9 +535,23 @@ Every `##` heading that carries at least one plan tag — a `@scope` or a
 promise — is a **step**. A `##` section with no plan tags is prose, not
 a step.
 
-The scanner derives a step's slug from the step's heading text: the
-source text of the heading line, after the `#` characters and the
-spaces that follow them, and without any closing `#` characters. A
+The **heading text** of an ATX heading is the text of its line as the
+source writes it, with three parts removed:
+
+- the `#` characters that open the heading, and the indentation
+  before them;
+- the closing sequence, when the line has one: a sequence of `#`
+  characters after the opening `#` characters, at the end of the
+  line, with only spaces and tabs after it, and with a space or a tab
+  right before it;
+- the spaces and tabs at both ends of the text that remains.
+
+Inline markup stays as the source writes it. Example: the heading
+`## Scan **markdown** ##` has the heading text `Scan **markdown**`.
+The field `title` of a declaration, a plan, or a step in markdown is
+the heading text of its section ([jsonl.md](jsonl.md) section 4).
+
+The scanner derives a step's slug from the step's heading text. A
 letter or a digit here is an ASCII letter or digit; every other
 character counts as non-alphanumeric. The scanner makes these three
 changes in order:
