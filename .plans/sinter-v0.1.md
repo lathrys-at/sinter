@@ -98,6 +98,14 @@ Add `sinter check` for the finding classes that the facts of markdown,
 the manifest, and git give, in tree mode, with tiers, gates, and exit
 codes, as text and as JSON.
 
+## Measure and improve the performance of scan and check
+@scope lib/**, bin/**, bridge/**, test/**, docs/**
+Add a benchmark that measures the time and the peak memory of
+`sinter scan` and `sinter check` on Sinter itself and on generated
+trees of 1,000, 10,000, and 100,000 declarations. Profile them, fix the
+largest costs, and record a baseline and budgets that later steps
+keep.
+
 ## Check a diff
 @scope lib/**, bin/**, test/**
 Read the facts of the base from git, and add diff mode to
