@@ -75,9 +75,10 @@ type tree = private {
   documents : (string * Markdown.t) list;
       (** each file of the file set that the pack [markdown] reads and that is
           UTF-8 text, with its document, in the order of the paths *)
-  not_text : string list;
+  not_text : (string * int) list;
       (** each file of the file set that the pack [markdown] reads and that is
-          not UTF-8 text, in the order of the paths *)
+          not UTF-8 text, in the order of the paths, with the byte offset of its
+          first sequence that is not well-formed *)
   warnings : string list;
       (** one line for each file of the file set whose path is not UTF-8, in the
           order of the paths, and then one line that says that the ledger ref is

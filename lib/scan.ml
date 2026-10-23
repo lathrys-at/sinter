@@ -228,8 +228,8 @@ let documents ~root files =
                       match Markdown.read reader content with
                       | Ok document ->
                           Ok ((file, document) :: documents, not_text)
-                      | Error (Markdown.Not_utf_8 _) ->
-                          Ok (documents, file :: not_text)
+                      | Error (Markdown.Not_utf_8 offset) ->
+                          Ok (documents, (file, offset) :: not_text)
                       | Error (Markdown.No_tree error) ->
                           Error (Unparsed_file { file; error })))
                 (Ok ([], []))
@@ -254,7 +254,7 @@ type tree = {
   location : string;
   base : base;
   documents : (string * Markdown.t) list;
-  not_text : string list;
+  not_text : (string * int) list;
   warnings : string list;
 }
 

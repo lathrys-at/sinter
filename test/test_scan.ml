@@ -145,9 +145,9 @@ let head repo = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ])
 
 let a_tree_holds_the_files_that_are_not_utf_8_text_apart () =
   let _, (tree : Scan.tree) = Lazy.force shared_tree in
-  Alcotest.(check (pair (list string) (list string)))
+  Alcotest.(check (pair (list string) (list (pair string int))))
     "the documents and the files that are not text"
-    ([ ".plans/p.md"; "docs/a.md" ], [ "binary.md" ])
+    ([ ".plans/p.md"; "docs/a.md" ], [ ("binary.md", 10) ])
     (List.map fst tree.documents, tree.not_text)
 
 let a_tree_with_no_base_takes_the_merge_base_with_the_target () =
