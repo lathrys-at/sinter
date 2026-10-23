@@ -36,16 +36,14 @@ let exit_code ~strict entries =
   else Exit_code.clean
 
 let quoted text =
-  if String.exists (fun c -> c = ' ' || c = '\t') text then (
-    let buffer = Buffer.create (String.length text + 2) in
-    Buffer.add_char buffer '"';
-    String.iter
-      (fun c ->
-        if c = '"' || c = '\\' then Buffer.add_char buffer '\\';
-        Buffer.add_char buffer c)
-      text;
-    Buffer.add_char buffer '"';
-    Buffer.contents buffer)
+  if String.exists (fun c -> c = ' ' || c = '\t') text then
+    let escape = function
+      | ('"' | '\\') as c -> "\\" ^ String.make 1 c
+      | c -> String.make 1 c
+    in
+    "\""
+    ^ String.concat "" (List.map escape (List.of_seq (String.to_seq text)))
+    ^ "\""
   else text
 
 let text { finding; tier } =
