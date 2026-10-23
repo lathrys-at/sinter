@@ -301,7 +301,7 @@ type damage =
   | Wrong_count
   | Trailing_bytes
 
-let damaged (buffer, runs) ~kind ~count =
+let damaged ?bytes:(unchecked = []) (buffer, runs) ~kind ~count =
   let open Gen in
   let length = String.length buffer in
   let changed f =
@@ -334,12 +334,12 @@ let damaged (buffer, runs) ~kind ~count =
     (Trailing_bytes, buffer ^ extra)
   in
   let length_out_of_range =
-    match runs with
+    match runs @ unchecked with
     | [] -> None
-    | _ ->
+    | lengths ->
         Some
-          (let+ which = int_range 0 (List.length runs - 1) in
-           let at, _ = List.nth runs which in
+          (let+ which = int_range 0 (List.length lengths - 1) in
+           let at, _ = List.nth lengths which in
            ( Length_out_of_range,
              changed (fun bytes ->
                  Bytes.set_int32_le bytes at (Int32.of_int 0xFFFFFFF0)) ))

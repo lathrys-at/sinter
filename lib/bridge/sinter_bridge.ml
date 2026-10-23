@@ -172,6 +172,458 @@ let decode_digest buffer =
 
 let sha256 data = decode_digest (sha256_buffer data)
 
+(* [read_list buffer offset read] reads a count and then that many
+   elements with [read]. *)
+let read_list buffer offset read =
+  let count = read_int buffer offset in
+  let rec loop index offset acc =
+    if index = count then (List.rev acc, offset)
+    else
+      let element, offset = read buffer offset in
+      loop (index + 1) offset (element :: acc)
+  in
+  loop 0 (offset + 4) []
+
+let read_flag buffer offset ~what =
+  match read_int buffer offset with
+  | 0 -> false
+  | 1 -> true
+  | other -> malformed (Printf.sprintf "%s is %d, not 0 or 1" what other)
+
+(* Bytes that need not be UTF-8, after their length. *)
+let read_bytes buffer offset =
+  let length = read_int buffer offset in
+  check buffer (offset + 4) length;
+  (String.sub buffer (offset + 4) length, offset + 4 + length)
+
+(* An unsigned 64-bit integer. No size that the bridge writes comes
+   near max_int, the largest value that an int holds. *)
+let read_size buffer offset =
+  check buffer offset 8;
+  let value = String.get_int64_le buffer offset in
+  if
+    Int64.compare value 0L < 0 || Int64.compare value (Int64.of_int max_int) > 0
+  then malformed "a size does not fit an integer";
+  Int64.to_int value
+
+(* Read the one record of a buffer of [kind] with [read], and check
+   that the record ends the buffer. *)
+let read_one buffer ~kind ~what read =
+  let count = read_header buffer kind in
+  if count <> 1 then
+    malformed
+      (Printf.sprintf "%s buffer holds %d records, and 1 was expected" what
+         count);
+  let found, offset = read buffer header_length in
+  check_whole buffer offset;
+  found
+
+type range = {
+  start_byte : int;
+  end_byte : int;
+  start_row : int;
+  start_column : int;
+  end_row : int;
+  end_column : int;
+}
+
+let read_range buffer offset =
+  let field index = read_int buffer (offset + (4 * index)) in
+  ( {
+      start_byte = field 0;
+      end_byte = field 1;
+      start_row = field 2;
+      start_column = field 3;
+      end_row = field 4;
+      end_column = field 5;
+    },
+    offset + 24 )
+
+module Language = struct
+  type wasm_kind = Parse | Compile | Instantiate | Other
+
+  type error =
+    | Wasm of { kind : wasm_kind; message : string }
+    | Version of int
+    | Name_not_utf_8
+
+  let message = function
+    | Wasm { kind; message } ->
+        let what =
+          match kind with
+          | Parse -> "Failed to parse wasm"
+          | Compile -> "Failed to compile wasm"
+          | Instantiate -> "Failed to instantiate wasm module"
+          | Other -> "Unknown error"
+        in
+        what ^ ": " ^ message
+    | Version version ->
+        Printf.sprintf
+          "Incompatible language version %d. Expected minimum 13, maximum 15"
+          version
+    | Name_not_utf_8 -> "the grammar name is not valid UTF-8"
+end
+
+module Tree = struct
+  type error = Did_not_finish | Too_long
+  type node = { node_type : string; range : range }
+  type error_kind = Error_node | Missing_node
+
+  type report = {
+    has_error : bool;
+    errors : (error_kind * node) list;
+    lowest : node option;
+  }
+
+  let message = function
+    | Did_not_finish -> "the grammar produced no parse tree"
+    | Too_long ->
+        "the source text is 4 GiB or more, and the result buffer holds no \
+         offset that large"
+end
+
+module Query = struct
+  type kind =
+    | Syntax
+    | Node_type
+    | Field
+    | Capture
+    | Predicate
+    | Structure
+    | Language
+
+  type error =
+    | Invalid of {
+        kind : kind;
+        row : int;
+        column : int;
+        offset : int;
+        message : string;
+      }
+    | Not_allowed of {
+        operator : string;
+        pattern : int;
+        offset : int;
+        row : int;
+        column : int;
+      }
+    | Not_utf_8 of int
+
+  type run_error = Language_mismatch
+
+  type capture = {
+    match_number : int;
+    pattern : int;
+    name : string;
+    node_type : string;
+    range : range;
+    text : string;
+  }
+
+  let message = function
+    | Invalid { kind; row; column; offset = _; message } -> (
+        let what =
+          match kind with
+          | Field -> "Invalid field name "
+          | Node_type -> "Invalid node type "
+          | Capture -> "Invalid capture name "
+          | Predicate -> "Invalid predicate: "
+          | Structure -> "Impossible pattern:\n"
+          | Syntax -> "Invalid syntax:\n"
+          | Language -> ""
+        in
+        match kind with
+        | Language -> message
+        | _ ->
+            Printf.sprintf "Query error at %d:%d. %s%s" (row + 1) (column + 1)
+              what message)
+    | Not_allowed { operator; row; column; _ } ->
+        Printf.sprintf
+          "Query error at %d:%d. The pattern uses #%s, which is not one of the \
+           predicates that a query can use"
+          (row + 1) (column + 1) operator
+    | Not_utf_8 offset ->
+        Printf.sprintf "the query is not UTF-8 text, at byte %d" offset
+
+  let run_message Language_mismatch =
+    "the query and the parse tree come from different grammars"
+end
+
+module Adapter = struct
+  type invalid =
+    | Not_a_module of string
+    | Imports of string list
+    | Missing_export of string
+    | Wrong_export_type of string
+
+  type input = Request | Report
+
+  type error =
+    | Invalid of invalid
+    | Out_of_fuel
+    | Trap of string
+    | Memory_limit of int
+    | Alloc of { input : input; address : int; length : int; memory_size : int }
+    | Response_outside_memory of {
+        address : int;
+        length : int;
+        memory_size : int;
+      }
+
+  type call = Recognise | Bind
+
+  let message = function
+    | Invalid (Not_a_module message) ->
+        "the adapter is not a WebAssembly module: " ^ message
+    | Invalid (Imports names) ->
+        "the adapter imports " ^ String.concat ", " names
+        ^ ", and an adapter imports nothing"
+    | Invalid (Missing_export name) ->
+        Printf.sprintf "the adapter does not export %s" name
+    | Invalid (Wrong_export_type name) ->
+        Printf.sprintf "the export %s of the adapter has the wrong type" name
+    | Out_of_fuel -> "the adapter ran past its limit of fuel"
+    | Trap message -> "the adapter stopped: " ^ message
+    | Memory_limit size ->
+        Printf.sprintf
+          "the adapter asked for %d bytes of memory, which is past its limit"
+          size
+    | Alloc { input; address; length; memory_size } ->
+        let what =
+          match input with Request -> "request" | Report -> "report"
+        in
+        if address = 0 then
+          Printf.sprintf "sinter_alloc gave 0 for the %d bytes of the %s" length
+            what
+        else
+          Printf.sprintf
+            "sinter_alloc gave the address %d for the %d bytes of the %s, and \
+             the memory holds %d bytes"
+            address length what memory_size
+    | Response_outside_memory { address; length; memory_size } ->
+        Printf.sprintf
+          "the response at the address %d holds %d bytes, and the memory holds \
+           %d bytes"
+          address length memory_size
+end
+
+(* The typed error of a failed call, as a buffer of kind 5 holds it. *)
+type failure =
+  | Language_failure of Language.error
+  | Tree_failure of Tree.error
+  | Query_failure of Query.error
+  | Run_failure of Query.run_error
+  | Adapter_failure of Adapter.error
+
+let kind_captures_v2 = 6
+let kind_report = 7
+let kind_response = 8
+let kind_failure = 5
+
+let read_node buffer offset =
+  let range, offset = read_range buffer offset in
+  let node_type, offset =
+    read_string buffer offset ~what:"the type of a node"
+  in
+  ({ Tree.node_type; range }, offset)
+
+let read_query_capture buffer offset =
+  let match_number = read_int buffer offset in
+  let pattern = read_int buffer (offset + 4) in
+  let range, offset = read_range buffer (offset + 8) in
+  let name, offset = read_string buffer offset ~what:"the name of a capture" in
+  let node_type, offset =
+    read_string buffer offset ~what:"the type of a node"
+  in
+  let text, offset = read_bytes buffer offset in
+  ({ Query.match_number; pattern; name; node_type; range; text }, offset)
+
+let read_report buffer offset =
+  let has_error = read_flag buffer offset ~what:"the error flag of the root" in
+  let errors, offset =
+    read_list buffer (offset + 4) (fun buffer offset ->
+        let kind =
+          match read_int buffer offset with
+          | 0 -> Tree.Error_node
+          | 1 -> Tree.Missing_node
+          | other ->
+              malformed (Printf.sprintf "an error node has the form %d" other)
+        in
+        let node, offset = read_node buffer (offset + 4) in
+        ((kind, node), offset))
+  in
+  let present = read_flag buffer offset ~what:"the flag of the lowest node" in
+  if present <> has_error then
+    malformed "the lowest error node and the error flag of the root disagree";
+  if present then
+    let node, offset = read_node buffer (offset + 4) in
+    ({ Tree.has_error; errors; lowest = Some node }, offset)
+  else ({ Tree.has_error; errors; lowest = None }, offset + 4)
+
+let read_message buffer offset =
+  read_string buffer offset ~what:"the message of a failure"
+
+let wasm_kind = function
+  | 0 -> Language.Parse
+  | 1 -> Language.Compile
+  | 2 -> Language.Instantiate
+  | 3 -> Language.Other
+  | other -> malformed (Printf.sprintf "a grammar error has the kind %d" other)
+
+let query_kind = function
+  | 0 -> Query.Syntax
+  | 1 -> Query.Node_type
+  | 2 -> Query.Field
+  | 3 -> Query.Capture
+  | 4 -> Query.Predicate
+  | 5 -> Query.Structure
+  | 6 -> Query.Language
+  | other -> malformed (Printf.sprintf "a query error has the kind %d" other)
+
+let read_invalid buffer offset =
+  let cause = read_int buffer offset in
+  let names, offset =
+    read_list buffer (offset + 4) (fun buffer offset ->
+        read_string buffer offset ~what:"a name in an adapter error")
+  in
+  let one () =
+    match names with
+    | [ name ] -> name
+    | _ ->
+        malformed
+          (Printf.sprintf "an adapter error of cause %d holds %d names" cause
+             (List.length names))
+  in
+  let invalid =
+    match cause with
+    | 0 -> Adapter.Not_a_module (one ())
+    | 1 ->
+        if names = [] then malformed "an adapter error names no import";
+        Adapter.Imports names
+    | 2 -> Adapter.Missing_export (one ())
+    | 3 -> Adapter.Wrong_export_type (one ())
+    | other ->
+        malformed (Printf.sprintf "an adapter error has the cause %d" other)
+  in
+  (invalid, offset)
+
+let read_failure buffer offset =
+  let code = read_int buffer offset in
+  let offset = offset + 4 in
+  match code with
+  | 0 ->
+      let message, _ = read_message buffer offset in
+      raise (Error message)
+  | 1 ->
+      let kind = wasm_kind (read_int buffer offset) in
+      let message, offset = read_message buffer (offset + 4) in
+      (Language_failure (Language.Wasm { kind; message }), offset)
+  | 2 ->
+      (Language_failure (Language.Version (read_int buffer offset)), offset + 4)
+  | 3 -> (Tree_failure Tree.Did_not_finish, offset)
+  | 4 -> (Tree_failure Tree.Too_long, offset)
+  | 5 ->
+      let kind = query_kind (read_int buffer offset) in
+      let row = read_int buffer (offset + 4) in
+      let column = read_int buffer (offset + 8) in
+      let error_offset = read_int buffer (offset + 12) in
+      let message, offset = read_message buffer (offset + 16) in
+      ( Query_failure
+          (Query.Invalid { kind; row; column; offset = error_offset; message }),
+        offset )
+  | 6 ->
+      let operator, offset =
+        read_string buffer offset ~what:"the operator of a predicate"
+      in
+      let pattern = read_int buffer offset in
+      let pattern_offset = read_int buffer (offset + 4) in
+      let row = read_int buffer (offset + 8) in
+      let column = read_int buffer (offset + 12) in
+      ( Query_failure
+          (Query.Not_allowed
+             { operator; pattern; offset = pattern_offset; row; column }),
+        offset + 16 )
+  | 7 -> (Run_failure Query.Language_mismatch, offset)
+  | 8 ->
+      let invalid, offset = read_invalid buffer offset in
+      (Adapter_failure (Adapter.Invalid invalid), offset)
+  | 9 -> (Adapter_failure Adapter.Out_of_fuel, offset)
+  | 10 ->
+      let message, offset = read_message buffer offset in
+      (Adapter_failure (Adapter.Trap message), offset)
+  | 11 ->
+      ( Adapter_failure (Adapter.Memory_limit (read_size buffer offset)),
+        offset + 8 )
+  | 12 ->
+      let input =
+        match read_int buffer offset with
+        | 0 -> Adapter.Request
+        | 1 -> Adapter.Report
+        | other ->
+            malformed (Printf.sprintf "an allocation names the input %d" other)
+      in
+      let address = read_int buffer (offset + 4) in
+      let length = read_int buffer (offset + 8) in
+      let memory_size = read_size buffer (offset + 12) in
+      ( Adapter_failure (Adapter.Alloc { input; address; length; memory_size }),
+        offset + 20 )
+  | 13 ->
+      let address = read_int buffer offset in
+      let length = read_int buffer (offset + 4) in
+      let memory_size = read_size buffer (offset + 8) in
+      ( Adapter_failure
+          (Adapter.Response_outside_memory { address; length; memory_size }),
+        offset + 16 )
+  | other -> malformed (Printf.sprintf "a failure has the code %d" other)
+
+(* The failure that [buffer] holds, when [select] takes it. A failure
+   of another family is a fault of the bridge. *)
+let decode_failure buffer select =
+  let failure =
+    read_one buffer ~kind:kind_failure ~what:"a failure" read_failure
+  in
+  match select failure with
+  | Some error -> error
+  | None -> malformed "the failure does not belong to the call"
+
+module Decode = struct
+  let captures buffer =
+    let count = read_header buffer kind_captures_v2 in
+    let rec read index offset acc =
+      if index = count then (List.rev acc, offset)
+      else
+        let capture, offset = read_query_capture buffer offset in
+        read (index + 1) offset (capture :: acc)
+    in
+    let found, offset = read 0 header_length [] in
+    check_whole buffer offset;
+    found
+
+  let tree = decode_tree
+  let digest = decode_digest
+
+  let report buffer =
+    read_one buffer ~kind:kind_report ~what:"an error report" read_report
+
+  let response buffer =
+    read_one buffer ~kind:kind_response ~what:"a response" read_bytes
+
+  let language_error buffer =
+    decode_failure buffer (function Language_failure e -> Some e | _ -> None)
+
+  let tree_error buffer =
+    decode_failure buffer (function Tree_failure e -> Some e | _ -> None)
+
+  let query_error buffer =
+    decode_failure buffer (function Query_failure e -> Some e | _ -> None)
+
+  let run_error buffer =
+    decode_failure buffer (function Run_failure e -> Some e | _ -> None)
+
+  let adapter_error buffer =
+    decode_failure buffer (function Adapter_failure e -> Some e | _ -> None)
+end
+
 (* @cites toml-reader *)
 module Toml_raw = struct
   type offset = Utc | Minutes of int
@@ -210,24 +662,6 @@ module Toml_raw = struct
 
   let kind_document = 3
   let kind_error = 4
-
-  (* [read_list buffer offset read] reads a count and then that many
-     elements with [read]. *)
-  let read_list buffer offset read =
-    let count = read_int buffer offset in
-    let rec loop index offset acc =
-      if index = count then (List.rev acc, offset)
-      else
-        let element, offset = read buffer offset in
-        loop (index + 1) offset (element :: acc)
-    in
-    loop 0 (offset + 4) []
-
-  let read_flag buffer offset ~what =
-    match read_int buffer offset with
-    | 0 -> false
-    | 1 -> true
-    | other -> malformed (Printf.sprintf "%s is %d, not 0 or 1" what other)
 
   (* A span of the text, which is [length] bytes long. *)
   let read_span buffer offset ~length =

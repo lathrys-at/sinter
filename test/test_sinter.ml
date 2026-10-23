@@ -37,6 +37,7 @@ let () =
       ("parse record", Test_parse_record.tests);
       ("spec examples", Test_spec_examples.tests);
       ("bridge decode", Test_bridge_decode.tests);
+      ("bridge decode v2", Test_bridge_decode_v2.tests);
       ("parse", Test_parse.tests);
       ("bridge", Test_bridge.tests);
       ("sha256", Test_sha256.tests);

@@ -101,14 +101,17 @@ type damage =
 (** How a buffer was damaged. *)
 
 val damaged :
+  ?bytes:(int * int) list ->
   string * (int * int) list ->
   kind:int ->
   count:int ->
   (damage * string) QCheck2.Gen.t
-(** [damaged (buffer, runs) ~kind ~count] is [buffer] damaged in one of the
-    seven ways, and the way it was damaged. [buffer] is a whole result buffer of
-    [kind] that holds [count] records. [runs] gives, for each string in
-    [buffer], the offset of its length field and the length it holds. A buffer
+(** [damaged ~bytes (buffer, runs) ~kind ~count] is [buffer] damaged in one of
+    the seven ways, and the way it was damaged. [buffer] is a whole result
+    buffer of [kind] that holds [count] records. [runs] gives, for each string
+    in [buffer] that must be UTF-8, the offset of its length field and the
+    length it holds. [bytes] gives the same for each string that need not be
+    UTF-8; such a string takes the damage [Length_out_of_range] only. A buffer
     with no string can be damaged in five ways only. *)
 
 val damaged_captures_buffer : (damage * string) QCheck2.Gen.t
