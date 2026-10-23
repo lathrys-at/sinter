@@ -146,6 +146,7 @@ let typescript_example =
 packs.markdown.files = ["**/*.md", "!test/fixtures/"]
 packs.typescript.files = ["**/*.ts", "!**/*.d.ts"]
 packs.typescript.version = "1.0"
+packs.typescript.runners = ["vitest"]
 refs.gh = "[1-9][0-9]*"
 refs.jira = "[A-Z]+-[1-9][0-9]*"
 
@@ -175,6 +176,12 @@ let the_example_of_a_typescript_project_reads () =
       "markdown **/*.md,!test/fixtures/ -"; "typescript **/*.ts,!**/*.d.ts 1.0";
     ]
     (List.map pack_summary (Manifest.packs manifest));
+  Alcotest.(check (list (list string)))
+    "runners" [ []; [ "vitest" ] ]
+    (List.map
+       (fun (pack : Manifest.pack) ->
+         List.map (fun (runner : Manifest.runner) -> runner.name) pack.runners)
+       (Manifest.packs manifest));
   Alcotest.(check (list string))
     "the namespaces, sorted" [ "gh"; "jira" ]
     (List.map fst (Manifest.ref_namespaces manifest));
@@ -837,6 +844,279 @@ let the_example_messages_of_the_specification () =
     "'.' is not in the id pattern language; put it in a class, for example [.]";
   check (markdown ^ "refs.gh = \"[0-9]*\"\n") "the pattern matches an empty id"
 
+(* Runners and runner settings. *)
+
+let rec value_text node =
+  match Toml.value node with
+  | Toml.String text -> Toml.basic_string text
+  | Toml.Boolean flag -> string_of_bool flag
+  | Toml.Integer number -> Int64.to_string number
+  | Toml.Array members ->
+      "[" ^ String.concat "," (List.map value_text members) ^ "]"
+  | Toml.Table table ->
+      "{"
+      ^ String.concat ","
+          (List.map
+             (fun ((key : Toml.key), node) -> key.name ^ "=" ^ value_text node)
+             table)
+      ^ "}"
+  | other -> Toml.Kind.name (Toml.Kind.of_value other)
+
+let place (position : Toml.position) =
+  Printf.sprintf "%d:%d" position.line position.column
+
+(* A runner as its name, the span of its member, and each setting with
+   the place of its key and its value. *)
+let runner_summary (runner : Manifest.runner) =
+  String.concat " "
+    (runner.name
+    :: (place runner.at.start ^ "-" ^ place runner.at.stop)
+    :: List.map
+         (fun ((key : Toml.key), node) ->
+           key.name ^ "@" ^ place key.at.start ^ "=" ^ value_text node)
+         runner.settings)
+
+let pack_runners manifest name =
+  match
+    List.find_opt
+      (fun (pack : Manifest.pack) -> pack.name = name)
+      (Manifest.packs manifest)
+  with
+  | Some pack -> pack.runners
+  | None -> Alcotest.failf "no pack %s" name
+
+let runners_of manifest name =
+  List.map runner_summary (pack_runners manifest name)
+
+let runners_keep_their_order_and_their_settings () =
+  let manifest =
+    read
+      (markdown
+     ^ "packs.ts.files = [\"**/*.ts\"]\n\
+        packs.ts.version = \"1.0\"\n\
+        packs.ts.runners = [\"vitest\", \"jest\"]\n\
+        packs.ts.vitest.config = \"vitest.config.ts\"\n\
+        packs.ts.vitest.coverage = true\n\
+        packs.ts.vitest.reporters = [\"junit\", 'json']\n\
+        packs.ts.vitest.retries = 2\n\
+        packs.ts.vitest.env.CI = \"1\"\n")
+  in
+  Alcotest.(check (list string))
+    "the runners of ts"
+    [
+      "vitest 5:21-5:29 config@6:17=\"vitest.config.ts\" coverage@7:17=true \
+       reporters@8:17=[\"junit\",\"json\"] retries@9:17=2 env@10:17={CI=\"1\"}";
+      "jest 5:31-5:37";
+    ]
+    (runners_of manifest "ts");
+  Alcotest.(check (list string))
+    "markdown has no runner" []
+    (runners_of manifest "markdown")
+
+let a_pack_with_no_runners_has_none () =
+  let manifest =
+    read
+      (markdown
+     ^ "packs.ts.files = [\"a\"]\n\
+        packs.ts.version = \"1.0\"\n\
+        packs.go.files = [\"b\"]\n\
+        packs.go.version = \"1.0\"\n\
+        packs.go.runners = []\n")
+  in
+  Alcotest.(check (list string)) "no runners key" [] (runners_of manifest "ts");
+  Alcotest.(check (list string)) "an empty array" [] (runners_of manifest "go")
+
+let the_runners_key_can_follow_the_runner_tables () =
+  let forms =
+    [
+      "[scan.packs.ts.vitest]\n\
+       mode = \"run\"\n\
+       [scan.packs.ts]\n\
+       files = [\"a\"]\n\
+       version = \"1.0\"\n\
+       runners = [\"vitest\"]\n";
+      "[scan]\n\
+       packs.ts.vitest = { mode = \"run\" }\n\
+       packs.ts.files = [\"a\"]\n\
+       packs.ts.version = \"1.0\"\n\
+       packs.ts.runners = [\"vitest\"]\n";
+      "scan.packs.ts = { vitest.mode = \"run\", files = [\"a\"], version = \
+       \"1.0\", runners = [\"vitest\"] }\n";
+    ]
+  in
+  List.iter
+    (fun text ->
+      Alcotest.(check (list (pair string (list string))))
+        text
+        [ ("vitest", [ "mode=\"run\"" ]) ]
+        (List.map
+           (fun (runner : Manifest.runner) ->
+             ( runner.name,
+               List.map
+                 (fun ((key : Toml.key), node) ->
+                   key.name ^ "=" ^ value_text node)
+                 runner.settings ))
+           (pack_runners (read text) "ts")))
+    forms
+
+let a_runner_can_take_the_name_of_another_place () =
+  let manifest =
+    read
+      (markdown
+     ^ "packs.ts.files = [\"a\"]\n\
+        packs.ts.version = \"1.0\"\n\
+        packs.ts.runners = [\"check\", \"target\", \"refs\"]\n\
+        packs.ts.check.mode = 1\n\
+        packs.ts.target = {}\n")
+  in
+  Alcotest.(check (list string))
+    "the runners"
+    [ "check 5:21-5:28 mode@6:16=1"; "target 5:30-5:38"; "refs 5:40-5:46" ]
+    (runners_of manifest "ts")
+
+let ts = "packs.ts.files = [\"a\"]\npacks.ts.version = \"1.0\"\n"
+
+let runner_errors () =
+  reports "bad runner names"
+    (markdown ^ ts
+   ^ "packs.ts.runners = [\"Vitest\", \"-a\", \"\", \"a_b\", \"files\", \
+      \"version\", \"runners\", \"x\\ny\"]\n")
+    [
+      "sinter.toml:5:21: 'Vitest' is not a runner name; a runner name is \
+       lower-case letters and digits, in words joined by '-', such as 'vitest' \
+       or 'cargo-nextest'";
+      "sinter.toml:5:31: '-a' is not a runner name; a runner name is \
+       lower-case letters and digits, in words joined by '-', such as 'vitest' \
+       or 'cargo-nextest'";
+      "sinter.toml:5:37: '' is not a runner name; a runner name is lower-case \
+       letters and digits, in words joined by '-', such as 'vitest' or \
+       'cargo-nextest'";
+      "sinter.toml:5:41: 'a_b' is not a runner name; a runner name is \
+       lower-case letters and digits, in words joined by '-', such as 'vitest' \
+       or 'cargo-nextest'";
+      "sinter.toml:5:48: 'files' cannot name a runner; 'files', 'version', and \
+       'runners' are keys of a pack";
+      "sinter.toml:5:57: 'version' cannot name a runner; 'files', 'version', \
+       and 'runners' are keys of a pack";
+      "sinter.toml:5:68: 'runners' cannot name a runner; 'files', 'version', \
+       and 'runners' are keys of a pack";
+      "sinter.toml:5:79: \"x\\ny\" is not a runner name; a runner name is \
+       lower-case letters and digits, in words joined by '-', such as 'vitest' \
+       or 'cargo-nextest'";
+    ];
+  reports "a runner twice"
+    (markdown ^ ts ^ "packs.ts.runners = [\"vitest\", \"jest\", \"vitest\"]\n")
+    [ "sinter.toml:5:39: \"vitest\" occurs twice in 'runners'" ];
+  reports "a runner in three packs, written out of byte order"
+    (markdown
+   ^ "packs.c.files = [\"c\"]\n\
+      packs.c.version = \"1.0\"\n\
+      packs.c.runners = [\"vitest\"]\n\
+      packs.a.files = [\"a\"]\n\
+      packs.a.version = \"1.0\"\n\
+      packs.a.runners = [\"jest\", \"vitest\"]\n\
+      packs.b.files = [\"b\"]\n\
+      packs.b.version = \"1.0\"\n\
+      packs.b.runners = [\"vitest\", \"vitest\", \"mocha\"]\n")
+    [
+      "sinter.toml:5:20: 'vitest' is in the runners of two packs, a and c; \
+       remove it from one of them";
+      "sinter.toml:11:20: 'vitest' is in the runners of two packs, a and b; \
+       remove it from one of them";
+      "sinter.toml:11:30: \"vitest\" occurs twice in 'runners'";
+    ];
+  reports "a bad name in two packs counts once"
+    (markdown ^ ts
+   ^ "packs.ts.runners = [\"X\"]\n\
+      packs.go.files = [\"b\"]\n\
+      packs.go.version = \"1.0\"\n\
+      packs.go.runners = [\"X\"]\n")
+    [
+      "sinter.toml:5:21: 'X' is not a runner name; a runner name is lower-case \
+       letters and digits, in words joined by '-', such as 'vitest' or \
+       'cargo-nextest'";
+      "sinter.toml:8:21: 'X' is not a runner name; a runner name is lower-case \
+       letters and digits, in words joined by '-', such as 'vitest' or \
+       'cargo-nextest'";
+    ];
+  reports "runners for markdown"
+    "[scan.packs.markdown]\n\
+     files = [\"**/*.md\"]\n\
+     runners = [\"x\"]\n\
+     x.mode = 1\n"
+    [
+      "sinter.toml:3:1: the pack markdown is built into sinter and has no \
+       runner";
+      "sinter.toml:4:1: unknown key 'x' in [scan.packs.markdown]";
+    ];
+  reports "a table that names no runner of the pack"
+    (markdown ^ ts
+   ^ "packs.ts.runners = [\"vitest\"]\n\
+      packs.ts.vitst.mode = 1\n\
+      packs.ts.jest.mode = 1\n\
+      packs.ts.runner = []\n")
+    [
+      "sinter.toml:6:10: unknown key 'vitst' in [scan.packs.ts]; did you mean \
+       'vitest'?";
+      "sinter.toml:7:10: unknown key 'jest' in [scan.packs.ts]";
+      "sinter.toml:8:10: unknown key 'runner' in [scan.packs.ts]; did you mean \
+       'runners'?";
+    ];
+  reports "a runner of another pack"
+    (markdown ^ ts
+   ^ "packs.go.files = [\"b\"]\n\
+      packs.go.version = \"1.0\"\n\
+      packs.go.runners = [\"gotest\"]\n\
+      packs.ts.gotest.mode = 1\n")
+    [ "sinter.toml:8:10: unknown key 'gotest' in [scan.packs.ts]" ];
+  reports "a runner that is not a table"
+    (markdown ^ ts
+   ^ "packs.ts.runners = [\"vitest\", \"jest\"]\n\
+      packs.ts.vitest = 1\n\
+      packs.ts.jest = [{ a = 1 }]\n")
+    [
+      "sinter.toml:6:19: 'vitest' takes a table, not an integer";
+      "sinter.toml:7:17: 'jest' takes a table, not an array";
+    ];
+  reports "runners that are not an array give no runner"
+    (markdown ^ ts ^ "packs.ts.runners = \"vitest\"\npacks.ts.vitest.mode = 1\n")
+    [
+      "sinter.toml:5:20: 'runners' takes an array of strings, not a string";
+      "sinter.toml:6:10: unknown key 'vitest' in [scan.packs.ts]";
+    ];
+  reports "a member that is not a string leaves the others"
+    (markdown ^ ts
+   ^ "packs.ts.runners = [\"vitest\", 17]\npacks.ts.vitest.mode = 1\n")
+    [
+      "sinter.toml:5:31: 'runners' takes an array of strings, and this member \
+       is an integer";
+    ];
+  reports "a bad name with its table"
+    (markdown ^ ts
+   ^ "packs.ts.runners = [\"Vitest\"]\npacks.ts.Vitest.mode = 1\n")
+    [
+      "sinter.toml:5:21: 'Vitest' is not a runner name; a runner name is \
+       lower-case letters and digits, in words joined by '-', such as 'vitest' \
+       or 'cargo-nextest'";
+    ];
+  reports "a runner key out of a pack" "runners = []\n[check]\nrunners = []\n"
+    [
+      "sinter.toml:1:1: 'runners' belongs in [scan.packs.<name>]";
+      "sinter.toml:3:1: 'runners' belongs in [scan.packs.<name>]";
+    ];
+  reports "the names come before the runner values"
+    "[scan.packs.markdown]\n\
+     files = [\"a\"]\n\
+     runners = []\n\
+     [scan.packs.ts]\n\
+     files = [\"a\"]\n\
+     version = \"1.0\"\n\
+     runners = [\"X\"]\n"
+    [
+      "sinter.toml:3:1: the pack markdown is built into sinter and has no \
+       runner";
+    ]
+
 (* Messages that the reader cannot give today, and the corners of the
    message function. *)
 let message problem =
@@ -954,7 +1234,7 @@ let rows () =
 
 let since_is_that_of_the_specification () =
   let rows = rows () in
-  Alcotest.(check int) "the number of keys" 14 (List.length rows);
+  Alcotest.(check int) "the number of keys" 16 (List.length rows);
   List.iter
     (fun (key, since) ->
       let path =
@@ -980,6 +1260,25 @@ let since_of_no_setting_is_none () =
       [ "foo" ];
       [ "spec"; "x" ];
       [ "check"; "tiers"; "a"; "b"; "c" ];
+      [ "scan"; "packs"; "ts"; "files"; "x" ];
+      [ "scan"; "packs"; "ts"; "version"; "x" ];
+      [ "scan"; "packs"; "ts"; "runners"; "x" ];
+      [ "scan"; "packs"; "ts"; "vitest" ];
+      [ "scan"; "packs"; "ts"; "vitest"; "a"; "b" ];
+    ]
+
+let a_name_that_varies_is_any_name_but_a_fixed_one () =
+  List.iter
+    (fun path ->
+      Alcotest.(check (option string))
+        (String.concat "." path) (Some "1.0")
+        (Option.map Major_minor.to_string (Manifest.since path)))
+    [
+      [ "scan"; "packs"; "files"; "files" ];
+      [ "scan"; "packs"; "runners"; "runners" ];
+      [ "scan"; "packs"; "ts"; "check"; "files" ];
+      [ "scan"; "packs"; "ts"; "files-2"; "x" ];
+      [ "check"; "tiers"; "rollout-cap"; "files" ];
     ]
 
 let the_implemented_version_is_1_0 () =
@@ -1332,6 +1631,14 @@ let tests =
       errors_come_in_the_order_of_their_places;
     case "the example messages of the specification"
       the_example_messages_of_the_specification;
+    case "runners keep their order and their settings"
+      runners_keep_their_order_and_their_settings;
+    case "a pack with no runners has none" a_pack_with_no_runners_has_none;
+    case "the runners key can follow the runner tables"
+      the_runners_key_can_follow_the_runner_tables;
+    case "a runner can take the name of another place"
+      a_runner_can_take_the_name_of_another_place;
+    case "runner errors" runner_errors;
     case "every problem has a message" every_problem_has_a_message;
     case "render names the path and the place"
       render_names_the_path_and_the_place;
@@ -1340,6 +1647,8 @@ let tests =
     case "a table with an empty name" a_table_with_an_empty_name;
     case "since is that of the specification" since_is_that_of_the_specification;
     case "since of no setting is none" since_of_no_setting_is_none;
+    case "a name that varies is any name but a fixed one"
+      a_name_that_varies_is_any_name_but_a_fixed_one;
     case "the implemented version is 1.0" the_implemented_version_is_1_0;
     case "load reads a file" load_reads_a_file;
     case "load gives the errors of the text" load_gives_the_errors_of_the_text;
