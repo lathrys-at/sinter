@@ -47,11 +47,15 @@ tags only inside these nodes:
 The **first paragraph** of a section is the block right after its
 heading, when that block is a paragraph. For the section of level 0,
 it is the first block of the file after its front matter
-([manifest.md](manifest.md) section 15), when that block is a
+([packs.md](packs.md) section 7.4), when that block is a
 paragraph. The first paragraph of a list item is the block right after
 its list marker, and after its task marker when it has one, when that
 block is a paragraph. Sinter reads tags in no other paragraph
 ([packs.md](packs.md) section 7.2).
+
+Nothing inside a block quote is tag-bearing. A heading inside a block
+quote opens no section, and the first paragraph of a list item inside
+a block quote is not a tag-bearing node.
 
 The scanner must not read tags inside string literals, code fences, or
 any other node. In Sinter, each language's tag-bearing nodes are
@@ -72,10 +76,10 @@ Every tag has one shape:
 @word target [vN]
 ```
 
-`@word` is the tag name. `target` is the **tag target**: it names the
-thing the tag declares or points at. `vN` is a revision (section 5). A
-description can follow on the same line and on later lines (section
-3.2).
+`@word` is the tag word (section 3.1). `target` is the **tag
+target**: it names the thing the tag declares or points at. `vN` is a
+revision (section 5). A description can follow on the same line and on
+later lines (section 3.2).
 
 ### 3.1 Tag lines and blocks
 
@@ -83,19 +87,25 @@ The scanner finds a **tag line** as follows. Take a line inside a
 tag-bearing node. In code, remove the indentation and the comment
 sigils, as [packs.md](packs.md) section 6.3 says. On the first line of
 a list item, remove the list marker, such as `-`, `*`, or `1.`, and
-the indentation before it, and then the task marker, `[ ]` or `[x]`,
-when the item has one. Then remove the spaces and tabs at the start of
-the line. The line is a tag line when the remaining text starts with
-`@`.
+the indentation before it, and then the task marker, `[ ]`, `[x]`, or
+`[X]`, when the item has one. Then remove the spaces and tabs at the
+start of the line. The line is a tag line when the remaining text
+starts with `@`.
 
-Every such line is a tag line, whether or not its word is in this
+The **tag word** of a tag line is its `@` and the longest run of ASCII
+letters, ASCII digits, and `-` right after the `@`. Example: in the
+tag line `@foo-bar: text`, the tag word is `@foo-bar`.
+
+Every such line is a tag line, whether or not its tag word is in this
 vocabulary. Unknown words are not part of this vocabulary and have no
 meaning here. Other toolchains own some tag words, for example
 `@param` and `@returns`. A language pack lists the tag words that
 other toolchains own. That list is the pack's **foreign vocabulary**.
 
 A **block** is a sequence of tag lines inside one tag-bearing node,
-plus the trailing prose that follows those tag lines (section 3.2).
+plus the trailing prose that follows those tag lines (section 3.2). A
+tag line right after a line that is not a tag line starts a new block.
+So one tag-bearing node can hold several blocks.
 
 ### 3.2 Descriptions
 
@@ -103,11 +113,11 @@ A tag's **inline description** is the rest of its own line, after the
 tag target and the revision.
 
 A block's **trailing prose** is the sequence of lines that follow the
-last tag line and that do not start with `@`. The sequence ends at a
-blank line or at the end of the tag-bearing node. Trailing prose
-belongs to the block's declaration when the block contains one. When
-the block contains no declaration, the trailing prose belongs to the
-block's first tag.
+last tag line of the block and that are not tag lines. The sequence
+ends at a blank line, at the next tag line, or at the end of the
+tag-bearing node. Trailing prose belongs to the block's declaration
+when the block contains one. When the block contains no declaration,
+the trailing prose belongs to the block's first tag.
 
 Descriptions are part of the extent (section 6). Tools use them when
 they compile human-facing documents. Descriptions have no other
@@ -210,13 +220,24 @@ An item's **extent** is the text that its revision covers.
 - In a rule file, the extent of the `@rule` declaration is the whole
   file ([manifest.md](manifest.md) section 15).
 
-Two boundary rules apply in markdown:
+Three boundary rules apply in markdown:
 
 1. Two extents that touch never merge into one extent. An extent ends
-   where the next declaration begins.
+   where the next declaration begins. When one tag-bearing node holds
+   two or more declarations, the extent of each declaration, except
+   the last, ends at the line before the tag line of the next
+   declaration. The extent of each later declaration starts at its own
+   tag line.
+   The extent of the last declaration runs to the end that it would
+   have alone.
 2. A declaration in a nested section removes that section from the
    enclosing extent. A declaration in a list item removes that list
    item, with its sub-items, from the enclosing extent.
+3. After rules 1 and 2, an extent ends at its last line that is not
+   blank. A blank line holds only spaces and tabs. The blank lines at
+   the end of a section or a list item are no part of the extent, so
+   adding or removing them does not change the extent hash (section
+   6.1).
 
 A list item that declares nothing is plain text of the section or the
 list item that holds it. The scanner still reads the tags in its first
@@ -235,7 +256,13 @@ text. To normalize, apply these steps in order:
 2. Remove trailing whitespace from every line.
 3. Use LF as the line ending.
 4. Drop every `@ack` line.
-5. On the declaration's own tag line, drop the text `@word slug vN`.
+5. Replace the declaration's own tag line with its inline description
+   (section 3.2), without the spaces and tabs at its start. This step
+   removes the tag word, the slug, the revision token when the line
+   has one, and the spaces and tabs before, between, and after them.
+   On the first line of a list item, it also removes the list marker
+   and the task marker. A tag line with no inline description becomes
+   an empty line, and the empty line stays.
 6. On every citation line, drop the `vN` token.
 7. End the text with one final LF.
 
@@ -251,10 +278,11 @@ hash:
 - a re-pin of a citation.
 
 A change of the indentation before the comment sigils, of trailing
-whitespace, or of the line endings also does not change the extent
-hash. Every other byte change changes the extent hash. For example,
-when the opening sigil of a block comment moves onto a line of its
-own, the extent gains an empty line, and its hash changes.
+whitespace, of the line endings, of an `@ack` line, or of the text
+that step 5 removes also does not change the extent hash. Every other
+byte change changes the extent hash. For example, when the opening
+sigil of a block comment moves onto a line of its own, the extent
+gains an empty line, and its hash changes.
 
 ### 6.2 The code hash
 
@@ -331,7 +359,7 @@ path of the file and the slug of the section's heading
 ([jsonl.md](jsonl.md) section 9). A list item is never an anonymous
 source. A code site and such a section are both **sites**.
 
-The slug of a heading comes from the heading's text by the three
+The slug of a heading comes from its heading text by the three
 changes of section 10.3. When two or more headings of one file give the
 same slug, the first heading keeps the slug. Each later heading adds
 `-1`, `-2`, and so on, in the order of the file, as GitHub numbers the
@@ -343,9 +371,10 @@ needs a certain source and the citation does not have one. A
 `@verifies` needs a test. A `@refines` or a `@supersedes` needs an
 enclosing declaration.
 
-A citation is **dangling** when its tag target does not resolve: no
-declaration has the slug, or the ref's namespace is not declared, or
-the ref's id fails the namespace's pattern.
+A citation is **dangling** when its tag target is well formed and does
+not resolve: no declaration has the slug. A tag target that fails its
+pattern, or a ref whose namespace is not declared, is not dangling. It
+is the finding `bad-target` only (sections 4.1 and 4.2).
 
 A `@supersedes` edge whose source and tag target have different kinds
 is an error. A live `@supersedes` edge retires the declaration that
@@ -382,15 +411,17 @@ is one of:
   `disendorsed cache-ttl` or `disconnected`;
 - a rule name — for example `ste-docs`.
 
-The **subject** of a finding is the fact that the finding is about. An
-ack names the subject in the form that the checking tool reports in
-the field `ack_subject` of the finding ([jsonl.md](jsonl.md) section
-8):
+The **subject** of a finding is what the finding is about: a fact, or
+a file, a line, or a tag that is no fact. An ack names the subject in
+the form that the checking tool reports in the field `ack_subject` of
+the finding ([jsonl.md](jsonl.md) section 8):
 
 - for an edge, the tag target of the edge, as written;
 - for a fact that has a slug (a declaration, a plan, or a step), its
   slug;
-- for any other fact, its id.
+- for any other fact, its id;
+- for a subject that is no fact, its positional subject id
+  ([jsonl.md](jsonl.md) section 9).
 
 The hash is the first eight or more hex digits of the block hash
 (section 6.1) at the time of the judgment.
@@ -526,9 +557,23 @@ Every `##` heading that carries at least one plan tag — a `@scope` or a
 promise — is a **step**. A `##` section with no plan tags is prose, not
 a step.
 
-The scanner derives a step's slug from the step's heading text: the
-source text of the heading line, after the `#` characters and the
-spaces that follow them, and without any closing `#` characters. A
+The **heading text** of an ATX heading is the text of its line as the
+source writes it, with three parts removed:
+
+- the `#` characters that open the heading, and the indentation
+  before them;
+- the closing sequence, when the line has one: a sequence of `#`
+  characters after the opening `#` characters, at the end of the
+  line, with only spaces and tabs after it, and with a space or a tab
+  right before it;
+- the spaces and tabs at both ends of the text that remains.
+
+Inline markup stays as the source writes it. Example: the heading
+`## Scan **markdown** ##` has the heading text `Scan **markdown**`.
+The field `title` of a declaration, a plan, or a step in markdown is
+the heading text of its section ([jsonl.md](jsonl.md) section 4).
+
+The scanner derives a step's slug from the step's heading text. A
 letter or a digit here is an ASCII letter or digit; every other
 character counts as non-alphanumeric. The scanner makes these three
 changes in order:
@@ -553,9 +598,10 @@ set of paths by the rule of a path set ([manifest.md](manifest.md)
 section 7.2): a glob that starts with `!` leaves paths out.
 
 A step with no `@scope` inherits the plan's scope. A step's `@scope`
-must be contained in its plan's scope (finding class `bad-scope`). A
-step's **effective scope** is its own scope when it has one, and
-otherwise the plan's scope.
+must be contained in its plan's scope, by the rule that
+[algebra.md](algebra.md) section 9 gives for the finding class
+`bad-scope`. A step's **effective scope** is its own scope when it has
+one, and otherwise the plan's scope.
 
 The manifest key `plan.shared` ([manifest.md](manifest.md) section
 10.3) names paths that every step of every plan can change, for
@@ -578,7 +624,8 @@ A promise is **met** as follows:
   without an entry has no default location.
 - A promised `@satisfies`, `@refines`, `@cites`, or `@supersedes` is
   met if and only if at least one such edge exists inside the step's
-  effective scope, and that edge is neither dangling nor suspect.
+  effective scope, the tag target of that edge resolves, and that
+  edge is not suspect.
 - A promised `@verifies` is met if and only if such an edge exists
   inside the step's effective scope at evidence rung `passing`. When
   `evidence.coverage-attribution` is `"optional"`, the default, an

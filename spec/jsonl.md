@@ -37,10 +37,12 @@ The schema restricts values so that JCS stays trivial to implement:
 - **Value types:** string; integer in `[-(2^53-1), 2^53-1]`; boolean;
   or an array of those. No floats, no nulls, no nested objects. An
   absent value is an omitted key, never `null`.
-- **Strings:** the scanner normalizes strings that come from the text
-  of a governed file to Unicode NFC. It does not normalize ids, paths,
-  the strings of the manifest, or the strings of the front matter of a
-  rule file ([manifest.md](manifest.md) sections 2.2 and 15).
+- **Strings:** Sinter writes a string that comes from the text of a
+  file as the file holds it. It does not normalize Unicode in a string
+  of a governed file, of the manifest, or of the front matter of a
+  rule file ([manifest.md](manifest.md) sections 2.2 and 15). Tools
+  compare strings by their bytes: two strings are equal only when
+  their bytes are equal.
 - **Paths** are repository-relative, with forward slashes and no
   leading `./`.
 - **Hashes** are lowercase hex. An extent hash (`xh`) is 64 hex
@@ -86,10 +88,14 @@ the start of a file is part of no line, and it counts in no column. A
 span ends at its last character that is not part of a line ending
 ([packs.md](packs.md) section 5.3).
 
+The span of a tag line starts at its `@`. On the first line of a list
+item, the list marker and the task marker are no part of the span.
+
 For a declaration in markdown, this span is the tag line only. The
 record carries the extent separately, in `xline` and `xeline`: the
-whole section, or the whole list item with its sub-items. A tool can
-therefore highlight the tag without highlighting the whole extent.
+first and the last line of the extent ([vocabulary.md](vocabulary.md)
+section 6). The last line of an extent is never a blank line. A tool
+can therefore highlight the tag without highlighting the whole extent.
 
 Sinter computes the fields marked *derived* below from the ledger, the
 evidence, the session, or the base — not from the file. Sinter emits
@@ -107,14 +113,25 @@ conformance fixtures ship their own ledger and evidence.
 | `rev` | int | `N` from `vN` |
 | `xh` | string | extent hash ([vocabulary.md](vocabulary.md) section 6.1) |
 | `xline` `xeline` | int | extent span |
-| `title` | string | a declaration in a markdown section: the heading text; otherwise omitted |
-| `desc` | string | the description; omitted when empty |
+| `title` | string | a declaration in a markdown section: the heading text of the section ([vocabulary.md](vocabulary.md) section 10.3); otherwise omitted |
+| `desc` | string | the description, as the text after this table gives it; omitted when empty |
 | `status` | string | `deprecated`, `rejected`, or `deferred`; omitted when none |
 | `inforce` | bool | *derived* |
 | `approved` | bool | *derived* |
 | `stamp` | string | *derived*: the id of the ledger stamp that approves the declaration; omitted when none |
 | `approval_required` | bool | whether the kind needs approval: `ledger.approval-required` lists it ([manifest.md](manifest.md) section 11.1) |
 | `declined` | bool | *derived*: a live decline exists for `(slug, xh)` |
+
+Sinter makes the field `desc` in three steps:
+
+1. Take the inline description of the declaration's tag, and then each
+   line of the trailing prose of its block
+   ([vocabulary.md](vocabulary.md) section 3.2).
+2. Remove the spaces and tabs at both ends of each of these parts.
+   Leave out the inline description when it is then empty.
+3. Join the parts, with one LF between each two parts.
+
+When the result is empty, the record omits `desc`.
 
 Example:
 
@@ -126,27 +143,75 @@ Example:
 
 | field | type | meaning |
 |---|---|---|
-| `slug` `title` | string | |
+| `slug` | string | |
+| `title` | string | the heading text of the section that holds the `@plan` tag ([vocabulary.md](vocabulary.md) section 10.3); omitted for the section of level 0 |
 | `scope` | array of string | plan-level globs |
 | `approved` | bool | *derived*: the plan is approved ([algebra.md](algebra.md) section 6.5) |
 | `stamp` | string | *derived* |
-| `active` | bool | *derived* from the session |
+| `active` | bool | *derived* from the session; `false` when there is no session |
 | `open` | bool | *derived*: the plan is open — the ledger holds no `discharged` entry and no `abandoned` entry for it ([ledger.md](ledger.md) section 10) |
-| `csh` | string | the commitment-set hash. It is SHA-256 over a canonical form that holds no step names: the sorted `(word, target, effective step scope)` triples, plus the plan scope. A step rename therefore does not change `csh`, and a decline bound to `csh` stays live after a step rename |
+| `csh` | string | the commitment-set hash, as the text after this table gives it |
 | `declined` | bool | *derived* |
+
+The **commitment-set hash** (`csh`) is SHA-256 over canonical bytes
+that hold the plan's commitment set ([vocabulary.md](vocabulary.md)
+section 10.6): the promises, each with the effective scope of its
+step, and the plan scope. The canonical bytes are one JSON object in
+the canonical form of RFC 8785 (JCS) that section 2 uses, with no LF
+at the end. The object has two keys:
+
+- `promises`: an array with one object for each promise record of the
+  plan (section 5). Each object has three keys: `word` and `target`,
+  as the promise record gives them, and `scope`, the effective scope
+  of the promise's step. Two promises of two steps can give two equal
+  objects. Then the array holds both objects.
+- `scope`: the globs of the plan's own `@scope` line, or an empty
+  array when the plan has no `@scope` line.
+
+Each array of globs holds each glob once, sorted in byte order. The
+promise objects are sorted by `word`, then by `target`, then by the
+canonical bytes of their `scope` array, each in byte order. The rules
+of section 2 for the values of a record do not apply to this object.
+
+The object holds no step slug, and a step with no promise adds nothing
+to it. So a step rename does not change `csh`, and a decline bound to
+`csh` stays live after a step rename.
+
+Example: this plan file gives the canonical bytes below it.
+
+```
+# Auth lockout
+
+@plan auth-lockout
+@scope src/**
+
+## Lock the account
+
+@scope src/auth/**
+@req auth-lockout
+@verifies auth-lockout
+
+## Record the policy
+
+@decision lockout-policy
+```
+
+```
+{"promises":[{"scope":["src/**"],"target":"lockout-policy","word":"decision"},{"scope":["src/auth/**"],"target":"auth-lockout","word":"req"},{"scope":["src/auth/**"],"target":"auth-lockout","word":"verifies"}],"scope":["src/**"]}
+```
 
 **`step`**
 
 | field | type | meaning |
 |---|---|---|
 | `plan` | string | plan slug |
-| `slug` `title` | string | slug derived per [vocabulary.md](vocabulary.md) section 10.3 |
+| `slug` `title` | string | the slug and the heading text of the step's heading, per [vocabulary.md](vocabulary.md) section 10.3 |
 | `scope` | array of string | the *effective* scope |
 | `own_scope` | bool | whether the step declared its own `@scope` |
 | `refactor` | bool | the step has no promises |
 | `met` `total` | int | *derived* promise counts |
 | `done` | bool | *derived* |
-| `active` | bool | *derived* |
+| `active` | bool | *derived* from the session; `false` when there is no session |
 
 **`test`** — a test, or a group of tests, that a language pack finds
 ([packs.md](packs.md) section 8). The span of the record is the node
@@ -170,7 +235,7 @@ the span of the record is the first paragraph of the section.
 | `node` | string | code only: the tree-sitter node type of the attachment target, for example `function_item`; omitted when the block attaches to nothing |
 | `dline` `deline` | int | code only: the span of the body of the attachment target. Coverage for this site is measured over this span. Omitted when the block attaches to nothing |
 | `ch` | string | code only: code hash ([vocabulary.md](vocabulary.md) section 6.2); omitted when the block attaches to nothing |
-| `xline` `xeline` | int | markdown only: the span of the extent, the whole section |
+| `xline` `xeline` | int | markdown only: the first and the last line of the extent of the section ([vocabulary.md](vocabulary.md) section 6) |
 
 ## 5. Edge, ref, and promise records
 
@@ -181,9 +246,9 @@ the span of the record is the first paragraph of the section.
 |---|---|---|
 | `src` | string | id of the source fact (a node or a rule) |
 | `target` | string | the tag target as written: a slug or `ns/id` |
-| `dst` | string | *derived*: id of the fact that the tag target resolves to; omitted when dangling |
+| `dst` | string | *derived*: id of the fact that the tag target resolves to; omitted when the tag target resolves to nothing |
 | `rev` | int | the pinned revision; omitted when unpinned |
-| `desc` | string | inline description; omitted when empty |
+| `desc` | string | inline description, without the spaces and tabs at both ends; omitted when empty |
 | `suspect` `dangling` | bool | *derived* |
 | `rung` | string | `verifies` only, *derived*: `orphan`, `never-ran`, `failed`, `disconnected`, `unattributed`, or `passing` |
 | `live` | bool | `supersedes` only, *derived* |
@@ -361,14 +426,14 @@ the position that [manifest.md](manifest.md) section 14.4 gives.
 | field | type | meaning |
 |---|---|---|
 | `class` | string | a class from [algebra.md](algebra.md) section 9 |
-| `subject` | string | id of the fact the finding is about |
+| `subject` | string | the subject id: the id of the fact that the finding is about, or a positional subject id (section 9) |
 | `ack_subject` | string | the subject in the form that an `@ack` names it ([vocabulary.md](vocabulary.md) section 7.4) |
 | `rule` | string | `rule-owed` findings only |
 | `detail` | string | one line, human-facing, deterministic |
 | `fix` | string | the exact `@ack` line to paste, or a one-line instruction; omitted when none |
 | `ackable` | bool | |
 | `acked` | bool | present only when acked findings are requested |
-| `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3) |
+| `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3); present only when the command runs with `--gate` |
 | `mode` | string | `tree` or `diff` |
 
 ## 9. Identity
@@ -399,12 +464,25 @@ uses a position in the file only when no content can name the fact.
 | `ack` | `ack:<block-id>:<target>` | anchored to the block, not to a line |
 | `hunk` | `hunk:<path>:<line>-<eline>` | positional by nature |
 | `tombstone` | `tombstone:<was>` | |
-| `finding` | `finding:<class>:<subject-id>[:<rule>]` | |
+| `finding` | `finding:<class>:<subject-id>[:<rule>]` | `<subject-id>` is the id of the fact that the finding is about, or a positional subject id (below) |
 
-An id is stable under re-indentation, reformatting, line shifts, and
-re-pinning. It changes under a slug rename (rename is deletion plus
-declaration), under moving a site to a different named definition, and
-under a change of an edge's tag target.
+A finding whose subject is no fact takes a **positional subject id**,
+in the style of the positional id of a site. Lines and columns count
+as section 3 says. Parse a positional subject id from the right: a
+path can contain `@`.
+
+| subject | positional subject id | findings |
+|---|---|---|
+| a file | `file:<path>` | `parse-error` in a file that yields no fact: a file that is not valid UTF-8, or a file of a fetched pack with a parse failure ([packs.md](packs.md) sections 5.1 and 5.2) |
+| an error node of a markdown file | `file:<path>@L<line>C<column>`, from the position where the node starts | `parse-error` in a markdown file ([packs.md](packs.md) section 5.2) |
+| a line | `line:<path>@L<line>` | `typo-tag` and `unread-tag`, at the tag line; `duplicate` of a step, at the line of the step's heading |
+| a tag | `tag:<path>@L<line>C<column>`, from the position of the `@` of the tag | `bad-target`; `misplaced-plan`; `duplicate` of a declaration or a plan |
+
+An id that is not positional is stable under re-indentation,
+reformatting, line shifts, and re-pinning. It changes under a slug
+rename (rename is deletion plus declaration), under moving a site to a
+different named definition, and under a change of an edge's tag
+target.
 
 ## 10. Header and summary records
 

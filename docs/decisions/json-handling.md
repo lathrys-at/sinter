@@ -2,7 +2,7 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Write canonical JSONL with our own writer and read JSON with yojson
-@decision json-handling
+@decision json-handling v2
 Sinter writes its JSON Lines output with a writer of its own that enforces the canonical form, and reads JSON with the `yojson` library.
 
 ## Context
@@ -28,9 +28,8 @@ also read JSON: the serve mode takes requests as JSON lines.
   yet. A declared dependency that nothing links would claim to ship
   when it does not, so the declaration arrives with the first module
   that reads JSON, which is the serve mode.
-- NFC normalization of strings that come from file text, which the
-  specification requires, is not done yet. It needs the `uunf`
-  library, and the roadmap lists it under `sinter scan`.
+- Sinter does not normalize Unicode in the strings it writes. The
+  record `text-as-written` gives the reasons.
 
 ## Alternatives considered
 
