@@ -724,6 +724,8 @@ let read reader content =
             (fun () ->
               let lines = Line_index.make text in
               let captures =
+                (* The query and the tree come from the one grammar of the
+                   reader, so the run fails with no Language_mismatch. *)
                 match Sinter_bridge.Query.run reader.query tree with
                 | Ok captures -> captures
                 | Error error ->
