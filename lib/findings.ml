@@ -153,16 +153,18 @@ let citation ~word ~target rev =
 
 (* The members of [items] that share their key, after the first, by
    the order of [order]: each with the first member of its group. *)
+module Keys = Map.Make (String)
+
 let later_of_groups ~key ~order items =
   let sorted = List.stable_sort order items in
   List.rev
     (snd
        (List.fold_left
           (fun (firsts, found) item ->
-            match List.assoc_opt (key item) firsts with
+            match Keys.find_opt (key item) firsts with
             | Some first -> (firsts, (item, first) :: found)
-            | None -> ((key item, item) :: firsts, found))
-          ([], []) sorted))
+            | None -> (Keys.add (key item) item firsts, found))
+          (Keys.empty, []) sorted))
 
 let comes_first slug path line =
   Printf.sprintf "the slug %s comes first at %s:%d" slug path line
@@ -245,24 +247,32 @@ let unpinned facts =
     (Facts.edges facts)
 
 let dangling facts =
-  let slugs =
-    List.sort_uniq String.compare
-      (List.filter_map
-         (fun (d : Facts.declaration) ->
-           if String.equal d.kind "rule" then None else Some d.slug)
-         (Facts.declarations facts))
+  (* Each declared slug in lower case, with the first slug in byte order
+     that gives it. *)
+  let spellings =
+    List.fold_left
+      (fun spellings slug ->
+        Keys.update
+          (String.lowercase_ascii slug)
+          (function None -> Some slug | kept -> kept)
+          spellings)
+      Keys.empty
+      (List.sort_uniq String.compare
+         (List.filter_map
+            (fun (d : Facts.declaration) ->
+              if String.equal d.kind "rule" then None else Some d.slug)
+            (Facts.declarations facts)))
   in
   List.filter_map
     (fun ((edge : Facts.edge), target) ->
       match target with
       | Facts.Unresolved { dangling = true } ->
-          let lower = String.lowercase_ascii edge.target_text in
           let fix =
             Option.map
               (fun slug -> citation ~word:edge.word ~target:slug edge.rev)
-              (List.find_opt
-                 (fun slug -> String.equal (String.lowercase_ascii slug) lower)
-                 slugs)
+              (Keys.find_opt
+                 (String.lowercase_ascii edge.target_text)
+                 spellings)
           in
           Some
             (Finding.make Finding_class.Dangling (edge_subject edge)
@@ -453,22 +463,21 @@ let orphans facts =
     (Facts.edges facts)
 
 let uncovered facts =
-  let edges = Facts.edges facts in
-  let points_at word index =
-    List.exists
-      (fun ((edge : Facts.edge), target) ->
-        String.equal edge.word word
-        &&
-        match target with
-        | Facts.Declaration other -> other = index
-        | Facts.Ref _ | Facts.Unresolved _ -> false)
-      edges
-  in
+  let count = List.length (Facts.declarations facts) in
+  let satisfied = Array.make count false
+  and verified = Array.make count false in
+  List.iter
+    (fun ((edge : Facts.edge), target) ->
+      match (edge.word, target) with
+      | "satisfies", Facts.Declaration index -> satisfied.(index) <- true
+      | "verifies", Facts.Declaration index -> verified.(index) <- true
+      | _ -> ())
+    (Facts.edges facts);
   List.filter_map Fun.id
     (List.mapi
        (fun index (declaration : Facts.declaration) ->
          let detail =
-           match (points_at "satisfies" index, points_at "verifies" index) with
+           match (satisfied.(index), verified.(index)) with
            | false, false ->
                Some "nothing satisfies it, and nothing verifies it"
            | false, true -> Some "nothing satisfies it"
