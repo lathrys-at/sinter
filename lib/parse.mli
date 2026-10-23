@@ -8,20 +8,6 @@ exception Error of string
 (** Something went wrong, and the string says what. The string is fit to show to
     the person who ran the command. *)
 
-val name_of_wasm : string -> string option
-(** [name_of_wasm wasm] is the name of the grammar in the wasm module [wasm],
-    read from the export whose name starts with ["tree_sitter_"]. It is [None]
-    when the module holds no such export, when the module is not one the reader
-    can follow, and when the name holds a NUL byte, which the bridge cannot
-    take. *)
-
-val grammar_name : string -> string
-(** [grammar_name path] is a grammar name from the name of a grammar file. It is
-    the base name without its extension, with each hyphen replaced by an
-    underscore and a leading ["tree_sitter_"] removed. The name of
-    ["packs/tree-sitter-json.wasm"] is therefore ["json"]. {!run} uses this only
-    for a module that {!name_of_wasm} cannot read. *)
-
 val record_of_capture :
   path:string -> source:string -> Sinter_bridge.capture -> Jsonl.record
 (** [record_of_capture ~path ~source capture] is the JSONL record for one
