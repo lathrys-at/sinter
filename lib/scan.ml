@@ -173,11 +173,25 @@ let markdown_files packs =
       if String.equal pack.name "markdown" then Some pack.files else None)
     packs
 
-let base_commit repo manifest base =
+type base =
+  | Given of { revision : string; commit : string }
+  | Merge_base of { refname : string; commit : string }
+
+let base_commit = function
+  | Given { commit; _ } | Merge_base { commit; _ } -> commit
+
+let base_message = function
+  | Given { revision; commit } ->
+      Printf.sprintf "the base is %s, %s" revision commit
+  | Merge_base { refname; commit } ->
+      Printf.sprintf "the base is the merge base of HEAD and %s, %s" refname
+        commit
+
+let find_base repo manifest base =
   match base with
   | Some revision -> (
       match Git.commit_of repo revision with
-      | Ok commit -> Ok commit
+      | Ok commit -> Ok (Given { revision; commit })
       | Error (Git.Bad_revision _) -> Error (Bad_base revision)
       | Error error -> Error (Repository error))
   | None -> (
@@ -187,13 +201,13 @@ let base_commit repo manifest base =
       | Error error -> Error (Repository error)
       | Ok target -> (
           match Git.merge_base repo "HEAD" target.commit with
-          | Ok commit -> Ok commit
+          | Ok commit -> Ok (Merge_base { refname = target.refname; commit })
           | Error (Git.Bad_revision _) -> Error No_head
           | Error (Git.No_merge_base _) -> Error (No_merge_base name)
           | Error error -> Error (Repository error)))
 
-(* The documents of [files], read from [root] with a new engine. A file
-   that is not UTF-8 text gives no document. *)
+(* The documents of [files], read from [root] with a new engine, and
+   the files that are not UTF-8 text, each list in the order of [files]. *)
 let documents ~root files =
   let engine = Sinter_bridge.create () in
   Fun.protect
@@ -207,17 +221,21 @@ let documents ~root files =
             (fun () ->
               List.fold_left
                 (fun found file ->
-                  let* found = found in
+                  let* documents, not_text = found in
                   match Text_file.read (Filename.concat root file) with
                   | Error error -> Error (Unreadable_file { file; error })
                   | Ok content -> (
                       match Markdown.read reader content with
-                      | Ok document -> Ok ((file, document) :: found)
-                      | Error (Markdown.Not_utf_8 _) -> Ok found
+                      | Ok document ->
+                          Ok ((file, document) :: documents, not_text)
+                      | Error (Markdown.Not_utf_8 _) ->
+                          Ok (documents, file :: not_text)
                       | Error (Markdown.No_tree error) ->
                           Error (Unparsed_file { file; error })))
-                (Ok []) files
-              |> Result.map List.rev))
+                (Ok ([], []))
+                files
+              |> Result.map (fun (documents, not_text) ->
+                  (List.rev documents, List.rev not_text))))
 
 let changed_paths repo commit =
   let* changes = repository (Git.diff repo ~base:commit) in
@@ -230,7 +248,17 @@ let changed_paths repo commit =
              Some path)
        changes)
 
-let run ~env ~dir ~manifest ~base ~tool =
+type tree = {
+  repo : Git.t;
+  manifest : Manifest.t;
+  location : string;
+  base : base;
+  documents : (string * Markdown.t) list;
+  not_text : string list;
+  warnings : string list;
+}
+
+let load ~env ~dir ~manifest ~base =
   let* repo = repository (Git.open_repo ~env dir) in
   let root = Git.root repo in
   let path, shown, missing =
@@ -276,15 +304,18 @@ let run ~env ~dir ~manifest ~base ~tool =
     | Some pack -> Error (Pack_not_available pack.name)
     | None -> Ok ()
   in
-  let* commit = base_commit repo manifest_value base in
-  let* documents = documents ~root (List.filter read_by_markdown files) in
-  let* tree = repository (Git.tree_key repo) in
-  let facts = Facts.make manifest_value documents in
-  let* changed =
-    if Facts.needs_changes facts then changed_paths repo commit else Ok []
+  let* base = find_base repo manifest_value base in
+  let* documents, not_text =
+    documents ~root (List.filter read_by_markdown files)
   in
   Ok
     {
+      repo;
+      manifest = manifest_value;
+      location;
+      base;
+      documents;
+      not_text;
       warnings =
         List.map
           (fun path ->
@@ -294,9 +325,26 @@ let run ~env ~dir ~manifest ~base ~tool =
               (escape_path path))
           not_utf_8
         @ [ ledger_warning ];
-      records =
-        Facts.index ~tree ~base:commit
-          ~target_branch:(Manifest.target manifest_value)
-          ~manifest:location ~tool
-        :: Facts.records facts ~changed;
+    }
+
+let index tree ~tool =
+  let* key = repository (Git.tree_key tree.repo) in
+  Ok
+    (Facts.index ~tree:key ~base:(base_commit tree.base)
+       ~target_branch:(Manifest.target tree.manifest)
+       ~manifest:tree.location ~tool)
+
+let run ~env ~dir ~manifest ~base ~tool =
+  let* tree = load ~env ~dir ~manifest ~base in
+  let* index = index tree ~tool in
+  let facts = Facts.make tree.manifest tree.documents in
+  let* changed =
+    if Facts.needs_changes facts then
+      changed_paths tree.repo (base_commit tree.base)
+    else Ok []
+  in
+  Ok
+    {
+      warnings = tree.warnings;
+      records = index :: Facts.records facts ~changed;
     }
