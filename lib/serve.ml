@@ -12,7 +12,11 @@ type response = {
 }
 
 (* One grammar, and the state of its file when the loop loaded it. *)
-type entry = { language : Sinter_bridge.language; size : int; modified : float }
+type entry = {
+  language : Sinter_bridge.Language.t;
+  size : int;
+  modified : float;
+}
 
 type t = {
   engine : Sinter_bridge.t;
@@ -39,13 +43,16 @@ let create () =
 let close state =
   if not state.closed then (
     state.closed <- true;
-    (Hashtbl.reset state.grammars;
+    (Hashtbl.iter
+       (fun _ entry -> Sinter_bridge.Language.close entry.language)
+       state.grammars;
+     Hashtbl.reset state.grammars;
      Sinter_bridge.close state.engine)
     [@mutaml.skip
-      "close sets closed before it empties the table, respond raises on a \
+      "close sets closed before it frees the grammars, respond raises on a \
        closed state, a second close does nothing, and t is abstract, so no \
-       road reads the table after close; dropping the line only keeps the \
-       grammars alive longer"])
+       road reads a grammar or the table after close; dropping a line only \
+       leaves the grammars to the garbage collector"])
 
 (* The size and the modification time of the file at [path]. The pair
    is None when the file does not stat; the loader then reports what is
@@ -55,28 +62,45 @@ let stamp path =
   | stats -> Some (stats.st_size, stats.st_mtime)
   | exception Unix.Unix_error _ -> None
 
-(* The grammar of the file at [path], loaded once and kept. The loop
-   reads the stamp before it reads the file, so a file that changes
-   during the load is loaded again on the next request. A grammar that
-   does not load is not kept. *)
-let language state path =
+(* Take the grammar of the file at [path] out of the table, and free
+   the grammar that the table held for it, if any. *)
+let forget state path found =
+  Hashtbl.remove state.grammars path;
+  Option.iter (fun entry -> Sinter_bridge.Language.close entry.language) found
+
+(* Run [use] on the grammar of the file at [path], loaded once and
+   kept. The loop reads the stamp before it reads the file, so a file
+   that changes during the load is loaded again on the next request.
+   A grammar that is loaded again replaces the old one, which the loop
+   frees. A grammar that does not load is not kept, and neither is one
+   whose file does not stat; the loop frees that one after use. *)
+let with_language state path use =
   let now = stamp path in
   match Hashtbl.find_opt state.grammars path with
-  | Some entry when now = Some (entry.size, entry.modified) -> entry.language
-  | _ ->
-      Hashtbl.remove state.grammars path;
-      let language = Parse.load state.engine ~grammar:path in
-      (match now with
+  | Some entry when now = Some (entry.size, entry.modified) ->
+      use entry.language
+  | found -> (
+      forget state path found;
+      let language =
+        match Grammar.load state.engine ~path with
+        | Ok language -> language
+        | Error error -> raise (Parse.Error (Grammar.message ~path error))
+      in
+      match now with
       | Some (size, modified) ->
-          Hashtbl.replace state.grammars path { language; size; modified }
-      | None -> ());
-      language
+          Hashtbl.replace state.grammars path { language; size; modified };
+          use language
+      | None ->
+          Fun.protect
+            ~finally:(fun () -> Sinter_bridge.Language.close language)
+            (fun () -> use language))
 
 (* A message goes into a record, and a string of a record is UTF-8.
    Every message this library builds is UTF-8; a message from
    elsewhere that is not is escaped rather than dropped. *)
 let printable message =
-  if Jsonl.is_utf_8 message then message else String.escaped message
+  if Sinter_bridge.Utf_8.is_valid message then message
+  else String.escaped message
 
 let record_of_item rid = function
   | Parse.Capture record -> ("rid", rid) :: record
@@ -95,8 +119,8 @@ let run state rid (op : Request.op) =
           | Request.Tree -> None
         in
         match
-          let language = language state grammar in
-          Parse.fold language ~query ~paths:files ~f:emit
+          with_language state grammar (fun language ->
+              Parse.fold language ~query ~paths:files ~f:emit)
         with
         | () -> Done Exit_code.clean
         | exception Parse.Error message ->

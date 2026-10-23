@@ -8,80 +8,6 @@ exception Error of string
 (** Something went wrong, and the string says what. The string is fit to show to
     the person who ran the command. *)
 
-val read_file : string -> string
-(** [read_file path] is the whole content of the file at [path].
-
-    @raise Error
-      if [path] is a directory, if the file does not open, or if reading it
-      fails. *)
-
-val name_of_wasm : string -> string option
-(** [name_of_wasm wasm] is the name of the grammar in the wasm module [wasm],
-    read from the export whose name starts with ["tree_sitter_"]. It is [None]
-    when the module holds no such export, when the module is not one the reader
-    can follow, and when the name holds a NUL byte, which the bridge cannot
-    take. *)
-
-val grammar_name : string -> string
-(** [grammar_name path] is a grammar name from the name of a grammar file. It is
-    the base name without its extension, with each hyphen replaced by an
-    underscore and a leading ["tree_sitter_"] removed. The name of
-    ["packs/tree-sitter-json.wasm"] is therefore ["json"]. {!run} uses this only
-    for a module that {!name_of_wasm} cannot read. *)
-
-val record_of_capture :
-  path:string -> source:string -> Sinter_bridge.capture -> Jsonl.record
-(** [record_of_capture ~path ~source capture] is the JSONL record for one
-    capture in the file at [path]. [source] is the text of that file.
-
-    The byte range of [capture] must lie inside [source]: the start is 0 or
-    more, the end is the start or more, and the end is at most the length of
-    [source]. The rows and the columns of [capture] must be the rows and the
-    byte columns of that range in [source]; a row or a column that says
-    otherwise gives a record with a span that does not name the range.
-
-    The fields are:
-
-    - [path]: the file, as it was named on the command line
-    - [pat]: the index of the pattern in the query, from 0
-    - [cap]: the capture name, without the [@]
-    - [node]: the type of the node, for example ["string_content"]
-    - [sb], [eb]: the start and the end of the node, as byte offsets from the
-      start of the file. The end is exclusive
-    - [line], [col]: the start of the node, from 1. The column counts bytes, not
-      characters
-    - [eline]: the line that holds the last byte of the node, from 1
-    - [ecol]: one byte past the last byte of the node, in the line [eline], from
-      1
-    - [text]: the source text of the node
-
-    Every string of the result is valid UTF-8.
-
-    @raise Error
-      if [path], the capture name, the node type, or the text of the node is not
-      valid UTF-8.
-    @raise Invalid_argument
-      if the byte range of [capture] is not inside [source]. *)
-
-val captures :
-  Sinter_bridge.language -> query:string -> path:string -> Jsonl.record list
-(** [captures language ~query ~path] reads the file at [path], parses it, runs
-    [query] over the parse tree, and gives one record per capture, in the order
-    the query produced them. Every string of every record is valid UTF-8.
-
-    @raise Error
-      if [path] is not UTF-8 text, if the file does not read or is not UTF-8
-      text, if the parse fails, or if a string of a record would not be valid
-      UTF-8. *)
-
-val tree : Sinter_bridge.language -> path:string -> string
-(** [tree language ~path] reads the file at [path], parses it, and gives the
-    parse tree as an S-expression. The result is valid UTF-8.
-
-    @raise Error
-      if [path] is not UTF-8 text, if the file does not read or is not UTF-8
-      text, or if the parse fails. *)
-
 (** One result of one file. *)
 type item =
   | Capture of Jsonl.record
@@ -89,16 +15,8 @@ type item =
   | Tree of { path : string; sexp : string }
       (** the parse tree of the file at [path], as an S-expression *)
 
-val load : Sinter_bridge.t -> grammar:string -> Sinter_bridge.language
-(** [load engine ~grammar] reads the grammar file at [grammar] and loads it into
-    [engine]. The grammar name comes from the module, and from the file name
-    when the module does not carry it. The result stays valid until [engine] is
-    closed.
-
-    @raise Error if the file does not read, or the grammar does not load. *)
-
 val fold :
-  Sinter_bridge.language ->
+  Sinter_bridge.Language.t ->
   query:string option ->
   paths:string list ->
   f:(item -> unit) ->
@@ -111,13 +29,15 @@ val fold :
     name that is not UTF-8 text fails before [f] sees any item.
 
     Every string of every record of an item is valid UTF-8, and so is the
-    S-expression of a tree item.
+    S-expression of a tree item. [fold] compiles the query once, and frees the
+    query and each tree before it returns.
 
     @raise Error
       if a file name is not UTF-8 text, if a file does not read, if the query
       file is empty or does not compile, if a parse fails, or if a string of a
       record would not be valid UTF-8. An exception that [f] raises passes
-      through. *)
+      through.
+    @raise Invalid_argument if [language] or its engine is closed. *)
 
 val run :
   grammar:string ->
@@ -129,8 +49,8 @@ val run :
     grammar file at [grammar] into it, then handles each file of [paths] in
     order. When [query] is the path of a query file, it writes one canonical
     JSONL line per capture. When [query] is [None], it writes the parse tree of
-    each file as an S-expression, one tree per line. It closes the engine before
-    it returns.
+    each file as an S-expression, one tree per line. It frees the grammar and
+    the engine before it returns.
 
     @raise Error on the first failure, and on a failure to write to [channel].
 *)

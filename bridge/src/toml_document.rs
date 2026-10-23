@@ -8,7 +8,7 @@
 
 use toml_edit::{Datetime, ImDocument, Item, Key, Offset, Table, TomlError, Value};
 
-use crate::{length_prefix, put_bytes, put_header, put_u32, set_count, TooLong};
+use crate::buffer::{length_prefix, put_bytes, put_header, put_u32, set_count, TooLong};
 
 /// The `kind` field of a buffer that holds a TOML document.
 pub(crate) const KIND_TOML_DOCUMENT: u32 = 3;

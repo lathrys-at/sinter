@@ -5,16 +5,6 @@ let property ?(count = 500) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count ~name ~print generator check)
 
-let same_capture (a : Sinter_bridge.capture) (b : Sinter_bridge.capture) =
-  a.pattern = b.pattern && String.equal a.name b.name
-  && String.equal a.node_type b.node_type
-  && a.start_byte = b.start_byte
-  && a.end_byte = b.end_byte && a.start_row = b.start_row
-  && a.start_column = b.start_column
-  && a.end_row = b.end_row
-  && a.end_column = b.end_column
-  && String.equal a.text b.text
-
 let raises_error f =
   try
     ignore (f ());
@@ -26,22 +16,12 @@ let raises_error f =
 let gives_a_value_or_an_error f =
   match f () with _ -> true | exception Sinter_bridge.Error _ -> true
 
-let decode_captures_gives_back_what_was_encoded =
-  property ~name:"decode_captures gives back the captures that were encoded"
-    ~print:(fun (captures, buffer) ->
-      Generators.print_captures captures ^ " " ^ Generators.print_buffer buffer)
-    Generators.captures_buffer
-    (fun (captures, buffer) ->
-      let decoded = Sinter_bridge.decode_captures buffer in
-      List.length decoded = List.length captures
-      && List.for_all2 same_capture decoded captures)
-
 let decode_tree_gives_back_what_was_encoded =
   property ~name:"decode_tree gives back the tree that was encoded"
     ~print:(fun (text, buffer) ->
       Printf.sprintf "%S %s" text (Generators.print_buffer buffer))
     Generators.tree_buffer
-    (fun (text, buffer) -> String.equal (Sinter_bridge.decode_tree buffer) text)
+    (fun (text, buffer) -> String.equal (Sinter_bridge.Decode.tree buffer) text)
 
 let decode_digest_gives_back_what_was_encoded =
   property ~name:"decode_digest gives back the digest that was encoded"
@@ -49,67 +29,42 @@ let decode_digest_gives_back_what_was_encoded =
       Generators.print_buffer digest ^ " " ^ Generators.print_buffer buffer)
     Generators.digest_buffer
     (fun (digest, buffer) ->
-      String.equal (Sinter_bridge.decode_digest buffer) digest)
+      String.equal (Sinter_bridge.Decode.digest buffer) digest)
 
 let decode_digest_rejects_a_damaged_buffer =
   property ~name:"decode_digest raises Error on a damaged digest buffer"
     ~print:Generators.print_damaged Generators.damaged_digest_buffer
     (fun (_, buffer) ->
-      raises_error (fun () -> Sinter_bridge.decode_digest buffer))
+      raises_error (fun () -> Sinter_bridge.Decode.digest buffer))
 
 let decode_digest_is_total =
   property ~count:2000
     ~name:"decode_digest gives a digest or an Error for any bytes"
     ~print:Generators.print_buffer Generators.buffer_bytes (fun buffer ->
-      gives_a_value_or_an_error (fun () -> Sinter_bridge.decode_digest buffer))
+      gives_a_value_or_an_error (fun () -> Sinter_bridge.Decode.digest buffer))
 
 let decode_digest_refuses_a_parse_tree_buffer =
   property ~name:"decode_digest raises Error on a parse tree buffer"
     ~print:Generators.print_buffer (QCheck2.Gen.map snd Generators.tree_buffer)
-    (fun buffer -> raises_error (fun () -> Sinter_bridge.decode_digest buffer))
+    (fun buffer -> raises_error (fun () -> Sinter_bridge.Decode.digest buffer))
 
 let decode_tree_refuses_a_digest_buffer =
   property ~name:"decode_tree raises Error on a digest buffer"
     ~print:Generators.print_buffer
     (QCheck2.Gen.map snd Generators.digest_buffer) (fun buffer ->
-      raises_error (fun () -> Sinter_bridge.decode_tree buffer))
-
-let decode_captures_rejects_a_damaged_buffer =
-  property ~name:"decode_captures raises Error on a damaged capture buffer"
-    ~print:Generators.print_damaged Generators.damaged_captures_buffer
-    (fun (_, buffer) ->
-      raises_error (fun () -> Sinter_bridge.decode_captures buffer))
+      raises_error (fun () -> Sinter_bridge.Decode.tree buffer))
 
 let decode_tree_rejects_a_damaged_buffer =
   property ~name:"decode_tree raises Error on a damaged parse tree buffer"
     ~print:Generators.print_damaged Generators.damaged_tree_buffer
     (fun (_, buffer) ->
-      raises_error (fun () -> Sinter_bridge.decode_tree buffer))
-
-let decode_captures_is_total =
-  property ~count:2000
-    ~name:"decode_captures gives captures or an Error for any bytes"
-    ~print:Generators.print_buffer Generators.buffer_bytes (fun buffer ->
-      gives_a_value_or_an_error (fun () -> Sinter_bridge.decode_captures buffer))
+      raises_error (fun () -> Sinter_bridge.Decode.tree buffer))
 
 let decode_tree_is_total =
   property ~count:2000
     ~name:"decode_tree gives a tree or an Error for any bytes"
     ~print:Generators.print_buffer Generators.buffer_bytes (fun buffer ->
-      gives_a_value_or_an_error (fun () -> Sinter_bridge.decode_tree buffer))
-
-(* A capture buffer and a parse tree buffer carry different kinds. *)
-let decode_captures_refuses_a_parse_tree_buffer =
-  property ~name:"decode_captures raises Error on a parse tree buffer"
-    ~print:Generators.print_buffer (QCheck2.Gen.map snd Generators.tree_buffer)
-    (fun buffer ->
-      raises_error (fun () -> Sinter_bridge.decode_captures buffer))
-
-let decode_tree_refuses_a_capture_buffer =
-  property ~name:"decode_tree raises Error on a capture buffer"
-    ~print:Generators.print_buffer
-    (QCheck2.Gen.map snd Generators.captures_buffer) (fun buffer ->
-      raises_error (fun () -> Sinter_bridge.decode_tree buffer))
+      gives_a_value_or_an_error (fun () -> Sinter_bridge.Decode.tree buffer))
 
 (* The bytes of a counterexample, as the property printed them. *)
 let of_hex text =
@@ -124,26 +79,13 @@ let error_message f =
     "no failure"
   with Sinter_bridge.Error message -> message
 
-(* The counterexample of "decode_captures raises Error on a damaged
-   capture buffer": one capture, every integer 0, an empty name, an
-   empty node type, and a text of the one byte 0xFF. *)
-let rejects_a_capture_whose_text_is_not_utf_8 () =
-  let buffer =
-    of_hex
-      "5342523100000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000ff"
-  in
-  Alcotest.(check string)
-    "the message names the text of a node"
-    "the text of a node is not UTF-8 text"
-    (error_message (fun () -> Sinter_bridge.decode_captures buffer))
-
 (* The counterexample of "decode_tree raises Error on a damaged parse
    tree buffer": one record whose text is the one byte 0xFF. *)
 let rejects_a_parse_tree_that_is_not_utf_8 () =
   let buffer = of_hex "5342523101000000010000000000000001000000ff" in
   Alcotest.(check string)
     "the message names the parse tree" "the parse tree is not UTF-8 text"
-    (error_message (fun () -> Sinter_bridge.decode_tree buffer))
+    (error_message (fun () -> Sinter_bridge.Decode.tree buffer))
 
 (* A digest buffer with two records is the header and 64 bytes. The
    decoder names the count it found. *)
@@ -156,7 +98,7 @@ let names_the_count_of_a_digest_buffer_with_two_records () =
     "the bridge returned a malformed buffer: a digest buffer holds 2 records, \
      and 1 was expected"
     (error_message (fun () ->
-         Sinter_bridge.decode_digest (Bytes.to_string buffer)))
+         Sinter_bridge.Decode.digest (Bytes.to_string buffer)))
 
 (* A digest buffer with 31 bytes after its header is one byte short,
    and the decoder names where the record should end. *)
@@ -167,36 +109,34 @@ let names_the_end_of_a_digest_that_is_one_byte_short () =
     "the message names byte 48 and a buffer of 47 bytes"
     "the bridge returned a malformed buffer: the records end at byte 48 and \
      the buffer holds 47 bytes"
-    (error_message (fun () -> Sinter_bridge.decode_digest buffer))
+    (error_message (fun () -> Sinter_bridge.Decode.digest buffer))
 
 (* The header is sixteen bytes. A buffer of fifteen is short by one,
    and the decoder says so rather than read a field that is not
    there. *)
 let rejects_a_buffer_one_byte_shorter_than_the_header () =
-  let whole = Generators.encode_captures [] in
+  let whole = Bridge_buffers.encode_captures [] in
   let buffer = String.sub whole 0 (String.length whole - 1) in
   Alcotest.(check int) "the buffer is fifteen bytes" 15 (String.length buffer);
   Alcotest.(check string)
     "the message says the buffer is shorter than the header"
     "the bridge returned a malformed buffer: the buffer is shorter than the \
      header"
-    (error_message (fun () -> Sinter_bridge.decode_captures buffer))
+    (error_message (fun () -> Sinter_bridge.Decode.captures buffer))
 
 (* The message of a buffer that does not end where its records end
    names two numbers, and the second is the length of the buffer
    itself. *)
 let names_the_length_of_a_buffer_with_bytes_after_its_records () =
-  let buffer = Generators.encode_captures [] ^ "\000" in
+  let buffer = Bridge_buffers.encode_captures [] ^ "\000" in
   Alcotest.(check string)
     "the message names byte 16 and a buffer of 17 bytes"
     "the bridge returned a malformed buffer: the records end at byte 16 and \
      the buffer holds 17 bytes"
-    (error_message (fun () -> Sinter_bridge.decode_captures buffer))
+    (error_message (fun () -> Sinter_bridge.Decode.captures buffer))
 
 let tests =
   [
-    Alcotest.test_case "rejects a capture whose text is not UTF-8" `Quick
-      rejects_a_capture_whose_text_is_not_utf_8;
     Alcotest.test_case "rejects a parse tree that is not UTF-8" `Quick
       rejects_a_parse_tree_that_is_not_utf_8;
     Alcotest.test_case "rejects a buffer one byte shorter than the header"
@@ -208,14 +148,9 @@ let tests =
       `Quick names_the_count_of_a_digest_buffer_with_two_records;
     Alcotest.test_case "names the end of a digest that is one byte short" `Quick
       names_the_end_of_a_digest_that_is_one_byte_short;
-    decode_captures_gives_back_what_was_encoded;
     decode_tree_gives_back_what_was_encoded;
-    decode_captures_rejects_a_damaged_buffer;
     decode_tree_rejects_a_damaged_buffer;
-    decode_captures_is_total;
     decode_tree_is_total;
-    decode_captures_refuses_a_parse_tree_buffer;
-    decode_tree_refuses_a_capture_buffer;
     decode_digest_gives_back_what_was_encoded;
     decode_digest_rejects_a_damaged_buffer;
     decode_digest_is_total;
