@@ -212,6 +212,11 @@ let the_run_gets_the_fixed_variables () =
       Alcotest.check outcome "awk prints the fixed values" (Ok [])
         (Fixture.run ~binary:"/usr/bin/awk" Fixture.Compare case))
 
+let git_looks_for_a_repository_in_no_folder_above_the_run () =
+  check_run "the ceiling is the folder above the working folder" (Ok [])
+    (case_files ~stdout:"yes\n"
+       "[ \"$GIT_CEILING_DIRECTORIES\" = \"$(dirname \"$PWD\")\" ] && echo yes")
+
 let the_run_writes_coverage_beside_the_suite () =
   let expected =
     match Sys.getenv_opt "BISECT_FILE" with
@@ -649,6 +654,8 @@ let tests =
       the_working_folder_shows_as_root;
     Alcotest.test_case "the run gets the fixed variables" `Quick
       the_run_gets_the_fixed_variables;
+    Alcotest.test_case "git looks for a repository in no folder above the run"
+      `Quick git_looks_for_a_repository_in_no_folder_above_the_run;
     Alcotest.test_case "the run writes coverage beside the suite" `Quick
       the_run_writes_coverage_beside_the_suite;
     Alcotest.test_case "a run leaves the case unchanged" `Quick

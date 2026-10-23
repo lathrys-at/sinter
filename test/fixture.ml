@@ -182,7 +182,9 @@ let coverage_prefix = Filename.concat (Sys.getcwd ()) "bisect"
    environment turns that off. Cmdliner colors its own errors when
    TERM names a terminal,
    and NO_COLOR stops that. PWD names [root], the folder where each
-   of them starts. The other variables of the suite stay: the mutation
+   of them starts. GIT_CEILING_DIRECTORIES names the folder above
+   [root], so that git looks for a repository in [root] and in no
+   folder above it. The other variables of the suite stay: the mutation
    runner switches a mutant on in the run through one of them. *)
 let environment ~home ~root =
   let replaced binding =
@@ -201,6 +203,7 @@ let environment ~home ~root =
     [|
       "HOME=" ^ home;
       "PWD=" ^ root;
+      "GIT_CEILING_DIRECTORIES=" ^ Filename.dirname root;
       "NO_COLOR=1";
       "GIT_CONFIG_GLOBAL=/dev/null";
       "GIT_CONFIG_NOSYSTEM=1";
