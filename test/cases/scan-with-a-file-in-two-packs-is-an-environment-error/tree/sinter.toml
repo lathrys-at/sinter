@@ -1,0 +1,4 @@
+[scan]
+packs.markdown.files = ["**/*.md"]
+packs.ocaml.files = ["docs/"]
+packs.ocaml.version = "1.0"

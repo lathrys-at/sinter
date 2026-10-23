@@ -14,6 +14,7 @@ type error =
   | Missing_entry of string
   | Wrong_kind of { entry : string; folder : bool }
   | Reserved_entry of string
+  | Repository_with_base
   | Did_not_end of float
   | Ended_by_signal of int
   | Git_failed of { arguments : string list; output : string }
@@ -26,7 +27,7 @@ let ( let* ) = Result.bind
 
 (* The entries of a case folder. The harness does not read the two
    reserved entries yet. *)
-let known = [ "args"; "tree"; "base"; "stdin"; "expected" ]
+let known = [ "args"; "tree"; "base"; "repository"; "stdin"; "expected" ]
 let reserved = [ "ledger.jsonl"; "evidence" ]
 let outputs = [ "stdout"; "stderr"; "exit" ]
 
@@ -46,8 +47,8 @@ let message ~case error =
           entry
     | Unknown_entry entry ->
         Printf.sprintf
-          "unknown entry %s. A case folder holds only args, tree, base, stdin, \
-           and expected."
+          "unknown entry %s. A case folder holds only args, tree, base, \
+           repository, stdin, and expected."
           entry
     | Missing_entry entry when String.starts_with ~prefix:"expected/" entry ->
         Printf.sprintf
@@ -64,6 +65,9 @@ let message ~case error =
           "%s is a reserved name. The harness does not read it yet, so the \
            case cannot use it. Remove it."
           entry
+    | Repository_with_base ->
+        "the case holds both base and repository. A case with base already \
+         runs in a repository; remove repository."
     | Did_not_end bound ->
         Printf.sprintf "the run did not end within %g seconds, and was killed."
           bound
@@ -178,15 +182,28 @@ let coverage_prefix = Filename.concat (Sys.getcwd ()) "bisect"
    environment turns that off. Cmdliner colors its own errors when
    TERM names a terminal,
    and NO_COLOR stops that. PWD names [root], the folder where each
-   of them starts. The other variables of the suite stay: the mutation
+   of them starts. GIT_CEILING_DIRECTORIES names the folder above
+   [root], so that git looks for a repository in [root] and in no
+   folder above it. PATH starts with the folder of the programs of git
+   that [git] names, so that the run starts git itself: the program
+   git of macOS finds git first, and with a new HOME each start takes
+   about 30 ms. The other variables of the suite stay: the mutation
    runner switches a mutant on in the run through one of them. *)
-let environment ~home ~root =
+let environment ~home ~root ~git =
   let replaced binding =
     List.exists
       (fun prefix -> String.starts_with ~prefix binding)
-      [ "GIT_"; "HOME="; "XDG_CONFIG_HOME="; "NO_COLOR="; "PWD=" ]
+      [ "GIT_"; "HOME="; "XDG_CONFIG_HOME="; "NO_COLOR="; "PWD="; "PATH=" ]
   in
   let suite = Array.to_list (Unix.environment ()) in
+  let path =
+    let folders =
+      Option.to_list (Sys.getenv_opt "PATH")
+      |> List.filter (fun folders -> not (String.equal folders ""))
+    in
+    if Filename.is_relative git then folders
+    else Filename.dirname git :: folders
+  in
   let coverage =
     if List.exists (String.starts_with ~prefix:"BISECT_FILE=") suite then []
     else [ "BISECT_FILE=" ^ coverage_prefix ]
@@ -196,7 +213,9 @@ let environment ~home ~root =
        (List.filter (fun binding -> not (replaced binding)) suite @ coverage))
     [|
       "HOME=" ^ home;
+      "PATH=" ^ String.concat ":" path;
       "PWD=" ^ root;
+      "GIT_CEILING_DIRECTORIES=" ^ Filename.dirname root;
       "NO_COLOR=1";
       "GIT_CONFIG_GLOBAL=/dev/null";
       "GIT_CONFIG_NOSYSTEM=1";
@@ -272,10 +291,88 @@ let execute ~environment ~folder ~input ~output ~errors ~bound program arguments
    of the case. *)
 type workspace = { root : string; environment : string array; scratch : string }
 
+(* One folder for the cache of compiled modules of wasmtime, shared by
+   every run of this process, so that the runs compile each grammar
+   once and not once each. It sits under the temporary folder of the
+   first run, and the process removes it when it exits. *)
+let wasmtime_cache =
+  lazy
+    (let folder = Unix.realpath (Filename.temp_dir "sinter-wasmtime" "") in
+     at_exit (fun () ->
+         try remove folder with Sys_error _ | Unix.Unix_error _ -> ());
+     folder)
+
+(* [text] as a TOML basic string. *)
+let toml_string text =
+  let buffer = Buffer.create (String.length text + 2) in
+  Buffer.add_char buffer '"';
+  String.iter
+    (fun character ->
+      match character with
+      | '"' | '\\' ->
+          Buffer.add_char buffer '\\';
+          Buffer.add_char buffer character
+      | '\000' .. '\031' | '\127' ->
+          Buffer.add_string buffer
+            (Printf.sprintf "\\u%04X" (Char.code character))
+      | _ -> Buffer.add_char buffer character)
+    text;
+  Buffer.add_char buffer '"';
+  Buffer.contents buffer
+
+(* The folders under HOME where wasmtime reads its configuration: on
+   macOS, and on Linux when XDG_CONFIG_HOME is not set. The run's
+   environment leaves XDG_CONFIG_HOME out. *)
+let wasmtime_configurations =
+  [
+    [ "Library"; "Application Support"; "BytecodeAlliance.wasmtime" ];
+    [ ".config"; "wasmtime" ];
+  ]
+
+(* Writes into [home] the configuration of wasmtime that names the
+   shared cache folder. *)
+let configure_wasmtime home =
+  let text =
+    Printf.sprintf "[cache]\nenabled = true\ndirectory = %s\n"
+      (toml_string (Lazy.force wasmtime_cache))
+  in
+  List.iter
+    (fun names ->
+      let folder = List.fold_left make_folder home names in
+      write_file (Filename.concat folder "config.toml") text)
+    wasmtime_configurations
+
+(* The git program in the folder that git --exec-path names, or "git"
+   when the lookup fails. The lookup runs once for the process, in the
+   suite's own environment. *)
+let program =
+  lazy
+    (try
+       with_temporary_folder (fun scratch ->
+           let output = Filename.concat scratch "exec-path"
+           and errors = Filename.concat scratch "exec-path-errors" in
+           match
+             execute ~environment:(Unix.environment ()) ~folder:scratch
+               ~input:"/dev/null" ~output ~errors ~bound:10. "git"
+               [ "--exec-path" ]
+           with
+           | Ok 0 ->
+               let path =
+                 Filename.concat (String.trim (read_file output)) "git"
+               in
+               if Sys.file_exists path then path else "git"
+           | Ok _ | Error _ -> "git")
+     with Sys_error _ | Unix.Unix_error _ | Fun.Finally_raised _ -> "git")
+
 let prepare temporary =
   let home = make_folder temporary "home" in
+  configure_wasmtime home;
   let root = make_folder temporary "work" in
-  { root; environment = environment ~home ~root; scratch = temporary }
+  {
+    root;
+    environment = environment ~home ~root ~git:(Lazy.force program);
+    scratch = temporary;
+  }
 
 type repository = { workspace : workspace; program : string }
 
@@ -294,39 +391,43 @@ let git repository arguments =
     Error
       (Git_failed { arguments; output = read_file output ^ read_file errors })
 
-(* The git program in the folder that git --exec-path names, or "git"
-   when the lookup fails. The lookup runs in the suite's own
-   environment. *)
-let program workspace =
-  let output = Filename.concat workspace.scratch "exec-path"
-  and errors = Filename.concat workspace.scratch "exec-path-errors" in
-  match
-    execute ~environment:(Unix.environment ()) ~folder:workspace.scratch
-      ~input:"/dev/null" ~output ~errors ~bound:10. "git" [ "--exec-path" ]
-  with
-  | Ok 0 ->
-      let path = Filename.concat (String.trim (read_file output)) "git" in
-      if Sys.file_exists path then path else "git"
-  | Ok _ | Error _ -> "git"
-
-(* [workspace.root] exists and is empty. *)
-let build workspace ~base ~tree =
-  let repository = { workspace; program = program workspace } in
+(* A new repository on the branch main in [workspace.root], which
+   exists and is empty. *)
+let initialize workspace =
+  let repository = { workspace; program = Lazy.force program } in
   let* _ =
     git repository
       [ "init"; "--quiet"; "--template="; "--object-format=sha1"; "-b"; "main" ]
   in
-  copy_folder base workspace.root;
+  Ok repository
+
+(* Commits every file of the working tree, with the message [message]. *)
+let commit_all repository ~message =
   let* _ = git repository [ "add"; "--all" ] in
   let* _ =
-    git repository [ "commit"; "--quiet"; "--allow-empty"; "--message=base" ]
+    git repository
+      [ "commit"; "--quiet"; "--allow-empty"; "--message=" ^ message ]
   in
+  Ok ()
+
+(* [workspace.root] exists and is empty. *)
+let build workspace ~base ~tree =
+  let* repository = initialize workspace in
+  copy_folder base workspace.root;
+  let* () = commit_all repository ~message:"base" in
   List.iter
     (fun name ->
       if not (String.equal name ".git") then
         remove (Filename.concat workspace.root name))
     (entries workspace.root);
   copy_folder tree workspace.root;
+  Ok repository
+
+(* [workspace.root] exists and is empty. *)
+let build_committed workspace ~tree =
+  let* repository = initialize workspace in
+  copy_folder tree workspace.root;
+  let* () = commit_all repository ~message:"tree" in
   Ok repository
 
 let with_repository ~base ~tree f =
@@ -340,6 +441,7 @@ type layout = {
   args : string;
   tree : string;
   base : string option;
+  repository : bool;
   stdin : string option;
   expected : string;
 }
@@ -375,6 +477,12 @@ let read_layout mode case =
     let* tree = find case "tree" ~folder:true in
     let* tree = required "tree" tree in
     let* base = find case "base" ~folder:true in
+    let* repository = find case "repository" ~folder:false in
+    let* () =
+      match (base, repository) with
+      | Some _, Some _ -> Error Repository_with_base
+      | _ -> Ok ()
+    in
     let* stdin = find case "stdin" ~folder:false in
     let* expected = find case "expected" ~folder:true in
     let* () =
@@ -396,7 +504,15 @@ let read_layout mode case =
           | _ -> Ok ())
         (Ok ()) outputs
     in
-    Ok { args; tree; base; stdin; expected = Filename.concat case "expected" }
+    Ok
+      {
+        args;
+        tree;
+        base;
+        repository = Option.is_some repository;
+        stdin;
+        expected = Filename.concat case "expected";
+      }
 
 (* Each line is one argument. The line feed that ends the file ends
    the last argument, so an empty file holds no argument and a file
@@ -459,6 +575,46 @@ let replace_all ~pattern ~by text =
     scan 0;
     Buffer.contents buffer)
 
+(* The index of the first occurrence of [pattern] in [text] at or after
+   [start]. *)
+let find_from text ~pattern start =
+  let length = String.length text and size = String.length pattern in
+  let rec scan index =
+    if index > length - size then None
+    else if String.equal (String.sub text index size) pattern then Some index
+    else scan (index + 1)
+  in
+  scan start
+
+(* [line] with the value of its field tool replaced with <tool>, when
+   [line] is an index record: it holds the field kind with the value
+   index. The value ends at the first quotation mark that no backslash
+   escapes. *)
+let mask_line line =
+  let key = "\"tool\":\"" in
+  match
+    ( find_from line ~pattern:"\"kind\":\"index\"" 0,
+      find_from line ~pattern:key 0 )
+  with
+  | Some _, Some start ->
+      let value = start + String.length key in
+      let rec close index =
+        if index >= String.length line then None
+        else
+          match line.[index] with
+          | '\\' -> close (index + 2)
+          | '"' -> Some index
+          | _ -> close (index + 1)
+      in
+      Option.fold ~none:line
+        ~some:(fun stop ->
+          String.sub line 0 value ^ "<tool>"
+          ^ String.sub line stop (String.length line - stop))
+        (close value)
+  | _ -> line
+
+let mask_tool text = String.concat "" (List.map mask_line (lines text))
+
 let settle mode ~name ~expected actual =
   match mode with
   | Compare ->
@@ -494,9 +650,12 @@ let run ?(bound = 10.) ~binary mode case =
       with_temporary_folder (fun temporary ->
           let workspace = prepare temporary in
           let* () =
-            match layout.base with
-            | None -> Ok (copy_folder layout.tree workspace.root)
-            | Some base ->
+            match (layout.base, layout.repository) with
+            | None, false -> Ok (copy_folder layout.tree workspace.root)
+            | None, true ->
+                let* _ = build_committed workspace ~tree:layout.tree in
+                Ok ()
+            | Some base, _ ->
                 let* _ = build workspace ~base ~tree:layout.tree in
                 Ok ()
           in
@@ -509,14 +668,15 @@ let run ?(bound = 10.) ~binary mode case =
           in
           (* The run starts in the real path of its working folder, so
              an absolute path that the run prints holds that real path.
-             The comparison replaces that path with <root>, and changes
-             nothing else in the output. *)
+             The comparison replaces that path with <root>, and the
+             value of the field tool of an index record with <tool>,
+             and changes nothing else in the output. *)
           let rooted path =
             replace_all ~pattern:workspace.root ~by:"<root>" (read_file path)
           in
           settle mode ~name:(Filename.basename case) ~expected:layout.expected
             [
-              ("stdout", rooted output);
+              ("stdout", mask_tool (rooted output));
               ("stderr", rooted errors);
               ("exit", Printf.sprintf "%d\n" code);
             ]))

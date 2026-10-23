@@ -1,0 +1,1007 @@
+(* SPDX-License-Identifier: Apache-2.0 *)
+(* Copyright 2026 The Sinter Authors *)
+
+open Sinter_core
+
+let reader =
+  lazy
+    (match Markdown.create (Sinter_bridge.create ()) with
+    | Ok reader -> reader
+    | Error _ -> failwith "the reader does not start")
+
+let document text =
+  match Markdown.read (Lazy.force reader) text with
+  | Ok document -> document
+  | Error _ -> Alcotest.fail "the text gives no document"
+
+let markdown =
+  "[scan]\npacks.markdown.files = [\"**/*.md\"]\nrefs.gh = \"[1-9][0-9]*\"\n"
+
+let manifest ?(extra = "") () =
+  match Manifest.of_string (markdown ^ extra) with
+  | Ok manifest -> manifest
+  | Error _ -> Alcotest.fail "the manifest has errors"
+
+let facts ?(extra = "") files =
+  Facts.make (manifest ~extra ())
+    (List.map (fun (path, text) -> (path, document text)) files)
+
+let records ?extra ?(changed = []) files =
+  Facts.records (facts ?extra files) ~changed
+
+let lines ?extra ?changed files =
+  List.map Jsonl.to_string (records ?extra ?changed files)
+
+let field name record = List.assoc_opt name record
+
+let id record =
+  match field "id" record with
+  | Some (Jsonl.Scalar (Jsonl.String id)) -> id
+  | _ -> ""
+
+(* The first record whose id is [wanted]. Two edges of one source and
+   one tag target share an id. *)
+let find wanted records =
+  match
+    List.find_opt (fun record -> String.equal (id record) wanted) records
+  with
+  | Some record -> record
+  | None -> Alcotest.failf "no record has the id %s" wanted
+
+let show = function
+  | None -> "(absent)"
+  | Some value -> Jsonl.to_string [ ("value", value) ]
+
+(* Checks the field [name] of the record [wanted] of [records]. *)
+let check_field ?(message = "") records wanted name expected =
+  Alcotest.(check string)
+    (Printf.sprintf "%s %s %s" wanted name message)
+    (show expected)
+    (show (field name (find wanted records)))
+
+let str text = Some (Jsonl.string text)
+let int number = Some (Jsonl.int number)
+let bool value = Some (Jsonl.bool value)
+let ids records = List.map id records
+
+let lockout =
+  "# Lockout\n\n\
+   @req auth-lockout v2 Lock the account.\n\
+   @cites policy v1\n\
+   Five failures freeze it.\n\
+   More prose.\n\n\
+   Body text.\n\n\
+   ## Policy\n\n\
+   @decision policy\n"
+
+(* Declarations. *)
+
+let a_declaration_gives_its_record () =
+  let xh =
+    Sha256.hex
+      "# Lockout\n\n\
+       Lock the account.\n\
+       @cites policy\n\
+       Five failures freeze it.\n\
+       More prose.\n\n\
+       Body text.\n"
+  in
+  Alcotest.(check string)
+    "the record of req:auth-lockout"
+    (Printf.sprintf
+       "{\"approval_required\":false,\"approved\":true,\"col\":1,\"declined\":false,\"desc\":\"Lock \
+        the account.\\nFive failures freeze it.\\nMore \
+        prose.\",\"ecol\":39,\"eline\":3,\"id\":\"req:auth-lockout\",\"inforce\":true,\"kind\":\"req\",\"line\":3,\"pack\":\"markdown\",\"path\":\"docs/a.md\",\"rev\":2,\"slug\":\"auth-lockout\",\"title\":\"Lockout\",\"v\":1,\"xeline\":8,\"xh\":\"%s\",\"xline\":1}"
+       xh)
+    (Jsonl.to_string
+       (find "req:auth-lockout" (records [ ("docs/a.md", lockout) ])))
+
+let a_declaration_without_a_revision_has_revision_1 () =
+  let records = records [ ("docs/a.md", lockout) ] in
+  check_field records "decision:policy" "rev" (int 1);
+  check_field records "decision:policy" "title" (str "Policy");
+  check_field records "decision:policy" "desc" None;
+  check_field records "decision:policy" "xline" (int 10);
+  check_field records "decision:policy" "xeline" (int 12)
+
+let a_declaration_in_a_list_item_or_at_level_0_has_no_title () =
+  let records =
+    records
+      [
+        ("a.md", "@decision top\n\n# Head\n\nText.\n\n- @req item v1 An item.\n");
+      ]
+  in
+  check_field records "decision:top" "title" None;
+  check_field records "req:item" "title" None;
+  check_field records "req:item" "desc" (str "An item.")
+
+let the_trailing_prose_goes_to_the_last_declaration_of_the_block () =
+  let records =
+    records [ ("a.md", "# H\n\n@req first First.\n@req second\nThe prose.\n") ]
+  in
+  check_field records "req:first" "desc" (str "First.");
+  check_field records "req:second" "desc" (str "The prose.");
+  check_field records "req:first" "xeline" (int 3);
+  check_field records "req:second" "xline" (int 4)
+
+let a_status_tag_retires_its_declaration () =
+  let records =
+    records [ ("a.md", "# H\n\n@decision old\n@deprecated No longer.\n") ]
+  in
+  check_field records "decision:old" "status" (str "deprecated");
+  check_field records "decision:old" "inforce" (bool false)
+
+let a_status_tag_outside_the_block_of_the_declaration_is_inert () =
+  let records =
+    records [ ("a.md", "# H\n\n@decision old\n\n- @deprecated in an item\n") ]
+  in
+  check_field records "decision:old" "status" None;
+  check_field records "decision:old" "inforce" (bool true)
+
+let a_status_tag_of_another_kind_is_inert () =
+  let records =
+    records
+      [
+        ( "a.md",
+          "# H\n\n@req old\n@rejected\n\n## D\n\n@decision d\n@deferred\n" );
+      ]
+  in
+  check_field records "req:old" "status" None;
+  check_field records "decision:d" "status" (str "deferred")
+
+let the_first_status_tag_gives_the_status () =
+  let records =
+    records [ ("a.md", "# H\n\n@decision d\n@rejected\n@deprecated\n") ]
+  in
+  check_field records "decision:d" "status" (str "rejected")
+
+let a_status_tag_applies_to_the_declaration_whose_extent_holds_it () =
+  let records =
+    records [ ("a.md", "# H\n\n@decision a\n@decision b\n@deprecated\n") ]
+  in
+  check_field records "decision:a" "status" None;
+  check_field records "decision:b" "status" (str "deprecated")
+
+let a_kind_that_needs_approval_is_not_approved () =
+  let records =
+    records ~extra:"[ledger]\napproval-required = [\"req\", \"plan\"]\n"
+      [ ("docs/a.md", lockout) ]
+  in
+  check_field records "req:auth-lockout" "approved" (bool false);
+  check_field records "req:auth-lockout" "approval_required" (bool true);
+  check_field records "decision:policy" "approved" (bool true);
+  check_field records "decision:policy" "approval_required" (bool false)
+
+let each_kind_needs_approval_alone () =
+  let file =
+    ("a.md", "# A\n\n@req r\n\n# B\n\n@design d\n\n# C\n\n@decision c\n")
+  in
+  Alcotest.(check (list (list string)))
+    "the approved declarations under each setting"
+    [
+      [ "design:d"; "req:r" ];
+      [ "decision:c"; "req:r" ];
+      [ "decision:c"; "design:d" ];
+    ]
+    (List.map
+       (fun kind ->
+         let records =
+           records
+             ~extra:
+               (Printf.sprintf "[ledger]\napproval-required = [\"%s\"]\n" kind)
+             [ file ]
+         in
+         List.filter
+           (fun id ->
+             field "approved" (find id records) = Some (Jsonl.bool true))
+           (ids records))
+       [ "decision"; "design"; "req" ])
+
+let a_rule_or_a_bad_slug_gives_no_declaration () =
+  Alcotest.(check (list string))
+    "no record" []
+    (ids
+       (records [ ("a.md", "# H\n\n@rule r v1\n\n## B\n\n@req a/b\n@req\n") ]))
+
+(* Edges. *)
+
+let a_citation_takes_its_declaration_as_source () =
+  Alcotest.(check string)
+    "the record of the citation"
+    "{\"col\":1,\"dangling\":false,\"dst\":\"decision:policy\",\"ecol\":17,\"eline\":4,\"id\":\"cites:req:auth-lockout->policy\",\"kind\":\"cites\",\"line\":4,\"pack\":\"markdown\",\"path\":\"docs/a.md\",\"rev\":1,\"src\":\"req:auth-lockout\",\"suspect\":false,\"target\":\"policy\",\"v\":1}"
+    (Jsonl.to_string
+       (find "cites:req:auth-lockout->policy"
+          (records [ ("docs/a.md", lockout) ])))
+
+let a_citation_outside_every_extent_takes_its_section_as_a_site () =
+  let records =
+    records
+      [
+        ( "docs/b.md",
+          "# Notes\n\nSee @here.\n@cites policy The policy.\n\nMore.\n" );
+      ]
+  in
+  Alcotest.(check (list string))
+    "the records, in order"
+    [
+      "{\"col\":1,\"dangling\":true,\"desc\":\"The \
+       policy.\",\"ecol\":26,\"eline\":4,\"id\":\"cites:site:docs/b.md#notes->policy\",\"kind\":\"cites\",\"line\":4,\"pack\":\"markdown\",\"path\":\"docs/b.md\",\"src\":\"site:docs/b.md#notes\",\"suspect\":false,\"target\":\"policy\",\"v\":1}";
+      "{\"col\":1,\"ecol\":26,\"eline\":4,\"id\":\"site:docs/b.md#notes\",\"kind\":\"site\",\"line\":3,\"name\":\"notes\",\"pack\":\"markdown\",\"path\":\"docs/b.md\",\"v\":1,\"xeline\":6,\"xline\":1}";
+    ]
+    (List.map Jsonl.to_string records)
+
+let a_site_at_level_0_has_no_name () =
+  let records = records [ ("b.md", "@cites x\n") ] in
+  check_field records "site:b.md" "name" None;
+  check_field records "cites:site:b.md->x" "src" (str "site:b.md")
+
+let a_site_without_a_first_paragraph_spans_its_extent () =
+  let records = records [ ("b.md", "# Head\n\n- @cites x\n- other item\n") ] in
+  let site = find "site:b.md#head" records in
+  Alcotest.(check (list string))
+    "the span of the extent" [ "1"; "1"; "4"; "13" ]
+    (List.map
+       (fun name -> show (field name site))
+       [ "line"; "col"; "eline"; "ecol" ]
+    |> List.map (fun text -> String.sub text 9 (String.length text - 10)))
+
+let sites_of_headings_with_one_slug_are_numbered () =
+  Alcotest.(check (list string))
+    "two sites"
+    [ "site:b.md#a-b"; "site:b.md#a-b-1" ]
+    (List.filter
+       (fun id -> String.starts_with ~prefix:"site:" id)
+       (ids (records [ ("b.md", "# A b\n\n@cites x\n\n# A-b\n\n@cites y\n") ])))
+
+let a_target_resolves_across_files () =
+  let records =
+    records
+      [
+        ("a.md", "# A\n\n@cites far v3\n"); ("z/b.md", "# B\n\n@design far v3\n");
+      ]
+  in
+  check_field records "cites:site:a.md#a->far" "dst" (str "design:far");
+  check_field records "cites:site:a.md#a->far" "dangling" (bool false);
+  check_field records "cites:site:a.md#a->far" "suspect" (bool false)
+
+let a_target_that_differs_only_in_case_is_dangling () =
+  let records =
+    records [ ("a.md", "# A\n\n@cites Far\n\n# B\n\n@req far\n") ]
+  in
+  check_field records "cites:site:a.md#a->Far" "dst" None;
+  check_field records "cites:site:a.md#a->Far" "dangling" (bool true)
+
+let a_malformed_target_is_not_dangling () =
+  let records = records [ ("a.md", "# A\n\n@cites not_ok!\n@cites -x\n") ] in
+  check_field records "cites:site:a.md#a->not_ok!" "dangling" (bool false);
+  check_field records "cites:site:a.md#a->-x" "dangling" (bool false);
+  check_field records "cites:site:a.md#a->-x" "dst" None
+
+let a_ref_of_a_declared_namespace_resolves () =
+  let records =
+    records
+      [ ("a.md", "# A\n\n@cites gh/12\n@cites gh/12 again\n@cites gh/3\n") ]
+  in
+  check_field records "cites:site:a.md#a->gh/12" "dst" (str "ref:gh/12");
+  Alcotest.(check (list string))
+    "one record per distinct ref, after the located records"
+    [
+      "{\"id\":\"ref:gh/12\",\"kind\":\"ref\",\"ns\":\"gh\",\"pack\":\"markdown\",\"ref\":\"12\",\"v\":1}";
+      "{\"id\":\"ref:gh/3\",\"kind\":\"ref\",\"ns\":\"gh\",\"pack\":\"markdown\",\"ref\":\"3\",\"v\":1}";
+    ]
+    (List.filteri
+       (fun index _ -> index >= 4)
+       (List.map Jsonl.to_string records))
+
+let a_resolved_ref_is_not_dangling () =
+  check_field
+    (records [ ("a.md", "# A\n\n@cites gh/12\n") ])
+    "cites:site:a.md#a->gh/12" "dangling" (bool false)
+
+let refs_come_in_the_order_of_their_ids () =
+  Alcotest.(check (list string))
+    "the ids of the refs, in byte order"
+    [ "ref:a-b/1"; "ref:a/1"; "ref:gh/2" ]
+    (List.filter
+       (fun id -> String.starts_with ~prefix:"ref:" id)
+       (ids
+          (records ~extra:"refs.a = \"[0-9]\"\nrefs.a-b = \"[0-9]\"\n"
+             [ ("a.md", "# A\n\n@cites gh/2\n@cites a/1\n@cites a-b/1\n") ])))
+
+let a_ref_that_does_not_resolve_gives_no_record () =
+  let records = records [ ("a.md", "# A\n\n@cites jira/12\n@cites gh/0x\n") ] in
+  check_field records "cites:site:a.md#a->jira/12" "dst" None;
+  check_field records "cites:site:a.md#a->jira/12" "dangling" (bool false);
+  check_field records "cites:site:a.md#a->gh/0x" "dangling" (bool false);
+  Alcotest.(check (list string))
+    "no ref record" []
+    (List.filter (fun id -> String.starts_with ~prefix:"ref:" id) (ids records))
+
+let a_pin_to_another_revision_is_suspect () =
+  let records =
+    records
+      [
+        ( "a.md",
+          "# A\n\n\
+           @req a v2\n\n\
+           # B\n\n\
+           @design b v1\n\
+           @refines a v1\n\
+           @cites a v2\n\
+           @cites a\n" );
+      ]
+  in
+  check_field records "refines:design:b->a" "suspect" (bool true);
+  check_field records "refines:design:b->a" "rev" (int 1);
+  check_field records "cites:design:b->a" "suspect" (bool false)
+    ~message:"(the first of two)";
+  check_field records "refines:design:b->a" "rung" None;
+  check_field records "refines:design:b->a" "live" None
+
+let a_verifies_edge_in_markdown_is_an_orphan () =
+  check_field
+    (records [ ("a.md", "# A\n\n@req a\n@verifies a v1\n") ])
+    "verifies:req:a->a" "rung" (str "orphan")
+
+let an_inline_description_loses_its_blanks () =
+  let records =
+    records [ ("a.md", "# A\n\n@cites x v1 \t text  here \t\n@cites y\n") ]
+  in
+  check_field records "cites:site:a.md#a->x" "desc" (str "text  here");
+  check_field records "cites:site:a.md#a->y" "desc" None
+
+(* Supersession. *)
+
+let supersedes =
+  "# A\n\n@decision new v1\n@supersedes old v1\n\n# B\n\n@decision old\n"
+
+let a_live_supersedes_edge_retires_its_target () =
+  let records = records [ ("a.md", supersedes) ] in
+  check_field records "supersedes:decision:new->old" "live" (bool true);
+  check_field records "decision:old" "inforce" (bool false);
+  check_field records "decision:new" "inforce" (bool true)
+
+let a_source_that_is_not_approved_retires_nothing () =
+  let records =
+    records ~extra:"[ledger]\napproval-required = [\"decision\"]\n"
+      [ ("a.md", supersedes) ]
+  in
+  check_field records "supersedes:decision:new->old" "live" (bool false);
+  check_field records "decision:old" "inforce" (bool true)
+
+let a_retired_source_retires_nothing () =
+  let records =
+    records
+      [
+        ( "a.md",
+          "# A\n\n\
+           @decision c\n\
+           @supersedes b v1\n\n\
+           # B\n\n\
+           @decision b\n\
+           @supersedes a v1\n\n\
+           # C\n\n\
+           @decision a\n" );
+      ]
+  in
+  check_field records "decision:c" "inforce" (bool true);
+  check_field records "decision:b" "inforce" (bool false);
+  check_field records "supersedes:decision:b->a" "live" (bool false);
+  check_field records "decision:a" "inforce" (bool true)
+
+let declarations_of_two_files_keep_their_own_numbers () =
+  let records =
+    records
+      [
+        ("a.md", "# A\n\n@decision x\n@deprecated\n");
+        ("b.md", "# B\n\n@decision y\n@supersedes z v1\n\n# Z\n\n@decision z\n");
+      ]
+  in
+  check_field records "supersedes:decision:y->z" "live" (bool true);
+  check_field records "decision:z" "inforce" (bool false)
+
+let a_rule_that_supersedes_retires_its_target () =
+  check_field
+    (records
+       [
+         ("a.md", "# R\n\n@rule r v1\n@supersedes d v1\n\n# D\n\n@decision d\n");
+       ])
+    "decision:d" "inforce" (bool false)
+
+let every_member_of_a_supersedes_cycle_is_in_force () =
+  let records =
+    records
+      [
+        ( "a.md",
+          "# A\n\n\
+           @decision a\n\
+           @supersedes b v1\n\n\
+           # B\n\n\
+           @decision b\n\
+           @supersedes a v1\n\n\
+           # S\n\n\
+           @decision s\n\
+           @supersedes s v1\n" );
+      ]
+  in
+  List.iter
+    (fun id -> check_field records id "inforce" (bool true))
+    [ "decision:a"; "decision:b"; "decision:s" ]
+
+let a_supersedes_edge_from_a_site_is_not_live () =
+  let records =
+    records [ ("a.md", "# A\n\n@supersedes old v1\n\n# B\n\n@decision old\n") ]
+  in
+  check_field records "supersedes:site:a.md#a->old" "live" (bool false);
+  check_field records "decision:old" "inforce" (bool true)
+
+(* Acks. *)
+
+let an_ack_names_the_fact_of_its_block () =
+  let records =
+    records
+      [
+        ( "a.md",
+          "# A\n\n\
+           @req a\n\
+           @ack disendorsed  cache-ttl 1a2b3c4d\n\n\
+           # B\n\n\
+           @cites a\n\
+           @ack stale 0123abcd\n" );
+      ]
+  in
+  Alcotest.(check string)
+    "the ack of a declaration"
+    "{\"block\":\"req:a\",\"col\":1,\"ecol\":37,\"eline\":4,\"hash\":\"1a2b3c4d\",\"id\":\"ack:req:a:disendorsed  \
+     cache-ttl\",\"kind\":\"ack\",\"line\":4,\"pack\":\"markdown\",\"path\":\"a.md\",\"target\":\"disendorsed  \
+     cache-ttl\",\"v\":1}"
+    (Jsonl.to_string (find "ack:req:a:disendorsed  cache-ttl" records));
+  check_field records "ack:site:a.md#b:stale" "block" (str "site:a.md#b")
+
+let the_hash_of_an_ack_follows_its_last_blank () =
+  let records =
+    records
+      [
+        ( "a.md",
+          "# A\n\n@req a\n@ack x y\tH1 \t\n\n# B\n\n@req b\n@ack p\tq \t R2\n"
+        );
+      ]
+  in
+  check_field records "ack:req:a:x y" "hash" (str "H1");
+  check_field records "ack:req:b:p\tq" "hash" (str "R2")
+
+let an_ack_with_no_fact_or_no_hash_gives_no_record () =
+  Alcotest.(check (list string))
+    "no ack record" []
+    (List.filter
+       (fun id -> String.starts_with ~prefix:"ack:" id)
+       (ids
+          (records
+             [
+               ( "a.md",
+                 "# A\n\n@ack stale 0123abcd\n\n# B\n\n@req b\n@ack 0123abcd\n"
+               );
+             ])))
+
+(* Plans. *)
+
+let auth_plan =
+  "# Auth lockout\n\n\
+   @plan auth-lockout\n\
+   @scope src/**\n\n\
+   ## Lock the account\n\n\
+   @scope src/auth/**\n\
+   @req auth-lockout\n\
+   @verifies auth-lockout\n\n\
+   ## Record the policy\n\n\
+   @decision lockout-policy\n"
+
+let a_plan_file_gives_its_plan_steps_and_promises () =
+  let csh =
+    Sha256.hex
+      "{\"promises\":[{\"scope\":[\"src/**\"],\"target\":\"lockout-policy\",\"word\":\"decision\"},{\"scope\":[\"src/auth/**\"],\"target\":\"auth-lockout\",\"word\":\"req\"},{\"scope\":[\"src/auth/**\"],\"target\":\"auth-lockout\",\"word\":\"verifies\"}],\"scope\":[\"src/**\"]}"
+  in
+  Alcotest.(check (list string))
+    "the records, in order"
+    [
+      Printf.sprintf
+        "{\"active\":false,\"approved\":true,\"col\":1,\"csh\":\"%s\",\"declined\":false,\"ecol\":19,\"eline\":3,\"id\":\"plan:auth-lockout\",\"kind\":\"plan\",\"line\":3,\"open\":true,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"scope\":[\"src/**\"],\"slug\":\"auth-lockout\",\"title\":\"Auth \
+         lockout\",\"v\":1}"
+        csh;
+      "{\"col\":1,\"ecol\":18,\"eline\":9,\"id\":\"promise:step:auth-lockout/lock-the-account:req:auth-lockout\",\"kind\":\"promise\",\"line\":9,\"met\":false,\"out_of_scope\":false,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"step\":\"lock-the-account\",\"target\":\"auth-lockout\",\"v\":1,\"word\":\"req\"}";
+      "{\"col\":1,\"ecol\":23,\"eline\":10,\"id\":\"promise:step:auth-lockout/lock-the-account:verifies:auth-lockout\",\"kind\":\"promise\",\"line\":10,\"met\":false,\"out_of_scope\":false,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"step\":\"lock-the-account\",\"target\":\"auth-lockout\",\"v\":1,\"word\":\"verifies\"}";
+      "{\"col\":1,\"ecol\":25,\"eline\":14,\"id\":\"promise:step:auth-lockout/record-the-policy:decision:lockout-policy\",\"kind\":\"promise\",\"line\":14,\"met\":false,\"out_of_scope\":false,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"step\":\"record-the-policy\",\"target\":\"lockout-policy\",\"v\":1,\"word\":\"decision\"}";
+      "{\"active\":false,\"col\":1,\"done\":false,\"ecol\":20,\"eline\":6,\"id\":\"step:auth-lockout/lock-the-account\",\"kind\":\"step\",\"line\":6,\"met\":0,\"own_scope\":true,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"refactor\":false,\"scope\":[\"src/auth/**\"],\"slug\":\"lock-the-account\",\"title\":\"Lock \
+       the account\",\"total\":2,\"v\":1}";
+      "{\"active\":false,\"col\":1,\"done\":false,\"ecol\":21,\"eline\":12,\"id\":\"step:auth-lockout/record-the-policy\",\"kind\":\"step\",\"line\":12,\"met\":0,\"own_scope\":false,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"refactor\":false,\"scope\":[\"src/**\"],\"slug\":\"record-the-policy\",\"title\":\"Record \
+       the policy\",\"total\":1,\"v\":1}";
+    ]
+    (lines [ (".plans/auth.md", auth_plan) ])
+
+let promise = "promise:step:auth-lockout/lock-the-account:req:auth-lockout"
+
+let a_declaration_in_the_scope_of_the_step_meets_its_promise () =
+  let records =
+    records
+      [
+        (".plans/auth.md", auth_plan);
+        ("src/auth/a.md", "# A\n\n@req auth-lockout\n");
+        ("src/d.md", "# D\n\n@decision lockout-policy\n");
+      ]
+  in
+  check_field records promise "met" (bool true);
+  check_field records promise "by" (str "req:auth-lockout");
+  check_field records "step:auth-lockout/lock-the-account" "met" (int 1);
+  check_field records "step:auth-lockout/record-the-policy" "met" (int 1);
+  check_field records "step:auth-lockout/record-the-policy" "done" (bool true)
+
+let a_declaration_outside_the_scope_is_out_of_scope () =
+  let records =
+    records
+      [
+        (".plans/auth.md", auth_plan);
+        ("docs/a.md", "# A\n\n@req auth-lockout\n");
+      ]
+  in
+  check_field records promise "met" (bool false);
+  check_field records promise "by" None;
+  check_field records promise "out_of_scope" (bool true)
+
+let a_declaration_of_another_kind_meets_no_promise () =
+  let records =
+    records
+      [
+        (".plans/auth.md", auth_plan);
+        ("src/auth/a.md", "# A\n\n@design auth-lockout\n");
+      ]
+  in
+  check_field records promise "met" (bool false);
+  check_field records promise "out_of_scope" (bool false)
+
+let the_default_location_of_the_kind_meets_a_promise () =
+  let records =
+    records ~extra:"[plan]\nlocations.req = [\"docs/\"]\n"
+      [
+        (".plans/auth.md", auth_plan);
+        ("docs/a.md", "# A\n\n@req auth-lockout\n");
+      ]
+  in
+  check_field records promise "met" (bool true);
+  check_field records promise "out_of_scope" (bool false)
+
+let cites_plan = "# P\n\n@plan p\n@scope docs/**\n\n## Cite\n\n@cites target\n"
+let cites_promise = "promise:step:p/cite:cites:target"
+
+let an_edge_that_resolves_and_is_not_suspect_meets_its_promise () =
+  let records rev =
+    records
+      [
+        (".plans/p.md", cites_plan);
+        ("docs/a.md", "# A\n\n@cites target v1\n");
+        ("other/t.md", Printf.sprintf "# T\n\n@req target v%d\n" rev);
+      ]
+  in
+  check_field (records 1) cites_promise "met" (bool true);
+  check_field (records 1) cites_promise "by"
+    (str "cites:site:docs/a.md#a->target");
+  check_field (records 2) cites_promise "met" (bool false) ~message:"(suspect)";
+  check_field (records 2) cites_promise "out_of_scope" (bool false)
+
+let a_dangling_edge_meets_no_promise () =
+  let records =
+    records
+      [ (".plans/p.md", cites_plan); ("docs/a.md", "# A\n\n@cites target\n") ]
+  in
+  check_field records cites_promise "met" (bool false)
+
+let a_verifies_promise_is_never_met_in_markdown () =
+  let records =
+    records
+      [
+        (".plans/auth.md", auth_plan);
+        ( "src/auth/a.md",
+          "# A\n\n@req auth-lockout\n@verifies auth-lockout v1\n" );
+      ]
+  in
+  check_field records
+    "promise:step:auth-lockout/lock-the-account:verifies:auth-lockout" "met"
+    (bool false);
+  check_field records "step:auth-lockout/lock-the-account" "done" (bool false)
+
+let refactor = "# P\n\n@plan p\n\n## Clean\n\n@scope lib/**\n"
+
+let a_step_with_no_promise_is_done_when_the_diff_changes_its_scope () =
+  check_field
+    (records ~changed:[ "bin/x.ml"; "lib/y.ml" ] [ (".plans/p.md", refactor) ])
+    "step:p/clean" "done" (bool true);
+  check_field
+    (records ~changed:[ "bin/x.ml" ] [ (".plans/p.md", refactor) ])
+    "step:p/clean" "done" (bool false);
+  check_field
+    (records [ (".plans/p.md", refactor) ])
+    "step:p/clean" "refactor" (bool true)
+
+let a_ref_meets_a_promised_citation () =
+  check_field
+    (records
+       [
+         ( ".plans/p.md",
+           "# P\n\n@plan p\n@scope docs/**\n\n## C\n\n@cites gh/7\n" );
+         ("docs/a.md", "# A\n\n@cites gh/7\n");
+       ])
+    "promise:step:p/c:cites:gh/7" "by"
+    (str "cites:site:docs/a.md#a->gh/7")
+
+let only_a_verifies_edge_in_the_scope_keeps_a_step_from_done () =
+  check_field
+    (records ~changed:[ "lib/y.ml" ]
+       [
+         (".plans/p.md", refactor);
+         ("lib/a.md", "# A\n\n@cites x v1\n");
+         ("doc/a.md", "# A\n\n@verifies x v1\n");
+       ])
+    "step:p/clean" "done" (bool true)
+
+let a_verifies_edge_in_the_scope_keeps_a_step_from_done () =
+  check_field
+    (records ~changed:[ "lib/y.ml" ]
+       [ (".plans/p.md", refactor); ("lib/a.md", "# A\n\n@verifies x v1\n") ])
+    "step:p/clean" "done" (bool false)
+
+let only_a_step_with_no_promise_needs_the_changes () =
+  Alcotest.(check (list bool))
+    "a plan with a refactor step, and one without" [ true; false ]
+    (List.map
+       (fun text -> Facts.needs_changes (facts [ (".plans/p.md", text) ]))
+       [ refactor; auth_plan ])
+
+let repeated_promises_of_a_step_collapse () =
+  let records =
+    records [ (".plans/p.md", "# P\n\n@plan p\n\n## S\n\n@req a\n@req a\n") ]
+  in
+  check_field records "promise:step:p/s:req:a" "line" (int 7);
+  check_field records "step:p/s" "total" (int 1)
+
+let a_step_holds_the_promises_of_its_items_and_subsections () =
+  Alcotest.(check (list string))
+    "the promises of the step"
+    [ "promise:step:p/s:req:in-item"; "promise:step:p/s:req:in-sub" ]
+    (List.filter
+       (fun id -> String.starts_with ~prefix:"promise:" id)
+       (ids
+          (records
+             [
+               ( ".plans/p.md",
+                 "# P\n\n\
+                  @plan p\n\n\
+                  ## S\n\n\
+                  Text.\n\n\
+                  - @req in-item\n\n\
+                  ### Sub\n\n\
+                  @req in-sub\n" );
+             ])))
+
+let a_level_2_section_with_no_plan_tag_is_no_step () =
+  Alcotest.(check (list string))
+    "the plan alone" [ "plan:p" ]
+    (ids
+       (records
+          [ (".plans/p.md", "# P\n\n@plan p\n\n## Notes\n\nJust text.\n") ]))
+
+let a_plan_at_level_0_with_no_scope_has_no_title () =
+  let records = records [ (".plans/p.md", "@plan p\n\n## S\n\n@req r\n") ] in
+  check_field records "plan:p" "title" None;
+  check_field records "plan:p" "scope" (Some (Jsonl.strings []));
+  check_field records "step:p/s" "scope" (Some (Jsonl.strings []))
+
+let a_scope_line_holds_globs_between_commas () =
+  let records =
+    records
+      [ (".plans/p.md", "# P\n\n@plan p\n@scope a/**,  b/ ,, !a/x/\t,\n") ]
+  in
+  check_field records "plan:p" "scope"
+    (Some (Jsonl.strings [ "a/**"; "b/"; "!a/x/" ]))
+
+let a_glob_with_a_bang_narrows_the_scope_of_a_step () =
+  let records path =
+    records
+      [
+        ( ".plans/p.md",
+          "# P\n\n@plan p\n\n## S\n\n@scope src/**, !src/gen/, [x, !\n@req r\n"
+        );
+        (path, "# R\n\n@req r\n");
+      ]
+  in
+  check_field (records "src/a.md") "promise:step:p/s:req:r" "met" (bool true);
+  check_field (records "src/gen/a.md") "promise:step:p/s:req:r" "met"
+    (bool false);
+  check_field (records "src/gen/a.md") "promise:step:p/s:req:r" "out_of_scope"
+    (bool true)
+
+let a_plan_that_needs_approval_is_not_approved () =
+  check_field
+    (records ~extra:"[ledger]\napproval-required = [\"plan\"]\n"
+       [ (".plans/p.md", refactor) ])
+    "plan:p" "approved" (bool false)
+
+let tags_in_a_plan_file_give_no_declaration_and_no_edge () =
+  Alcotest.(check (list string))
+    "no declaration and no edge" []
+    (List.filter
+       (fun id ->
+         not
+           (String.starts_with ~prefix:"p" id
+           || String.starts_with ~prefix:"step" id))
+       (ids
+          (records
+             [ (".plans/auth.md", auth_plan ^ "\n## More\n\n@cites x v1\n") ])))
+
+let a_file_whose_first_block_has_no_plan_tag_is_no_plan () =
+  Alcotest.(check (list string))
+    "an ordinary file" [ "req:x" ]
+    (ids
+       (records [ (".plans/notes.md", "# N\n\n@req x\n\n## S\n\n@plan p\n") ]))
+
+let a_plan_tag_outside_plans_gives_no_plan () =
+  Alcotest.(check (list string))
+    "no record" []
+    (ids
+       (records
+          [
+            ("docs/p.md", "# P\n\n@plan p\n");
+            (".plans/q.md", "# Q\n\n@plan Bad/Slug\n\n## S\n\n@req r\n");
+          ]))
+
+(* The header. *)
+
+let the_index_names_the_tree_and_the_base () =
+  Alcotest.(check string)
+    "the index record"
+    "{\"base\":\"b\",\"evidence\":false,\"kind\":\"index\",\"manifest\":\"sinter.toml\",\"mode\":\"tree\",\"packs\":[],\"target_branch\":\"main\",\"tool\":\"v1\",\"tree\":\"t\",\"v\":1}"
+    (Jsonl.to_string
+       (Facts.index ~tree:"t" ~base:"b" ~target_branch:"main"
+          ~manifest:"sinter.toml" ~tool:"v1"))
+
+(* Properties. *)
+
+module Gen = QCheck2.Gen
+
+let line =
+  Gen.oneof
+    [
+      Gen.oneof_list
+        [
+          "# A";
+          "## S";
+          "## S";
+          "### T";
+          "";
+          "";
+          "Prose.";
+          "> @req q v1";
+          "```";
+          "<!-- c -->";
+          "---";
+          "+++";
+          "\t@cites a v1";
+        ];
+      Gen.map3
+        (fun prefix word (target, rest) -> prefix ^ "@" ^ word ^ target ^ rest)
+        (Gen.oneof_list [ ""; "- "; "  "; "1. "; "- [x] "; "  - " ])
+        (Gen.oneof_list
+           [
+             "req";
+             "design";
+             "decision";
+             "rule";
+             "plan";
+             "scope";
+             "cites";
+             "satisfies";
+             "verifies";
+             "refines";
+             "supersedes";
+             "deprecated";
+             "rejected";
+             "deferred";
+             "ack";
+             "pin";
+             "";
+           ])
+        (Gen.pair
+           (Gen.oneof_list
+              [
+                ""; " a"; " b"; " A"; " gh/1"; " x/y"; " bad!"; " src/**, a.md";
+              ])
+           (Gen.oneof_list
+              [ ""; " v1"; " v2"; " v0"; " 0123abcd"; " some text" ]));
+    ]
+
+let tree =
+  Gen.map
+    (fun files ->
+      List.sort_uniq (fun (a, _) (b, _) -> String.compare a b) files)
+    (Gen.list_size (Gen.int_bound 3)
+       (Gen.pair
+          (Gen.oneof_list [ "a.md"; "src/b.md"; ".plans/p.md"; ".plans/q.md" ])
+          (Gen.map (String.concat "\n") (Gen.list_size (Gen.int_bound 14) line))))
+
+let print_tree = QCheck2.Print.(list (pair string string))
+
+let property name check =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200 ~name ~print:print_tree tree check)
+
+let text name record =
+  match field name record with
+  | Some (Jsonl.Scalar (Jsonl.String text)) -> Some text
+  | _ -> None
+
+let number name record =
+  match field name record with
+  | Some (Jsonl.Scalar (Jsonl.Int number)) -> Some number
+  | _ -> None
+
+(* The key that orders a record: located records first. *)
+let key record =
+  match text "path" record with
+  | Some path ->
+      ( 0,
+        Option.value (text "kind" record) ~default:"",
+        path,
+        Option.value (number "line" record) ~default:0,
+        Option.value (number "col" record) ~default:0,
+        id record )
+  | None -> (1, "", "", 0, 0, id record)
+
+let rec sorted = function
+  | a :: (b :: _ as rest) -> compare a b <= 0 && sorted rest
+  | [] | [ _ ] -> true
+
+let records_come_in_their_order =
+  property "the records come in the order of kind, path, line, col, and id"
+    (fun files -> sorted (List.map key (records ~changed:[ "a.md" ] files)))
+
+let every_reference_names_a_record =
+  property "every src, dst, block, and by names a record, or a rule"
+    (fun files ->
+      let records = records files in
+      let known = ids records in
+      List.for_all
+        (fun record ->
+          List.for_all
+            (fun name ->
+              match text name record with
+              | None -> true
+              | Some named ->
+                  List.mem named known
+                  || String.starts_with ~prefix:"rule:" named)
+            [ "src"; "dst"; "block"; "by" ])
+        records)
+
+let every_record_is_canonical =
+  property "every record writes as a canonical line" (fun files ->
+      List.for_all
+        (fun record -> String.length (Jsonl.to_string record) > 0)
+        (records files))
+
+let case name f = Alcotest.test_case name `Quick f
+
+let tests =
+  [
+    case "a declaration gives its record" a_declaration_gives_its_record;
+    case "a declaration without a revision has revision 1"
+      a_declaration_without_a_revision_has_revision_1;
+    case "a declaration in a list item or at level 0 has no title"
+      a_declaration_in_a_list_item_or_at_level_0_has_no_title;
+    case "the trailing prose goes to the last declaration of the block"
+      the_trailing_prose_goes_to_the_last_declaration_of_the_block;
+    case "a status tag retires its declaration"
+      a_status_tag_retires_its_declaration;
+    case "a status tag outside the block of the declaration is inert"
+      a_status_tag_outside_the_block_of_the_declaration_is_inert;
+    case "a status tag of another kind is inert"
+      a_status_tag_of_another_kind_is_inert;
+    case "the first status tag gives the status"
+      the_first_status_tag_gives_the_status;
+    case "a status tag applies to the declaration whose extent holds it"
+      a_status_tag_applies_to_the_declaration_whose_extent_holds_it;
+    case "a kind that needs approval is not approved"
+      a_kind_that_needs_approval_is_not_approved;
+    case "each kind needs approval alone" each_kind_needs_approval_alone;
+    case "a rule or a bad slug gives no declaration"
+      a_rule_or_a_bad_slug_gives_no_declaration;
+    case "a citation takes its declaration as source"
+      a_citation_takes_its_declaration_as_source;
+    case "a citation outside every extent takes its section as a site"
+      a_citation_outside_every_extent_takes_its_section_as_a_site;
+    case "a site at level 0 has no name" a_site_at_level_0_has_no_name;
+    case "a site without a first paragraph spans its extent"
+      a_site_without_a_first_paragraph_spans_its_extent;
+    case "sites of headings with one slug are numbered"
+      sites_of_headings_with_one_slug_are_numbered;
+    case "a target resolves across files" a_target_resolves_across_files;
+    case "a target that differs only in case is dangling"
+      a_target_that_differs_only_in_case_is_dangling;
+    case "a malformed target is not dangling" a_malformed_target_is_not_dangling;
+    case "a ref of a declared namespace resolves"
+      a_ref_of_a_declared_namespace_resolves;
+    case "a resolved ref is not dangling" a_resolved_ref_is_not_dangling;
+    case "refs come in the order of their ids"
+      refs_come_in_the_order_of_their_ids;
+    case "a ref that does not resolve gives no record"
+      a_ref_that_does_not_resolve_gives_no_record;
+    case "a pin to another revision is suspect"
+      a_pin_to_another_revision_is_suspect;
+    case "a verifies edge in markdown is an orphan"
+      a_verifies_edge_in_markdown_is_an_orphan;
+    case "an inline description loses its blanks"
+      an_inline_description_loses_its_blanks;
+    case "a live supersedes edge retires its target"
+      a_live_supersedes_edge_retires_its_target;
+    case "a source that is not approved retires nothing"
+      a_source_that_is_not_approved_retires_nothing;
+    case "a retired source retires nothing" a_retired_source_retires_nothing;
+    case "declarations of two files keep their own numbers"
+      declarations_of_two_files_keep_their_own_numbers;
+    case "a rule that supersedes retires its target"
+      a_rule_that_supersedes_retires_its_target;
+    case "every member of a supersedes cycle is in force"
+      every_member_of_a_supersedes_cycle_is_in_force;
+    case "a supersedes edge from a site is not live"
+      a_supersedes_edge_from_a_site_is_not_live;
+    case "an ack names the fact of its block" an_ack_names_the_fact_of_its_block;
+    case "the hash of an ack follows its last blank"
+      the_hash_of_an_ack_follows_its_last_blank;
+    case "an ack with no fact or no hash gives no record"
+      an_ack_with_no_fact_or_no_hash_gives_no_record;
+    case "a plan file gives its plan, steps, and promises"
+      a_plan_file_gives_its_plan_steps_and_promises;
+    case "a declaration in the scope of the step meets its promise"
+      a_declaration_in_the_scope_of_the_step_meets_its_promise;
+    case "a declaration outside the scope is out of scope"
+      a_declaration_outside_the_scope_is_out_of_scope;
+    case "a declaration of another kind meets no promise"
+      a_declaration_of_another_kind_meets_no_promise;
+    case "the default location of the kind meets a promise"
+      the_default_location_of_the_kind_meets_a_promise;
+    case "an edge that resolves and is not suspect meets its promise"
+      an_edge_that_resolves_and_is_not_suspect_meets_its_promise;
+    case "a dangling edge meets no promise" a_dangling_edge_meets_no_promise;
+    case "a verifies promise is never met in markdown"
+      a_verifies_promise_is_never_met_in_markdown;
+    case "a step with no promise is done when the diff changes its scope"
+      a_step_with_no_promise_is_done_when_the_diff_changes_its_scope;
+    case "a ref meets a promised citation" a_ref_meets_a_promised_citation;
+    case "only a verifies edge in the scope keeps a step from done"
+      only_a_verifies_edge_in_the_scope_keeps_a_step_from_done;
+    case "a verifies edge in the scope keeps a step from done"
+      a_verifies_edge_in_the_scope_keeps_a_step_from_done;
+    case "only a step with no promise needs the changes"
+      only_a_step_with_no_promise_needs_the_changes;
+    case "repeated promises of a step collapse"
+      repeated_promises_of_a_step_collapse;
+    case "a step holds the promises of its items and subsections"
+      a_step_holds_the_promises_of_its_items_and_subsections;
+    case "a level-2 section with no plan tag is no step"
+      a_level_2_section_with_no_plan_tag_is_no_step;
+    case "a plan at level 0 with no scope has no title"
+      a_plan_at_level_0_with_no_scope_has_no_title;
+    case "a scope line holds globs between commas"
+      a_scope_line_holds_globs_between_commas;
+    case "a glob with a bang narrows the scope of a step"
+      a_glob_with_a_bang_narrows_the_scope_of_a_step;
+    case "a plan that needs approval is not approved"
+      a_plan_that_needs_approval_is_not_approved;
+    case "tags in a plan file give no declaration and no edge"
+      tags_in_a_plan_file_give_no_declaration_and_no_edge;
+    case "a file whose first block has no plan tag is no plan"
+      a_file_whose_first_block_has_no_plan_tag_is_no_plan;
+    case "a plan tag outside .plans/ gives no plan"
+      a_plan_tag_outside_plans_gives_no_plan;
+    case "the index names the tree and the base"
+      the_index_names_the_tree_and_the_base;
+    records_come_in_their_order;
+    every_reference_names_a_record;
+    every_record_is_canonical;
+  ]

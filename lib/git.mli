@@ -188,6 +188,15 @@ val merge_base : t -> string -> string -> (string, error) result
     commit, that is empty, that starts with [-], or that holds a NUL byte. It is
     [No_merge_base (a, b)] when the two commits have no common ancestor. *)
 
+val commit_of : t -> string -> (string, error) result
+(** [commit_of repo rev] is the object id of the commit that the revision [rev]
+    names, for example ["main"], ["HEAD~1"], or an object id. A tag that points
+    at a commit names that commit.
+
+    The error is [Bad_revision rev] when [rev] names no commit, when [rev] is
+    empty, when it starts with [-], or when it holds a NUL byte. Git never sees
+    such a name. *)
+
 (** {1 Diff} *)
 
 type hunk = {

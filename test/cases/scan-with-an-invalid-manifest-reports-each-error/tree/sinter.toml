@@ -1,0 +1,6 @@
+[scan]
+packs.markdown.files = ["**/*.md"]
+
+[check]
+historic = ["x/"]
+rollout-cap = "yes"

@@ -50,6 +50,11 @@ let () =
       ("bridge", Test_bridge.tests);
       ("adapter", Test_adapter.tests);
       ("sha256", Test_sha256.tests);
+      ("markdown pack", Test_markdown_pack.tests);
+      ("line index", Test_line_index.tests);
+      ("tag line", Test_tag_line.tests);
+      ("slug", Test_slug.tests);
+      ("markdown", Test_markdown.tests);
       ("toml raw", Test_toml_raw.tests);
       ("toml", Test_toml.tests);
       ("toml conformance", Test_toml_conformance.tests);
@@ -66,6 +71,8 @@ let () =
       ("finding class", Test_finding_class.tests);
       ("major minor", Test_major_minor.tests);
       ("manifest", Test_manifest.tests);
+      ("facts", Test_facts.tests);
+      ("scan", Test_scan.tests);
       ( "cases",
         Fixture.tests ~binary mode
           ~on_write:(fun path -> written := path :: !written)

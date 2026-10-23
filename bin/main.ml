@@ -196,12 +196,73 @@ let serve_cmd =
   in
   Cmd.v info Term.(const run $ const ())
 
+(* scan prints facts, not findings, and it asks for no approval. *)
+let scan_exits = [ clean_exit; usage_exit; environment_exit ]
+
+let scan_cmd =
+  let doc = "Print the facts of the repository as JSON lines" in
+  let man =
+    [
+      `S Manpage.s_description;
+      `P
+        "Read the git repository that holds the current folder, and print one \
+         fact per line, as canonical JSONL: an object with sorted keys, on one \
+         line, with no insignificant whitespace.";
+      `P
+        "The first line is the index record. It names the tree key of the \
+         working tree, the base commit, the target branch, the manifest, and \
+         the version of the tool. The facts follow, sorted by kind, path, \
+         line, column, and id; the facts with no path come last, sorted by id.";
+      `P
+        "The command reads the manifest, and each file of the repository that \
+         the pack markdown reads. A file that git ignores, a symbolic link, a \
+         file inside a submodule, and a file whose path is not UTF-8 are not \
+         read. Each warning goes to standard error.";
+    ]
+  in
+  let info = Cmd.info "scan" ~doc ~man ~exits:scan_exits in
+  let manifest =
+    let doc =
+      "The manifest to read, instead of $(i,sinter.toml) at the root of the \
+       repository. A relative path is relative to the current folder."
+    in
+    Arg.(value & opt (some string) None & info [ "manifest" ] ~docv:"PATH" ~doc)
+  in
+  let base =
+    let doc =
+      "The base commit, as a git revision. Without this option, the base is \
+       the merge base of HEAD and the target branch of the manifest."
+    in
+    Arg.(value & opt (some string) None & info [ "base" ] ~docv:"REVISION" ~doc)
+  in
+  let report lines = List.iter (Printf.eprintf "sinter: %s\n") lines in
+  let run manifest base =
+    match
+      Sinter_core.Scan.run ~env:(Unix.environment ()) ~dir:(Sys.getcwd ())
+        ~manifest ~base ~tool:version
+    with
+    | Error error ->
+        report (Sinter_core.Scan.messages error);
+        environment_error
+    | Ok { warnings; records } -> (
+        report warnings;
+        (* A write that fails is a fault of the environment. *)
+        try
+          List.iter (Sinter_core.Jsonl.output stdout) records;
+          flush stdout;
+          clean
+        with Sys_error message ->
+          report [ Printf.sprintf "cannot write the output: %s" message ];
+          environment_error)
+  in
+  Cmd.v info Term.(const run $ manifest $ base)
+
 let cmd =
   let doc = "plans die into residue; residue is checked" in
   let info = Cmd.info "sinter" ~version ~doc ~exits in
   Cmd.group info
     ~default:Term.(ret (const (`Help (`Pager, None))))
-    [ parse_cmd; serve_cmd ]
+    [ parse_cmd; scan_cmd; serve_cmd ]
 
 (* A descriptor that is closed when the process starts goes to the next
    file that any thread opens, and the wasm engine's cache thread opens
