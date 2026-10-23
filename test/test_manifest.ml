@@ -1179,6 +1179,20 @@ let a_table_with_an_empty_name () =
     (message
        (Manifest.Unknown_key { name = "x"; table = [ "" ]; nearest = None }))
 
+let a_runner_message_stays_on_one_line () =
+  Alcotest.(check string)
+    "names that need quotes"
+    "\"a\\tb\" is in the runners of two packs, \"c d\" and \"e\\nf\"; remove \
+     it from one of them"
+    (message
+       (Manifest.Runner_in_two_packs
+          { runner = "a\tb"; pack = "e\nf"; other = "c d" }));
+  Alcotest.(check string)
+    "a name that differs from a key of a pack in case"
+    "'Files' is not a runner name; a runner name is lower-case letters and \
+     digits, in words joined by '-', such as 'vitest' or 'cargo-nextest'"
+    (message (Manifest.Bad_runner_name "Files"))
+
 let newer_keys_names_each_key_newer_than_spec () =
   match Toml.parse "target = \"a\"\n[check]\nrollout-cap = true\nfoo = 1\n" with
   | Error _ -> Alcotest.fail "the text does not parse"
@@ -1374,6 +1388,13 @@ let line =
       "packs.markdown.files = [\"**/*.md\"]";
       "packs.ocaml.files = [\"**/*.ml\"]";
       "packs.ocaml.version = \"1.0\"";
+      "packs.ocaml.runners = [\"dune-test\", \"check\"]";
+      "packs.ocaml.dune-test.mode = 1";
+      "packs.rust.runners = [\"dune-test\", \"X\", \"files\", 1]";
+      "[scan.packs.ocaml.check]";
+      "[scan.packs.ocaml]";
+      "runners = [\"a\", \"a\"]";
+      "dune-test = 2";
       "files = [\"a\", \"!b\"]";
       "version = \"1\"";
       "refs.gh = \"[1-9][0-9]*\"";
@@ -1510,16 +1531,17 @@ let settings =
     in
     flatten_list pairs >|= List.concat)
 
-(* Three forms of one manifest: every key path as one dotted key at the
+(* Four forms of one manifest: every key path as one dotted key at the
    top level; a header for each table of the top level; a header for
-   each table that holds a value. *)
+   each table that holds a value, the headers in byte order or in the
+   reverse order; each table of the top level as one inline table. *)
 let render_dotted settings =
   String.concat ""
     (List.map
        (fun (path, value) -> Toml.render_path path ^ " = " ^ value ^ "\n")
        settings)
 
-let render_by ~depth settings =
+let render_by ?(reverse = false) ~depth settings =
   let groups =
     List.fold_left
       (fun groups (path, value) ->
@@ -1535,12 +1557,52 @@ let render_by ~depth settings =
       [] settings
     |> List.sort compare
   in
+  let top, tables = List.partition (fun (table, _) -> table = []) groups in
   String.concat ""
     (List.map
        (fun (table, lines) ->
          (if table = [] then "" else "[" ^ Toml.render_path table ^ "]\n")
          ^ String.concat "" lines)
-       groups)
+       (top @ if reverse then List.rev tables else tables))
+
+type tree = Leaf of string | Node of (string * tree) list
+
+(* [nodes] with the value at [path] added. The names of a node keep the
+   order in which the settings first name them. *)
+let rec add_setting nodes path value =
+  match path with
+  | [] -> nodes
+  | [ name ] -> nodes @ [ (name, Leaf value) ]
+  | name :: rest -> (
+      match List.assoc_opt name nodes with
+      | Some (Node children) ->
+          List.map
+            (fun (n, tree) ->
+              if n = name then (n, Node (add_setting children rest value))
+              else (n, tree))
+            nodes
+      | Some (Leaf _) | None ->
+          nodes @ [ (name, Node (add_setting [] rest value)) ])
+
+let rec render_tree = function
+  | Leaf value -> value
+  | Node children ->
+      "{ "
+      ^ String.concat ", "
+          (List.map
+             (fun (name, tree) ->
+               Toml.render_path [ name ] ^ " = " ^ render_tree tree)
+             children)
+      ^ " }"
+
+let render_inline settings =
+  String.concat ""
+    (List.map
+       (fun (name, tree) ->
+         Toml.render_path [ name ] ^ " = " ^ render_tree tree ^ "\n")
+       (List.fold_left
+          (fun nodes (path, value) -> add_setting nodes path value)
+          [] settings))
 
 let summary manifest =
   String.concat "\n"
@@ -1589,7 +1651,454 @@ let every_form_and_order_reads_the_same =
           render_dotted (shuffle 1 settings);
           render_by ~depth:4 settings;
           render_by ~depth:2 (shuffle 2 settings);
+          render_by ~reverse:true ~depth:4 (shuffle 3 settings);
+          render_inline (shuffle 4 settings);
         ])
+
+(* A manifest with runners: the pack markdown, and one to three fetched
+   packs. Each runner of the pool belongs to one fetched pack or to
+   none, and each runner holds up to three settings. *)
+
+let runner_pool =
+  [
+    "vitest";
+    "jest";
+    "dune-test";
+    "cargo-nextest";
+    "go-test";
+    "r2";
+    "check";
+    "target";
+    "plan";
+  ]
+
+let pack_pool = [ "c"; "go"; "ocaml"; "rust"; "typescript" ]
+let setting_keys = [ "mode"; "args"; "files"; "target"; "rollout-cap" ]
+
+let setting_values =
+  [
+    "\"--ci\"";
+    "true";
+    "[\"a\", \"b\"]";
+    "3";
+    "{ k = \"v\" }";
+    "[]";
+    "1.5";
+    "1979-05-27";
+    "[{ k = 1 }]";
+    "\"\xc3\xbc\xf0\x9f\x98\x80\"";
+  ]
+
+type runners_model = {
+  packs : (string * string list) list;
+      (* each fetched pack, with its runners in the order of the array *)
+  empty : bool; (* a pack with no runner writes [runners = []] *)
+  runner_settings : (string list * string) list;
+      (* each runner setting: its key path and the TOML text of its value *)
+}
+
+let take n list = List.filteri (fun i _ -> i < n) list
+
+let runners_model =
+  Gen.(
+    int_range 1 3 >>= fun count ->
+    shuffle_list pack_pool >>= fun packs ->
+    shuffle_list runner_pool >>= fun runners ->
+    int_bound 6 >>= fun used ->
+    list_size (return used) (int_bound (count - 1)) >>= fun owners ->
+    let owned = List.combine (take used runners) owners in
+    let packs =
+      List.mapi
+        (fun i pack ->
+          ( pack,
+            List.filter_map
+              (fun (runner, owner) -> if owner = i then Some runner else None)
+              owned ))
+        (take count packs)
+    in
+    let settings_of (pack, runner) =
+      shuffle_list setting_keys >>= fun keys ->
+      int_bound 3 >>= fun n ->
+      flatten_list
+        (List.map
+           (fun key ->
+             oneof_list setting_values >|= fun value ->
+             ([ "scan"; "packs"; pack; runner; key ], value))
+           (take n keys))
+    in
+    flatten_list
+      (List.concat_map
+         (fun (pack, runners) ->
+           List.map (fun runner -> settings_of (pack, runner)) runners)
+         packs)
+    >>= fun settings ->
+    bool >|= fun empty ->
+    { packs; empty; runner_settings = List.concat settings })
+
+(* The settings of a manifest whose fetched packs write [members], the
+   TOML texts of the members of [runners], or no key for [None]. *)
+let runners_settings members runner_settings =
+  ([ "scan"; "packs"; "markdown"; "files" ], "[\"**/*.md\"]")
+  :: List.concat_map
+       (fun (pack, texts) ->
+         [
+           ( [ "scan"; "packs"; pack; "files" ],
+             Printf.sprintf "[\"**/*.%s\"]" pack );
+           ([ "scan"; "packs"; pack; "version" ], "\"1.0\"");
+         ]
+         @
+         match texts with
+         | None -> []
+         | Some texts ->
+             [
+               ( [ "scan"; "packs"; pack; "runners" ],
+                 "[" ^ String.concat ", " texts ^ "]" );
+             ])
+       members
+  @ runner_settings
+
+let valid_members model =
+  List.map
+    (fun (pack, runners) ->
+      ( pack,
+        if runners = [] && not model.empty then None
+        else Some (List.map Toml.basic_string runners) ))
+    model.packs
+
+(* The settings in a random order, and their text in one of the forms. *)
+let rendered settings =
+  Gen.(
+    pair (shuffle_list settings)
+      (oneof_list
+         [
+           render_dotted;
+           (fun s -> render_by ~depth:1 s);
+           (fun s -> render_by ~depth:2 s);
+           (fun s -> render_by ~depth:4 s);
+           (fun s -> render_by ~reverse:true ~depth:4 s);
+           render_inline;
+         ])
+    >|= fun (settings, render) -> (settings, render settings))
+
+(* The byte offset of [position] in [text], and the place of [offset]. A
+   column counts code points. *)
+let offset_of text (position : Toml.position) =
+  let length = String.length text in
+  let rec skip i =
+    if i < length && Char.code text.[i] land 0xC0 = 0x80 then skip (i + 1)
+    else i
+  in
+  let rec go i line column =
+    if i >= length || (line = position.line && column = position.column) then i
+    else if text.[i] = '\n' then go (i + 1) (line + 1) 1
+    else go (skip (i + 1)) line (column + 1)
+  in
+  go 0 1 1
+
+let position_of text offset =
+  let line = ref 1 and column = ref 1 in
+  String.iteri
+    (fun i c ->
+      if i < offset then
+        if c = '\n' then begin
+          incr line;
+          column := 1
+        end
+        else if Char.code c land 0xC0 <> 0x80 then incr column)
+    text;
+  { Toml.line = !line; column = !column }
+
+let text_of text (span : Toml.span) =
+  let start = offset_of text span.start in
+  String.sub text start (offset_of text span.stop - start)
+
+let runners_read_as_written =
+  property ~count:300
+    ~name:"runners and runner settings read as written, in every form and order"
+    ~print:(fun (_, _, text) -> text)
+    Gen.(
+      runners_model >>= fun model ->
+      rendered (runners_settings (valid_members model) model.runner_settings)
+      >|= fun (settings, text) -> (model, settings, text))
+    (fun (model, settings, text) ->
+      let in_the_file pack runner =
+        List.filter_map
+          (function
+            | [ "scan"; "packs"; p; r; key ], value when p = pack && r = runner
+              -> (
+                match Toml.parse ("v = " ^ value) with
+                | Ok [ (_, node) ] -> Some (key, value_text node)
+                | _ -> Some (key, "not a TOML value: " ^ value))
+            | _ -> None)
+          settings
+      in
+      let packs = Manifest.packs (read text) in
+      List.length packs = List.length model.packs + 1
+      && List.for_all
+           (fun (pack : Manifest.pack) ->
+             List.map
+               (fun (runner : Manifest.runner) -> runner.name)
+               pack.runners
+             = Option.value ~default:[] (List.assoc_opt pack.name model.packs)
+             && List.for_all
+                  (fun (runner : Manifest.runner) ->
+                    text_of text runner.at = Toml.basic_string runner.name
+                    && List.map
+                         (fun ((key : Toml.key), node) ->
+                           (key.name, value_text node))
+                         runner.settings
+                       = in_the_file pack.name runner.name
+                    && List.for_all
+                         (fun ((key : Toml.key), _) ->
+                           text_of text key.at = Toml.render_path [ key.name ])
+                         runner.settings)
+                  pack.runners)
+           packs)
+
+(* The place of an error in a text. [Only text] is the one place that
+   holds [text]. [Last text] is the last place that holds [text].
+   [Before (word, text)] is the last place that holds [word] in front of
+   the one place that holds [text]. A letter, a digit, '_', or '-' at an
+   end of [word] or [text] does not run on into the text beside it. *)
+type locate = Only of string | Last of string | Before of string * string
+
+let is_word_char = function
+  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '-' -> true
+  | _ -> false
+
+let occurrences token text =
+  let n = String.length token in
+  List.filter
+    (fun i ->
+      String.sub text i n = token
+      && ((not (is_word_char token.[0]))
+         || i = 0
+         || not (is_word_char text.[i - 1]))
+      && ((not (is_word_char token.[n - 1]))
+         || i + n = String.length text
+         || not (is_word_char text.[i + n])))
+    (List.init (max 0 (String.length text - n + 1)) Fun.id)
+
+let locate text = function
+  | Only token -> (
+      match occurrences token text with
+      | [ i ] -> Some (position_of text i)
+      | _ -> None)
+  | Last token -> (
+      match List.rev (occurrences token text) with
+      | i :: _ -> Some (position_of text i)
+      | [] -> None)
+  | Before (word, token) -> (
+      match occurrences token text with
+      | [ i ] -> (
+          match
+            List.rev (List.filter (fun j -> j < i) (occurrences word text))
+          with
+          | j :: _ -> Some (position_of text j)
+          | [] -> None)
+      | _ -> None)
+
+let insert_at i x list =
+  take i list @ (x :: List.filteri (fun j _ -> j >= i) list)
+
+let with_members pack texts members =
+  List.map (fun (p, t) -> if p = pack then (p, texts) else (p, t)) members
+
+let rec has_prefix prefix path =
+  match (prefix, path) with
+  | [], _ -> true
+  | p :: ps, n :: ns -> p = n && has_prefix ps ns
+  | _ :: _, [] -> false
+
+let without prefix settings =
+  List.filter (fun (path, _) -> not (has_prefix prefix path)) settings
+
+let bad_runner_names =
+  [
+    "Vitest";
+    "1x";
+    "x-";
+    "-x";
+    "x--y";
+    "x_y";
+    "";
+    "a.b";
+    "\xc3\xa9";
+    "files";
+    "version";
+    "runners";
+  ]
+
+(* Names of tables that no pack of a model holds, and that occur in its
+   text only where a fault puts them. *)
+let stray_names runners =
+  let in_use =
+    pack_pool @ runner_pool @ setting_keys
+    @ [ "files"; "version"; "runners"; "scan"; "packs"; "markdown"; "true" ]
+  in
+  List.concat_map
+    (fun name ->
+      List.init (String.length name) (fun i ->
+          String.sub name 0 i
+          ^ String.sub name (i + 1) (String.length name - i - 1)))
+    runners
+  @ [ "mocha"; "runner"; "versions"; "file" ]
+  |> List.filter (fun name ->
+      String.length name >= 3 && not (List.mem name in_use))
+
+(* One fault in the runners of a valid model: the members of each pack,
+   the runner settings, the problem that the fault makes, and its place. *)
+let faults model =
+  let members = valid_members model in
+  let settings = model.runner_settings in
+  let key pack rest = "scan" :: "packs" :: pack :: rest in
+  let texts = List.map Toml.basic_string in
+  let owned =
+    List.concat_map
+      (fun (pack, runners) -> List.map (fun runner -> (pack, runner)) runners)
+      model.packs
+  in
+  let open Gen in
+  let bad_name =
+    oneof_list model.packs >>= fun (pack, runners) ->
+    oneof_list bad_runner_names >>= fun bad ->
+    int_bound (List.length runners) >>= fun i ->
+    bool >|= fun with_table ->
+    ( with_members pack (Some (texts (insert_at i bad runners))) members,
+      (if
+         with_table && bad <> ""
+         && String.for_all is_word_char bad
+         && not (List.mem bad [ "files"; "version"; "runners" ])
+       then settings @ [ (key pack [ bad; "mode" ], "1") ]
+       else settings),
+      Manifest.Bad_runner_name bad,
+      Only (Toml.basic_string bad) )
+  and stray_table =
+    oneof_list model.packs >>= fun (pack, runners) ->
+    oneof_list (stray_names runners) >|= fun name ->
+    ( members,
+      settings @ [ (key pack [ name; "mode" ], "1") ],
+      Manifest.Unknown_key
+        {
+          name;
+          table = key pack [];
+          nearest =
+            Edit_distance.nearest name
+              ("files" :: "version" :: "runners" :: runners);
+        },
+      Only name )
+  and markdown_runners =
+    oneof_list [ "[\"md-runner\"]"; "'md-runner'" ] >|= fun value ->
+    ( members,
+      settings @ [ (key "markdown" [ "runners" ], value) ],
+      Manifest.Markdown_runners,
+      Before ("runners", "md-runner") )
+  and runners_not_an_array =
+    oneof_list model.packs >>= fun (pack, _) ->
+    oneof_list
+      [
+        ("'one'", Toml.Kind.String);
+        ("44", Toml.Kind.Integer);
+        ("{ x = 1 }", Toml.Kind.Table);
+        ("08:00:00", Toml.Kind.Datetime);
+        ("false", Toml.Kind.Boolean);
+      ]
+    >|= fun (value, found) ->
+    ( with_members pack None members,
+      without (key pack []) settings @ [ (key pack [ "runners" ], value) ],
+      Manifest.Wrong_type
+        { key = key pack [ "runners" ]; expected = Manifest.Strings; found },
+      Only value )
+  and member_not_a_string =
+    oneof_list model.packs >>= fun (pack, runners) ->
+    oneof_list
+      [
+        ("17", Toml.Kind.Integer);
+        ("false", Toml.Kind.Boolean);
+        ("{ x = 1 }", Toml.Kind.Table);
+        ("[ 'a' ]", Toml.Kind.Array);
+        ("2.5", Toml.Kind.Float);
+      ]
+    >>= fun (value, found) ->
+    int_bound (List.length runners) >|= fun i ->
+    ( with_members pack (Some (insert_at i value (texts runners))) members,
+      settings,
+      Manifest.Wrong_member_type { key = key pack [ "runners" ]; found },
+      Only value )
+  in
+  let with_runners =
+    List.filter (fun (_, runners) -> runners <> []) model.packs
+  in
+  let repeated () =
+    oneof_list with_runners >>= fun (pack, runners) ->
+    int_bound (List.length runners - 1) >>= fun first ->
+    int_range (first + 1) (List.length runners) >|= fun i ->
+    let runner = List.nth runners first in
+    ( with_members pack (Some (texts (insert_at i runner runners))) members,
+      settings,
+      Manifest.Repeated_member { key = key pack [ "runners" ]; member = runner },
+      Last (Toml.basic_string runner) )
+  and not_a_table () =
+    oneof_list owned >>= fun (pack, runner) ->
+    oneof_list
+      [
+        ("'x'", Toml.Kind.String);
+        ("false", Toml.Kind.Boolean);
+        ("17", Toml.Kind.Integer);
+        ("[1]", Toml.Kind.Array);
+        ("2.5", Toml.Kind.Float);
+        ("07:32:00", Toml.Kind.Datetime);
+      ]
+    >|= fun (value, found) ->
+    ( members,
+      without (key pack [ runner ]) settings @ [ (key pack [ runner ], value) ],
+      Manifest.Wrong_type
+        { key = key pack [ runner ]; expected = Manifest.A_table; found },
+      Only value )
+  and in_two_packs () =
+    oneof_list owned >>= fun (pack, runner) ->
+    oneof_list (List.filter (fun (p, _) -> p <> pack) model.packs)
+    >>= fun (other, runners) ->
+    int_bound (List.length runners) >|= fun i ->
+    let copy = "'" ^ runner ^ "'" in
+    let later, earlier, token =
+      if String.compare other pack > 0 then (other, pack, copy)
+      else (pack, other, Toml.basic_string runner)
+    in
+    ( with_members other (Some (insert_at i copy (texts runners))) members,
+      settings,
+      Manifest.Runner_in_two_packs { runner; pack = later; other = earlier },
+      Only token )
+  in
+  oneof
+    ([
+       bad_name;
+       stray_table;
+       markdown_runners;
+       runners_not_an_array;
+       member_not_a_string;
+     ]
+    @ (if with_runners = [] then [] else [ repeated (); not_a_table () ])
+    @
+    if owned = [] || List.length model.packs < 2 then []
+    else [ in_two_packs () ])
+
+let one_fault_gives_its_one_error =
+  property ~count:300
+    ~name:
+      "one fault in the runners gives its one error, in every form and order"
+    ~print:(fun (text, problem, _) ->
+      text ^ "\nthe error that was expected: " ^ message problem)
+    Gen.(
+      runners_model >>= faults
+      >>= fun (members, runner_settings, problem, at) ->
+      rendered (runners_settings members runner_settings) >|= fun (_, text) ->
+      (text, problem, at))
+    (fun (text, problem, at) ->
+      match (locate text at, Manifest.of_string text) with
+      | Some position, Error errors ->
+          errors = [ Manifest.At (position, problem) ]
+      | _ -> false)
 
 let case name test = Alcotest.test_case name `Quick test
 
@@ -1645,6 +2154,7 @@ let tests =
     case "a value in a message is a TOML string"
       a_value_in_a_message_is_a_toml_string;
     case "a table with an empty name" a_table_with_an_empty_name;
+    case "a runner message stays on one line" a_runner_message_stays_on_one_line;
     case "since is that of the specification" since_is_that_of_the_specification;
     case "since of no setting is none" since_of_no_setting_is_none;
     case "a name that varies is any name but a fixed one"
@@ -1662,4 +2172,6 @@ let tests =
       newer_keys_names_each_key_newer_than_spec;
     of_string_answers_any_text;
     every_form_and_order_reads_the_same;
+    runners_read_as_written;
+    one_fault_gives_its_one_error;
   ]
