@@ -40,3 +40,11 @@
 (subdir
  cases/scan-with-a-plan-file-that-markdown-does-not-read-is-an-environment-error/tree
  (dirs :standard .plans))
+
+(subdir
+ cases/check-reports-the-findings-of-plans/tree
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-under-the-rollout-cap-blocks-nothing/tree
+ (dirs :standard .plans))
