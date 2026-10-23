@@ -49,7 +49,12 @@ let ack_parts rest =
   in
   Option.map
     (fun blank ->
-      ( trim (String.sub text 0 blank),
+      ( trim
+          (String.sub text 0
+             (blank
+             [@mutaml.skip
+               "the byte at [blank] is a space or a tab, which trim removes, \
+                so a target that takes one byte more is the same"])),
         String.sub text (blank + 1) (String.length text - blank - 1) ))
     blank
 
@@ -63,20 +68,23 @@ let globs rest =
 
 (* The path set of the valid members of [globs]. *)
 let path_set globs =
-  let valid member =
-    let glob =
-      if String.starts_with ~prefix:"!" member then
-        String.sub member 1 (String.length member - 1)
-      else member
-    in
-    Result.is_ok (Glob.of_string glob)
-  in
-  match
-    Path_set.of_strings
-      (List.sort_uniq String.compare (List.filter valid globs))
-  with
+  let members = List.sort_uniq String.compare globs in
+  match Path_set.of_strings members with
   | Ok set -> set
-  | Error _ -> Path_set.empty
+  | Error errors -> (
+      let bad =
+        List.filter_map
+          (function
+            | Path_set.Bad_glob { index; _ } -> Some index
+            | Path_set.Repeated _ | Path_set.No_plain_glob -> None)
+          errors
+      in
+      match
+        Path_set.of_strings
+          (List.filteri (fun index _ -> not (List.mem index bad)) members)
+      with
+      | Ok set -> set
+      | Error _ -> Path_set.empty)
 
 (* {1 The facts} *)
 
@@ -357,12 +365,12 @@ let first_scope (document : Markdown.t) indices =
     indices
 
 (* The index of the section of level 2 that holds the section [index],
-   or that is that section. *)
+   or that is that section. A section of level 0 or 1 has no such
+   section above it. *)
 let rec step_section (document : Markdown.t) index =
   let section = document.sections.(index) in
   match section.level with
   | 2 -> Some index
-  | 0 | 1 -> None
   | _ -> Option.bind section.parent (step_section document)
 
 (* The promises of the tags [indices], each word and target once. *)
@@ -562,7 +570,13 @@ let in_force ~approved declarations edges targets =
                   (fun source -> not (approved source && force source))
                   predecessors.(node))
         in
-        memo.(node) <- Some value;
+        let () =
+          memo.(node) <-
+            (Some value
+            [@mutaml.skip
+              "the memo only saves work: a value that it does not keep is \
+               computed again, and is the same"])
+        in
         value
   in
   Array.init count force

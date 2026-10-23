@@ -109,20 +109,16 @@ type outcome = { warnings : string list; records : Jsonl.record list }
 let repository result = Result.map_error (fun error -> Repository error) result
 
 let escape_path path =
-  let buffer = Buffer.create (String.length path) in
-  let rec loop start =
-    if start < String.length path then
-      let rest = String.sub path start (String.length path - start) in
-      match Sinter_bridge.Utf_8.first_invalid rest with
-      | None -> Buffer.add_string buffer rest
-      | Some offset ->
-          Buffer.add_string buffer (String.sub rest 0 offset);
-          Buffer.add_string buffer
-            (Printf.sprintf "\\x%02x" (Char.code rest.[offset]));
-          loop (start + offset + 1)
+  let rec pieces rest =
+    match Sinter_bridge.Utf_8.first_invalid rest with
+    | None -> [ rest ]
+    | Some offset ->
+        String.sub rest 0 offset
+        :: Printf.sprintf "\\x%02x" (Char.code rest.[offset])
+        :: pieces
+             (String.sub rest (offset + 1) (String.length rest - offset - 1))
   in
-  loop 0;
-  Buffer.contents buffer
+  String.concat "" (pieces path)
 
 let ledger_warning =
   "warning: the ledger ref refs/sinter/ledger is absent, so every plan counts \

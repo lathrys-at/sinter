@@ -230,6 +230,89 @@ let a_shown_path_is_utf_8 =
          && ((not (Sinter_bridge.Utf_8.is_valid path))
             || String.equal shown path)))
 
+let a_plan_file_needs_the_pack_markdown_when_it_names_none () =
+  let repo, _, _ = Lazy.force shared in
+  let path = Filename.concat (Git_fixture.temp_dir ()) "only-ocaml.toml" in
+  Out_channel.with_open_bin path (fun channel ->
+      Out_channel.output_string channel
+        "[scan]\n\
+         packs.ocaml.files = [\"**/*.ml\"]\n\
+         packs.ocaml.version = \"1.0\"\n");
+  Alcotest.(check string)
+    "the message"
+    ".plans/p.md is under .plans/, and the pack markdown does not read it; add \
+     \".plans/\" to its files"
+    (failure (scan ~manifest:path repo))
+
+(* The command. *)
+
+(* Dune runs the suite in the build copy of test/, and the executable
+   sits beside it in the build copy of bin/. *)
+let sinter = Filename.concat (Sys.getcwd ()) "../bin/main.exe"
+
+(* A scan of the shared repository whose standard output is a pipe that
+   nobody reads, with SIGPIPE ignored, so that the first write fails:
+   the exit status and what the scan wrote to standard error. The scan
+   gets the environment of the repository with the HOME of the suite,
+   where wasmtime keeps its cache of compiled grammars. *)
+let scan_into_a_closed_pipe () =
+  let repo, _, _ = Lazy.force shared in
+  let environment =
+    Array.map
+      (fun binding ->
+        match Sys.getenv_opt "HOME" with
+        | Some home when String.starts_with ~prefix:"HOME=" binding ->
+            "HOME=" ^ home
+        | Some _ | None -> binding)
+      (Git_fixture.env repo)
+  in
+  let errors = Filename.temp_file "sinter-scan" ".err" in
+  let reading, writing = Unix.pipe ~cloexec:true () in
+  Unix.close reading;
+  let previous = Sys.signal Sys.sigpipe Sys.Signal_ignore in
+  Fun.protect
+    ~finally:(fun () ->
+      Sys.set_signal Sys.sigpipe previous;
+      Sys.remove errors)
+    (fun () ->
+      let to_errors =
+        Unix.openfile errors [ Unix.O_WRONLY; Unix.O_TRUNC; Unix.O_CLOEXEC ] 0
+      in
+      let pid =
+        Fun.protect
+          ~finally:(fun () ->
+            Unix.close writing;
+            Unix.close to_errors)
+          (fun () ->
+            Unix.create_process_env "/bin/sh"
+              [|
+                "/bin/sh";
+                "-c";
+                "cd \"$1\" && exec \"$2\" scan";
+                "sh";
+                Git_fixture.root repo;
+                sinter;
+              |]
+              environment Unix.stdin writing to_errors)
+      in
+      let status =
+        match Unix.waitpid [] pid with
+        | _, Unix.WEXITED code -> code
+        | _, (Unix.WSIGNALED signal | Unix.WSTOPPED signal) -> -signal
+      in
+      (status, In_channel.with_open_bin errors In_channel.input_all))
+
+let a_scan_that_cannot_write_its_output_says_so () =
+  let _, _, { Scan.warnings; _ } = Lazy.force shared in
+  let status, errors = scan_into_a_closed_pipe () in
+  Alcotest.(check (pair int (list string)))
+    "the exit code and the lines of standard error"
+    ( 3,
+      List.map (fun warning -> "sinter: " ^ warning) warnings
+      @ [ "sinter: cannot write the output: Broken pipe" ] )
+    ( status,
+      List.filter (fun line -> line <> "") (String.split_on_char '\n' errors) )
+
 (* Messages. *)
 
 let each_error_says_what_is_wrong () =
@@ -246,8 +329,8 @@ let each_error_says_what_is_wrong () =
       [ "'r' names no commit" ];
       [ "no branch 'm' exists" ];
       [ "a and b have no common ancestor" ];
-      [ "git log failed: fatal: bad" ];
-      [ "git log gave output that sinter cannot read: no NUL" ];
+      [ "git log -1 failed: fatal: bad" ];
+      [ "git log -1 gave output that sinter cannot read: no NUL" ];
       [ "the index does not read" ];
       [
         "no sinter.toml at the repository root; create one, or name one with \
@@ -298,12 +381,12 @@ let each_error_says_what_is_wrong () =
          Scan.Repository
            (Git.Command_failed
               {
-                args = [ "log" ];
+                args = [ "log"; "-1" ];
                 status = Unix.WEXITED 128;
                 stderr = "fatal: bad\nmore";
               });
          Scan.Repository
-           (Git.Malformed_output { args = [ "log" ]; detail = "no NUL" });
+           (Git.Malformed_output { args = [ "log"; "-1" ]; detail = "no NUL" });
          Scan.Repository (Git.File_error "the index does not read");
          Scan.No_manifest;
          Scan.Missing_manifest "m.toml";
@@ -352,5 +435,9 @@ let tests =
       a_file_that_does_not_read_is_an_error;
     case "a byte outside UTF-8 shows as hex" a_byte_outside_utf_8_shows_as_hex;
     a_shown_path_is_utf_8;
+    case "a plan file needs the pack markdown when it names none"
+      a_plan_file_needs_the_pack_markdown_when_it_names_none;
+    case "a scan that cannot write its output says so"
+      a_scan_that_cannot_write_its_output_says_so;
     case "each error says what is wrong" each_error_says_what_is_wrong;
   ]
