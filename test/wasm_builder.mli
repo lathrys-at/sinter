@@ -112,6 +112,8 @@ type body =
   | Loop  (** runs until the fuel ends *)
   | Grow of int  (** grows the memory by this number of pages *)
   | Trap  (** runs [unreachable] *)
+  | Custom of instruction list
+      (** runs these instructions, which leave one [i64] on the stack *)
 
 type adapter = {
   version : int;  (** what [sinter_interface] gives *)

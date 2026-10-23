@@ -42,6 +42,7 @@ let () =
       ("bridge decode v2", Test_bridge_decode_v2.tests);
       ("parse", Test_parse.tests);
       ("bridge", Test_bridge.tests);
+      ("adapter", Test_adapter.tests);
       ("sha256", Test_sha256.tests);
       ("toml raw", Test_toml_raw.tests);
       ("toml", Test_toml.tests);

@@ -156,6 +156,7 @@ type body =
   | Loop
   | Grow of int
   | Trap
+  | Custom of instruction list
 
 type adapter = {
   version : int;
@@ -216,6 +217,7 @@ let call_body ~at = function
   | Loop -> [ loop_forever; unreachable ]
   | Grow pages -> [ i32_const pages; memory_grow; drop; i64_const 0L ]
   | Trap -> [ unreachable ]
+  | Custom body -> body
 
 let response = function Respond text -> text | _ -> ""
 

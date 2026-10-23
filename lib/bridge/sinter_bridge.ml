@@ -17,6 +17,7 @@ type engine
 type handle
 type tree_handle
 type query_handle
+type adapter_handle
 
 external engine_new : unit -> engine = "sinter_bridge_engine_new_stub"
 external engine_free : engine -> unit = "sinter_bridge_engine_free_stub"
@@ -40,6 +41,19 @@ external query_free : query_handle -> unit = "sinter_bridge_query_free_stub"
 
 external query_run : query_handle -> tree_handle -> string
   = "sinter_bridge_query_run_stub"
+
+external adapter_load : engine -> string -> int -> int -> adapter_handle
+  = "sinter_bridge_adapter_load_stub"
+
+external adapter_interface : adapter_handle -> int
+  = "sinter_bridge_adapter_interface_stub"
+
+external adapter_free : adapter_handle -> unit
+  = "sinter_bridge_adapter_free_stub"
+
+external adapter_call :
+  adapter_handle -> int -> string -> string -> int -> int -> string
+  = "sinter_bridge_adapter_call_byte" "sinter_bridge_adapter_call_stub"
 
 external sha256_buffer : string -> string = "sinter_bridge_sha256_stub"
 external toml_buffer : string -> string = "sinter_bridge_toml_parse_stub"
@@ -661,7 +675,33 @@ module Query = struct
     | exception Failed buffer -> Result.Error (Decode.run_error buffer)
 end
 
-module Adapter = Adapter_types
+module Adapter = struct
+  include Adapter_types
+
+  type t = adapter_handle
+
+  let check_limits ~fuel ~memory =
+    if fuel < 0 then
+      invalid_arg "Sinter_bridge.Adapter: the fuel limit is below 0";
+    if memory < 0 then
+      invalid_arg "Sinter_bridge.Adapter: the memory limit is below 0"
+
+  let load engine ~wasm ~fuel ~memory =
+    check_limits ~fuel ~memory;
+    match adapter_load engine wasm fuel memory with
+    | adapter -> Ok adapter
+    | exception Failed buffer -> Result.Error (Decode.adapter_error buffer)
+
+  let version = adapter_interface
+  let close = adapter_free
+
+  let call adapter function_ ~request ~report ~fuel ~memory =
+    check_limits ~fuel ~memory;
+    let number = match function_ with Recognise -> 0 | Bind -> 1 in
+    match adapter_call adapter number request report fuel memory with
+    | buffer -> Ok (Decode.response buffer)
+    | exception Failed buffer -> Result.Error (Decode.adapter_error buffer)
+end
 
 (* @cites toml-reader *)
 module Toml_raw = struct

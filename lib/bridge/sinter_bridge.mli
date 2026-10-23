@@ -248,6 +248,12 @@ end
 
 (** Runner adapters: WebAssembly modules that read test reports. *)
 module Adapter : sig
+  type engine := t
+
+  type t
+  (** A compiled runner adapter. An adapter stays valid when its engine is
+      closed. *)
+
   (** Why a module is not a runner adapter. *)
   type invalid =
     | Not_a_module of string
@@ -284,6 +290,51 @@ module Adapter : sig
 
   (** The two functions that a call can run. *)
   type call = Recognise | Bind
+
+  val load :
+    engine -> wasm:string -> fuel:int -> memory:int -> (t, error) result
+  (** [load engine ~wasm ~fuel ~memory] compiles the module [wasm] once and
+      checks that it is an adapter: it imports nothing, and it exports [memory],
+      a memory with 32-bit addresses that is not shared, and the functions
+      [sinter_interface], [sinter_alloc], [sinter_recognise], and [sinter_bind]
+      with their types. It can export other names. Then it calls
+      [sinter_interface] in a new instance, under a limit of [fuel] units of
+      fuel and a limit of [memory] bytes for all its memories together. The
+      caller owns the result, and frees it with {!close} or leaves it to the
+      garbage collector.
+
+      @raise Invalid_argument
+        if [fuel] or [memory] is below 0, or if [engine] is closed. *)
+
+  val version : t -> int
+  (** [version adapter] is what [sinter_interface] gave at the load, read as an
+      unsigned 32-bit number. The caller decides which versions it takes.
+
+      @raise Invalid_argument if [adapter] is closed. *)
+
+  val call :
+    t ->
+    call ->
+    request:string ->
+    report:string ->
+    fuel:int ->
+    memory:int ->
+    (string, error) result
+  (** [call adapter function_ ~request ~report ~fuel ~memory] makes one call in
+      a new instance: it writes [request] and then [report] where [sinter_alloc]
+      gives room for them, calls [function_] with their addresses and lengths,
+      and gives the bytes of the response. One limit of [fuel] units covers the
+      two calls of [sinter_alloc] and the call of [function_] together; [memory]
+      bounds all the memories of the instance together, in bytes. A growth of a
+      memory past its own maximum is no failure: the module sees [-1]. The
+      response need not be UTF-8.
+
+      @raise Invalid_argument
+        if [fuel] or [memory] is below 0, or if [adapter] is closed. *)
+
+  val close : t -> unit
+  (** [close adapter] frees the adapter. Every later call that takes [adapter]
+      raises [Invalid_argument]. A second call does nothing. *)
 
   val message : error -> string
   (** [message error] says why the load or the call failed, for the person who
