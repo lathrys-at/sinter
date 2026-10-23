@@ -215,9 +215,9 @@ let scan_cmd =
          line, column, and id; the facts with no path come last, sorted by id.";
       `P
         "The command reads the manifest, and each file of the repository that \
-         the pack markdown reads. A file that git ignores, a symbolic link, \
-         and a file whose path is not UTF-8 are not read. Each warning goes to \
-         standard error.";
+         the pack markdown reads. A file that git ignores, a symbolic link, a \
+         file inside a submodule, and a file whose path is not UTF-8 are not \
+         read. Each warning goes to standard error.";
     ]
   in
   let info = Cmd.info "scan" ~doc ~man ~exits:scan_exits in

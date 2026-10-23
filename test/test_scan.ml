@@ -140,38 +140,44 @@ let a_deleted_file_changes_the_tree_and_a_new_mode_does_not () =
        (fun id -> Option.map (fun value -> value = Jsonl.bool true) (done_ id))
        [ "step:p/gone"; "step:p/mode" ])
 
-let a_manifest_outside_the_repository_is_named_by_its_absolute_path () =
-  let repo = repository [ ("a.md", "# A\n") ] in
-  let folder = Unix.realpath (Git_fixture.temp_dir ()) in
-  let path = Filename.concat folder "outside.toml" in
-  Out_channel.with_open_bin path (fun channel ->
-      Out_channel.output_string channel manifest);
-  match (outcome (scan ~manifest:path ~base:"HEAD" repo)).records with
-  | index :: _ ->
-      Alcotest.(check string) "the manifest" path (field "manifest" index)
+(* A repository of two commits, scanned from the first, with a manifest
+   outside the repository: the path of the manifest, the first commit,
+   and the outcome. *)
+let outside =
+  lazy
+    (let repo = repository [ ("a.md", "# A\n") ] in
+     let first = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]) in
+     ignore
+       (Git_fixture.git repo [ "commit"; "-q"; "--allow-empty"; "-m"; "d" ]);
+     let folder = Unix.realpath (Git_fixture.temp_dir ()) in
+     let path = Filename.concat folder "outside.toml" in
+     Out_channel.with_open_bin path (fun channel ->
+         Out_channel.output_string channel manifest);
+     (path, first, outcome (scan ~manifest:path ~base:"HEAD~1" repo)))
+
+let index_field name { Scan.records; _ } =
+  match records with
+  | index :: _ -> field name index
   | [] -> Alcotest.fail "the scan gives no record"
 
+let a_manifest_outside_the_repository_is_named_by_its_absolute_path () =
+  let path, _, outcome = Lazy.force outside in
+  Alcotest.(check string) "the manifest" path (index_field "manifest" outcome)
+
+let a_base_is_the_commit_of_its_revision () =
+  let _, first, outcome = Lazy.force outside in
+  Alcotest.(check string) "the base" first (index_field "base" outcome)
+
 let a_relative_manifest_is_relative_to_the_folder () =
-  let repo = repository [ ("sinter.toml", manifest); ("docs/a.md", "# A\n") ] in
+  let repo, _, _ = Lazy.force shared in
   Alcotest.(check (list string))
     "the manifest of each scan from docs/"
     [ "sinter.toml"; "sinter.toml" ]
     (List.map
        (fun manifest ->
-         match
-           (outcome (scan ~dir:"docs" ?manifest ~base:"HEAD" repo)).records
-         with
-         | index :: _ -> field "manifest" index
-         | [] -> "")
+         index_field "manifest"
+           (outcome (scan ~dir:"docs" ?manifest ~base:"HEAD" repo)))
        [ Some "../sinter.toml"; None ])
-
-let a_base_is_the_commit_of_its_revision () =
-  let repo = repository [ ("sinter.toml", manifest) ] in
-  let first = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]) in
-  ignore (Git_fixture.git repo [ "commit"; "-q"; "--allow-empty"; "-m"; "d" ]);
-  match (outcome (scan ~base:"HEAD~1" repo)).records with
-  | index :: _ -> Alcotest.(check string) "the base" first (field "base" index)
-  | [] -> Alcotest.fail "the scan gives no record"
 
 let a_head_with_no_commit_is_an_error () =
   let repo = repository [ ("sinter.toml", manifest) ] in
@@ -271,6 +277,9 @@ let each_error_says_what_is_wrong () =
       [ "HEAD names no commit; make a commit, or name a base with --base" ];
       [ "a.md: the file does not open" ];
       [
+        "a.md: " ^ Sinter_bridge.Tree.message Sinter_bridge.Tree.Did_not_finish;
+      ];
+      [
         "the built-in grammar of markdown does not load: "
         ^ Sinter_bridge.Language.message (Sinter_bridge.Language.Version 9);
       ];
@@ -312,6 +321,8 @@ let each_error_says_what_is_wrong () =
              file = "a.md";
              error = Text_file.Cannot_open "a.md: the file does not open";
            };
+         Scan.Unparsed_file
+           { file = "a.md"; error = Sinter_bridge.Tree.Did_not_finish };
          Scan.Reader (Markdown.Grammar (Sinter_bridge.Language.Version 9));
          Scan.Reader (Markdown.Query (Sinter_bridge.Query.Not_utf_8 3));
        ])

@@ -15,6 +15,7 @@ type error =
   | No_merge_base of string
   | No_head
   | Unreadable_file of { file : string; error : Text_file.error }
+  | Unparsed_file of { file : string; error : Sinter_bridge.Tree.error }
   | Reader of Markdown.load_error
 
 let ( let* ) = Result.bind
@@ -90,6 +91,8 @@ let messages = function
   | No_head ->
       [ "HEAD names no commit; make a commit, or name a base with --base" ]
   | Unreadable_file { file; error } -> [ Text_file.message file error ]
+  | Unparsed_file { file; error } ->
+      [ file ^ ": " ^ Sinter_bridge.Tree.message error ]
   | Reader (Markdown.Grammar error) ->
       [
         "the built-in grammar of markdown does not load: "
@@ -194,7 +197,7 @@ let base_commit repo manifest base =
           | Error error -> Error (Repository error)))
 
 (* The documents of [files], read from [root] with a new engine. A file
-   that is not UTF-8 text, or that gives no tree, gives no document. *)
+   that is not UTF-8 text gives no document. *)
 let documents ~root files =
   let engine = Sinter_bridge.create () in
   Fun.protect
@@ -214,8 +217,9 @@ let documents ~root files =
                   | Ok content -> (
                       match Markdown.read reader content with
                       | Ok document -> Ok ((file, document) :: found)
-                      | Error (Markdown.Not_utf_8 _ | Markdown.No_tree _) ->
-                          Ok found))
+                      | Error (Markdown.Not_utf_8 _) -> Ok found
+                      | Error (Markdown.No_tree error) ->
+                          Error (Unparsed_file { file; error })))
                 (Ok []) files
               |> Result.map List.rev))
 

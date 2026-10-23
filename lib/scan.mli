@@ -32,6 +32,8 @@ type error =
   | No_head  (** [HEAD] names no commit *)
   | Unreadable_file of { file : string; error : Text_file.error }
       (** a file of the pack [markdown] does not read *)
+  | Unparsed_file of { file : string; error : Sinter_bridge.Tree.error }
+      (** the parse of a file of the pack [markdown] gives no tree *)
   | Reader of Markdown.load_error  (** the built-in grammar does not load *)
 
 val messages : error -> string list
