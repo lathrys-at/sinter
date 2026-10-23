@@ -1533,10 +1533,13 @@ let settings =
     in
     flatten_list pairs >|= List.concat)
 
-(* Four forms of one manifest: every key path as one dotted key at the
-   top level; a header for each table of the top level; a header for
-   each table that holds a value, the headers in byte order or in the
-   reverse order; each table of the top level as one inline table. *)
+(* Forms of one manifest. [render_dotted] writes each key path as one
+   dotted key at the top level. [render_by ~depth] writes a header for
+   each table that holds a value, cut to its first [depth] names, and
+   the rest of the key path under it as a dotted key. The headers come
+   in byte order, or in the reverse order with [~reverse:true].
+   [render_inline] writes each table of the top level as one inline
+   table. *)
 let render_dotted settings =
   String.concat ""
     (List.map
@@ -1739,7 +1742,7 @@ let runners_model =
 
 (* The settings of a manifest whose fetched packs write [members], the
    TOML texts of the members of [runners], or no key for [None]. *)
-let runners_settings members runner_settings =
+let manifest_settings members runner_settings =
   ([ "scan"; "packs"; "markdown"; "files" ], "[\"**/*.md\"]")
   :: List.concat_map
        (fun (pack, texts) ->
@@ -1820,7 +1823,7 @@ let runners_read_as_written =
     ~print:(fun (_, _, text) -> text)
     Gen.(
       runners_model >>= fun model ->
-      rendered (runners_settings (valid_members model) model.runner_settings)
+      rendered (manifest_settings (valid_members model) model.runner_settings)
       >|= fun (settings, text) -> (model, settings, text))
     (fun (model, settings, text) ->
       let in_the_file pack runner =
@@ -2094,7 +2097,7 @@ let one_fault_gives_its_one_error =
     Gen.(
       runners_model >>= faults
       >>= fun (members, runner_settings, problem, at) ->
-      rendered (runners_settings members runner_settings) >|= fun (_, text) ->
+      rendered (manifest_settings members runner_settings) >|= fun (_, text) ->
       (text, problem, at))
     (fun (text, problem, at) ->
       match (locate text at, Manifest.of_string text) with
