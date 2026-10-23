@@ -2,9 +2,9 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Load grammars through a Rust bridge linked into the binary
-@decision parser-bridge
+@decision parser-bridge v2
 @cites implementation-language
-Sinter loads tree-sitter grammars compiled to WebAssembly through a small Rust crate, linked statically into the `sinter` binary, that exposes six C functions to the OCaml core.
+Sinter loads tree-sitter grammars compiled to WebAssembly through a small Rust crate, linked statically into the `sinter` binary, that exposes a small set of C functions to the OCaml core.
 
 ## Context
 
@@ -29,7 +29,7 @@ must build on macOS and Linux from a clean checkout.
   depends on the `tree-sitter` crate with its `wasm` feature, so cargo
   builds tree-sitter and wasmtime together. It builds as a static
   library.
-- The crate exposes six C functions: create an engine, free an
+- The crate exposes C functions to create an engine, free an
   engine, load a grammar from wasm bytes, parse a text and run a query
   over it, free a result, and read the last error message. An engine
   owns every grammar loaded into it. An empty query makes the run
@@ -38,7 +38,7 @@ must build on macOS and Linux from a clean checkout.
   per capture with the pattern index, the byte range, the row and
   column range, the capture name, the node type, and the captured
   text. `bridge/README.md` defines the layout.
-- The OCaml library `sinter.bridge` in `lib/bridge/` binds the six
+- The OCaml library `sinter.bridge` in `lib/bridge/` binds the
   functions with hand-written C stubs. It does not use the `ctypes`
   library. A stub copies the whole result buffer into an OCaml string
   and frees the bridge's copy in the same call, so no OCaml value
@@ -79,7 +79,7 @@ must build on macOS and Linux from a clean checkout.
   design requires packs that carry no native code, so that a pack can
   be fetched by hash and run without trust in a `.so` file.
 - **The `ctypes` library instead of hand-written stubs** — rejected.
-  Six functions do not justify a dependency, and `ctypes` adds startup
+  A few functions do not justify a dependency, and `ctypes` adds startup
   cost that hooks would feel.
 - **Cargo's build output inside `_build`** — rejected after
   measurement. Dune empties a rule's directory before the rule runs,
@@ -112,7 +112,7 @@ compiled-module cache, which brings zstd with it. The build is no longer hermeti
 every call, which costs 0.015 ms for a two-pattern query and 0.7 ms
 for a hundred patterns; the scanner will want to compile a query once
 and run it over many files, which is a change inside the crate and
-not to the six functions.
+not to the functions it exposes.
 
 Measured on the pair's Apple silicon machine, with the commands in
 the pull request that added the bridge:

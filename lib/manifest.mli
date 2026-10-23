@@ -17,8 +17,9 @@ val specification : Major_minor.t
 val since : string list -> Major_minor.t option
 (** [since path] is the version of the specifications that added the setting at
     the key path [path], such as [["check"; "rollout-cap"]]. A name that varies,
-    such as the name of a pack, can be any name. It is [None] when [path] names
-    no setting. *)
+    such as the name of a pack, can be any name except a fixed name of the same
+    table: [["scan"; "packs"; "ocaml"; "files"; "x"]] names no setting. It is
+    [None] when [path] names no setting. *)
 
 (** A kind of declaration, as [ledger.approval-required] and [plan.locations]
     name it. *)
@@ -92,6 +93,14 @@ type problem =
       (** a name under [plan.locations] that is not a kind *)
   | Plan_location  (** [plan.locations.plan] *)
   | Markdown_version  (** a version for the built-in pack [markdown] *)
+  | Markdown_runners  (** runners for the built-in pack [markdown] *)
+  | Bad_runner_name of string
+      (** a member of the runners of a pack that is not a runner name: a name
+          that does not match the pattern of a pack name, or one of [files],
+          [version], or [runners] *)
+  | Runner_in_two_packs of { runner : string; pack : string; other : string }
+      (** the runners of [pack] and of [other] both hold [runner]; [other] is
+          the first pack in byte order that holds it *)
   | Wrong_type of {
       key : string list;
       expected : expected;
@@ -144,11 +153,27 @@ val render : path:string -> error -> string
 
 (** {1 Reading} *)
 
+type runner = {
+  name : string;
+  at : Toml.span;
+      (** the span of the member of [scan.packs.<name>.runners] that names the
+          runner, its quotes included *)
+  settings : (Toml.key * Toml.node) list;
+      (** each runner setting [scan.packs.<name>.<runner>.<key>] that the
+          manifest writes, in the order of the file: the part [<key>] of the key
+          path, with its span, and the value as the text writes it. The reader
+          checks no name, type, or value of a setting. *)
+}
+(** One runner of a pack. *)
+
 type pack = {
   name : string;
   files : Path_set.t;  (** the files that the pack reads; never empty *)
   version : Major_minor.t option;
       (** the release of a fetched pack; [None] for [markdown] alone *)
+  runners : runner list;
+      (** the runners, in the order of [scan.packs.<name>.runners], with no name
+          twice; [[]] when the manifest gives none *)
 }
 (** One pack that the manifest names. *)
 

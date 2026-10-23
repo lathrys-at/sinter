@@ -3,7 +3,7 @@
 
 # Sinter specification: query algebra
 
-Status: draft. The five specifications share one version; see [docs/versioning.md](../docs/versioning.md).
+Status: draft. The six specifications share one version; see [docs/versioning.md](../docs/versioning.md).
 
 ## 1. Introduction
 
@@ -68,7 +68,8 @@ Notes on individual kinds:
   site, or a markdown section that holds a citation outside every
   declaration's extent ([vocabulary.md](vocabulary.md) section 7.2). A
   code site carries the code hash `ch`.
-- A `test` is named by the language pack's ID strategy.
+- A `test` is a test or a group of tests that a language pack finds
+  ([packs.md](packs.md) section 8).
 - A `rule` is located in its rule file ([manifest.md](manifest.md)
   section 15).
 - A `setting` is one value of the manifest, and a `gate` is the tier
@@ -179,7 +180,7 @@ declaration. "Declaration" means a `req`, `design`, or `decision`.
 | `kind(K)` | facts whose kind or category is in `K` |
 | `req(n)` `design(n)` `decision(n)` `plan(n)` `rule(n)` | facts of that kind whose slug or name matches `n` |
 | `step(p/s)` | steps whose plan slug matches `p` and step slug matches `s` |
-| `test(n)` | test nodes whose pack-assigned ID matches `n` |
+| `test(n)` | test nodes whose full name matches `n` ([packs.md](packs.md) section 8.3) |
 | `ref(ns/id)` | ref facts matching |
 | `path(g)` | located facts whose `path` matches `g` |
 | `changed(b)` | see section 8; `b` is `base` or a revision |
@@ -247,20 +248,36 @@ the order below. The **rung** of an edge is the name of the predicate
 it satisfies.
 
 Definitions used: `t = src(e)`. `sites(e)` is the set of code sites
-in `src(in(satisfies, dst(e)))` — a test's own `@satisfies` never
-connects the test to itself, and a markdown site has no coverage.
-`runs(t)` is the set of run facts for `t` at the tree key of `T`.
-`cov(t, s)` is the attributed coverage fact for `(t, s)`. `agg(s)` is
-the aggregate coverage fact for `s`.
+with an attachment target ([packs.md](packs.md) section 6.5) in
+`src(in(satisfies, dst(e)))` — a test's own `@satisfies` never
+connects the test to itself, a code site with no attachment target
+has no code to cover, and a markdown site has no coverage. `tests(t)`
+is the set of tests that `t` stands for: `{t}` when `t` is a test, and
+the tests that `t` holds, those of nested groups included, when `t` is
+a group ([packs.md](packs.md) section 8.4). `runs(u)` is the set of
+run facts for `u` at the tree key of `T`.
+
+The **status** of `t` is the worst of these statuses, in the order of
+[jsonl.md](jsonl.md) section 6 (`pass`, `skip`, `fail`, `error`): the
+status of each run in `runs(t)`; the status of each run in `runs(u)`
+for each `u ∈ tests(t)`; `skip` for each `u ∈ tests(t)` with
+`runs(u) = ∅`; and `skip` when `tests(t)` and `runs(t)` are both
+empty. So a test that did not run counts as skipped, and a skipped
+test counts as a test that did not run.
+
+`cov(t, s)` is the set of attributed coverage facts for `(u, s)` with
+`u ∈ tests(t)`. Attributed coverage for `t` exists when the evidence
+set holds an attributed coverage fact for some `u ∈ tests(t)`.
+`agg(s)` is the aggregate coverage fact for `s`.
 
 | function | keeps `e ∈ E` iff |
 |---|---|
 | `orphan(E)` | `kind(t) ≠ test`: the source of the `@verifies` edge is not a test, so the edge is an orphan ([vocabulary.md](vocabulary.md) section 7.2) |
-| `neverran(E)` | `runs(t) = ∅` |
-| `failed(E)` | some run in `runs(t)` has status `fail`, `error`, or `skip`. A skipped test does not discharge its promise, so `skip` counts as failed here |
-| `disconnected(E)` | Every run passes, and `sites(e) ≠ ∅`, and one of these two holds: attributed coverage for `t` exists and `cov(t, s).hit = 0` for every site `s`; or only aggregate coverage exists and `agg(s).hit = 0` for every site `s`. In both cases the whole run executed no line in the sites, so the test `t` executed no line in the sites either |
-| `unattributed(E)` | All three of these conditions hold: every run passes; `sites(e) ≠ ∅`; no attributed coverage for `t` exists. And one of these two conditions holds: some `agg(s).hit > 0`; or the evidence set holds no coverage data at all |
-| `passing(E)` | every run passes, and either `sites(e) = ∅` or some `cov(t, s).hit > 0` |
+| `neverran(E)` | the status of `t` is `skip`: a test of `t` did not run or was skipped, and no test of `t` failed |
+| `failed(E)` | the status of `t` is `fail` or `error` |
+| `disconnected(E)` | The status of `t` is `pass`, and `sites(e) ≠ ∅`, and one of these two holds: attributed coverage for `t` exists and each fact in `cov(t, s)` has `hit = 0`, for every site `s`; or only aggregate coverage exists and `agg(s).hit = 0` for every site `s`. In both cases the whole run executed no line in the sites, so the tests of `t` executed no line in the sites either |
+| `unattributed(E)` | All three of these conditions hold: the status of `t` is `pass`; `sites(e) ≠ ∅`; no attributed coverage for `t` exists. And one of these two conditions holds: some `agg(s).hit > 0`; or the evidence set holds no coverage data at all |
+| `passing(E)` | the status of `t` is `pass`, and either `sites(e) = ∅` or some fact in some `cov(t, s)` has `hit > 0` |
 
 ### 6.8 Rule functions
 
@@ -396,8 +413,9 @@ the cap ([manifest.md](manifest.md) section 9.3).
 
 | class | subject | definition | mode | A | F | tiers |
 |---|---|---|---|---|---|---|
-| `parse-error` | file | *engine*: a governed file its pack cannot parse; the file's facts are absent | tree | · | · | warn, block, block |
+| `parse-error` | file | *engine*: a governed file with a parse failure ([packs.md](packs.md) section 5.2). In a file of a fetched pack, the file's facts are absent. In a markdown file, the facts stay, one finding sits at each error, and the tier of such a finding is `warn` where the class's tier is `block` | tree | · | · | warn, block, block |
 | `typo-tag` | line | *engine*: an unknown `@word` within Damerau–Levenshtein distance 2 of the vocabulary. The pack's foreign vocabulary is exempt | tree | · | F | warn, warn, warn |
+| `unread-tag` | line | *engine*: in markdown, a paragraph that a section or a list item holds directly, that is not the first paragraph of that section or list item, and whose first line is a tag line. The scanner reads no tag in it ([packs.md](packs.md) section 7.2) | tree | · | · | warn, warn, warn |
 | `bad-target` | tag | *engine*: a slug or ref that fails its pattern, or an undeclared namespace | tree | · | · | block, block, block |
 | `duplicate` | node | *engine*: two slugs in one namespace that are equal, or that differ only in case ([vocabulary.md](vocabulary.md) section 4.1): two declarations; two plans (closed plans included); or two steps of one plan | tree | · | · | block, block, block |
 | `bad-scope` | step | *engine*: a step whose `@scope` is not contained in its plan's | tree | · | · | block, block, — |
@@ -421,6 +439,7 @@ the cap ([manifest.md](manifest.md) section 9.3).
 | `failed` | edge | `failed(kind(verifies))` | tree | · | · | block, block, block |
 | `disconnected` | edge | `disconnected(kind(verifies))` | tree | A | · | warn, block, block |
 | `unattributed` | edge | `unattributed(kind(verifies))` | tree | · | · | off, warn, warn |
+| `ambiguous-result` | node | *engine*: a test or a group that a test result binds to, when the same result also binds to a test or a group of another file or another name path ([packs.md](packs.md) section 9.2) | tree | · | · | warn, block, block |
 | `uncovered` | node | `uncovered(verifies) + uncovered(satisfies)` — incompleteness; never blocks a turn end | tree | · | · | off, warn, warn |
 | `unmet` | promise | `unmet(active)` where `unmet(p) = promises($p) - met(promises($p))` — incompleteness; enforced only by `status --done` | tree | · | · | off, off, — |
 | `promise-out-of-scope` | promise | *engine*: a promise met only by residue outside its step's scope | tree | · | · | warn, warn, — |

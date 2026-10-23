@@ -1,17 +1,17 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 <!-- Copyright 2026 The Sinter Authors -->
 
-# Keep a repository's own law in rule files
-@decision rule-files
+# Keep a repository's own rules in rule files
+@decision rule-files v2
 A rule that a repository writes, and a finding class that a repository defines, lives in a rule file that holds both its implementation and its reason, not in the manifest.
 
 ## Context
 
-Besides the built-in finding classes, a repository can state law of
+Besides the built-in finding classes, a repository can state rules of
 its own: a rule with a trigger and a check, or a finding class with an
-expression. Such law needs a strict machine format, which favours the
-manifest. It also needs its reason beside it, so that a reader sees
-why the law exists and a change to the reason shows in review. The
+expression. Such a rule needs a strict machine format, which favours
+the manifest. It also needs its reason beside it, so that a reader
+sees why the rule exists and a change to the reason shows in review. The
 manifest is the wrong place for a reason, and a tag line holds only
 one target and prose.
 
@@ -37,7 +37,7 @@ one target and prose.
 ## Alternatives considered
 
 - **Rules and finding classes as tables in the manifest**, as the
-  design notes first sketched. Not chosen: the law would sit apart
+  design notes first sketched. Not chosen: a rule would sit apart
   from its reason, and a reviewer of a manifest change would see the
   expression without the argument for it.
 - **Rule tags in decision records**, so that a decision carries the
@@ -46,7 +46,7 @@ one target and prose.
 
 ## Consequences
 
-Each piece of a repository's law is one file that a reader can open
+Each rule of a repository is one file that a reader can open
 and understand by itself, and its reason is governed by the same
 revision discipline as its implementation. The manifest stays small.
 The rules work must still decide the location, the approval, and the

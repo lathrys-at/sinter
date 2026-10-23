@@ -21,6 +21,7 @@ let tier_of_name name =
 type t =
   | Parse_error
   | Typo_tag
+  | Unread_tag
   | Bad_target
   | Duplicate
   | Bad_scope
@@ -44,6 +45,7 @@ type t =
   | Failed
   | Disconnected
   | Unattributed
+  | Ambiguous_result
   | Uncovered
   | Unmet
   | Promise_out_of_scope
@@ -63,6 +65,7 @@ let all =
   [
     Parse_error;
     Typo_tag;
+    Unread_tag;
     Bad_target;
     Duplicate;
     Bad_scope;
@@ -86,6 +89,7 @@ let all =
     Failed;
     Disconnected;
     Unattributed;
+    Ambiguous_result;
     Uncovered;
     Unmet;
     Promise_out_of_scope;
@@ -105,6 +109,7 @@ let all =
 let name = function
   | Parse_error -> "parse-error"
   | Typo_tag -> "typo-tag"
+  | Unread_tag -> "unread-tag"
   | Bad_target -> "bad-target"
   | Duplicate -> "duplicate"
   | Bad_scope -> "bad-scope"
@@ -128,6 +133,7 @@ let name = function
   | Failed -> "failed"
   | Disconnected -> "disconnected"
   | Unattributed -> "unattributed"
+  | Ambiguous_result -> "ambiguous-result"
   | Uncovered -> "uncovered"
   | Unmet -> "unmet"
   | Promise_out_of_scope -> "promise-out-of-scope"
@@ -147,6 +153,7 @@ let name = function
 let tiers = function
   | Parse_error -> (Some Warn, Some Block, Some Block)
   | Typo_tag -> (Some Warn, Some Warn, Some Warn)
+  | Unread_tag -> (Some Warn, Some Warn, Some Warn)
   | Bad_target -> (Some Block, Some Block, Some Block)
   | Duplicate -> (Some Block, Some Block, Some Block)
   | Bad_scope -> (Some Block, Some Block, None)
@@ -170,6 +177,7 @@ let tiers = function
   | Failed -> (Some Block, Some Block, Some Block)
   | Disconnected -> (Some Warn, Some Block, Some Block)
   | Unattributed -> (Some Off, Some Warn, Some Warn)
+  | Ambiguous_result -> (Some Warn, Some Block, Some Block)
   | Uncovered -> (Some Off, Some Warn, Some Warn)
   | Unmet -> (Some Off, Some Off, None)
   | Promise_out_of_scope -> (Some Warn, Some Warn, None)

@@ -3,7 +3,7 @@
 
 # Sinter specification: doctag vocabulary
 
-Status: draft. The five specifications share one version; see [docs/versioning.md](../docs/versioning.md).
+Status: draft. The six specifications share one version; see [docs/versioning.md](../docs/versioning.md).
 
 ## 1. Introduction
 
@@ -30,25 +30,39 @@ It must not search raw text for tags.
 Each language defines a set of **tag-bearing nodes**. The scanner reads
 tags only inside these nodes:
 
-- In code, the tag-bearing nodes are comments.
+- In code, the tag-bearing node is a **run**: a sequence of comments
+  on consecutive lines, with no blank line and no code between them
+  ([packs.md](packs.md) section 6.2).
 - In markdown, the tag-bearing nodes are the first paragraph of a
   section and the first paragraph of a list item. A section is a
   heading plus the text below it, up to the next heading of the same
   or higher level. Only an ATX heading, a line that starts with one to
   six `#` characters, opens a section; a setext heading, a line of
-  text underlined with `=` or `-`, does not. The text before the first
+  text underlined with `=` or `-`, does not. A heading inside a block
+  quote or a list item opens no section. The text before the first
   heading of a file is a section of level 0, with no heading. A **list
   item** is one item of a markdown list, ordered or not. It holds its
   own text and its **sub-items**: the items of the lists inside it.
+
+The **first paragraph** of a section is the block right after its
+heading, when that block is a paragraph. For the section of level 0,
+it is the first block of the file after its front matter
+([manifest.md](manifest.md) section 15), when that block is a
+paragraph. The first paragraph of a list item is the block right after
+its list marker, and after its task marker when it has one, when that
+block is a paragraph. Sinter reads tags in no other paragraph
+([packs.md](packs.md) section 7.2).
 
 The scanner must not read tags inside string literals, code fences, or
 any other node. In Sinter, each language's tag-bearing nodes are
 declared by that language's pack.
 
-A comment in code **attaches** to the next named definition after it:
-for example a function, a struct, or a test. The language pack defines
-which kinds of definition can carry a comment. Attachment is what
-connects a tag to a piece of code or to a test.
+A run in code **attaches** to the next definition after it, for
+example a function, a struct, or a test, when no blank line stands
+between them. An attribute or a decorator can stand between them; any
+other code breaks attachment ([packs.md](packs.md) section 6.4). The
+language pack defines which kinds of definition can carry a run.
+Attachment is what connects a tag to a piece of code or to a test.
 
 ## 3. Tag syntax
 
@@ -66,11 +80,13 @@ description can follow on the same line and on later lines (section
 ### 3.1 Tag lines and blocks
 
 The scanner finds a **tag line** as follows. Take a line inside a
-tag-bearing node. In code, remove the comment sigil and the
-indentation before it. On the first line of a list item, remove the
-list marker, such as `-`, `*`, or `1.`, and the indentation before it.
-Then remove the spaces and tabs at the start of the line. The line is
-a tag line when the remaining text starts with `@`.
+tag-bearing node. In code, remove the indentation and the comment
+sigils, as [packs.md](packs.md) section 6.3 says. On the first line of
+a list item, remove the list marker, such as `-`, `*`, or `1.`, and
+the indentation before it, and then the task marker, `[ ]` or `[x]`,
+when the item has one. Then remove the spaces and tabs at the start of
+the line. The line is a tag line when the remaining text starts with
+`@`.
 
 Every such line is a tag line, whether or not its word is in this
 vocabulary. Unknown words are not part of this vocabulary and have no
@@ -182,8 +198,10 @@ declaration had at the diff base (section 9).
 
 An item's **extent** is the text that its revision covers.
 
-- In code, the extent is the comment block. The attached code is not
-  part of the extent.
+- In code, the extent is the tag-bearing text of the run that holds
+  the block: the lines of its comments that can carry tags
+  ([packs.md](packs.md) section 6.2). The attached code is not part of
+  the extent.
 - In markdown, a declaration in the first paragraph of a section claims
   the whole section as its extent, up to the next heading of the same
   or higher level.
@@ -210,9 +228,10 @@ Prose outside every extent is not governed by any revision.
 The **extent hash** (`xh`) is SHA-256 over the extent's normalized
 text. To normalize, apply these steps in order:
 
-1. Take the extent's content lines. In code, remove the comment sigils
-   (`///`, `#`, `*`) and the indentation before each sigil. Markdown
-   has no comment sigils, so in markdown keep the lines as they are.
+1. Take the extent's content lines. In code, remove the indentation
+   and the comment sigils of each line, as [packs.md](packs.md)
+   section 6.3 says; each pack lists its comment sigils. Markdown has
+   no comment sigils, so in markdown keep the lines as they are.
 2. Remove trailing whitespace from every line.
 3. Use LF as the line ending.
 4. Drop every `@ack` line.
@@ -231,8 +250,11 @@ hash:
 - a bare revision bump with no other text change;
 - a re-pin of a citation.
 
-Reformatting a comment also does not change the extent hash. Every
-other byte change changes the extent hash.
+A change of the indentation before the comment sigils, of trailing
+whitespace, or of the line endings also does not change the extent
+hash. Every other byte change changes the extent hash. For example,
+when the opening sigil of a block comment moves onto a line of its
+own, the extent gains an empty line, and its hash changes.
 
 ### 6.2 The code hash
 
@@ -291,9 +313,10 @@ The source of a citation depends on its kind and on its place:
   source with no name. It is the file and the extent of the block,
   and it is called a **code site**. No declaration is needed at the
   source.
-- In code, `@verifies` has the attached test as its source. The
-  test's identity comes from the language's abstract syntax tree, so
-  no declaration is needed there either.
+- In code, `@verifies` has the attached test, or the attached group
+  of tests, as its source ([packs.md](packs.md) section 8). The test's
+  identity comes from the language's abstract syntax tree, so no
+  declaration is needed there either.
 - In code, `@refines` and `@supersedes` have the enclosing declaration
   as their source: the declaration whose extent holds the tag line.
 - In markdown, a citation of any kind has as its source the innermost

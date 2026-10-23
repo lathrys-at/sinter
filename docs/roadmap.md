@@ -52,7 +52,7 @@
     (`.lsp.json`), so an agent gets diagnostics on every edit through
     the same protocol.
 - **`spec/protocol.md`** — the `serve` request and response protocol,
-  as a fifth specification.
+  as a specification of its own.
 - **`sinter-packs` repository** — the language packs, built and
   verified as `docs/licensing-setup.md` describes.
 - **Test evidence for Sinter itself** — JUnit output from the test
