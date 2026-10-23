@@ -1,0 +1,3 @@
+Usage: sinter check [--help] [OPTION]…
+sinter: option '--gate': invalid value 'pr', expected one of 'turn', 'merge'
+        or 'target'
