@@ -97,7 +97,7 @@ type problem =
   | Bad_runner_name of string
       (** a member of the runners of a pack that is not a runner name: a name
           that does not match the pattern of a pack name, or one of [files],
-          [version], and [runners] *)
+          [version], or [runners] *)
   | Runner_in_two_packs of { runner : string; pack : string; other : string }
       (** the runners of [pack] and of [other] both hold [runner]; [other] is
           the first pack in byte order that holds it *)
@@ -159,9 +159,10 @@ type runner = {
       (** the span of the member of [scan.packs.<name>.runners] that names the
           runner, its quotes included *)
   settings : (Toml.key * Toml.node) list;
-      (** each key [scan.packs.<name>.<runner>.<key>] with its value, in the
-          order of the file. The reader checks no name, type, or value of a
-          setting. *)
+      (** each runner setting [scan.packs.<name>.<runner>.<key>] that the
+          manifest writes, in the order of the file: the part [<key>] of the key
+          path, with its span, and the value as the text writes it. The reader
+          checks no name, type, or value of a setting. *)
 }
 (** One runner of a pack. *)
 

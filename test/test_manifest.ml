@@ -1071,12 +1071,14 @@ let runner_errors () =
     [ "sinter.toml:8:10: unknown key 'gotest' in [scan.packs.ts]" ];
   reports "a runner that is not a table"
     (markdown ^ ts
-   ^ "packs.ts.runners = [\"vitest\", \"jest\"]\n\
+   ^ "packs.ts.runners = [\"vitest\", \"jest\", \"mocha\"]\n\
       packs.ts.vitest = 1\n\
-      packs.ts.jest = [{ a = 1 }]\n")
+      packs.ts.jest = [{ a = 1 }]\n\
+      [[scan.packs.ts.mocha]]\n")
     [
       "sinter.toml:6:19: 'vitest' takes a table, not an integer";
       "sinter.toml:7:17: 'jest' takes a table, not an array";
+      "sinter.toml:8:17: 'mocha' takes a table, not an array of tables";
     ];
   reports "runners that are not an array give no runner"
     (markdown ^ ts ^ "packs.ts.runners = \"vitest\"\npacks.ts.vitest.mode = 1\n")
