@@ -308,12 +308,12 @@ let problem_message = function
   | Missing_files pack ->
       Printf.sprintf
         "the pack %s needs 'files', the globs of the files that it reads"
-        (Toml.quote pack)
+        (Toml.render_path [ pack ])
   | Missing_version pack ->
       Printf.sprintf
         "the pack %s needs 'version', the release that the repository uses, \
          such as \"1.0\""
-        (Toml.quote pack)
+        (Toml.render_path [ pack ])
   | Bad_id_pattern { error; _ } -> Id_pattern.message error
   | Unknown_value { key; value; choices; nearest } ->
       Printf.sprintf "%s takes %s, not %s%s"
