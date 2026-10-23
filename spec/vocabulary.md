@@ -250,8 +250,11 @@ hash:
 - a bare revision bump with no other text change;
 - a re-pin of a citation.
 
-Reformatting a comment also does not change the extent hash. Every
-other byte change changes the extent hash.
+A change of the indentation before the comment sigils, of trailing
+whitespace, or of the line endings also does not change the extent
+hash. Every other byte change changes the extent hash. For example,
+when the opening sigil of a block comment moves onto a line of its
+own, the extent gains an empty line, and its hash changes.
 
 ### 6.2 The code hash
 
