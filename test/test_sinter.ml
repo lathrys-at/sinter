@@ -34,6 +34,7 @@ let () =
       ("utf-8", Test_utf_8.tests);
       ("text file", Test_text_file.tests);
       ("grammar name", Test_grammar_name.tests);
+      ("parse record", Test_parse_record.tests);
       ("spec examples", Test_spec_examples.tests);
       ("bridge decode", Test_bridge_decode.tests);
       ("parse", Test_parse.tests);

@@ -4,72 +4,10 @@
 exception Error of string
 
 let fail format = Printf.ksprintf (fun message -> raise (Error message)) format
-let is_utf_8 = Sinter_bridge.Utf_8.is_valid
 
 let check_path path =
-  if not (is_utf_8 path) then
-    fail "the file name is not UTF-8 text: %s" (String.escaped path)
-
-(* @cites json-handling *)
-(* Every string of a record is UTF-8. [what] names the string, in the
-   words the bridge uses for it. The caller checks [path] first, so
-   that the message of a failure names a file the reader can read. *)
-let check_string path what text =
-  if not (is_utf_8 text) then fail "%s: %s is not UTF-8 text" path what
-
-(* A record holds an end line that is inclusive and an end column that
-   is exclusive. tree-sitter gives an end point where both are
-   exclusive, so a node that ends at the start of a row ends, for a
-   record, at the end of the row before it. *)
-let end_of_capture source (capture : Sinter_bridge.capture) =
-  if capture.end_column = 0 && capture.end_row > capture.start_row then
-    let line_start =
-      if capture.end_byte < 2 then 0
-      else
-        match String.rindex_from_opt source (capture.end_byte - 2) '\n' with
-        | Some index -> index + 1
-        | None -> 0
-    in
-    (capture.end_row, capture.end_byte - line_start + 1)
-  else (capture.end_row + 1, capture.end_column + 1)
-
-(* @cites json-handling *)
-(* @cites exit-codes-by-gate *)
-(* The text of a capture is not normalized to Unicode NFC.
-
-   This function fails in two ways, and the two are of different
-   kinds. A byte range outside the source can only be a fault of the
-   tool, because the same string is the source of the parse and the
-   source of the record; so it breaks a precondition and ends the
-   command. A string that is not UTF-8 can be a fault of the data the
-   tool was given; so it is an error of the run. *)
-let record_of_capture ~path ~source (capture : Sinter_bridge.capture) =
-  if
-    capture.start_byte < 0
-    || capture.end_byte < capture.start_byte
-    || capture.end_byte > String.length source
-  then
-    invalid_arg
-      "Sinter_core.Parse: the byte range of the capture is not inside the \
-       source";
-  check_path path;
-  check_string path "the name of a capture" capture.name;
-  check_string path "the type of a node" capture.node_type;
-  check_string path "the text of a node" capture.text;
-  let end_line, end_column = end_of_capture source capture in
-  [
-    ("path", Jsonl.string path);
-    ("pat", Jsonl.int capture.pattern);
-    ("cap", Jsonl.string capture.name);
-    ("node", Jsonl.string capture.node_type);
-    ("sb", Jsonl.int capture.start_byte);
-    ("eb", Jsonl.int capture.end_byte);
-    ("line", Jsonl.int (capture.start_row + 1));
-    ("col", Jsonl.int (capture.start_column + 1));
-    ("eline", Jsonl.int end_line);
-    ("ecol", Jsonl.int end_column);
-    ("text", Jsonl.string capture.text);
-  ]
+  if not (Sinter_bridge.Utf_8.is_valid path) then
+    raise (Error (Parse_record.message ~path Parse_record.Path_not_utf_8))
 
 let read_source path =
   match Text_file.read_text path with
@@ -88,7 +26,12 @@ let captures language ~query ~path =
   let found =
     of_bridge path (fun () -> Sinter_bridge.captures language ~source ~query)
   in
-  List.map (record_of_capture ~path ~source) found
+  List.map
+    (fun capture ->
+      match Parse_record.of_capture ~path ~source capture with
+      | Ok record -> record
+      | Error error -> raise (Error (Parse_record.message ~path error)))
+    found
 
 let tree language ~path =
   check_path path;

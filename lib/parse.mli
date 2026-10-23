@@ -8,40 +8,6 @@ exception Error of string
 (** Something went wrong, and the string says what. The string is fit to show to
     the person who ran the command. *)
 
-val record_of_capture :
-  path:string -> source:string -> Sinter_bridge.capture -> Jsonl.record
-(** [record_of_capture ~path ~source capture] is the JSONL record for one
-    capture in the file at [path]. [source] is the text of that file.
-
-    The byte range of [capture] must lie inside [source]: the start is 0 or
-    more, the end is the start or more, and the end is at most the length of
-    [source]. The rows and the columns of [capture] must be the rows and the
-    byte columns of that range in [source]; a row or a column that says
-    otherwise gives a record with a span that does not name the range.
-
-    The fields are:
-
-    - [path]: the file, as it was named on the command line
-    - [pat]: the index of the pattern in the query, from 0
-    - [cap]: the capture name, without the [@]
-    - [node]: the type of the node, for example ["string_content"]
-    - [sb], [eb]: the start and the end of the node, as byte offsets from the
-      start of the file. The end is exclusive
-    - [line], [col]: the start of the node, from 1. The column counts bytes, not
-      characters
-    - [eline]: the line that holds the last byte of the node, from 1
-    - [ecol]: one byte past the last byte of the node, in the line [eline], from
-      1
-    - [text]: the source text of the node
-
-    Every string of the result is valid UTF-8.
-
-    @raise Error
-      if [path], the capture name, the node type, or the text of the node is not
-      valid UTF-8.
-    @raise Invalid_argument
-      if the byte range of [capture] is not inside [source]. *)
-
 val captures :
   Sinter_bridge.language -> query:string -> path:string -> Jsonl.record list
 (** [captures language ~query ~path] reads the file at [path], parses it, runs

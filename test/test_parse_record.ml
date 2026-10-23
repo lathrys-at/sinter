@@ -1,0 +1,323 @@
+(* SPDX-License-Identifier: Apache-2.0 *)
+(* Copyright 2026 The Sinter Authors *)
+
+open Sinter_core
+
+let contains needle haystack =
+  let n = String.length needle and h = String.length haystack in
+  let rec search index =
+    index + n <= h
+    && (String.equal (String.sub haystack index n) needle || search (index + 1))
+  in
+  search 0
+
+(* The properties below check the pure functions of Parse against a
+   reference that reads the source text and nothing else. *)
+
+(* The record of [capture], which the test expects to come back. *)
+let record_or_fail ~path ~source capture =
+  match Parse_record.of_capture ~path ~source capture with
+  | Ok record -> record
+  | Error error -> Alcotest.fail (Parse_record.message ~path error)
+
+let property ?(count = 500) ~name ~print generator check =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count ~name ~print generator check)
+
+(* The line that holds the byte at [offset], from 1, and the column of
+   that byte in its line, from 1. *)
+let position source offset =
+  ( Generators.rows_before source offset + 1,
+    offset - Generators.start_of_line source offset + 1 )
+
+let int_field record name =
+  match List.assoc_opt name record with
+  | Some (Jsonl.Scalar (Jsonl.Int found)) -> found
+  | _ -> Alcotest.failf "the record holds no integer field %s" name
+
+let string_field record name =
+  match List.assoc_opt name record with
+  | Some (Jsonl.Scalar (Jsonl.String found)) -> found
+  | _ -> Alcotest.failf "the record holds no string field %s" name
+
+(* A capture that holds the one line feed of a one-byte file ends at
+   row 1, column 0: the start of a line that the file does not hold.
+   The record then names line 1, the line that holds the last byte,
+   and column 2, one past that byte. *)
+let places_the_end_of_a_capture_that_ends_before_byte_two () =
+  let capture : Sinter_bridge.capture =
+    {
+      pattern = 0;
+      name = "d";
+      node_type = "document";
+      start_byte = 0;
+      end_byte = 1;
+      start_row = 0;
+      start_column = 0;
+      end_row = 1;
+      end_column = 0;
+      text = "\n";
+    }
+  in
+  let record = record_or_fail ~path:"f.json" ~source:"\n" capture in
+  Alcotest.(check (option bool))
+    "eline is the line that holds the last byte" (Some true)
+    (Option.map (fun v -> v = Jsonl.int 1) (List.assoc_opt "eline" record));
+  Alcotest.(check (option bool))
+    "ecol is one past the last byte" (Some true)
+    (Option.map (fun v -> v = Jsonl.int 2) (List.assoc_opt "ecol" record))
+
+(* A capture that holds the two line feeds of a two-byte file ends at
+   row 2, column 0. The record names line 2, the line that holds the
+   last byte, and column 2, one past that byte on that line. A reader
+   that took byte 2 for a byte on the first line would name column 3.
+   *)
+let places_the_end_of_a_capture_that_ends_at_byte_two () =
+  let capture : Sinter_bridge.capture =
+    {
+      pattern = 0;
+      name = "d";
+      node_type = "document";
+      start_byte = 0;
+      end_byte = 2;
+      start_row = 0;
+      start_column = 0;
+      end_row = 2;
+      end_column = 0;
+      text = "\n\n";
+    }
+  in
+  let record = record_or_fail ~path:"f.json" ~source:"\n\n" capture in
+  Alcotest.(check (option bool))
+    "eline is the line that holds the last byte" (Some true)
+    (Option.map (fun v -> v = Jsonl.int 2) (List.assoc_opt "eline" record));
+  Alcotest.(check (option bool))
+    "ecol is one past the last byte on that line" (Some true)
+    (Option.map (fun v -> v = Jsonl.int 2) (List.assoc_opt "ecol" record))
+
+let field_names =
+  [
+    "cap";
+    "col";
+    "eb";
+    "ecol";
+    "eline";
+    "line";
+    "node";
+    "pat";
+    "path";
+    "sb";
+    "text";
+  ]
+
+let record_of source (capture : Sinter_bridge.capture) =
+  record_or_fail ~path:"f.json" ~source capture
+
+let the_span_of_a_record_agrees_with_the_source
+    (source, (capture : Sinter_bridge.capture)) =
+  let record = record_of source capture in
+  let line, col = position source capture.start_byte in
+  let eline, ecol =
+    if capture.end_byte > capture.start_byte then
+      let last_line, last_col = position source (capture.end_byte - 1) in
+      (last_line, last_col + 1)
+    else (line, col)
+  in
+  int_field record "line" = line
+  && int_field record "col" = col
+  && int_field record "eline" = eline
+  && int_field record "ecol" = ecol
+
+(* The generator builds the text of the capture as the byte range of
+   the source, so the last clause below states that of_capture
+   copies the field, and nothing more. That the bridge gives that
+   range is "a capture is a byte range inside the source", in
+   test_bridge.ml. *)
+let a_record_holds_the_bytes_of_the_capture
+    (source, (capture : Sinter_bridge.capture)) =
+  let record = record_of source capture in
+  int_field record "sb" = capture.start_byte
+  && int_field record "eb" = capture.end_byte
+  && String.equal
+       (string_field record "text")
+       (String.sub source capture.start_byte
+          (capture.end_byte - capture.start_byte))
+
+let a_record_holds_the_named_fields (source, capture) =
+  let record = record_of source capture in
+  List.equal String.equal (List.sort compare (List.map fst record)) field_names
+
+(* Jsonl.to_string refuses a string that is not UTF-8 and an integer
+   outside the range that a record allows. A record of a capture
+   breaks neither, so the call gives a line. *)
+let to_string_accepts_a_record_of_a_capture (source, capture) =
+  let line = Jsonl.to_string (record_of source capture) in
+  String.length line > 1
+  && line.[0] = '{'
+  && line.[String.length line - 1] = '}'
+
+let a_record_of_a_capture_outside_the_source_is_refused (source, capture) =
+  match record_of source capture with
+  | _ -> false
+  | exception Invalid_argument message ->
+      contains "not inside the source" message
+
+(* The capture below runs two bytes past a source of no bytes, and its
+   end column is 0, so the reader of the span looks for the line feed
+   that ends the line before it. The property
+   "a record of a capture outside the source is refused" found this
+   case, and the reader raised
+   Invalid_argument "String.rindex_from_opt / Bytes.rindex_from_opt".
+   The interface named no such failure. *)
+let refuses_a_capture_that_runs_past_the_source () =
+  let capture =
+    {
+      Sinter_bridge.pattern = 0;
+      name = "d";
+      node_type = "document";
+      start_byte = 0;
+      end_byte = 2;
+      start_row = 0;
+      start_column = 0;
+      end_row = 1;
+      end_column = 0;
+      text = "";
+    }
+  in
+  Alcotest.check_raises "a capture of two bytes in a source of none"
+    (Invalid_argument
+       "Sinter_core.Parse_record: the byte range of the capture is not inside \
+        the source") (fun () ->
+      ignore (Parse_record.of_capture ~path:"f.json" ~source:"" capture))
+
+(* One byte that starts no code point, so a string that holds it is
+   not valid UTF-8. *)
+let not_utf_8 = "\xff"
+
+(* A capture of the one byte of the source "a". Each argument replaces
+   one string of it; the byte range does not change, so the only thing
+   that can be wrong with the capture is the string the caller
+   replaced. *)
+let one_capture ?(name = "d") ?(node_type = "document") ?(text = "a") () =
+  {
+    Sinter_bridge.pattern = 0;
+    name;
+    node_type;
+    start_byte = 0;
+    end_byte = 1;
+    start_row = 0;
+    start_column = 0;
+    end_row = 0;
+    end_column = 1;
+    text;
+  }
+
+(* The message of the failure that [capture] causes. The test fails
+   when the call builds a record instead. *)
+let refusal ?(path = "f.json") capture =
+  match Parse_record.of_capture ~path ~source:"a" capture with
+  | Ok _ -> Alcotest.fail "the call built a record"
+  | Error error -> Parse_record.message ~path error
+
+let a_capture_name_that_is_not_utf_8_is_refused () =
+  Alcotest.(check string)
+    "the message names the file and the string"
+    "f.json: the name of a capture is not UTF-8 text"
+    (refusal (one_capture ~name:not_utf_8 ()))
+
+let a_node_type_that_is_not_utf_8_is_refused () =
+  Alcotest.(check string)
+    "the message names the file and the string"
+    "f.json: the type of a node is not UTF-8 text"
+    (refusal (one_capture ~node_type:not_utf_8 ()))
+
+let a_text_that_is_not_utf_8_is_refused () =
+  Alcotest.(check string)
+    "the message names the file and the string"
+    "f.json: the text of a node is not UTF-8 text"
+    (refusal (one_capture ~text:not_utf_8 ()))
+
+let a_path_that_is_not_utf_8_is_refused () =
+  Alcotest.(check string)
+    "the message gives the file name as bytes"
+    "the file name is not UTF-8 text: \\255"
+    (refusal ~path:not_utf_8 (one_capture ()))
+
+(* A source, a capture inside it whose one bad string is not valid
+   UTF-8, and the field of that string. The integer fields do not
+   change, so the byte range stays inside the source and the string is
+   the only thing that is wrong. *)
+let source_and_capture_with_a_bad_string =
+  let open QCheck2.Gen in
+  let* source, (capture : Sinter_bridge.capture) =
+    Generators.source_and_capture
+  in
+  let* text = Generators.not_utf_8_string in
+  let+ field =
+    oneof_list
+      [
+        Parse_record.Capture_name;
+        Parse_record.Node_type;
+        Parse_record.Node_text;
+      ]
+  in
+  let capture =
+    match field with
+    | Parse_record.Capture_name -> { capture with Sinter_bridge.name = text }
+    | Parse_record.Node_type -> { capture with Sinter_bridge.node_type = text }
+    | Parse_record.Node_text -> { capture with Sinter_bridge.text }
+  in
+  (source, capture, field)
+
+let print_source_capture_and_field (source, capture, _) =
+  Generators.print_source_and_capture (source, capture)
+
+(* A bad string gives an error and never Invalid_argument: a string
+   the tool was given is a fault of the environment, and only a fault
+   of the tool leaves the command. An Invalid_argument here would
+   leave this check and fail the property. *)
+let a_record_of_a_capture_with_a_bad_string_is_refused (source, capture, field)
+    =
+  match Parse_record.of_capture ~path:"f.json" ~source capture with
+  | Ok _ -> false
+  | Error error ->
+      error = Parse_record.Not_utf_8 field
+      && contains "is not UTF-8 text"
+           (Parse_record.message ~path:"f.json" error)
+
+let tests =
+  [
+    Alcotest.test_case "places the end of a capture that ends before byte two"
+      `Quick places_the_end_of_a_capture_that_ends_before_byte_two;
+    Alcotest.test_case "places the end of a capture that ends at byte two"
+      `Quick places_the_end_of_a_capture_that_ends_at_byte_two;
+    Alcotest.test_case "refuses a capture that runs past the source" `Quick
+      refuses_a_capture_that_runs_past_the_source;
+    Alcotest.test_case "a capture name that is not UTF-8 is refused" `Quick
+      a_capture_name_that_is_not_utf_8_is_refused;
+    Alcotest.test_case "a node type that is not UTF-8 is refused" `Quick
+      a_node_type_that_is_not_utf_8_is_refused;
+    Alcotest.test_case "a text that is not UTF-8 is refused" `Quick
+      a_text_that_is_not_utf_8_is_refused;
+    Alcotest.test_case "a path that is not UTF-8 is refused" `Quick
+      a_path_that_is_not_utf_8_is_refused;
+    property ~name:"the span of a record agrees with the source"
+      ~print:Generators.print_source_and_capture Generators.source_and_capture
+      the_span_of_a_record_agrees_with_the_source;
+    property ~name:"a record holds the bytes of the capture"
+      ~print:Generators.print_source_and_capture Generators.source_and_capture
+      a_record_holds_the_bytes_of_the_capture;
+    property ~name:"a record holds the eleven named fields"
+      ~print:Generators.print_source_and_capture Generators.source_and_capture
+      a_record_holds_the_named_fields;
+    property ~name:"to_string accepts a record of a capture"
+      ~print:Generators.print_source_and_capture Generators.source_and_capture
+      to_string_accepts_a_record_of_a_capture;
+    property ~name:"a record of a capture outside the source is refused"
+      ~print:Generators.print_source_and_capture
+      Generators.source_and_capture_outside
+      a_record_of_a_capture_outside_the_source_is_refused;
+    property ~name:"a record of a capture with a bad string is refused"
+      ~print:print_source_capture_and_field source_and_capture_with_a_bad_string
+      a_record_of_a_capture_with_a_bad_string_is_refused;
+  ]
