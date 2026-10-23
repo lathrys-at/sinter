@@ -19,17 +19,11 @@ let is_valid text =
   in
   run 0
 
-(* A run of other bytes adds its one [-] only when a letter or a digit
-   comes before it and after it. *)
 let of_heading text =
-  let buffer = Buffer.create (String.length text) in
-  let pending = ref false in
-  String.iter
+  String.map
     (fun byte ->
-      if is_alphanumeric byte then (
-        if !pending && Buffer.length buffer > 0 then Buffer.add_char buffer '-';
-        pending := false;
-        Buffer.add_char buffer (Char.lowercase_ascii byte))
-      else pending := true)
-    text;
-  Buffer.contents buffer
+      if is_alphanumeric byte then Char.lowercase_ascii byte else '-')
+    text
+  |> String.split_on_char '-'
+  |> List.filter (fun part -> part <> "")
+  |> String.concat "-"

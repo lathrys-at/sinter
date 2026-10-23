@@ -36,22 +36,21 @@ type parts = {
   description : string;
 }
 
-(* 2^53 - 1, the largest integer of a JSON Lines record, has 16
-   digits. *)
+(* 2^53 - 1, the largest integer of a JSON Lines record. *)
 let largest_revision = 9_007_199_254_740_991
 
+(* A number with no leading zero is 1 or more. *)
 let revision token =
-  let digits = String.length token - 1 in
-  if
-    digits >= 1 && digits <= 16
-    && token.[0] = 'v'
-    && token.[1] <> '0'
-    && String.for_all
-         (function '0' .. '9' -> true | _ -> false)
-         (String.sub token 1 digits)
-  then
-    let value = int_of_string (String.sub token 1 digits) in
-    if value <= largest_revision then Some value else None
+  if String.starts_with ~prefix:"v" token then
+    let digits = String.sub token 1 (String.length token - 1) in
+    if
+      (not (String.starts_with ~prefix:"0" digits))
+      && String.for_all (function '0' .. '9' -> true | _ -> false) digits
+    then
+      match int_of_string_opt digits with
+      | Some value when value <= largest_revision -> Some value
+      | Some _ | None -> None
+    else None
   else None
 
 let is_token_byte byte = not (is_blank byte)

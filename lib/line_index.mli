@@ -50,19 +50,22 @@ val content : t -> int -> string
 val line_of : t -> int -> int
 (** [line_of index offset] is the line that holds the byte at [offset]. A byte
     of the byte order mark is on line 1, and so is a byte of a line ending on
-    the line that it ends.
+    the line that it ends. The offset can be the length of the text, the end of
+    the text: it is on the last line.
 
     @raise Invalid_argument
-      if [offset] is not from 0 to the length of the text less 1. *)
+      if [offset] is not from 0 to the length of the text, or if the text has no
+      line. *)
 
 val position : t -> int -> position
 (** [position index offset] is the place of the byte at [offset]: its line, and
     the column of the character that the byte belongs to. A byte of the byte
-    order mark is at line 1, column 1. A byte of a line ending is in the column
-    after the last character of its line.
+    order mark is at line 1, column 1. A byte of a line ending, and the end of
+    the text, are in the column after the last character of their line.
 
     @raise Invalid_argument
-      if [offset] is not from 0 to the length of the text less 1. *)
+      if [offset] is not from 0 to the length of the text, or if the text has no
+      line. *)
 
 val after : t -> int -> position
 (** [after index stop] is the place one column past the character that holds the

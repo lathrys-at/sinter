@@ -131,7 +131,17 @@ let text_that_is_not_utf_8_gives_its_offset =
 
 let headings_give_text_slug_and_name =
   check_structure
-    "# A ##\n## B#\n### C \\#\n#### #\n#\n#\t Tabbed \t#\t\n# a\n# a\n# a-1\n"
+    "# A ##\n\
+     ## B#\n\
+     ### C \\#\n\
+     #### #\n\
+     #\n\
+     #\t Tabbed \t#\t\n\
+     # a\n\
+     # a\n\
+     # a-1\n\
+     # ###\n\
+    \   ## Indented ##\n"
     [
       "section 0 level 1 \"A\" slug a name a at 1:1-1:7 parent - first - \
        extent 1:1-4:7";
@@ -151,6 +161,10 @@ let headings_give_text_slug_and_name =
        extent 8:1-8:4";
       "section 8 level 1 \"a-1\" slug a-1 name a-1-1 at 9:1-9:6 parent - first \
        - extent 9:1-9:6";
+      "section 9 level 1 \"\" slug  name -2 at 10:1-10:6 parent - first - \
+       extent 10:1-11:18";
+      "section 10 level 2 \"Indented\" slug indented name indented at \
+       11:4-11:18 parent 9 first - extent 11:1-11:18";
     ]
 
 (* A heading in a block quote or a list item opens no section. Nothing
@@ -246,6 +260,13 @@ let section_of_declared_items_alone_has_no_extent =
        section 0 owner 1 extent 2-2 01ba4719";
       "block 0 tags 0 prose  hash 01ba4719";
       "block 1 tags 1 prose  hash 01ba4719";
+    ]
+
+let paragraph_of_one_character_has_its_span =
+  check_structure "# H\nx\n"
+    [
+      "section 0 level 1 \"H\" slug h name h at 1:1-1:4 parent - first 2:1-2:2 \
+       extent 1:1-2:2";
     ]
 
 (* {1 Tag lines} *)
@@ -932,6 +953,8 @@ let tests =
       yaml_front_matter_is_no_block;
     Alcotest.test_case "a section of declared items alone has no extent" `Quick
       section_of_declared_items_alone_has_no_extent;
+    Alcotest.test_case "a paragraph of one character has its span" `Quick
+      paragraph_of_one_character_has_its_span;
     Alcotest.test_case "list items drop their markers" `Quick
       list_items_drop_their_markers;
     Alcotest.test_case "places count characters" `Quick places_count_characters;

@@ -55,8 +55,8 @@ let content index line =
   String.sub index.text start (content_end index line - start)
 
 let check_offset index offset =
-  if offset < 0 || offset >= String.length index.text then
-    invalid_arg (Printf.sprintf "Line_index: no byte at offset %d" offset)
+  if offset < 0 || offset > String.length index.text || count index = 0 then
+    invalid_arg (Printf.sprintf "Line_index: no place at offset %d" offset)
 
 (* The bytes of line [n] start after the line feed of line [n - 1], or
    at 0 for line 1, so the line of a byte is the last line whose line
@@ -84,13 +84,13 @@ let characters text start stop =
   in
   go start 0
 
+(* A byte of the byte order mark counts no character before it. *)
 let position index offset =
   let line = line_of index offset in
   let start = index.starts.(line - 1) in
   let stop = content_end index line in
   let column =
-    if offset < start then 1
-    else if offset >= stop then 1 + characters index.text start stop
+    if offset >= stop then 1 + characters index.text start stop
     else max 1 (characters index.text start (offset + 1))
   in
   { line; column }

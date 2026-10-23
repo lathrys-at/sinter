@@ -133,14 +133,25 @@ let refuses_a_line_out_of_range () =
 
 let refuses_an_offset_out_of_range () =
   let index = Line_index.make "a\n" in
-  refuses "offset -1" "Line_index: no byte at offset -1" (fun () ->
+  refuses "offset -1" "Line_index: no place at offset -1" (fun () ->
       Line_index.line_of index (-1));
-  refuses "offset 2" "Line_index: no byte at offset 2" (fun () ->
-      Line_index.position index 2);
+  refuses "offset 3" "Line_index: no place at offset 3" (fun () ->
+      Line_index.position index 3);
+  refuses "the empty text" "Line_index: no place at offset 0" (fun () ->
+      Line_index.position (Line_index.make "") 0);
   refuses "stop 0" "Line_index: no byte before offset 0" (fun () ->
       Line_index.after index 0);
   refuses "stop 3" "Line_index: no byte before offset 3" (fun () ->
       Line_index.after index 3)
+
+let end_of_the_text_follows_the_last_character () =
+  let without = Line_index.make "a\n\xC3\xA9b"
+  and with_feed = Line_index.make "ab\r\n" in
+  Alcotest.(check int) "the line of the end" 2 (Line_index.line_of without 5);
+  Alcotest.check position "without a final line feed" (at 2 3)
+    (Line_index.position without 5);
+  Alcotest.check position "after a final CRLF" (at 1 3)
+    (Line_index.position with_feed 4)
 
 let text_gives_the_text =
   property ~name:"text gives the text that make took" ~print:String.escaped text
@@ -256,6 +267,8 @@ let tests =
       refuses_a_line_out_of_range;
     Alcotest.test_case "refuses an offset out of range" `Quick
       refuses_an_offset_out_of_range;
+    Alcotest.test_case "puts the end of the text after the last character"
+      `Quick end_of_the_text_follows_the_last_character;
     text_gives_the_text;
     lines_rebuild_the_text;
     no_content_holds_a_line_ending;

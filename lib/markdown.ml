@@ -23,12 +23,14 @@ let create engine =
       match Sinter_bridge.Query.compile language Markdown_pack.query with
       | Ok query -> Ok { language; query }
       | Error error ->
-          Sinter_bridge.Language.close language;
-          Error (Query error))
+          Fun.protect
+            ~finally:(fun () -> Sinter_bridge.Language.close language)
+            (fun () -> Error (Query error)))
 
 let close reader =
-  Sinter_bridge.Query.close reader.query;
-  Sinter_bridge.Language.close reader.language
+  Fun.protect
+    ~finally:(fun () -> Sinter_bridge.Language.close reader.language)
+    (fun () -> Sinter_bridge.Query.close reader.query)
 
 type heading = { text : string; slug : string; name : string; span : span }
 
@@ -71,7 +73,7 @@ type error = Not_utf_8 of int | No_tree of Sinter_bridge.Tree.error
 
 (* {1 The tree of blocks} *)
 
-type kind = Section | Heading | Paragraph | Item | Quote | Other
+type kind = Section | Heading | Paragraph | Item | Other
 
 (* A captured node. [stop] is exclusive. [children] is built once, while
    the nodes nest, and not changed after. *)
@@ -87,24 +89,14 @@ let kind_of = function
   | "atx_heading" -> Heading
   | "paragraph" -> Paragraph
   | "list_item" -> Item
-  | "block_quote" -> Quote
   | _ -> Other
 
-(* Of two nodes with the same range, the node of the lower rank holds
-   the other: a section holds the one list item or the one paragraph of
-   its text, and a list item holds nothing with its own range. *)
-let rank = function
-  | Section -> 0
-  | Item -> 1
-  | Quote -> 2
-  | Heading | Paragraph | Other -> 3
-
+(* The query gives the nodes in the order of a depth-first walk, so of
+   two nodes with one range the holder comes first, and the stable sort
+   keeps that order. *)
 let order a b =
   match Int.compare a.start b.start with
-  | 0 -> (
-      match Int.compare b.stop a.stop with
-      | 0 -> Int.compare (rank a.kind) (rank b.kind)
-      | other -> other)
+  | 0 -> Int.compare b.stop a.stop
   | other -> other
 
 let contains outer inner =
@@ -175,29 +167,23 @@ let last_kept skip text start stop =
   in
   back (stop - 1)
 
-let first_kept skip text start stop =
-  let rec forward offset =
-    if offset >= stop then None
-    else if skip text.[offset] then forward (offset + 1)
-    else Some offset
-  in
-  forward start
+(* The first offset from [start] whose byte [skip] refuses. A byte that
+   [skip] refuses must come at or after [start]. *)
+let rec first_kept skip text start =
+  if skip text.[start] then first_kept skip text (start + 1) else start
 
 (* The span of the bytes from [start] to [stop], without the spaces,
    tabs, and line endings at both ends. A range of such bytes alone gives
    a span of no character at [start]. *)
 let trimmed_span lines start stop =
   let text = Line_index.text lines in
-  match
-    ( first_kept is_space_byte text start stop,
-      last_kept is_space_byte text start stop )
-  with
-  | Some first, Some last ->
+  match last_kept is_space_byte text start stop with
+  | Some last ->
       {
-        start = Line_index.position lines first;
+        start = Line_index.position lines (first_kept is_space_byte text start);
         stop = Line_index.after lines (last + 1);
       }
-  | _ ->
+  | None ->
       let place = Line_index.position lines start in
       { start = place; stop = place }
 
@@ -222,50 +208,55 @@ let content_last_line lines node =
 
 (* {1 Headings} *)
 
-(* The heading text of the line [content] of an ATX heading, and its
-   level. *)
+(* The offset of the first [#] of the line [content] of an ATX heading,
+   its level, and its heading text. In the line without its opening [#]
+   and the spaces and tabs at both ends, a closing sequence is the run of
+   [#] at the end: the whole text, or a run after a space or a tab. *)
 let heading_text content =
   let length = String.length content in
-  let skip keep offset =
-    let rec go offset =
-      if offset < length && keep content.[offset] then go (offset + 1)
-      else offset
-    in
-    go offset
+  let rec skip keep offset =
+    if offset < length && keep content.[offset] then skip keep (offset + 1)
+    else offset
   in
   let marks = skip is_blank_byte 0 in
   let after = skip (fun byte -> byte = '#') marks in
-  let rest = strip_end (String.sub content after (length - after)) in
-  let rest_length = String.length rest in
-  let rec closing offset =
-    if offset > 0 && rest.[offset - 1] = '#' then closing (offset - 1)
-    else offset
+  let text = strip (String.sub content after (length - after)) in
+  let rec run offset =
+    if offset > 0 && text.[offset - 1] = '#' then run (offset - 1) else offset
   in
-  let close = closing rest_length in
-  let rest =
-    if close < rest_length && close > 0 && is_blank_byte rest.[close - 1] then
-      String.sub rest 0 close
-    else rest
+  let run = run (String.length text) in
+  (* The text starts with a byte that is not a space or a tab, so the
+     search stops before offset 0. *)
+  let rec blanks offset =
+    if is_blank_byte text.[offset - 1] then blanks (offset - 1) else offset
   in
-  (marks, min 6 (max 1 (after - marks)), strip rest)
+  let heading =
+    if run = 0 then ""
+    else
+      let stop = blanks run in
+      if stop < run then String.sub text 0 stop else text
+  in
+  (marks, after - marks, heading)
+
+module Names = Map.Make (String)
 
 (* The numbering of the anchors of GitHub: the first heading of a slug
    keeps it; a later one counts on from the last number that its slug
-   took, past each name that an earlier heading took. *)
+   took, past each name that an earlier heading took. [taken] maps each
+   name to the last number of its slug; it holds [slug] whenever it
+   holds [name], because the first [name] is [slug]. *)
 let numberer () =
-  let taken = Hashtbl.create 16 in
+  let taken = ref Names.empty in
   fun slug ->
-    (* [taken] holds [slug] whenever it holds [name]: the first [name]
-       is [slug]. *)
     let rec find name =
-      if Hashtbl.mem taken name then (
-        let count = Hashtbl.find taken slug + 1 in
-        Hashtbl.replace taken slug count;
+      if Names.mem name !taken then (
+        let count = Names.find slug !taken + 1 in
+        taken := Names.add slug count !taken;
         find (slug ^ "-" ^ string_of_int count))
       else name
     in
     let name = find slug in
-    Hashtbl.replace taken name 0;
+    taken := Names.add name 0 !taken;
     name
 
 (* {1 The walk} *)
@@ -302,21 +293,14 @@ let tag_span lines start line =
     stop = Line_index.after lines (Line_index.content_end lines line);
   }
 
-(* The text of the first line of [paragraph], from its first byte. *)
-let first_line_text lines paragraph =
-  let line = Line_index.line_of lines paragraph.start in
-  let stop = max paragraph.start (Line_index.content_end lines line) in
-  ( line,
-    String.sub (Line_index.text lines) paragraph.start (stop - paragraph.start)
-  )
-
+(* A paragraph gives an unread tag when its first character is [@]. The
+   line feed of its first line stops the search. *)
 let check_unread walk paragraph =
-  let line, text = first_line_text walk.lines paragraph in
-  match Tag_line.read text with
-  | Some (at, _) ->
-      Dynarray.add_last walk.unread
-        (tag_span walk.lines (paragraph.start + at) line)
-  | None -> ()
+  let text = Line_index.text walk.lines in
+  let at = first_kept is_blank_byte text paragraph.start in
+  if text.[at] = '@' then
+    Dynarray.add_last walk.unread
+      (tag_span walk.lines at (Line_index.line_of walk.lines at))
 
 (* The blocks of a section or a list item: the first paragraph is
    tag-bearing, and every other paragraph is checked for an unread tag.
@@ -335,7 +319,7 @@ let rec walk_blocks walk ~container ~in_section ~bearer blocks =
       | Section ->
           walk_section walk ~parent:(Some in_section) ~holder:(Some container)
             block
-      | Heading | Quote | Other -> ())
+      | Heading | Other -> ())
     blocks
 
 and walk_item walk ~parent ~in_section item =
@@ -507,25 +491,14 @@ let read_paragraph lines tags blocks paragraph =
 
 (* {1 Extents} *)
 
-(* The intervals of [ranges] without the lines from [low] to [high]. *)
-let subtract ranges (low, high) =
-  List.concat_map
-    (fun (first, last) ->
-      if high < first || low > last then [ (first, last) ]
-      else
-        (if first < low then [ (first, low - 1) ] else [])
-        @ if high < last then [ (high + 1, last) ] else [])
-    ranges
-
-(* The lines from [first] to [last], without the [holes], and without
-   the blank lines at the end. *)
+(* The lines from [first] to [last], without the lines of the [holes],
+   and without the blank lines at the end. *)
 let extent_lines lines ~holes first last =
-  let ranges = List.fold_left subtract [ (first, last) ] holes in
   let all =
-    List.concat_map
-      (fun (low, high) ->
-        List.init (high - low + 1) (fun offset -> low + offset))
-      ranges
+    List.filter
+      (fun line ->
+        not (List.exists (fun (low, high) -> low <= line && line <= high) holes))
+      (List.init (last - first + 1) (fun offset -> first + offset))
   in
   let rec drop_blank = function
     | line :: rest when is_blank_line lines line -> drop_blank rest
@@ -552,27 +525,13 @@ let hash_lines lines ~at ~own included =
           (strip_end (prefix ^ Tag_line.without_revision pending.tag_line.rest))
     | _ -> Some (strip_end (Line_index.content lines line))
   in
-  let buffer = Buffer.create 256 in
-  List.iter
-    (fun line ->
-      match normal line with
-      | Some text ->
-          Buffer.add_string buffer text;
-          Buffer.add_char buffer '\n'
-      | None -> ())
-    included;
-  if Buffer.length buffer = 0 then Buffer.add_char buffer '\n';
-  Sha256.hex (Buffer.contents buffer)
+  Sha256.hex (String.concat "\n" (List.filter_map normal included) ^ "\n")
 
 (* {1 Reading} *)
 
 let parse_errors lines (report : Sinter_bridge.Tree.report) =
   let span_of (node : Sinter_bridge.Tree.node) =
-    let range = node.range in
-    if range.end_byte <= range.start_byte then
-      let place = Line_index.position lines range.start_byte in
-      { start = place; stop = place }
-    else trimmed_span lines range.start_byte range.end_byte
+    trimmed_span lines node.range.start_byte node.range.end_byte
   in
   match (report.errors, report.lowest) with
   | [], Some node -> [ span_of node ]
@@ -580,18 +539,14 @@ let parse_errors lines (report : Sinter_bridge.Tree.report) =
 
 let structure lines captures =
   let nodes =
-    List.filter_map
+    List.map
       (fun (capture : Sinter_bridge.Query.capture) ->
-        let range = capture.range in
-        if range.start_byte < range.end_byte then
-          Some
-            {
-              kind = kind_of capture.node_type;
-              start = range.start_byte;
-              stop = range.end_byte;
-              children = [];
-            }
-        else None)
+        {
+          kind = kind_of capture.node_type;
+          start = capture.range.start_byte;
+          stop = capture.range.end_byte;
+          children = [];
+        })
       captures
   in
   let walk =
@@ -608,7 +563,7 @@ let structure lines captures =
     (fun root ->
       match root.kind with
       | Section -> walk_section walk ~parent:None ~holder:None root
-      | Heading | Paragraph | Item | Quote | Other -> ())
+      | Heading | Paragraph | Item | Other -> ())
     (nest nodes);
   walk
 
