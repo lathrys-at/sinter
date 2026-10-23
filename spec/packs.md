@@ -415,7 +415,9 @@ text.
 In a markdown file, Sinter takes the facts of the file from the tree,
 as it does for a file with no parse failure. It reports one
 `parse-error` finding at each `ERROR` node and each `MISSING` node
-that no `ERROR` node holds. When the flag of the root shows a failure
+that no other `ERROR` node holds. So an `ERROR` node inside an `ERROR`
+node gives no finding of its own, and one place of error gives one
+finding. When the flag of the root shows a failure
 and the tree shows no such node, Sinter reports one finding at the
 first lowest error node in the order of the text. At a gate where the tier that applies to the class
 `parse-error` is `block` ([manifest.md](manifest.md) section 9.3), the
