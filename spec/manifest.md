@@ -426,6 +426,11 @@ that tree.
 - In both trees, Sinter does not read inside a submodule. It leaves
   each symbolic link out of the file set, and it does not follow a
   symbolic link.
+- In both trees, a file whose path is not valid UTF-8 is not in the
+  file set. The command prints one warning to stderr for each such
+  path. The warning gives the path with each byte that is not part of
+  a valid UTF-8 character written as `\x` and two lowercase hex
+  digits, for example `docs/caf\xe9.md`.
 
 Sinter reads a file only when the file is in the file set and in the
 files of a pack (section 8.1). A `!` glob in the files of a pack is
@@ -972,10 +977,11 @@ the manifest: a rule, or a finding class that the repository defines.
 These parts of a rule file are fixed:
 
 1. A rule file is a markdown file that starts with **front matter**: a
-   first line that holds only `+++`, then TOML text, then a line that
-   holds only `+++`. The markdown after the front matter follows the
-   rules of every markdown file ([vocabulary.md](vocabulary.md)
-   section 2).
+   first line that holds only `+++`, then TOML text, then the next
+   line that holds only `+++`. Spaces and tabs can follow `+++` on
+   these two lines ([packs.md](packs.md) section 7.4). The markdown
+   after the front matter follows the rules of every markdown file
+   ([vocabulary.md](vocabulary.md) section 2).
 2. The front matter holds what Sinter evaluates. The markdown holds
    the reason, for people to read.
 3. A tag line `@rule <slug> vN` declares the rule.

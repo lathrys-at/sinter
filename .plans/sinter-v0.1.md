@@ -1,6 +1,6 @@
 # Sinter v0.1
 @plan sinter-v0.1
-@scope spec/**, docs/**, CLAUDE.md, README.md, CONTRIBUTING.md, THIRD_PARTY.md, REUSE.toml, LICENSES/**, lib/**, bin/**, bridge/**, test/**, dune-project, sinter.opam, sinter.opam.locked, .github/workflows/**, .plans/**
+@scope spec/**, docs/**, CLAUDE.md, README.md, CONTRIBUTING.md, THIRD_PARTY.md, REUSE.toml, LICENSES/**, lib/**, bin/**, bridge/**, test/**, dune-project, sinter.opam, sinter.opam.locked, sinter.toml, .github/workflows/**, .plans/**
 Deliver the first useful version of Sinter: the tag graph of a
 repository, checked with test evidence. It reads markdown with a
 built-in pack and TypeScript, Rust, and OCaml with fetched packs.
@@ -79,11 +79,43 @@ root, and return typed errors. Call a function of a wasm module with
 bytes in and out, under limits of time and memory, for runner
 adapters. Split `lib/parse.ml` by its jobs.
 
-## Scan and check markdown
+## Close the gaps of the markdown scan
+@scope spec/**
+State in the specifications what the scan of markdown and the check
+of a tree need and the specifications do not yet say: the structure
+that markdown gives, blocks and extents, strings and paths, and the
+ids and rules of the findings in tree mode.
+
+## Scan markdown
+@scope lib/**, bin/**, test/**, THIRD_PARTY.md, REUSE.toml
+Build the markdown pack into the tool, with the markdown grammar
+embedded in the binary. Take the facts of markdown files, and print
+them with `sinter scan`.
+
+## Check a tree
 @scope lib/**, bin/**, test/**
-Build the markdown pack into the tool. Add `sinter scan` and
-`sinter check` for the static finding classes, in tree mode and diff
-mode, and run them on Sinter itself.
+Add `sinter check` for the finding classes that the facts of markdown,
+the manifest, and git give, in tree mode, with tiers, gates, and exit
+codes, as text and as JSON.
+
+## Measure and improve the performance of scan and check
+@scope lib/**, bin/**, bridge/**, test/**, docs/**
+Add a benchmark that measures the time and the peak memory of
+`sinter scan` and `sinter check` on Sinter itself and on generated
+trees of 1,000, 10,000, and 100,000 declarations. Profile them, fix the
+largest costs, and record a baseline and budgets that later steps
+keep.
+
+## Check a diff
+@scope lib/**, bin/**, test/**
+Read the facts of the base from git, and add diff mode to
+`sinter check`: the findings that the diff adds, `rev-owed`,
+`renamed`, `unmapped-work`, and `config-changed`.
+
+## Check Sinter with Sinter
+@scope sinter.toml, .github/workflows/**, spec/**, docs/**, .plans/**
+Add the manifest of Sinter, fix the findings that Sinter reports on
+itself, and run `sinter check` on every pull request in CI.
 
 ## Fetch language packs
 @scope lib/**, bin/**, test/**, docs/**
