@@ -184,15 +184,26 @@ let coverage_prefix = Filename.concat (Sys.getcwd ()) "bisect"
    and NO_COLOR stops that. PWD names [root], the folder where each
    of them starts. GIT_CEILING_DIRECTORIES names the folder above
    [root], so that git looks for a repository in [root] and in no
-   folder above it. The other variables of the suite stay: the mutation
+   folder above it. PATH starts with the folder of the programs of git
+   that [git] names, so that the run starts git itself: the program
+   git of macOS finds git first, and with a new HOME each start takes
+   about 30 ms. The other variables of the suite stay: the mutation
    runner switches a mutant on in the run through one of them. *)
-let environment ~home ~root =
+let environment ~home ~root ~git =
   let replaced binding =
     List.exists
       (fun prefix -> String.starts_with ~prefix binding)
-      [ "GIT_"; "HOME="; "XDG_CONFIG_HOME="; "NO_COLOR="; "PWD=" ]
+      [ "GIT_"; "HOME="; "XDG_CONFIG_HOME="; "NO_COLOR="; "PWD="; "PATH=" ]
   in
   let suite = Array.to_list (Unix.environment ()) in
+  let path =
+    let folders =
+      Option.to_list (Sys.getenv_opt "PATH")
+      |> List.filter (fun folders -> not (String.equal folders ""))
+    in
+    if Filename.is_relative git then folders
+    else Filename.dirname git :: folders
+  in
   let coverage =
     if List.exists (String.starts_with ~prefix:"BISECT_FILE=") suite then []
     else [ "BISECT_FILE=" ^ coverage_prefix ]
@@ -202,6 +213,7 @@ let environment ~home ~root =
        (List.filter (fun binding -> not (replaced binding)) suite @ coverage))
     [|
       "HOME=" ^ home;
+      "PATH=" ^ String.concat ":" path;
       "PWD=" ^ root;
       "GIT_CEILING_DIRECTORIES=" ^ Filename.dirname root;
       "NO_COLOR=1";
@@ -330,29 +342,6 @@ let configure_wasmtime home =
       write_file (Filename.concat folder "config.toml") text)
     wasmtime_configurations
 
-let prepare temporary =
-  let home = make_folder temporary "home" in
-  configure_wasmtime home;
-  let root = make_folder temporary "work" in
-  { root; environment = environment ~home ~root; scratch = temporary }
-
-type repository = { workspace : workspace; program : string }
-
-let root repository = repository.workspace.root
-
-let git repository arguments =
-  let { root; environment; scratch } = repository.workspace in
-  let output = Filename.concat scratch "git-stdout"
-  and errors = Filename.concat scratch "git-stderr" in
-  let* code =
-    execute ~environment ~folder:root ~input:"/dev/null" ~output ~errors
-      ~bound:10. repository.program arguments
-  in
-  if code = 0 then Ok (read_file output)
-  else
-    Error
-      (Git_failed { arguments; output = read_file output ^ read_file errors })
-
 (* The git program in the folder that git --exec-path names, or "git"
    when the lookup fails. The lookup runs once for the process, in the
    suite's own environment. *)
@@ -374,6 +363,33 @@ let program =
                if Sys.file_exists path then path else "git"
            | Ok _ | Error _ -> "git")
      with Sys_error _ | Unix.Unix_error _ | Fun.Finally_raised _ -> "git")
+
+let prepare temporary =
+  let home = make_folder temporary "home" in
+  configure_wasmtime home;
+  let root = make_folder temporary "work" in
+  {
+    root;
+    environment = environment ~home ~root ~git:(Lazy.force program);
+    scratch = temporary;
+  }
+
+type repository = { workspace : workspace; program : string }
+
+let root repository = repository.workspace.root
+
+let git repository arguments =
+  let { root; environment; scratch } = repository.workspace in
+  let output = Filename.concat scratch "git-stdout"
+  and errors = Filename.concat scratch "git-stderr" in
+  let* code =
+    execute ~environment ~folder:root ~input:"/dev/null" ~output ~errors
+      ~bound:10. repository.program arguments
+  in
+  if code = 0 then Ok (read_file output)
+  else
+    Error
+      (Git_failed { arguments; output = read_file output ^ read_file errors })
 
 (* A new repository on the branch main in [workspace.root], which
    exists and is empty. *)

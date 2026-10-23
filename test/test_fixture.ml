@@ -217,6 +217,11 @@ let git_looks_for_a_repository_in_no_folder_above_the_run () =
     (case_files ~stdout:"yes\n"
        "[ \"$GIT_CEILING_DIRECTORIES\" = \"$(dirname \"$PWD\")\" ] && echo yes")
 
+let the_run_finds_the_git_of_its_exec_path_first () =
+  check_run "the first git on PATH is the one in the exec path" (Ok [])
+    (case_files ~stdout:"yes\n"
+       "[ \"$(command -v git)\" = \"$(git --exec-path)/git\" ] && echo yes")
+
 let the_run_writes_coverage_beside_the_suite () =
   let expected =
     match Sys.getenv_opt "BISECT_FILE" with
@@ -656,6 +661,8 @@ let tests =
       the_run_gets_the_fixed_variables;
     Alcotest.test_case "git looks for a repository in no folder above the run"
       `Quick git_looks_for_a_repository_in_no_folder_above_the_run;
+    Alcotest.test_case "the run finds the git of its exec path first" `Quick
+      the_run_finds_the_git_of_its_exec_path_first;
     Alcotest.test_case "the run writes coverage beside the suite" `Quick
       the_run_writes_coverage_beside_the_suite;
     Alcotest.test_case "a run leaves the case unchanged" `Quick
