@@ -66,10 +66,12 @@ let bad_run =
       "\xf5\x80\x80\x80";
     ]
 
-let not_utf_8_string =
+let not_utf_8_string_at =
   Gen.map3
-    (fun prefix bad suffix -> prefix ^ bad ^ suffix)
+    (fun prefix bad suffix -> (String.length prefix, prefix ^ bad ^ suffix))
     utf_8_string bad_run ascii_string
+
+let not_utf_8_string = Gen.map snd not_utf_8_string_at
 
 (* Records. *)
 

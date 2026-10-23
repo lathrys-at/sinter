@@ -8,6 +8,8 @@
     over the parse tree. It also computes the SHA-256 digest of a string, and
     reads a TOML document. *)
 
+module Utf_8 = Utf_8
+
 exception Error of string
 (** The bridge failed. The string is the message of the failure. *)
 

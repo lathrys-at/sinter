@@ -31,6 +31,7 @@ let () =
     [
       ("version", Test_version.tests);
       ("jsonl", Test_jsonl.tests);
+      ("utf-8", Test_utf_8.tests);
       ("spec examples", Test_spec_examples.tests);
       ("bridge decode", Test_bridge_decode.tests);
       ("parse", Test_parse.tests);

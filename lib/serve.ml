@@ -76,7 +76,8 @@ let language state path =
    Every message this library builds is UTF-8; a message from
    elsewhere that is not is escaped rather than dropped. *)
 let printable message =
-  if Jsonl.is_utf_8 message then message else String.escaped message
+  if Sinter_bridge.Utf_8.is_valid message then message
+  else String.escaped message
 
 let record_of_item rid = function
   | Parse.Capture record -> ("rid", rid) :: record

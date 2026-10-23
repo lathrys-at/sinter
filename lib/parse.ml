@@ -4,31 +4,16 @@
 exception Error of string
 
 let fail format = Printf.ksprintf (fun message -> raise (Error message)) format
-
-let is_utf_8 text =
-  let length = String.length text in
-  let rec check offset =
-    offset >= length
-    ||
-    let decoded = String.get_utf_8_uchar text offset in
-    Uchar.utf_decode_is_valid decoded
-    && check (offset + Uchar.utf_decode_length decoded)
-  in
-  check 0
+let is_utf_8 = Sinter_bridge.Utf_8.is_valid
 
 (* @cites json-handling *)
 (* Every string in a record is UTF-8. The text of a capture comes from
    the file, and the name of the file goes into the record beside
    it. *)
 let check_utf_8 path text =
-  let length = String.length text in
-  let offset = ref 0 in
-  while !offset < length do
-    let decoded = String.get_utf_8_uchar text !offset in
-    if not (Uchar.utf_decode_is_valid decoded) then
-      fail "%s: the file is not UTF-8 text, at byte %d" path !offset;
-    offset := !offset + Uchar.utf_decode_length decoded
-  done
+  match Sinter_bridge.Utf_8.first_invalid text with
+  | None -> ()
+  | Some offset -> fail "%s: the file is not UTF-8 text, at byte %d" path offset
 
 let check_path path =
   if not (is_utf_8 path) then

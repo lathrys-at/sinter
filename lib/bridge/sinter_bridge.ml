@@ -1,6 +1,8 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
+module Utf_8 = Utf_8
+
 exception Error of string
 
 (* The C stubs raise this exception. *)
@@ -79,17 +81,6 @@ let read_int buffer offset =
   check buffer offset 4;
   Int32.to_int (String.get_int32_le buffer offset) land 0xFFFFFFFF
 
-let is_utf_8 text =
-  let length = String.length text in
-  let rec walk offset =
-    offset >= length
-    ||
-    let decoded = String.get_utf_8_uchar text offset in
-    Uchar.utf_decode_is_valid decoded
-    && walk (offset + Uchar.utf_decode_length decoded)
-  in
-  walk 0
-
 (* Give the string and the offset of the byte after it. Every string
    of the buffer is UTF-8, so a caller of this module never sees other
    bytes. [what] names the string in the message of a failure: the
@@ -99,7 +90,7 @@ let read_string buffer offset ~what =
   let length = read_int buffer offset in
   check buffer (offset + 4) length;
   let text = String.sub buffer (offset + 4) length in
-  if not (is_utf_8 text) then raise (Error (what ^ " is not UTF-8 text"));
+  if not (Utf_8.is_valid text) then raise (Error (what ^ " is not UTF-8 text"));
   (text, offset + 4 + length)
 
 let read_header buffer expected_kind =

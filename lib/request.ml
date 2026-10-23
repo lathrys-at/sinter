@@ -66,7 +66,8 @@ let read_rid fields =
   match List.filter (fun (name, _) -> String.equal name "rid") fields with
   | [] -> untagged No_rid
   | _ :: _ :: _ -> untagged (Repeated_field "rid")
-  | [ (_, `String text) ] when Jsonl.is_utf_8 text -> Ok (Text text)
+  | [ (_, `String text) ] when Sinter_bridge.Utf_8.is_valid text ->
+      Ok (Text text)
   | [ (_, `Int number) ] when number >= min_number && number <= max_number ->
       Ok (Number number)
   | _ -> untagged Bad_rid
@@ -85,7 +86,8 @@ let repeated fields =
 
 let text rid field = function
   | `String value ->
-      if Jsonl.is_utf_8 value then Ok value else bad rid (Not_text field)
+      if Sinter_bridge.Utf_8.is_valid value then Ok value
+      else bad rid (Not_text field)
   | _ -> bad rid (Wrong_type { field; wanted = "a string" })
 
 let flag rid field = function
@@ -99,7 +101,8 @@ let paths rid field value =
       let rec collect kept = function
         | [] -> Ok (List.rev kept)
         | `String item :: rest ->
-            if Jsonl.is_utf_8 item then collect (item :: kept) rest
+            if Sinter_bridge.Utf_8.is_valid item then
+              collect (item :: kept) rest
             else bad rid (Not_text field)
         | _ -> bad rid (Wrong_type { field; wanted })
       in

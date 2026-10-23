@@ -22,6 +22,10 @@ val not_utf_8_string : string QCheck2.Gen.t
 (** A string that is not valid UTF-8. The construction gives this, so the
     generator never yields a valid string. *)
 
+val not_utf_8_string_at : (int * string) QCheck2.Gen.t
+(** A string that is not valid UTF-8, and the byte offset of its first sequence
+    that is not well-formed. The string is valid UTF-8 before that offset. *)
+
 (** {1 Records} *)
 
 val jsonl_int : int QCheck2.Gen.t
