@@ -91,11 +91,9 @@ functions:
 | `sinter_bridge_adapter_interface` | read the interface version of an adapter |
 | `sinter_bridge_adapter_free` | free an adapter |
 | `sinter_bridge_adapter_call` | call a function of an adapter |
-| `sinter_bridge_run` | parse a source text and run a query |
 | `sinter_bridge_sha256` | compute the SHA-256 digest of a byte string |
 | `sinter_bridge_toml_parse` | read a TOML document |
 | `sinter_bridge_result_free` | free a result |
-| `sinter_bridge_last_error` | read the message of the last failure |
 | `sinter_bridge_last_failure` | read the last failure |
 
 A **handle** is an engine, a language, a tree, a query, or an adapter.
@@ -146,18 +144,18 @@ gives -1. A module whose tables start larger does not start.
 
 ## The result buffer
 
-`sinter_bridge_run`, `sinter_bridge_sha256`, and
-`sinter_bridge_toml_parse` return one flat buffer. The buffer holds a
-header and then the records. Every integer is
-unsigned, 32 bits wide, and little-endian. No field is padded and no
-field is aligned: a reader must copy the four bytes of an integer
-before it reads them. Every string is UTF-8 and carries no terminating
-NUL byte.
+Every function that returns a `sinter_bridge_result` gives one flat
+buffer. The buffer holds a header and then the records. Every integer
+is unsigned and little-endian, and it is 32 bits wide unless its row
+says 64. No field is padded and no field is aligned: a reader must
+copy the bytes of an integer before it reads them. A string is a
+length, a u32, and then that many bytes, with no terminating NUL
+byte. A string is UTF-8 unless its row says otherwise.
 
 The 32 bits bound what the bridge can report. A source of 2^32 bytes
-or more fails with a message before the bridge reads it, and so does
-a parse tree whose S-expression is 2^32 bytes or more. The bridge
-never truncates a length or an offset to fit.
+or more fails before the bridge reads it, and so does a parse tree
+whose S-expression is 2^32 bytes or more. The bridge never truncates
+a length or an offset to fit.
 
 ### Header
 
@@ -166,29 +164,9 @@ The header is 16 bytes.
 | offset | size | field | meaning |
 |---|---|---|---|
 | 0 | 4 | magic | the ASCII bytes `S`, `B`, `R`, `1` |
-| 4 | 4 | kind | `0` for captures, `1` for a parse tree, `2` for a digest, `3` for a TOML document, `4` for a TOML error, `5` for a failure, `6` for captures with match numbers, `7` for an error report, `8` for the response of an adapter |
+| 4 | 4 | kind | `1` for a parse tree, `2` for a digest, `3` for a TOML document, `4` for a TOML error, `5` for a failure, `6` for captures with match numbers, `7` for an error report, `8` for the response of an adapter |
 | 8 | 4 | count | the number of records that follow |
 | 12 | 4 | reserved | always `0` |
-
-### A capture record, when kind is 0
-
-The buffer holds one record per capture, in the order in which the
-query cursor produced them. Each record holds seven integers, and then
-three strings. Each string is a length in bytes and then that many
-bytes.
-
-| field | type | meaning |
-|---|---|---|
-| pattern | u32 | the index of the pattern in the query, from 0 |
-| sbyte | u32 | the start of the node, a byte offset from 0 |
-| ebyte | u32 | the end of the node, exclusive, a byte offset |
-| srow | u32 | the start row of the node, from 0 |
-| scol | u32 | the start column of the node, in bytes, from 0 |
-| erow | u32 | the end row of the node, from 0 |
-| ecol | u32 | the end column of the node, in bytes, exclusive |
-| name | u32 + bytes | the capture name, without the `@` |
-| type | u32 + bytes | the type of the node, for example `string` |
-| text | u32 + bytes | the source text of the node |
 
 ### A tree record, when kind is 1
 
@@ -317,13 +295,12 @@ captures. Each record holds eight integers, and then three strings.
 | ecol | u32 | the end column of the node, in bytes, exclusive |
 | name | u32 + bytes | the capture name, without the `@` |
 | type | u32 + bytes | the type of the node, for example `string` |
-| text | u32 + bytes | the bytes of the source that the node covers |
+| text | u32 + bytes | the bytes of the source that the node covers; they need not be UTF-8 |
 
 The bridge numbers the matches that hold at least one capture, from 0
 and with no gap, in the order in which tree-sitter's query cursor
 gives them. That cursor gives a match when the match ends, so the
-numbers do not follow the start of the matches. The text of a capture
-is any bytes: the source text can be any bytes.
+numbers do not follow the start of the matches.
 
 ### An error report, when kind is 7
 

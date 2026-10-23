@@ -7,9 +7,6 @@
 /// The first four bytes of every result buffer.
 pub(crate) const MAGIC: u32 = u32::from_le_bytes(*b"SBR1");
 
-/// The `kind` field of a buffer of captures without match numbers.
-pub(crate) const KIND_CAPTURES: u32 = 0;
-
 /// The `kind` field of a buffer that holds a parse tree.
 pub(crate) const KIND_TREE: u32 = 1;
 

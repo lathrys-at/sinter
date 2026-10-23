@@ -202,28 +202,6 @@ sinter_bridge_result *sinter_bridge_adapter_call(
     const uint8_t *request, size_t request_len, const uint8_t *report,
     size_t report_len, sinter_bridge_limits limits);
 
-/* Parse a source text and run a query over the parse tree.
-
-   "language" must come from "engine". "source" points to "source_len"
-   bytes of source text. "query" points to "query_len" bytes of
-   tree-sitter query source, in the syntax of a .scm file; it needs no
-   terminating NUL byte. When "query_len" is 0, the bridge runs no
-   query, and the output holds the parse tree as an S-expression
-   instead of the captures.
-
-   The encoding holds every offset and every length in 32 bits. A
-   source of 2^32 bytes or more fails with a message before the bridge
-   reads it, and so does a parse tree whose text is that long.
-
-   The result holds the captures, or the parse tree, in the encoding
-   that README.md beside this crate defines. It is valid until
-   sinter_bridge_result_free frees it. */
-sinter_bridge_result *sinter_bridge_run(sinter_bridge_engine *engine,
-                                        sinter_bridge_language *language,
-                                        const uint8_t *source,
-                                        size_t source_len, const uint8_t *query,
-                                        size_t query_len);
-
 /* Compute the SHA-256 digest of a byte string.
 
    "data" points to "len" bytes; it may be NULL when "len" is 0. The
@@ -250,12 +228,6 @@ sinter_bridge_result *sinter_bridge_toml_parse(const uint8_t *text,
 /* Free a result and the bytes it points to. A NULL pointer is allowed
    and does nothing. */
 void sinter_bridge_result_free(sinter_bridge_result *result);
-
-/* The message of the last failure on the calling thread, as a
-   NUL-terminated UTF-8 string. The string is empty when no call has
-   failed on this thread. It is valid until the next call that fails
-   on this thread. */
-const char *sinter_bridge_last_error(void);
 
 /* The last failure on the calling thread, in the encoding that
    README.md beside this crate defines. The caller frees the result

@@ -22,8 +22,7 @@
 #[cfg(panic = "abort")]
 compile_error!("the bridge needs unwinding panics; do not build it with panic = \"abort\"");
 
-use std::cell::RefCell;
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{c_char, CStr};
 
 mod adapter;
 mod buffer;
@@ -31,49 +30,15 @@ mod failure;
 mod syntax;
 mod toml_document;
 
-use buffer::{
-    length_prefix, put_bytes, put_header, put_u32, set_count, KIND_CAPTURES, KIND_DIGEST,
-    KIND_RESPONSE,
-};
+use buffer::{length_prefix, put_bytes, put_header, set_count, KIND_DIGEST, KIND_RESPONSE};
 use failure::{last_failure, set_failure, Failure};
 use sha2::{Digest, Sha256};
 use toml_edit::ImDocument;
-use tree_sitter::{
-    wasmtime, Language, Parser, Query, QueryCursor, StreamingIterator, Tree, WasmStore,
-};
-
-thread_local! {
-    static LAST_ERROR: RefCell<CString> = RefCell::new(CString::default());
-}
-
-/// Record a failure, and its message for `sinter_bridge_last_error`.
-fn fail_with(failure: Failure, message: impl Into<Vec<u8>>) {
-    let text = message.into();
-    // The message reaches the caller as a C string, so it must hold no
-    // NUL byte.
-    let clean: Vec<u8> = text
-        .into_iter()
-        .map(|b| if b == 0 { b'?' } else { b })
-        .collect();
-    let value = CString::new(clean).unwrap_or_default();
-    LAST_ERROR.with(|cell| *cell.borrow_mut() = value);
-    set_failure(failure);
-}
+use tree_sitter::{wasmtime, Language, Parser, Query, Tree, WasmStore};
 
 /// Record a failure that the caller cannot act on.
 fn set_error(message: impl Into<String>) {
-    let message = message.into();
-    fail_with(Failure::Internal(message.clone()), message);
-}
-
-/// Record `failure`. Its message is the message of an internal fault,
-/// or the code of the failure otherwise.
-fn fail(failure: Failure) {
-    let message = match &failure {
-        Failure::Internal(message) => message.clone(),
-        other => format!("the bridge failed with code {}", other.code()),
-    };
-    fail_with(failure, message);
+    set_failure(Failure::Internal(message.into()));
 }
 
 /// The failure of a call that got a null pointer it needs.
@@ -95,18 +60,6 @@ pub struct SinterBridgeEngine {
     /// grammar, so it is a second runtime. It is made from a copy of
     /// `config`, which shares the cache of compiled modules.
     adapter_engine: Option<wasmtime::Engine>,
-    /// The query that `sinter_bridge_run` compiled last.
-    query: Option<CompiledQuery>,
-}
-
-/// A compiled query, with the grammar and the text it came from.
-struct CompiledQuery {
-    /// A counted reference to the language the query was compiled for,
-    /// so that the address of the language is not reused while the
-    /// query is kept.
-    language: Language,
-    text: String,
-    query: Query,
 }
 
 /// A grammar. It holds a counted reference to the tree-sitter
@@ -208,7 +161,7 @@ fn result_of(written: Result<Vec<u8>, Failure>) -> *mut SinterBridgeResult {
     match written {
         Ok(buffer) => into_result(buffer),
         Err(failure) => {
-            fail(failure);
+            set_failure(failure);
             std::ptr::null_mut()
         }
     }
@@ -220,7 +173,7 @@ fn handle_of<T>(made: Result<T, Failure>) -> *mut T {
     match made {
         Ok(value) => Box::into_raw(Box::new(value)),
         Err(failure) => {
-            fail(failure);
+            set_failure(failure);
             std::ptr::null_mut()
         }
     }
@@ -294,7 +247,6 @@ pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
             grammar_engine,
             config,
             adapter_engine: None,
-            query: None,
         }))
     })
 }
@@ -358,8 +310,7 @@ pub unsafe extern "C" fn sinter_bridge_language_load(
         let language = match loaded {
             Ok(language) => language,
             Err(error) => {
-                let message = error.to_string();
-                fail_with(syntax::grammar_load_failure(error), message);
+                set_failure(syntax::grammar_load_failure(error));
                 return std::ptr::null_mut();
             }
         };
@@ -715,150 +666,6 @@ pub unsafe extern "C" fn sinter_bridge_adapter_call(
     })
 }
 
-/// Parse a source text and run a query over the parse tree. When
-/// `query_len` is 0 the bridge returns the parse tree as an
-/// S-expression instead. Returns null on failure.
-///
-/// # Safety
-///
-/// `engine` must be a live pointer from `sinter_bridge_engine_new`,
-/// and `language` a live handle that the same engine returned.
-/// `source` must point to `source_len` readable bytes and `query` to
-/// `query_len` readable bytes; either may be null when its length is
-/// 0.
-///
-/// A source of 2^32 bytes or more fails with a message before any byte
-/// of it is read: the buffer format holds every offset in 32 bits.
-#[no_mangle]
-pub unsafe extern "C" fn sinter_bridge_run(
-    engine: *mut SinterBridgeEngine,
-    language: *mut SinterBridgeLanguage,
-    source: *const u8,
-    source_len: usize,
-    query: *const u8,
-    query_len: usize,
-) -> *mut SinterBridgeResult {
-    guard(std::ptr::null_mut(), move || {
-        if engine.is_null() || language.is_null() || (source.is_null() && source_len != 0) {
-            set_error("a required argument is null");
-            return std::ptr::null_mut();
-        }
-        if query.is_null() && query_len != 0 {
-            set_error("the query is null, and its length is not 0");
-            return std::ptr::null_mut();
-        }
-        if length_prefix(source_len).is_err() {
-            set_error("the source text is 4 GiB or more, and the result buffer holds no offset that large");
-            return std::ptr::null_mut();
-        }
-        // Safety: the caller gives an engine and a language from this
-        // bridge, source_len readable bytes at source, and query_len
-        // readable bytes at query.
-        let engine = unsafe { &mut *engine };
-        let grammar = unsafe { &*language }.language.clone();
-        let source = unsafe { slice_of(source, source_len) };
-        let query_bytes = unsafe { slice_of(query, query_len) };
-
-        if let Err(error) = engine.parser.set_language(&grammar) {
-            set_error(format!("cannot use the grammar: {error}"));
-            return std::ptr::null_mut();
-        }
-        let tree = match engine.parser.parse(source, None) {
-            Some(tree) => tree,
-            None => {
-                set_error("the grammar produced no parse tree");
-                return std::ptr::null_mut();
-            }
-        };
-
-        if query_len == 0 {
-            return match syntax::sexp_buffer(&tree) {
-                Ok(buffer) => into_result(buffer),
-                Err(failure) => {
-                    fail(failure);
-                    std::ptr::null_mut()
-                }
-            };
-        }
-
-        let query_text = match std::str::from_utf8(query_bytes) {
-            Ok(text) => text,
-            Err(_) => {
-                set_error("the query is not valid UTF-8");
-                return std::ptr::null_mut();
-            }
-        };
-        // The engine keeps the query it compiled last. One run of
-        // "sinter parse" puts the same query over many files, so the
-        // query is compiled once and not once per file.
-        let hit = engine
-            .query
-            .as_ref()
-            .is_some_and(|c| c.language == grammar && c.text == query_text);
-        if !hit {
-            match Query::new(&grammar, query_text) {
-                Ok(compiled) => {
-                    engine.query = Some(CompiledQuery {
-                        language: grammar.clone(),
-                        text: query_text.to_owned(),
-                        query: compiled,
-                    })
-                }
-                Err(error) => {
-                    set_error(format!("cannot read the query: {error}"));
-                    return std::ptr::null_mut();
-                }
-            }
-        }
-        let query = match &engine.query {
-            Some(compiled) => &compiled.query,
-            None => {
-                set_error("the engine holds no compiled query");
-                return std::ptr::null_mut();
-            }
-        };
-        let names = query.capture_names().to_vec();
-
-        let mut buffer = Vec::new();
-        put_header(&mut buffer, KIND_CAPTURES);
-        let mut count: u32 = 0;
-        let mut cursor = QueryCursor::new();
-        let mut matches = cursor.matches(query, tree.root_node(), source);
-        while let Some(found) = matches.next() {
-            for capture in found.captures {
-                let node = capture.node;
-                let start = node.start_position();
-                let end = node.end_position();
-                put_u32(&mut buffer, found.pattern_index as u32);
-                put_u32(&mut buffer, node.start_byte() as u32);
-                put_u32(&mut buffer, node.end_byte() as u32);
-                put_u32(&mut buffer, start.row as u32);
-                put_u32(&mut buffer, start.column as u32);
-                put_u32(&mut buffer, end.row as u32);
-                put_u32(&mut buffer, end.column as u32);
-                let name = names.get(capture.index as usize).copied().unwrap_or("");
-                let text = source
-                    .get(node.start_byte()..node.end_byte())
-                    .unwrap_or(&[]);
-                // Each string is a piece of the source or a name from
-                // the grammar, and the source is under the limit, so
-                // these cannot fail; the check stays so that the
-                // format is never written with a truncated prefix.
-                if put_bytes(&mut buffer, name.as_bytes()).is_err()
-                    || put_bytes(&mut buffer, node.kind().as_bytes()).is_err()
-                    || put_bytes(&mut buffer, text).is_err()
-                {
-                    set_error("a string of a capture is 4 GiB or more, and the result buffer holds no string that large");
-                    return std::ptr::null_mut();
-                }
-                count += 1;
-            }
-        }
-        set_count(&mut buffer, count);
-        into_result(buffer)
-    })
-}
-
 /// Hash a byte string with SHA-256. Returns null on failure.
 ///
 /// # Safety
@@ -953,14 +760,6 @@ pub unsafe extern "C" fn sinter_bridge_result_free(result: *mut SinterBridgeResu
         // bridge returned, and does not use it again.
         let result = unsafe { Box::from_raw(result) };
         drop(unsafe { Vec::from_raw_parts(result.data, result.len, result.capacity) });
-    })
-}
-
-/// The message of the last failure on the calling thread.
-#[no_mangle]
-pub extern "C" fn sinter_bridge_last_error() -> *const c_char {
-    guard(c"".as_ptr(), move || {
-        LAST_ERROR.with(|cell| cell.borrow().as_ptr())
     })
 }
 

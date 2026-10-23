@@ -15,12 +15,8 @@
 
 #include "sinter_bridge.h"
 
-static void raise_bridge_error(const char *fallback) {
-  const char *message = sinter_bridge_last_error();
+static void raise_bridge_error(const char *message) {
   const value *exception = caml_named_value("Sinter_bridge.Error");
-  if (message == NULL || message[0] == '\0') {
-    message = fallback;
-  }
   if (exception == NULL) {
     caml_failwith(message);
   }
@@ -29,7 +25,7 @@ static void raise_bridge_error(const char *fallback) {
 
 /* Raise Sinter_bridge.Failed with the buffer of the last failure.
    Without that exception, or without the buffer, raise
-   Sinter_bridge.Error with the message of the last failure. */
+   Sinter_bridge.Error with the fallback message. */
 static void raise_failure(const char *fallback) {
   CAMLparam0();
   CAMLlocal1(buffer);
@@ -131,7 +127,7 @@ CAMLprim value sinter_bridge_engine_new_stub(value unit) {
   CAMLparam1(unit);
   sinter_bridge_engine *engine = sinter_bridge_engine_new();
   if (engine == NULL) {
-    raise_bridge_error("the bridge could not create an engine");
+    raise_failure("the bridge could not create an engine");
   }
   /* The last argument is the memory outside the OCaml heap that an
      engine holds. */
@@ -241,51 +237,17 @@ CAMLprim value sinter_bridge_adapter_call_byte(value *argv, int argn) {
                                          argv[4], argv[5]);
 }
 
-CAMLprim value sinter_bridge_run_stub(value engine, value language,
-                                      value source, value query) {
-  CAMLparam4(engine, language, source, query);
-  CAMLlocal1(result);
-  sinter_bridge_engine *pointer = Engine_val(engine);
-  sinter_bridge_language *language_pointer = Language_val(language);
-  sinter_bridge_result *run = sinter_bridge_run(
-      pointer, language_pointer, (const uint8_t *)String_val(source),
-      caml_string_length(source), (const uint8_t *)String_val(query),
-      caml_string_length(query));
-  if (run == NULL) {
-    raise_bridge_error("the bridge could not parse the source text");
-  }
-  /* No OCaml value points into memory that the bridge owns. */
-  result = caml_alloc_initialized_string(run->len, (const char *)run->data);
-  sinter_bridge_result_free(run);
-  CAMLreturn(result);
-}
-
 CAMLprim value sinter_bridge_sha256_stub(value data) {
   CAMLparam1(data);
-  CAMLlocal1(result);
-  sinter_bridge_result *digest = sinter_bridge_sha256(
-      (const uint8_t *)String_val(data), caml_string_length(data));
-  if (digest == NULL) {
-    raise_bridge_error("the bridge could not compute the digest");
-  }
-  /* No OCaml value points into memory that the bridge owns. */
-  result =
-      caml_alloc_initialized_string(digest->len, (const char *)digest->data);
-  sinter_bridge_result_free(digest);
-  CAMLreturn(result);
+  CAMLreturn(take_result(sinter_bridge_sha256((const uint8_t *)String_val(data),
+                                              caml_string_length(data)),
+                         "the bridge could not compute the digest"));
 }
 
 CAMLprim value sinter_bridge_toml_parse_stub(value text) {
   CAMLparam1(text);
-  CAMLlocal1(result);
-  sinter_bridge_result *parsed = sinter_bridge_toml_parse(
-      (const uint8_t *)String_val(text), caml_string_length(text));
-  if (parsed == NULL) {
-    raise_bridge_error("the bridge could not read the TOML text");
-  }
-  /* No OCaml value points into memory that the bridge owns. */
-  result =
-      caml_alloc_initialized_string(parsed->len, (const char *)parsed->data);
-  sinter_bridge_result_free(parsed);
-  CAMLreturn(result);
+  CAMLreturn(
+      take_result(sinter_bridge_toml_parse((const uint8_t *)String_val(text),
+                                           caml_string_length(text)),
+                  "the bridge could not read the TOML text"));
 }

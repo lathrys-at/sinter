@@ -9,6 +9,7 @@ use crate::buffer::{
     KIND_ERROR_REPORT, KIND_FAILURE, KIND_MATCHES, KIND_RESPONSE, KIND_TREE, MAGIC,
 };
 use crate::failure::WASM_PARSE;
+use std::ffi::CString;
 use std::path::Path;
 
 fn repository() -> &'static Path {
@@ -830,42 +831,6 @@ fn an_adapter_call_with_a_bad_argument_fails() {
     unsafe { sinter_bridge_adapter_free(adapter) };
     unsafe { sinter_bridge_adapter_free(std::ptr::null_mut()) };
     unsafe { sinter_bridge_engine_free(engine) };
-}
-
-/// The kind and the bytes of the result of the old `sinter_bridge_run`.
-fn old_run(source: &[u8], query: &[u8]) -> (u32, Vec<u8>) {
-    let json = Json::new();
-    let bytes = take(unsafe {
-        sinter_bridge_run(
-            json.engine,
-            json.language,
-            source.as_ptr(),
-            source.len(),
-            query.as_ptr(),
-            query.len(),
-        )
-    })
-    .unwrap();
-    let kind = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
-    (kind, bytes)
-}
-
-#[test]
-fn the_old_run_gives_captures_and_trees() {
-    let (kind, bytes) = old_run(b"[1]", b"(number) @n");
-    assert_eq!(kind, KIND_CAPTURES);
-    let (mut reader, count) = Reader::new(&bytes, KIND_CAPTURES);
-    assert_eq!(count, 1);
-    for expected in [0, 1, 2, 0, 1, 0, 2] {
-        assert_eq!(reader.u32(), expected);
-    }
-    assert_eq!(
-        (reader.string(), reader.string(), reader.string()),
-        ("n".to_owned(), "number".to_owned(), "1".to_owned())
-    );
-    reader.end();
-    let (kind, _) = old_run(b"[1]", b"");
-    assert_eq!(kind, KIND_TREE);
 }
 
 /// The digest of `data` through the C function, as lowercase hex.
