@@ -18,10 +18,6 @@ type t
     was loaded into it. An engine is not safe to use from two threads at the
     same time. *)
 
-type language
-(** A grammar that was loaded into an engine. The value keeps its engine alive.
-*)
-
 type capture = {
   pattern : int;  (** the index of the pattern in the query, from 0 *)
   name : string;  (** the capture name, without the [@] *)
@@ -46,31 +42,6 @@ val close : t -> unit
     that uses the engine raises [Invalid_argument]. The garbage collector frees
     an engine that no value refers to, so a program does not have to call this
     function. *)
-
-val load : t -> name:string -> wasm:string -> language
-(** [load engine ~name ~wasm] loads a grammar into [engine]. [name] is the
-    grammar name without the [tree_sitter_] prefix, for example ["json"]. [wasm]
-    is the content of the grammar's [.wasm] file.
-
-    @raise Error if the grammar does not load.
-    @raise Invalid_argument if [name] holds a NUL byte. *)
-
-val captures : language -> source:string -> query:string -> capture list
-(** [captures language ~source ~query] parses [source] with [language] and runs
-    [query] over the parse tree. [query] is tree-sitter query source, the
-    content of a [.scm] file. The captures come back in the order in which the
-    query cursor produced them. Every string of every capture is valid UTF-8.
-
-    @raise Error
-      if the parse or the query fails, or if a range of [source] that a capture
-      covers is not valid UTF-8.
-    @raise Invalid_argument if [query] is empty. *)
-
-val tree : language -> source:string -> string
-(** [tree language ~source] parses [source] with [language] and gives the parse
-    tree as an S-expression. The result is valid UTF-8.
-
-    @raise Error if the parse fails, or if the parse tree is not valid UTF-8. *)
 
 val decode_captures : string -> capture list
 (** [decode_captures buffer] is the captures that [buffer] holds. [buffer] is
@@ -115,6 +86,12 @@ type range = {
 
 (** Grammars. *)
 module Language : sig
+  type engine := t
+
+  type t
+  (** A grammar that was loaded into an engine. A grammar keeps its engine
+      alive. A tree or a query of the grammar stays valid after {!close}. *)
+
   (** How the WebAssembly runtime failed to load a grammar. *)
   type wasm_kind =
     | Parse  (** the bytes are not a module that the runtime can read *)
@@ -131,6 +108,19 @@ module Language : sig
             bridge reads the versions 13 to 15 *)
     | Name_not_utf_8  (** the grammar name is not UTF-8 text *)
 
+  val load : engine -> name:string -> wasm:string -> (t, error) result
+  (** [load engine ~name ~wasm] loads a grammar into [engine]. [name] is the
+      grammar name without the [tree_sitter_] prefix, for example ["json"].
+      [wasm] is the content of the grammar's [.wasm] file. The caller owns the
+      result, and frees it with {!close} or leaves it to the garbage collector.
+
+      @raise Invalid_argument
+        if [name] holds a NUL byte, or if [engine] is closed. *)
+
+  val close : t -> unit
+  (** [close language] frees the grammar. Every later call that takes [language]
+      raises [Invalid_argument]. A second call does nothing. *)
+
   val message : error -> string
   (** [message error] says why the grammar does not load, for the person who
       runs the tool. *)
@@ -138,6 +128,10 @@ end
 
 (** Parse trees. *)
 module Tree : sig
+  type t
+  (** A parse tree, with a copy of the text it was parsed from. A tree stays
+      valid when its grammar or its engine is closed. *)
+
   (** Why a parse gives no tree. *)
   type error =
     | Did_not_finish  (** the parser stopped before the end of the text *)
@@ -168,6 +162,31 @@ module Tree : sig
   }
   (** The parse failures of a tree. *)
 
+  val parse : Language.t -> string -> (t, error) result
+  (** [parse language text] parses the bytes of [text] with [language], in the
+      engine of [language]. The text need not be UTF-8. The caller owns the
+      result, and frees it with {!close} or leaves it to the garbage collector.
+
+      @raise Invalid_argument if [language] or its engine is closed. *)
+
+  val close : t -> unit
+  (** [close tree] frees the tree. Every later call that takes [tree] raises
+      [Invalid_argument]. A second call does nothing. *)
+
+  val sexp : t -> string
+  (** [sexp tree] is the tree as an S-expression. It shows each named node and
+      each [MISSING] node that the tree shows, with its field name. The result
+      is valid UTF-8.
+
+      @raise Invalid_argument if [tree] is closed.
+      @raise Error if the S-expression is 2^32 bytes or more. *)
+
+  val errors : t -> report
+  (** [errors tree] is the parse failures of [tree]. It walks down only into
+      nodes whose error flag is set.
+
+      @raise Invalid_argument if [tree] is closed. *)
+
   val message : error -> string
   (** [message error] says why the parse gave no tree, for the person who runs
       the tool. *)
@@ -175,6 +194,9 @@ end
 
 (** Queries. *)
 module Query : sig
+  type t
+  (** A compiled query. A query stays valid when its grammar is closed. *)
+
   (** The kind of a tree-sitter query error. *)
   type kind =
     | Syntax
@@ -233,6 +255,24 @@ module Query : sig
   }
   (** One capture of one match. *)
 
+  val compile : Language.t -> string -> (t, error) result
+  (** [compile language text] compiles the tree-sitter query [text], the content
+      of a [.scm] file, for [language]. The caller owns the result, and frees it
+      with {!close} or leaves it to the garbage collector.
+
+      @raise Invalid_argument if [language] is closed. *)
+
+  val close : t -> unit
+  (** [close query] frees the query. Every later call that takes [query] raises
+      [Invalid_argument]. A second call does nothing. *)
+
+  val run : t -> Tree.t -> (capture list, run_error) result
+  (** [run query tree] runs [query] over [tree]. The captures come in the order
+      of their matches, and in the order of the pattern inside one match. A
+      match that captures nothing gives no capture and no number.
+
+      @raise Invalid_argument if [query] or [tree] is closed. *)
+
   val message : error -> string
   (** [message error] says why the query does not compile, for the person who
       runs the tool. *)
@@ -285,6 +325,35 @@ module Adapter : sig
   (** [message error] says why the load or the call failed, for the person who
       runs the tool. *)
 end
+
+type language = Language.t
+(** A grammar that was loaded into an engine. The value keeps its engine alive.
+*)
+
+val load : t -> name:string -> wasm:string -> language
+(** [load engine ~name ~wasm] loads a grammar into [engine]. [name] is the
+    grammar name without the [tree_sitter_] prefix, for example ["json"]. [wasm]
+    is the content of the grammar's [.wasm] file.
+
+    @raise Error if the grammar does not load.
+    @raise Invalid_argument if [name] holds a NUL byte. *)
+
+val captures : language -> source:string -> query:string -> capture list
+(** [captures language ~source ~query] parses [source] with [language] and runs
+    [query] over the parse tree. [query] is tree-sitter query source, the
+    content of a [.scm] file. The captures come back in the order in which the
+    query cursor produced them. Every string of every capture is valid UTF-8.
+
+    @raise Error
+      if the parse or the query fails, or if a range of [source] that a capture
+      covers is not valid UTF-8.
+    @raise Invalid_argument if [query] is empty. *)
+
+val tree : language -> source:string -> string
+(** [tree language ~source] parses [source] with [language] and gives the parse
+    tree as an S-expression. The result is valid UTF-8.
+
+    @raise Error if the parse fails, or if the parse tree is not valid UTF-8. *)
 
 (** The decoders of the result buffers, in the layouts that the bridge writes.
     Each decoder takes one whole buffer of its kind, and raises [Error] for any

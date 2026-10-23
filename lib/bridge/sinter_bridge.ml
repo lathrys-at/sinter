@@ -5,17 +5,41 @@ module Utf_8 = Utf_8
 
 exception Error of string
 
-(* The C stubs raise this exception. *)
+(* A failed call of the bridge raises this exception, with a buffer of
+   the typed error. It never leaves this module. *)
+exception Failed of string
+
+(* The C stubs raise these exceptions. *)
 let () = Callback.register_exception "Sinter_bridge.Error" (Error "")
+let () = Callback.register_exception "Sinter_bridge.Failed" (Failed "")
 
 type engine
 type handle
+type tree_handle
+type query_handle
 
 external engine_new : unit -> engine = "sinter_bridge_engine_new_stub"
 external engine_free : engine -> unit = "sinter_bridge_engine_free_stub"
 
 external language_load : engine -> string -> string -> handle
   = "sinter_bridge_language_load_stub"
+
+external language_free : handle -> unit = "sinter_bridge_language_free_stub"
+
+external parse : engine -> handle -> string -> tree_handle
+  = "sinter_bridge_parse_stub"
+
+external tree_free : tree_handle -> unit = "sinter_bridge_tree_free_stub"
+external tree_sexp : tree_handle -> string = "sinter_bridge_tree_sexp_stub"
+external tree_errors : tree_handle -> string = "sinter_bridge_tree_errors_stub"
+
+external query_new : handle -> string -> query_handle
+  = "sinter_bridge_query_new_stub"
+
+external query_free : query_handle -> unit = "sinter_bridge_query_free_stub"
+
+external query_run : query_handle -> tree_handle -> string
+  = "sinter_bridge_query_run_stub"
 
 external run : engine -> handle -> string -> string -> string
   = "sinter_bridge_run_stub"
@@ -24,10 +48,6 @@ external sha256_buffer : string -> string = "sinter_bridge_sha256_stub"
 external toml_buffer : string -> string = "sinter_bridge_toml_parse_stub"
 
 type t = engine
-
-(* The engine owns the grammar, so the record keeps the engine alive
-   for as long as the grammar is in use. *)
-type language = { engine : engine; handle : handle }
 
 type capture = {
   pattern : int;
@@ -44,11 +64,6 @@ type capture = {
 
 let create () = engine_new ()
 let close engine = engine_free engine
-
-let load engine ~name ~wasm =
-  if String.contains name '\000' then
-    invalid_arg "Sinter_bridge.load: the grammar name holds a NUL byte";
-  { engine; handle = language_load engine name wasm }
 
 (* @cites parser-bridge *)
 (* The decoder of the result buffer. Every integer in the buffer is
@@ -239,7 +254,7 @@ let read_range buffer offset =
     },
     offset + 24 )
 
-module Language = struct
+module Language_types = struct
   type wasm_kind = Parse | Compile | Instantiate | Other
 
   type error =
@@ -264,7 +279,7 @@ module Language = struct
     | Name_not_utf_8 -> "the grammar name is not valid UTF-8"
 end
 
-module Tree = struct
+module Tree_types = struct
   type error = Did_not_finish | Too_long
   type node = { node_type : string; range : range }
   type error_kind = Error_node | Missing_node
@@ -282,7 +297,7 @@ module Tree = struct
          offset that large"
 end
 
-module Query = struct
+module Query_types = struct
   type kind =
     | Syntax
     | Node_type
@@ -349,7 +364,7 @@ module Query = struct
     "the query and the parse tree come from different grammars"
 end
 
-module Adapter = struct
+module Adapter_types = struct
   type invalid =
     | Not_a_module of string
     | Imports of string list
@@ -409,11 +424,11 @@ end
 
 (* The typed error of a failed call, as a buffer of kind 5 holds it. *)
 type failure =
-  | Language_failure of Language.error
-  | Tree_failure of Tree.error
-  | Query_failure of Query.error
-  | Run_failure of Query.run_error
-  | Adapter_failure of Adapter.error
+  | Language_failure of Language_types.error
+  | Tree_failure of Tree_types.error
+  | Query_failure of Query_types.error
+  | Run_failure of Query_types.run_error
+  | Adapter_failure of Adapter_types.error
 
 let kind_captures_v2 = 6
 let kind_report = 7
@@ -425,7 +440,7 @@ let read_node buffer offset =
   let node_type, offset =
     read_string buffer offset ~what:"the type of a node"
   in
-  ({ Tree.node_type; range }, offset)
+  ({ Tree_types.node_type; range }, offset)
 
 let read_query_capture buffer offset =
   let match_number = read_int buffer offset in
@@ -436,7 +451,7 @@ let read_query_capture buffer offset =
     read_string buffer offset ~what:"the type of a node"
   in
   let text, offset = read_bytes buffer offset in
-  ({ Query.match_number; pattern; name; node_type; range; text }, offset)
+  ({ Query_types.match_number; pattern; name; node_type; range; text }, offset)
 
 let read_report buffer offset =
   let has_error = read_flag buffer offset ~what:"the error flag of the root" in
@@ -444,8 +459,8 @@ let read_report buffer offset =
     read_list buffer (offset + 4) (fun buffer offset ->
         let kind =
           match read_int buffer offset with
-          | 0 -> Tree.Error_node
-          | 1 -> Tree.Missing_node
+          | 0 -> Tree_types.Error_node
+          | 1 -> Tree_types.Missing_node
           | other ->
               malformed (Printf.sprintf "an error node has the form %d" other)
         in
@@ -457,27 +472,27 @@ let read_report buffer offset =
     malformed "the lowest error node and the error flag of the root disagree";
   if present then
     let node, offset = read_node buffer (offset + 4) in
-    ({ Tree.has_error; errors; lowest = Some node }, offset)
-  else ({ Tree.has_error; errors; lowest = None }, offset + 4)
+    ({ Tree_types.has_error; errors; lowest = Some node }, offset)
+  else ({ Tree_types.has_error; errors; lowest = None }, offset + 4)
 
 let read_message buffer offset =
   read_string buffer offset ~what:"the message of a failure"
 
 let wasm_kind = function
-  | 0 -> Language.Parse
-  | 1 -> Language.Compile
-  | 2 -> Language.Instantiate
-  | 3 -> Language.Other
+  | 0 -> Language_types.Parse
+  | 1 -> Language_types.Compile
+  | 2 -> Language_types.Instantiate
+  | 3 -> Language_types.Other
   | other -> malformed (Printf.sprintf "a grammar error has the kind %d" other)
 
 let query_kind = function
-  | 0 -> Query.Syntax
-  | 1 -> Query.Node_type
-  | 2 -> Query.Field
-  | 3 -> Query.Capture
-  | 4 -> Query.Predicate
-  | 5 -> Query.Structure
-  | 6 -> Query.Language
+  | 0 -> Query_types.Syntax
+  | 1 -> Query_types.Node_type
+  | 2 -> Query_types.Field
+  | 3 -> Query_types.Capture
+  | 4 -> Query_types.Predicate
+  | 5 -> Query_types.Structure
+  | 6 -> Query_types.Language
   | other -> malformed (Printf.sprintf "a query error has the kind %d" other)
 
 let read_invalid buffer offset =
@@ -496,12 +511,12 @@ let read_invalid buffer offset =
   in
   let invalid =
     match cause with
-    | 0 -> Adapter.Not_a_module (one ())
+    | 0 -> Adapter_types.Not_a_module (one ())
     | 1 ->
         if names = [] then malformed "an adapter error names no import";
-        Adapter.Imports names
-    | 2 -> Adapter.Missing_export (one ())
-    | 3 -> Adapter.Wrong_export_type (one ())
+        Adapter_types.Imports names
+    | 2 -> Adapter_types.Missing_export (one ())
+    | 3 -> Adapter_types.Wrong_export_type (one ())
     | other ->
         malformed (Printf.sprintf "an adapter error has the cause %d" other)
   in
@@ -517,11 +532,12 @@ let read_failure buffer offset =
   | 1 ->
       let kind = wasm_kind (read_int buffer offset) in
       let message, offset = read_message buffer (offset + 4) in
-      (Language_failure (Language.Wasm { kind; message }), offset)
+      (Language_failure (Language_types.Wasm { kind; message }), offset)
   | 2 ->
-      (Language_failure (Language.Version (read_int buffer offset)), offset + 4)
-  | 3 -> (Tree_failure Tree.Did_not_finish, offset)
-  | 4 -> (Tree_failure Tree.Too_long, offset)
+      ( Language_failure (Language_types.Version (read_int buffer offset)),
+        offset + 4 )
+  | 3 -> (Tree_failure Tree_types.Did_not_finish, offset)
+  | 4 -> (Tree_failure Tree_types.Too_long, offset)
   | 5 ->
       let kind = query_kind (read_int buffer offset) in
       let row = read_int buffer (offset + 4) in
@@ -529,7 +545,8 @@ let read_failure buffer offset =
       let error_offset = read_int buffer (offset + 12) in
       let message, offset = read_message buffer (offset + 16) in
       ( Query_failure
-          (Query.Invalid { kind; row; column; offset = error_offset; message }),
+          (Query_types.Invalid
+             { kind; row; column; offset = error_offset; message }),
         offset )
   | 6 ->
       let operator, offset =
@@ -540,39 +557,41 @@ let read_failure buffer offset =
       let row = read_int buffer (offset + 8) in
       let column = read_int buffer (offset + 12) in
       ( Query_failure
-          (Query.Not_allowed
+          (Query_types.Not_allowed
              { operator; pattern; offset = pattern_offset; row; column }),
         offset + 16 )
-  | 7 -> (Run_failure Query.Language_mismatch, offset)
+  | 7 -> (Run_failure Query_types.Language_mismatch, offset)
   | 8 ->
       let invalid, offset = read_invalid buffer offset in
-      (Adapter_failure (Adapter.Invalid invalid), offset)
-  | 9 -> (Adapter_failure Adapter.Out_of_fuel, offset)
+      (Adapter_failure (Adapter_types.Invalid invalid), offset)
+  | 9 -> (Adapter_failure Adapter_types.Out_of_fuel, offset)
   | 10 ->
       let message, offset = read_message buffer offset in
-      (Adapter_failure (Adapter.Trap message), offset)
+      (Adapter_failure (Adapter_types.Trap message), offset)
   | 11 ->
-      ( Adapter_failure (Adapter.Memory_limit (read_size buffer offset)),
+      ( Adapter_failure (Adapter_types.Memory_limit (read_size buffer offset)),
         offset + 8 )
   | 12 ->
       let input =
         match read_int buffer offset with
-        | 0 -> Adapter.Request
-        | 1 -> Adapter.Report
+        | 0 -> Adapter_types.Request
+        | 1 -> Adapter_types.Report
         | other ->
             malformed (Printf.sprintf "an allocation names the input %d" other)
       in
       let address = read_int buffer (offset + 4) in
       let length = read_int buffer (offset + 8) in
       let memory_size = read_size buffer (offset + 12) in
-      ( Adapter_failure (Adapter.Alloc { input; address; length; memory_size }),
+      ( Adapter_failure
+          (Adapter_types.Alloc { input; address; length; memory_size }),
         offset + 20 )
   | 13 ->
       let address = read_int buffer offset in
       let length = read_int buffer (offset + 4) in
       let memory_size = read_size buffer (offset + 8) in
       ( Adapter_failure
-          (Adapter.Response_outside_memory { address; length; memory_size }),
+          (Adapter_types.Response_outside_memory
+             { address; length; memory_size }),
         offset + 16 )
   | other -> malformed (Printf.sprintf "a failure has the code %d" other)
 
@@ -623,6 +642,82 @@ module Decode = struct
   let adapter_error buffer =
     decode_failure buffer (function Adapter_failure e -> Some e | _ -> None)
 end
+
+(* A failure of the wrong family, or an internal fault, raises Error. *)
+let fault buffer = decode_failure buffer (fun _ -> None)
+
+module Language = struct
+  include Language_types
+
+  (* The engine parses with the grammar, so the record keeps the engine
+     alive for as long as the grammar is in use. *)
+  type t = { engine : engine; handle : handle }
+
+  let load engine ~name ~wasm =
+    if String.contains name '\000' then
+      invalid_arg
+        "Sinter_bridge.Language.load: the grammar name holds a NUL byte";
+    if not (Utf_8.is_valid name) then Result.Error Name_not_utf_8
+    else
+      match language_load engine name wasm with
+      | handle -> Ok { engine; handle }
+      | exception Failed buffer -> Result.Error (Decode.language_error buffer)
+
+  let close language = language_free language.handle
+end
+
+module Tree = struct
+  include Tree_types
+
+  type t = tree_handle
+
+  let parse (language : Language.t) source =
+    match parse language.engine language.handle source with
+    | tree -> Ok tree
+    | exception Failed buffer -> Result.Error (Decode.tree_error buffer)
+
+  let close = tree_free
+
+  let sexp tree =
+    match tree_sexp tree with
+    | buffer -> Decode.tree buffer
+    | exception Failed buffer -> fault buffer
+
+  let errors tree =
+    match tree_errors tree with
+    | buffer -> Decode.report buffer
+    | exception Failed buffer -> fault buffer
+end
+
+module Query = struct
+  include Query_types
+
+  type t = query_handle
+
+  let compile (language : Language.t) text =
+    match Utf_8.first_invalid text with
+    | Some offset -> Result.Error (Not_utf_8 offset)
+    | None -> (
+        match query_new language.handle text with
+        | query -> Ok query
+        | exception Failed buffer -> Result.Error (Decode.query_error buffer))
+
+  let close = query_free
+
+  let run query tree =
+    match query_run query tree with
+    | buffer -> Ok (Decode.captures buffer)
+    | exception Failed buffer -> Result.Error (Decode.run_error buffer)
+end
+
+type language = Language.t
+
+let load engine ~name ~wasm =
+  match Language.load engine ~name ~wasm with
+  | Ok language -> language
+  | Result.Error error -> raise (Error (Language.message error))
+
+module Adapter = Adapter_types
 
 (* @cites toml-reader *)
 module Toml_raw = struct
@@ -796,10 +891,10 @@ module Toml_raw = struct
       (toml_buffer text)
 end
 
-let captures language ~source ~query =
+let captures (language : Language.t) ~source ~query =
   if String.length query = 0 then
     invalid_arg "Sinter_bridge.captures: the query is empty";
   decode_captures (run language.engine language.handle source query)
 
-let tree language ~source =
+let tree (language : Language.t) ~source =
   decode_tree (run language.engine language.handle source "")
