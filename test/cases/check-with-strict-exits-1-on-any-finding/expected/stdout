@@ -1,0 +1,2 @@
+docs/guide.md:3:1: typo-tag line:docs/guide.md@L3 @decisoin is not a tag word of sinter
+  fix: @decision

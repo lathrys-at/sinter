@@ -257,12 +257,123 @@ let scan_cmd =
   in
   Cmd.v info Term.(const run $ manifest $ base)
 
+(* check reports findings, and it asks for no approval. *)
+let check_exits = [ clean_exit; findings_exit; usage_exit; environment_exit ]
+
+let check_cmd =
+  let doc = "Report the findings of the working tree" in
+  let man =
+    [
+      `S Manpage.s_description;
+      `P
+        "Read the git repository that holds the current folder, as $(b,sinter \
+         scan) reads it, and report each finding: a place where the files of \
+         the repository break a rule of Sinter. Print one finding per line:";
+      `Pre "  PATH:LINE:COLUMN: CLASS SUBJECT DETAIL";
+      `P
+        "CLASS is the finding class, SUBJECT the id of what the finding is \
+         about, and DETAIL says more when the class has more to say. A line \
+         that starts with $(b,fix:) follows a finding whose class names a \
+         repair: the text to paste, or what to do. A finding with no place \
+         prints $(b,-:-:-:) for its place. The findings are sorted by path, \
+         line, column, and class.";
+      `P
+        "With $(b,--gate), each finding takes the tier of its class at that \
+         gate, and the tier follows the place. A class whose tier is $(b,off), \
+         or that takes no tier at the gate, reports nothing. Without \
+         $(b,--gate), the command reports every finding, with no tier.";
+      `P
+        "In text form, the command names the base on standard error; with \
+         $(b,--json), the index record names it. Each warning goes to standard \
+         error.";
+    ]
+  in
+  let exits_doc =
+    [
+      `S Manpage.s_exit_status;
+      `P
+        "With $(b,--gate), a finding blocks when its tier at the gate is \
+         $(b,block). Without $(b,--gate), no finding blocks, unless \
+         $(b,--strict) is given.";
+    ]
+  in
+  let info = Cmd.info "check" ~doc ~man:(man @ exits_doc) ~exits:check_exits in
+  let manifest =
+    let doc =
+      "The manifest to read, instead of $(i,sinter.toml) at the root of the \
+       repository. A relative path is relative to the current folder."
+    in
+    Arg.(value & opt (some string) None & info [ "manifest" ] ~docv:"PATH" ~doc)
+  in
+  let base =
+    let doc =
+      "The base commit, as a git revision. Without this option, the base is \
+       the merge base of HEAD and the target branch of the manifest."
+    in
+    Arg.(value & opt (some string) None & info [ "base" ] ~docv:"REVISION" ~doc)
+  in
+  let gate =
+    let doc =
+      "The gate to check at: $(b,turn), at the end of a turn of an agent; \
+       $(b,merge), on a change before it merges into the target branch; or \
+       $(b,target), on the target branch after a merge."
+    in
+    let gates =
+      List.map
+        (fun gate -> (Sinter_core.Finding_class.gate_name gate, gate))
+        Sinter_core.Finding_class.gates
+    in
+    Arg.(
+      value & opt (some (enum gates)) None & info [ "gate" ] ~docv:"GATE" ~doc)
+  in
+  let strict =
+    let doc =
+      "Count every finding that the command reports as one that blocks."
+    in
+    Arg.(value & flag & info [ "strict" ] ~doc)
+  in
+  let json =
+    let doc =
+      "Print canonical JSONL instead of text: the index record first, as \
+       $(b,sinter scan) prints it, and then one record per finding."
+    in
+    Arg.(value & flag & info [ "json" ] ~doc)
+  in
+  let report lines = List.iter (Printf.eprintf "sinter: %s\n") lines in
+  let run manifest base gate strict json =
+    match
+      Sinter_core.Check.run ~env:(Unix.environment ()) ~dir:(Sys.getcwd ())
+        ~manifest ~base ~gate ~strict
+        ~format:
+          (if json then Sinter_core.Check.Json else Sinter_core.Check.Text)
+        ~tool:version
+    with
+    | Error error ->
+        report (Sinter_core.Scan.messages error);
+        environment_error
+    | Ok { messages; lines; code } -> (
+        report messages;
+        (* A write that fails is a fault of the environment. *)
+        try
+          List.iter
+            (fun line ->
+              output_string stdout line;
+              output_char stdout '\n')
+            lines;
+          flush stdout;
+          code
+        with Sys_error message ->
+          report [ Printf.sprintf "cannot write the output: %s" message ];
+          environment_error)
+  in
+  Cmd.v info Term.(const run $ manifest $ base $ gate $ strict $ json)
+
 let cmd =
   let doc = "plans die into residue; residue is checked" in
   let info = Cmd.info "sinter" ~version ~doc ~exits in
   Cmd.group info
     ~default:Term.(ret (const (`Help (`Pager, None))))
-    [ parse_cmd; scan_cmd; serve_cmd ]
+    [ check_cmd; parse_cmd; scan_cmd; serve_cmd ]
 
 (* A descriptor that is closed when the process starts goes to the next
    file that any thread opens, and the wasm engine's cache thread opens

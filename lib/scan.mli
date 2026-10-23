@@ -47,11 +47,70 @@ val escape_path : string -> string
     example [docs/caf\xe9.md]. A path that is valid UTF-8 comes back as it is.
 *)
 
-type outcome = {
+(** {1 The tree} *)
+
+(** The base commit, and the revision or the ref that gave it. *)
+type base =
+  | Given of { revision : string; commit : string }
+      (** the commit of the revision that the caller named *)
+  | Merge_base of { refname : string; commit : string }
+      (** the merge base of [HEAD] and the commit of the target branch, which
+          the ref of the full name [refname] gave *)
+
+val base_commit : base -> string
+(** [base_commit base] is the object id of the base commit. *)
+
+val base_message : base -> string
+(** [base_message base] names the base for the person who runs the tool: the
+    revision or the ref that gave it, and its commit. The line ends with no full
+    stop. *)
+
+type tree = private {
+  repo : Git.t;
+  manifest : Manifest.t;
+  location : string;
+      (** the path of the manifest: relative to the root of the working tree
+          when the manifest is under it, otherwise absolute *)
+  base : base;
+  documents : (string * Markdown.t) list;
+      (** each file of the file set that the pack [markdown] reads and that is
+          UTF-8 text, with its document, in the order of the paths *)
+  not_text : (string * int) list;
+      (** each file of the file set that the pack [markdown] reads and that is
+          not UTF-8 text, in the order of the paths, with the byte offset of its
+          first sequence that is not well-formed *)
   warnings : string list;
       (** one line for each file of the file set whose path is not UTF-8, in the
           order of the paths, and then one line that says that the ledger ref is
           absent *)
+}
+(** The working tree of a repository as a scan reads it. *)
+
+val load :
+  env:string array ->
+  dir:string ->
+  manifest:string option ->
+  base:string option ->
+  (tree, error) result
+(** [load ~env ~dir ~manifest ~base] reads the working tree of the git
+    repository that holds the folder [dir]. [env] is the environment of each git
+    child process, as {!Git.open_repo} takes it.
+
+    [manifest] is the path of the manifest, relative to [dir] when it is
+    relative; [None] names [sinter.toml] at the root of the working tree. [base]
+    is the revision of the base commit; [None] takes the merge base of [HEAD]
+    and the target branch of the manifest.
+
+    @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
+
+val index : tree -> tool:string -> (Jsonl.record, error) result
+(** [index tree ~tool] is the index record of [tree]. [tool] is the version of
+    the tool. *)
+
+(** {1 The scan} *)
+
+type outcome = {
+  warnings : string list;  (** the warnings of the {!tree} *)
   records : Jsonl.record list;
       (** the index record, and then the records of the facts in their order *)
 }
@@ -64,17 +123,8 @@ val run :
   base:string option ->
   tool:string ->
   (outcome, error) result
-(** [run ~env ~dir ~manifest ~base ~tool] scans the working tree of the git
-    repository that holds the folder [dir]. [env] is the environment of each git
-    child process, as {!Git.open_repo} takes it.
-
-    [manifest] is the path of the manifest, relative to [dir] when it is
-    relative; [None] names [sinter.toml] at the root of the working tree. [base]
-    is the revision of the base commit; [None] takes the merge base of [HEAD]
-    and the target branch of the manifest. [tool] is the version of the tool,
-    for the index record.
-
-    The scan reads the files of the file set that the pack [markdown] reads, and
-    leaves out a file that is not UTF-8 text.
+(** [run ~env ~dir ~manifest ~base ~tool] scans the working tree that {!load}
+    reads with the same arguments. [tool] is the version of the tool, for the
+    index record. A file that is not UTF-8 text gives no fact.
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)

@@ -123,6 +123,59 @@ let a_file_that_is_not_utf_8_text_gives_no_fact () =
     "the declaration of docs/a.md alone" [ "req:a" ]
     (List.filter (fun id -> String.starts_with ~prefix:"req:" id) (ids records))
 
+(* The tree. *)
+
+let load ?base repo =
+  match
+    Scan.load ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+      ~manifest:None ~base
+  with
+  | Ok tree -> tree
+  | Error error ->
+      Alcotest.failf "the load fails: %s"
+        (String.concat "; " (Scan.messages error))
+
+(* The tree of the shared repository, with no base. *)
+let shared_tree =
+  lazy
+    (let repo, _, _ = Lazy.force shared in
+     (repo, load repo))
+
+let head repo = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ])
+
+let a_tree_holds_the_files_that_are_not_utf_8_text_apart () =
+  let _, (tree : Scan.tree) = Lazy.force shared_tree in
+  Alcotest.(check (pair (list string) (list (pair string int))))
+    "the documents and the files that are not text"
+    ([ ".plans/p.md"; "docs/a.md" ], [ ("binary.md", 10) ])
+    (List.map fst tree.documents, tree.not_text)
+
+let a_tree_with_no_base_takes_the_merge_base_with_the_target () =
+  let repo, tree = Lazy.force shared_tree in
+  Alcotest.(check (pair string string))
+    "the commit and the message"
+    ( head repo,
+      "the base is the merge base of HEAD and refs/heads/main, " ^ head repo )
+    (Scan.base_commit tree.base, Scan.base_message tree.base)
+
+let a_tree_with_a_base_names_its_revision () =
+  let repo, _ = Lazy.force shared_tree in
+  let tree = load ~base:"HEAD" repo in
+  Alcotest.(check (pair string string))
+    "the commit and the message"
+    (head repo, "the base is HEAD, " ^ head repo)
+    (Scan.base_commit tree.base, Scan.base_message tree.base)
+
+let the_index_of_a_tree_is_the_first_record_of_its_scan () =
+  let _, _, { Scan.records; _ } = Lazy.force shared in
+  let _, tree = Lazy.force shared_tree in
+  match (Scan.index tree ~tool:"v1", records) with
+  | Ok index, first :: _ ->
+      Alcotest.(check string)
+        "the index" (Jsonl.to_string first) (Jsonl.to_string index)
+  | Error _, _ -> Alcotest.fail "the index fails"
+  | Ok _, [] -> Alcotest.fail "the scan gives no record"
+
 let a_deleted_file_changes_the_tree_and_a_new_mode_does_not () =
   let _, _, { Scan.records; _ } = Lazy.force shared in
   let done_ id =
@@ -250,12 +303,13 @@ let a_plan_file_needs_the_pack_markdown_when_it_names_none () =
    sits beside it in the build copy of bin/. *)
 let sinter = Filename.concat (Sys.getcwd ()) "../bin/main.exe"
 
-(* A scan of the shared repository whose standard output is a pipe that
-   nobody reads, with SIGPIPE ignored, so that the first write fails:
-   the exit status and what the scan wrote to standard error. The scan
-   gets the environment of the repository with the HOME of the suite,
-   where wasmtime keeps its cache of compiled grammars. *)
-let scan_into_a_closed_pipe () =
+(* A run of the command [command] in the shared repository whose
+   standard output is a pipe that nobody reads, with SIGPIPE ignored, so
+   that the first write fails: the exit status and what the run wrote to
+   standard error. The run gets the environment of the repository with
+   the HOME of the suite, where wasmtime keeps its cache of compiled
+   grammars. *)
+let into_a_closed_pipe command =
   let repo, _, _ = Lazy.force shared in
   let environment =
     Array.map
@@ -288,10 +342,11 @@ let scan_into_a_closed_pipe () =
               [|
                 "/bin/sh";
                 "-c";
-                "cd \"$1\" && exec \"$2\" scan";
+                "cd \"$1\" && exec \"$2\" \"$3\"";
                 "sh";
                 Git_fixture.root repo;
                 sinter;
+                command;
               |]
               environment Unix.stdin writing to_errors)
       in
@@ -304,12 +359,25 @@ let scan_into_a_closed_pipe () =
 
 let a_scan_that_cannot_write_its_output_says_so () =
   let _, _, { Scan.warnings; _ } = Lazy.force shared in
-  let status, errors = scan_into_a_closed_pipe () in
+  let status, errors = into_a_closed_pipe "scan" in
   Alcotest.(check (pair int (list string)))
     "the exit code and the lines of standard error"
     ( 3,
       List.map (fun warning -> "sinter: " ^ warning) warnings
       @ [ "sinter: cannot write the output: Broken pipe" ] )
+    ( status,
+      List.filter (fun line -> line <> "") (String.split_on_char '\n' errors) )
+
+let a_check_that_cannot_write_its_output_says_so () =
+  let _, (tree : Scan.tree) = Lazy.force shared_tree in
+  let status, errors = into_a_closed_pipe "check" in
+  Alcotest.(check (pair int (list string)))
+    "the exit code and the lines of standard error"
+    ( 3,
+      List.map
+        (fun line -> "sinter: " ^ line)
+        ((Scan.base_message tree.base :: tree.warnings)
+        @ [ "cannot write the output: Broken pipe" ]) )
     ( status,
       List.filter (fun line -> line <> "") (String.split_on_char '\n' errors) )
 
@@ -420,6 +488,14 @@ let tests =
       a_path_that_is_not_utf_8_gives_a_warning_and_no_fact;
     case "a file that is not UTF-8 text gives no fact"
       a_file_that_is_not_utf_8_text_gives_no_fact;
+    case "a tree holds the files that are not UTF-8 text apart"
+      a_tree_holds_the_files_that_are_not_utf_8_text_apart;
+    case "a tree with no base takes the merge base with the target"
+      a_tree_with_no_base_takes_the_merge_base_with_the_target;
+    case "a tree with a base names its revision"
+      a_tree_with_a_base_names_its_revision;
+    case "the index of a tree is the first record of its scan"
+      the_index_of_a_tree_is_the_first_record_of_its_scan;
     case "a deleted file changes the tree, and a new mode does not"
       a_deleted_file_changes_the_tree_and_a_new_mode_does_not;
     case "a manifest outside the repository is named by its absolute path"
@@ -439,5 +515,7 @@ let tests =
       a_plan_file_needs_the_pack_markdown_when_it_names_none;
     case "a scan that cannot write its output says so"
       a_scan_that_cannot_write_its_output_says_so;
+    case "a check that cannot write its output says so"
+      a_check_that_cannot_write_its_output_says_so;
     case "each error says what is wrong" each_error_says_what_is_wrong;
   ]

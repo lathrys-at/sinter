@@ -1,0 +1,3 @@
+docs/guide.md:7:1: block dangling cites:req:login->nothing no declaration has the slug nothing
+docs/guide.md:8:1: warn suspect cites:req:login->login the @cites names v2, and req:login is at v1
+  fix: @cites login v1

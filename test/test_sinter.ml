@@ -72,7 +72,10 @@ let () =
       ("major minor", Test_major_minor.tests);
       ("manifest", Test_manifest.tests);
       ("facts", Test_facts.tests);
+      ("finding", Test_finding.tests);
+      ("findings", Test_findings.tests);
       ("scan", Test_scan.tests);
+      ("check", Test_check.tests);
       ( "cases",
         Fixture.tests ~binary mode
           ~on_write:(fun path -> written := path :: !written)

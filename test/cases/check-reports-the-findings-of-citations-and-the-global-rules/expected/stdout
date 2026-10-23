@@ -1,0 +1,12 @@
+docs/guide.md:3:1: suspect cites:site:docs/guide.md#guide->login the @cites names v1, and decision:login is at v2
+  fix: @cites login v2
+docs/guide.md:4:1: unpinned satisfies:site:docs/guide.md#guide->store the @satisfies names no revision
+  fix: @satisfies store v1
+docs/guide.md:5:1: dangling cites:site:docs/guide.md#guide->Login no declaration has the slug Login
+  fix: @cites login v2
+docs/guide.md:6:1: dangling cites:site:docs/guide.md#guide->nothing no declaration has the slug nothing
+docs/guide.md:7:1: disendorsed cites:site:docs/guide.md#guide->logout decision:logout is deprecated
+  fix: @ack disendorsed logout 34f77c51
+docs/guide.md:8:1: orphan verifies:site:docs/guide.md#guide->store a @verifies needs a test as its source
+docs/guide.md:9:1: orphan refines:site:docs/guide.md#guide->store a @refines needs a declaration that holds it
+docs/records.md:19:1: cycle decision:new-store with decision:old-store
