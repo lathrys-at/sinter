@@ -626,24 +626,9 @@ let any_text =
 
 (* WebAssembly modules. *)
 
-let leb128 value =
-  let buffer = Buffer.create 5 in
-  let rest = ref value in
-  let more = ref true in
-  while !more do
-    let part = !rest land 0x7F in
-    rest := !rest lsr 7;
-    if !rest = 0 then (
-      Buffer.add_char buffer (Char.chr part);
-      more := false)
-    else Buffer.add_char buffer (Char.chr (part lor 0x80))
-  done;
-  Buffer.contents buffer
-
-let wasm_header = "\000asm\001\000\000\000"
-
-let wasm_section identifier body =
-  String.make 1 (Char.chr identifier) ^ leb128 (String.length body) ^ body
+let leb128 = Wasm_builder.unsigned
+let wasm_header = Wasm_builder.header
+let wasm_section = Wasm_builder.section
 
 (* One export: the length of the name, the name, the kind of the
    export, and its index. The index is a LEB128 number, and the format
