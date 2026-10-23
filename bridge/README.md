@@ -6,13 +6,15 @@
 The bridge is a Rust crate. It links the tree-sitter library and the
 wasmtime runtime. It loads a tree-sitter grammar that is compiled to
 WebAssembly, parses a source text with that grammar, and runs a
-tree-sitter query over the parse tree. It also computes the SHA-256
-digest of a byte string, and reads a TOML document with the crate
-`toml_edit`. It gives the results to OCaml through a C interface of
-eight functions.
+tree-sitter query over the parse tree. It calls a function of a runner
+adapter, a WebAssembly module, with bytes in and bytes out, under
+limits of fuel and memory. It also computes the SHA-256 digest of a
+byte string, and reads a TOML document with the crate `toml_edit`. It
+gives the results to OCaml through a C interface.
 
-The bridge knows about grammars, source text, queries, captures,
-digests, and TOML documents. It holds no Sinter vocabulary. The
+The bridge knows about grammars, source text, queries, captures, error
+nodes, WebAssembly modules, digests, and TOML documents. It holds no
+Sinter vocabulary. The
 reasons are in
 [docs/decisions/parser-bridge.md](../docs/decisions/parser-bridge.md).
 
@@ -70,46 +72,92 @@ not part of CI, because it builds the crate twice from nothing.
 
 ## The C interface
 
-[include/sinter_bridge.h](include/sinter_bridge.h) declares eight
+[include/sinter_bridge.h](include/sinter_bridge.h) declares these
 functions:
 
 | function | purpose |
 |---|---|
 | `sinter_bridge_engine_new` | create an engine |
-| `sinter_bridge_engine_free` | free an engine and its languages |
+| `sinter_bridge_engine_free` | free an engine |
 | `sinter_bridge_language_load` | load a grammar from wasm bytes |
-| `sinter_bridge_run` | parse a source text and run a query |
+| `sinter_bridge_language_free` | free a language |
+| `sinter_bridge_parse` | parse a source text into a tree |
+| `sinter_bridge_tree_free` | free a tree |
+| `sinter_bridge_tree_memory` | estimate the memory that a tree holds |
+| `sinter_bridge_tree_sexp` | write a tree as an S-expression |
+| `sinter_bridge_tree_errors` | report the error nodes of a tree |
+| `sinter_bridge_query_new` | compile a query |
+| `sinter_bridge_query_free` | free a query |
+| `sinter_bridge_query_run` | run a query over a tree |
+| `sinter_bridge_adapter_load` | load and check a runner adapter |
+| `sinter_bridge_adapter_interface` | read the interface version of an adapter |
+| `sinter_bridge_adapter_free` | free an adapter |
+| `sinter_bridge_adapter_call` | call a function of an adapter |
 | `sinter_bridge_sha256` | compute the SHA-256 digest of a byte string |
 | `sinter_bridge_toml_parse` | read a TOML document |
 | `sinter_bridge_result_free` | free a result |
-| `sinter_bridge_last_error` | read the message of the last failure |
+| `sinter_bridge_last_failure` | read the last failure |
 
-Three rules govern the lifetimes:
+A **handle** is an engine, a language, a tree, a query, or an adapter.
+These rules govern the lifetimes:
 
-1. The engine owns every language that was loaded into it. A language
-   handle stays valid until the engine is freed.
-2. A result owns its buffer. Read the buffer before you free the
+1. The caller owns every handle and every result that a function
+   returns, and frees each with its own function.
+2. Each handle owns what it needs. A language, a tree, a query, and an
+   adapter stay valid after the engine is freed. A tree and a query stay valid
+   after their language is freed. A tree holds a copy of the source
+   text it was parsed from.
+3. A result owns its buffer. Read the buffer before you free the
    result.
-3. Every function that can fail returns `NULL` on failure and stores
-   the reason. `sinter_bridge_last_error` returns that reason. The
-   message is stored per thread.
+4. Every function that can fail returns `NULL` on failure and stores
+   the failure. `sinter_bridge_last_failure` returns that failure in a
+   buffer of kind 5. The failure is stored per thread.
 
-One thread at a time may use one engine.
+One thread at a time may use one handle.
+
+A query holds only the predicates that tree-sitter's Rust library
+applies to a match: `#eq?`, `#not-eq?`, `#any-eq?`, `#any-not-eq?`,
+`#match?`, `#not-match?`, `#any-match?`, `#any-not-match?`,
+`#any-of?`, and `#not-any-of?`. A query with any other predicate, or
+with a directive such as `#set!`, does not compile.
+
+## Runner adapters
+
+An adapter runs in its own wasmtime engine, which counts **fuel**: a
+number that wasmtime lowers as WebAssembly code runs. Most
+instructions cost one unit. The engine of grammars counts no fuel,
+because tree-sitter's own WebAssembly code then fails. The engine of
+adapters is made on the first load of an adapter, from a copy of the
+settings of the engine of grammars, so the two share wasmtime's cache
+of compiled modules.
+
+Each call of an adapter runs in a new instance of the module, under
+two limits that the caller gives. The limit of fuel covers the start
+of the instance, the two calls of `sinter_alloc`, and the call of the
+function. The limit of memory bounds the size of all linear memories
+of the instance together. A growth past the limit stops the call, and
+the failure gives the size that the bridge refused.
+
+The tables of an instance hold at most 1,048,576 elements together.
+wasmtime allocates one pointer in the host for each element, so
+without a bound one `table.grow` could take all the memory of the
+process. A growth past the bound fails inside the module: `table.grow`
+gives -1. A module whose tables start larger does not start.
 
 ## The result buffer
 
-`sinter_bridge_run`, `sinter_bridge_sha256`, and
-`sinter_bridge_toml_parse` return one flat buffer. The buffer holds a
-header and then the records. Every integer is
-unsigned, 32 bits wide, and little-endian. No field is padded and no
-field is aligned: a reader must copy the four bytes of an integer
-before it reads them. Every string is UTF-8 and carries no terminating
-NUL byte.
+Every function that returns a `sinter_bridge_result` gives one flat
+buffer. The buffer holds a header and then the records. Every integer
+is unsigned and little-endian, and it is 32 bits wide unless its row
+says 64. No field is padded and no field is aligned: a reader must
+copy the bytes of an integer before it reads them. A string is a
+length, a u32, and then that many bytes, with no terminating NUL
+byte. A string is UTF-8 unless its row says otherwise.
 
 The 32 bits bound what the bridge can report. A source of 2^32 bytes
-or more fails with a message before the bridge reads it, and so does
-a parse tree whose S-expression is 2^32 bytes or more. The bridge
-never truncates a length or an offset to fit.
+or more fails before the bridge reads it, and so does a parse tree
+whose S-expression is 2^32 bytes or more. The bridge never truncates
+a length or an offset to fit.
 
 ### Header
 
@@ -118,34 +166,17 @@ The header is 16 bytes.
 | offset | size | field | meaning |
 |---|---|---|---|
 | 0 | 4 | magic | the ASCII bytes `S`, `B`, `R`, `1` |
-| 4 | 4 | kind | `0` for captures, `1` for a parse tree, `2` for a digest, `3` for a TOML document, `4` for a TOML error |
+| 4 | 4 | kind | `1` for a parse tree, `2` for a digest, `3` for a TOML document, `4` for a TOML error, `5` for a failure, `6` for captures with match numbers, `7` for an error report, `8` for the response of an adapter |
 | 8 | 4 | count | the number of records that follow |
 | 12 | 4 | reserved | always `0` |
-
-### A capture record, when kind is 0
-
-The buffer holds one record per capture, in the order in which the
-query cursor produced them. Each record holds seven integers, and then
-three strings. Each string is a length in bytes and then that many
-bytes.
-
-| field | type | meaning |
-|---|---|---|
-| pattern | u32 | the index of the pattern in the query, from 0 |
-| sbyte | u32 | the start of the node, a byte offset from 0 |
-| ebyte | u32 | the end of the node, exclusive, a byte offset |
-| srow | u32 | the start row of the node, from 0 |
-| scol | u32 | the start column of the node, in bytes, from 0 |
-| erow | u32 | the end row of the node, from 0 |
-| ecol | u32 | the end column of the node, in bytes, exclusive |
-| name | u32 + bytes | the capture name, without the `@` |
-| type | u32 + bytes | the type of the node, for example `string` |
-| text | u32 + bytes | the source text of the node |
 
 ### A tree record, when kind is 1
 
 The buffer holds one record. The record is a length in bytes and then
 that many bytes: the parse tree as an S-expression.
+
+The S-expression leaves out a `MISSING` node whose type is hidden,
+which tree-sitter's own `to_sexp` prints.
 
 ### A digest record, when kind is 2
 
@@ -211,6 +242,92 @@ record starts with a form, a u32, and a span, two u32 fields.
 not one. The bridge finds the case: it reads the text before the
 dotted key again, finds the table that the last table header opened,
 and follows the dotted key from it.
+
+### A failure, when kind is 5
+
+The buffer holds one record: a code, a u32, and then the fields of
+that code.
+
+| code | failure | fields after the code |
+|---|---|---|
+| 0 | an internal fault of the bridge, or a fault of its caller | the message, u32 + bytes |
+| 1 | tree-sitter does not load the grammar | the kind, a u32: `0` the wasm does not parse, `1` it does not compile, `2` its instance does not start, `3` any other cause; the message, u32 + bytes |
+| 2 | the ABI version of the grammar is outside 13 to 15 | the version, a u32 |
+| 3 | the parser gave no tree | none |
+| 4 | the source text is 2^32 bytes or more | none |
+| 5 | tree-sitter does not compile the query | the kind, a u32: `0` syntax, `1` node type, `2` field, `3` capture, `4` predicate, `5` structure, `6` language; the row, the column, and the byte offset, three u32 fields; the message, u32 + bytes |
+| 6 | a pattern holds a predicate outside the ten above, or a directive | the operator without its `#`, u32 + bytes; the index of the pattern, its first byte, its row, and its column in bytes, four u32 fields |
+| 7 | the query and the tree come from different languages | none |
+| 8 | the module is not a valid adapter | the cause, a u32, and then a count and that many strings, each u32 + bytes; see below |
+| 9 | the adapter ran out of fuel | none |
+| 10 | the adapter trapped, or its instance did not start | the message, u32 + bytes |
+| 11 | the adapter asked for more memory than its limit | the size in bytes of all its memories that the bridge refused, an unsigned 64-bit integer, little-endian |
+| 12 | `sinter_alloc` gave 0, or a range outside `memory` | the call, a u32: `0` for the request, `1` for the report; the address and the length, two u32 fields; the size of `memory` in bytes, an unsigned 64-bit integer |
+| 13 | the response lies outside `memory` | the address and the length, two u32 fields; the size of `memory` in bytes, an unsigned 64-bit integer |
+
+The cause of code 8, and its strings:
+
+| cause | meaning | strings |
+|---|---|---|
+| 0 | wasmtime does not compile the module | one: the message of wasmtime |
+| 1 | the module imports something | one for each import: the module and the name of the import, joined by `.` |
+| 2 | the module lacks `memory` or one of the four functions | one: the name of the export |
+| 3 | an export has the wrong kind or the wrong type | one: the name of the export |
+
+The row and the column of code 5 count from 0. For the kind
+predicate, tree-sitter gives the row where the pattern starts, and the
+column and the offset 0. When a pattern holds more than one operator
+of code 6, the failure names one of them.
+
+### A capture record, when kind is 6
+
+The buffer holds one record per capture of one query over one tree,
+in the order of the matches, and in each match in the order of its
+captures. Each record holds eight integers, and then three strings.
+
+| field | type | meaning |
+|---|---|---|
+| match | u32 | the number of the match, from 0 |
+| pattern | u32 | the index of the pattern in the query, from 0 |
+| sbyte | u32 | the start of the node, a byte offset from 0 |
+| ebyte | u32 | the end of the node, exclusive, a byte offset |
+| srow | u32 | the start row of the node, from 0 |
+| scol | u32 | the start column of the node, in bytes, from 0 |
+| erow | u32 | the end row of the node, from 0 |
+| ecol | u32 | the end column of the node, in bytes, exclusive |
+| name | u32 + bytes | the capture name, without the `@` |
+| type | u32 + bytes | the type of the node, for example `string` |
+| text | u32 + bytes | the bytes of the source that the node covers; they need not be UTF-8 |
+
+The bridge numbers the matches that hold at least one capture, from 0
+and with no gap, in the order in which tree-sitter's query cursor
+gives them. That cursor gives a match when the match ends, so the
+numbers do not follow the start of the matches.
+
+### An error report, when kind is 7
+
+The buffer holds one record. A **node** in the record is six u32
+fields and a string: sbyte, ebyte, srow, scol, erow, and ecol, as in a
+capture record, and then the type of the node, u32 + bytes.
+
+The **error flag** of a node is set when the node, or a node below it,
+is an `ERROR` node or a `MISSING` node. A **lowest error node** is a
+node whose error flag is set, when no child of the node has its error
+flag set. A `MISSING` node whose type is hidden is no child here, so
+a lowest error node can stand near such a node.
+
+| field | type | meaning |
+|---|---|---|
+| flag | u32 | `1` when the error flag of the root node is set, else `0` |
+| count | u32 | the number of error nodes that follow |
+| error nodes | count × (u32 + node) | each `ERROR` node and each `MISSING` node that no `ERROR` node holds, in the order of the text. The u32 before each node is `0` for an `ERROR` node and `1` for a `MISSING` node. The type of a `MISSING` node is the type of the node that is missing |
+| lowest | u32 | `1` when a node follows, else `0` |
+| node | a node | the first lowest error node in the order of the text; present when the flag is `1` |
+
+### An adapter response, when kind is 8
+
+The buffer holds one record: the bytes of the response, u32 + bytes.
+The bridge does not read them, and they need not be UTF-8.
 
 ## The wasm surface of a grammar
 

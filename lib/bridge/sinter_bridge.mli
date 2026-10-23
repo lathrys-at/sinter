@@ -3,103 +3,417 @@
 
 (* @cites parser-bridge *)
 
-(** The parser bridge. The bridge loads a tree-sitter grammar that is compiled
-    to WebAssembly, parses a source text with it, and runs a tree-sitter query
-    over the parse tree. It also computes the SHA-256 digest of a string, and
-    reads a TOML document. *)
+(** The parser bridge. The bridge loads tree-sitter grammars that are compiled
+    to WebAssembly, parses text with them, and runs tree-sitter queries over the
+    parse trees. It runs runner adapters, WebAssembly modules that read test
+    reports, under limits of fuel and memory. It also computes the SHA-256
+    digest of a string, and reads a TOML document. *)
+
+module Utf_8 = Utf_8
 
 exception Error of string
-(** The bridge failed. The string is the message of the failure. *)
+(** The bridge stopped on an internal fault, or it gave a buffer in a layout
+    that it does not write. The string is the message of the fault. *)
 
 type t
-(** An engine. An engine holds the WebAssembly runtime and every grammar that
-    was loaded into it. An engine is not safe to use from two threads at the
-    same time. *)
-
-type language
-(** A grammar that was loaded into an engine. The value keeps its engine alive.
+(** An engine. An engine holds the WebAssembly runtime of grammars and a parser.
+    After the first {!Adapter.load}, it also holds a second runtime, which
+    counts fuel. An engine is not safe to use from two threads at the same time.
 *)
 
-type capture = {
-  pattern : int;  (** the index of the pattern in the query, from 0 *)
-  name : string;  (** the capture name, without the [@] *)
-  node_type : string;  (** the type of the node, for example [string] *)
-  start_byte : int;  (** the start of the node, a byte offset from 0 *)
-  end_byte : int;  (** the end of the node, exclusive, a byte offset *)
-  start_row : int;  (** the start row of the node, from 0 *)
-  start_column : int;  (** the start column, in bytes, from 0 *)
-  end_row : int;  (** the end row of the node, from 0 *)
-  end_column : int;  (** the end column, in bytes, exclusive *)
-  text : string;  (** the source text of the node *)
-}
-(** One capture of one pattern of a query. *)
-
 val create : unit -> t
-(** [create ()] makes an engine.
+(** [create ()] makes an engine. The caller owns it, and frees it with {!close}
+    or leaves it to the garbage collector.
 
     @raise Error if the WebAssembly runtime does not start. *)
 
 val close : t -> unit
-(** [close engine] frees the engine and every grammar in it. Every later call
-    that uses the engine raises [Invalid_argument]. The garbage collector frees
-    an engine that no value refers to, so a program does not have to call this
-    function. *)
-
-val load : t -> name:string -> wasm:string -> language
-(** [load engine ~name ~wasm] loads a grammar into [engine]. [name] is the
-    grammar name without the [tree_sitter_] prefix, for example ["json"]. [wasm]
-    is the content of the grammar's [.wasm] file.
-
-    @raise Error if the grammar does not load.
-    @raise Invalid_argument if [name] holds a NUL byte. *)
-
-val captures : language -> source:string -> query:string -> capture list
-(** [captures language ~source ~query] parses [source] with [language] and runs
-    [query] over the parse tree. [query] is tree-sitter query source, the
-    content of a [.scm] file. The captures come back in the order in which the
-    query cursor produced them. Every string of every capture is valid UTF-8.
-
-    @raise Error
-      if the parse or the query fails, or if a range of [source] that a capture
-      covers is not valid UTF-8.
-    @raise Invalid_argument if [query] is empty. *)
-
-val tree : language -> source:string -> string
-(** [tree language ~source] parses [source] with [language] and gives the parse
-    tree as an S-expression. The result is valid UTF-8.
-
-    @raise Error if the parse fails, or if the parse tree is not valid UTF-8. *)
-
-val decode_captures : string -> capture list
-(** [decode_captures buffer] is the captures that [buffer] holds. [buffer] is
-    one result buffer of a capture run, in the layout that the bridge writes.
-    The captures come back in the order in which the buffer holds them.
-
-    @raise Error
-      if [buffer] is not one whole capture result buffer of that layout, or if a
-      string in it is not valid UTF-8. *)
-
-val decode_tree : string -> string
-(** [decode_tree buffer] is the parse tree that [buffer] holds, as an
-    S-expression. [buffer] is one result buffer of a parse tree run, in the
-    layout that the bridge writes.
-
-    @raise Error
-      if [buffer] is not one whole parse tree result buffer of that layout, or
-      if the tree in it is not valid UTF-8. *)
+(** [close engine] frees the engine. A grammar, a tree, a query, and an adapter
+    of the engine stay valid. Every later call that needs the engine raises
+    [Invalid_argument]: a load of a grammar or an adapter, and a parse with a
+    grammar of the engine. A second call does nothing. *)
 
 val sha256 : string -> string
 (** [sha256 data] is the SHA-256 digest of the bytes of [data], as 32 bytes.
 
     @raise Error if the bridge stops on an internal fault. *)
 
-val decode_digest : string -> string
-(** [decode_digest buffer] is the digest that [buffer] holds, as 32 bytes.
-    [buffer] is one result buffer of a digest, in the layout that the bridge
-    writes.
+type range = {
+  start_byte : int;  (** the start, a byte offset from 0 *)
+  end_byte : int;  (** the end, exclusive, a byte offset *)
+  start_row : int;  (** the start row, from 0 *)
+  start_column : int;  (** the start column, in bytes, from 0 *)
+  end_row : int;  (** the end row, from 0 *)
+  end_column : int;  (** the end column, in bytes, exclusive *)
+}
+(** A range of a source text. A row ends at a line feed. *)
 
-    @raise Error
-      if [buffer] is not one whole digest result buffer of that layout. *)
+(** Grammars. *)
+module Language : sig
+  type engine := t
+
+  type t
+  (** A grammar that was loaded into an engine. A grammar keeps its engine
+      alive. A tree or a query of the grammar stays valid after {!close}. *)
+
+  (** How the WebAssembly runtime failed to load a grammar. *)
+  type wasm_kind =
+    | Parse  (** the bytes are not a module that the runtime can read *)
+    | Compile  (** the module does not compile *)
+    | Instantiate  (** the module does not start *)
+    | Other
+
+  (** Why a grammar does not load. *)
+  type error =
+    | Wasm of { kind : wasm_kind; message : string }
+        (** the message of the runtime, as UTF-8 text *)
+    | Version of int
+        (** the grammar has this version of the tree-sitter interface, and the
+            bridge reads the versions 13 to 15 *)
+    | Name_not_utf_8  (** the grammar name is not UTF-8 text *)
+
+  val load : engine -> name:string -> wasm:string -> (t, error) result
+  (** [load engine ~name ~wasm] loads a grammar into [engine]. [name] is the
+      grammar name without the [tree_sitter_] prefix, for example ["json"].
+      [wasm] is the content of the grammar's [.wasm] file. The caller owns the
+      result, and frees it with {!close} or leaves it to the garbage collector.
+
+      @raise Invalid_argument
+        if [name] holds a NUL byte, or if [engine] is closed.
+      @raise Error if the bridge stops on an internal fault. *)
+
+  val close : t -> unit
+  (** [close language] frees the grammar. Every later call that takes [language]
+      raises [Invalid_argument]. A second call does nothing. *)
+
+  val message : error -> string
+  (** [message error] says why the grammar does not load, for the person who
+      runs the tool. *)
+end
+
+(** Parse trees. *)
+module Tree : sig
+  type t
+  (** A parse tree, with a copy of the text it was parsed from. A tree stays
+      valid when its grammar or its engine is closed. *)
+
+  (** Why a parse gives no tree. *)
+  type error =
+    | Did_not_finish  (** the parser stopped before the end of the text *)
+    | Too_long  (** the text is 2^32 bytes or more *)
+
+  type node = {
+    node_type : string;  (** the type of the node, for example [pair] *)
+    range : range;
+  }
+  (** One node of a tree. *)
+
+  type error_kind =
+    | Error_node  (** an [ERROR] node *)
+    | Missing_node  (** a [MISSING] node *)
+
+  type report = {
+    has_error : bool;
+        (** the error flag of the root: [true] when the tree holds an [ERROR]
+            node or a [MISSING] node, shown or not *)
+    errors : (error_kind * node) list;
+        (** each [ERROR] node and each [MISSING] node that no [ERROR] node
+            holds, in the order of the text. No node of the list holds another.
+        *)
+    lowest : node option;
+        (** the first lowest error node in the order of the text: a node whose
+            error flag is set, when no child that the tree shows has its flag
+            set. It is [Some _] exactly when [has_error] is [true]. *)
+  }
+  (** The parse failures of a tree. *)
+
+  val parse : Language.t -> string -> (t, error) result
+  (** [parse language text] parses the bytes of [text] with [language], in the
+      engine of [language]. The text need not be UTF-8. The caller owns the
+      result, and frees it with {!close} or leaves it to the garbage collector.
+
+      @raise Invalid_argument if [language] or its engine is closed.
+      @raise Error if the bridge stops on an internal fault. *)
+
+  val close : t -> unit
+  (** [close tree] frees the tree. Every later call that takes [tree] raises
+      [Invalid_argument]. A second call does nothing. *)
+
+  val sexp : t -> string
+  (** [sexp tree] is the tree as an S-expression. It shows each named node and
+      each [MISSING] node that the tree shows, with its field name. The result
+      is valid UTF-8.
+
+      @raise Invalid_argument if [tree] is closed.
+      @raise Error
+        if the S-expression is 2^32 bytes or more, or if the bridge stops on an
+        internal fault. *)
+
+  val errors : t -> report
+  (** [errors tree] is the parse failures of [tree]. It walks down only into
+      nodes whose error flag is set.
+
+      @raise Invalid_argument if [tree] is closed.
+      @raise Error if the bridge stops on an internal fault. *)
+
+  val message : error -> string
+  (** [message error] says why the parse gave no tree, for the person who runs
+      the tool. *)
+end
+
+(** Queries. *)
+module Query : sig
+  type t
+  (** A compiled query. A query stays valid when its grammar is closed. *)
+
+  (** The kind of a tree-sitter query error. *)
+  type kind =
+    | Syntax
+    | Node_type
+    | Field
+    | Capture
+    | Predicate
+    | Structure
+    | Language
+
+  (** Why a query does not compile. A row and a column count from 0, and a
+      column counts bytes. *)
+  type error =
+    | Invalid of {
+        kind : kind;
+        row : int;
+        column : int;
+        offset : int;  (** a byte offset into the query text *)
+        message : string;  (** the message of tree-sitter *)
+      }
+        (** tree-sitter refuses the query. For [Predicate], the row is the row
+            where the pattern starts, and the column and the offset are 0. For
+            [Language], all three are 0. *)
+    | Not_allowed of {
+        operator : string;
+            (** the predicate or the directive, without its [#], for example
+                ["set!"] *)
+        pattern : int;  (** the index of the pattern, from 0 *)
+        offset : int;  (** the start of the pattern, a byte offset *)
+        row : int;  (** the row of the start of the pattern *)
+        column : int;  (** the column of the start of the pattern *)
+      }
+        (** a pattern uses a predicate that is not one of [#eq?], [#not-eq?],
+            [#any-eq?], [#any-not-eq?], [#match?], [#not-match?], [#any-match?],
+            [#any-not-match?], [#any-of?], and [#not-any-of?], or it uses a
+            directive such as [#set!] *)
+    | Not_utf_8 of int
+        (** the query text is not UTF-8. The integer is the byte offset of its
+            first sequence that is not well-formed. *)
+
+  (** Why a query does not run over a tree. *)
+  type run_error =
+    | Language_mismatch
+        (** the query and the tree come from different grammars *)
+
+  type capture = {
+    match_number : int;
+        (** the number of the match, from 0. The bridge counts the matches in
+            the order in which it finds them, with no gap. *)
+    pattern : int;  (** the index of the pattern in the query, from 0 *)
+    name : string;  (** the capture name, without the [@] *)
+    node_type : string;  (** the type of the node *)
+    range : range;  (** the range of the node *)
+    text : string;
+        (** the bytes of the range, from the text that the tree was parsed from.
+            They are not UTF-8 when that text is not. *)
+  }
+  (** One capture of one match. *)
+
+  val compile : Language.t -> string -> (t, error) result
+  (** [compile language text] compiles the tree-sitter query [text], the content
+      of a [.scm] file, for [language]. The caller owns the result, and frees it
+      with {!close} or leaves it to the garbage collector.
+
+      @raise Invalid_argument if [language] is closed.
+      @raise Error if the bridge stops on an internal fault. *)
+
+  val close : t -> unit
+  (** [close query] frees the query. Every later call that takes [query] raises
+      [Invalid_argument]. A second call does nothing. *)
+
+  val run : t -> Tree.t -> (capture list, run_error) result
+  (** [run query tree] runs [query] over [tree]. The captures come in the order
+      of their matches, and in the order of the pattern inside one match. A
+      match that captures nothing gives no capture and no number.
+
+      @raise Invalid_argument if [query] or [tree] is closed.
+      @raise Error if the bridge stops on an internal fault. *)
+
+  val message : error -> string
+  (** [message error] says why the query does not compile, for the person who
+      runs the tool. *)
+
+  val run_message : run_error -> string
+  (** [run_message error] says why the query does not run over the tree, for the
+      person who runs the tool. *)
+end
+
+(** Runner adapters: WebAssembly modules that read test reports. *)
+module Adapter : sig
+  type engine := t
+
+  type t
+  (** A compiled runner adapter. An adapter stays valid when its engine is
+      closed. *)
+
+  (** Why a module is not a runner adapter. *)
+  type invalid =
+    | Not_a_module of string
+        (** the bytes are not a module that the runtime compiles. The string is
+            the message of the runtime. *)
+    | Imports of string list
+        (** the module imports something. Each string names one import as
+            ["module.name"]. The list is not empty. *)
+    | Missing_export of string  (** the module does not export this name *)
+    | Wrong_export_type of string
+        (** the export of this name is not of the type that an adapter exports
+        *)
+
+  (** One of the two inputs of a call. *)
+  type input = Request | Report
+
+  (** Why a load or a call of an adapter fails. *)
+  type error =
+    | Invalid of invalid
+    | Out_of_fuel  (** the module ran past its limit of fuel *)
+    | Trap of string
+        (** the module trapped, or its instance did not start. The string is the
+            message of the runtime. *)
+    | Memory_limit of int
+        (** the module asked for a memory of this many bytes, past its limit *)
+    | Alloc of { input : input; address : int; length : int; memory_size : int }
+        (** [sinter_alloc] gave 0, or an address whose [length] bytes do not lie
+            inside a memory of [memory_size] bytes *)
+    | Response_outside_memory of {
+        address : int;
+        length : int;
+        memory_size : int;
+      }  (** the response does not lie inside a memory of [memory_size] bytes *)
+
+  (** The two functions that a call can run. *)
+  type call = Recognise | Bind
+
+  val load :
+    engine -> wasm:string -> fuel:int -> memory:int -> (t, error) result
+  (** [load engine ~wasm ~fuel ~memory] compiles the module [wasm] once and
+      checks that it is an adapter: it imports nothing, and it exports [memory],
+      a memory with 32-bit addresses that is not shared, and the functions
+      [sinter_interface], [sinter_alloc], [sinter_recognise], and [sinter_bind]
+      with their types. It can export other names. Then it calls
+      [sinter_interface] in a new instance, under a limit of [fuel] units of
+      fuel and a limit of [memory] bytes for all its memories together. The
+      caller owns the result, and frees it with {!close} or leaves it to the
+      garbage collector.
+
+      @raise Invalid_argument
+        if [fuel] or [memory] is below 0, or if [engine] is closed.
+      @raise Error if the bridge stops on an internal fault. *)
+
+  val version : t -> int
+  (** [version adapter] is what [sinter_interface] gave at the load, read as an
+      unsigned 32-bit number. The caller decides which versions it takes.
+
+      @raise Invalid_argument if [adapter] is closed. *)
+
+  val call :
+    t ->
+    call ->
+    request:string ->
+    report:string ->
+    fuel:int ->
+    memory:int ->
+    (string, error) result
+  (** [call adapter function_ ~request ~report ~fuel ~memory] makes one call in
+      a new instance: it writes [request] and then [report] where [sinter_alloc]
+      gives room for them, calls [function_] with their addresses and lengths,
+      and gives the bytes of the response. One limit of [fuel] units covers the
+      two calls of [sinter_alloc] and the call of [function_] together; [memory]
+      bounds all the memories of the instance together, in bytes. A growth of a
+      memory past its own maximum is no failure: the module sees [-1]. The
+      response need not be UTF-8.
+
+      @raise Invalid_argument
+        if [fuel] or [memory] is below 0, or if [adapter] is closed.
+      @raise Error if the bridge stops on an internal fault. *)
+
+  val close : t -> unit
+  (** [close adapter] frees the adapter. Every later call that takes [adapter]
+      raises [Invalid_argument]. A second call does nothing. *)
+
+  val message : error -> string
+  (** [message error] says why the load or the call failed, for the person who
+      runs the tool. *)
+end
+
+(** The decoders of the result buffers, in the layouts that the bridge writes.
+    Each decoder takes one whole buffer of its kind, and raises [Error] for any
+    other bytes. *)
+module Decode : sig
+  val captures : string -> Query.capture list
+  (** [captures buffer] is the captures of a query run, in the order that the
+      buffer holds them.
+
+      @raise Error
+        if [buffer] is not one whole buffer of captures, or if a capture name or
+        a node type is not UTF-8. *)
+
+  val tree : string -> string
+  (** [tree buffer] is the parse tree of a buffer of a parse tree, as an
+      S-expression.
+
+      @raise Error
+        if [buffer] is not one whole buffer of a parse tree, or if the tree is
+        not UTF-8. *)
+
+  val digest : string -> string
+  (** [digest buffer] is the 32 bytes of a buffer of a digest.
+
+      @raise Error if [buffer] is not one whole buffer of a digest. *)
+
+  val report : string -> Tree.report
+  (** [report buffer] is the error report of a buffer of an error report.
+
+      @raise Error
+        if [buffer] is not one whole buffer of an error report, if a node type
+        is not UTF-8, or if the lowest error node is present while the error
+        flag of the root is not set, or the reverse. *)
+
+  val response : string -> string
+  (** [response buffer] is the bytes of an adapter response.
+
+      @raise Error if [buffer] is not one whole buffer of a response. *)
+
+  val language_error : string -> Language.error
+  (** [language_error buffer] is the error of a grammar load that a buffer of a
+      failure holds.
+
+      @raise Error
+        if [buffer] is not one whole buffer of a failure, if the failure is an
+        internal fault of the bridge (the message of [Error] is then the message
+        of the fault), or if it is not the failure of a grammar load. *)
+
+  val tree_error : string -> Tree.error
+  (** [tree_error buffer] is the error of a parse, as {!language_error} gives
+      the error of a load. *)
+
+  val query_error : string -> Query.error
+  (** [query_error buffer] is the error of a query compilation, as
+      {!language_error} gives the error of a load. *)
+
+  val run_error : string -> Query.run_error
+  (** [run_error buffer] is the error of a query run, as {!language_error} gives
+      the error of a load. *)
+
+  val adapter_error : string -> Adapter.error
+  (** [adapter_error buffer] is the error of an adapter load or call, as
+      {!language_error} gives the error of a load. *)
+end
 
 (** A TOML document as the bridge reads it: byte offsets into the text, and the
     messages of the TOML reader that the bridge links. *)

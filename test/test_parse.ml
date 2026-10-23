@@ -245,204 +245,11 @@ let rejects_a_file_name_whose_first_byte_is_not_utf_8 () =
     "the file name is not UTF-8 text: \\255name.json"
     (name_failure "\xffname.json")
 
-let reads_the_grammar_name_from_the_module () =
-  let wasm = Parse.read_file grammar in
-  Alcotest.(check (option string))
-    "the module of the fixture names the grammar json" (Some "json")
-    (Parse.name_of_wasm wasm);
-  Alcotest.(check (option string))
-    "a file that is not wasm has no name" None
-    (Parse.name_of_wasm "not a wasm module");
-  Alcotest.(check (option string))
-    "a header without sections has no name" None
-    (Parse.name_of_wasm "\000asm\001\000\000\000")
-
-(* A wasm module of a header and one export section. The section
-   holds one export of the given name, of kind 0 and index 0. Every
-   count and every length in the format is one byte here, because the
-   test keeps them below 128. *)
-let module_that_exports name =
-  let section =
-    Printf.sprintf "\001%c%s\000\000" (Char.chr (String.length name)) name
-  in
-  Printf.sprintf "\000asm\001\000\000\000\007%c%s"
-    (Char.chr (String.length section))
-    section
-
-let gives_no_name_that_holds_a_nul_byte () =
-  Alcotest.(check (option string))
-    "a name without a NUL byte is a name" (Some "json")
-    (Parse.name_of_wasm (module_that_exports "tree_sitter_json"));
-  Alcotest.(check (option string))
-    "a name with a NUL byte is no name" None
-    (Parse.name_of_wasm (module_that_exports "tree_sitter_js\000n"))
-
-(* A module of a header and one export section whose body is [body].
-   The size of the section is one byte, so [body] stays below 128
-   bytes. *)
-let module_with_export_section body =
-  Printf.sprintf "\000asm\001\000\000\000\007%c%s"
-    (Char.chr (String.length body))
-    body
-
-(* Each module below fails the reader in one place. The reader gives
-   no name for every one of them, and it raises on none of them. *)
-let gives_no_name_for_a_module_the_reader_cannot_follow () =
-  let check what body =
-    Alcotest.(check (option string))
-      what None
-      (Parse.name_of_wasm (module_with_export_section body))
-  in
-  check "a number that runs off the end of the module" "\128";
-  check "a number that runs past 28 bits of shift" "\128\128\128\128\128\001";
-  check "an export name that runs past the end of the module" "\001\010ab";
-  check "an export list with no export at all" "\000";
-  check "an export list whose one export is not a grammar" "\001\003foo\000\000";
-  check "an export whose kind byte is missing" "\001\003foo"
-
-(* The reader walks the section list of a module, and then the export
-   list of its export section. Each module below takes it down a road
-   that neither the fixture nor a module of one export goes: a section
-   whose size needs two LEB128 bytes, a list of three exports with the
-   one of the grammar last, and an export index written in five LEB128
-   bytes. *)
-let reads_the_name_of_a_module_of_any_shape () =
-  let check what shape =
-    Alcotest.(check (option string))
-      what (Some "json")
-      (Parse.name_of_wasm (Generators.wasm_module shape ~name:"json"))
-  in
-  check "a section whose size needs two bytes" Generators.Long_custom_section;
-  check "three exports, and the one of the grammar last"
-    Generators.Three_exports;
-  check "an export index of five bytes" Generators.Long_export_index
-
-(* The export section states how many exports it holds, and its size
-   states where it ends. The two can disagree, and the reader holds to
-   both: it reads no export past the count, and none past the end of
-   the section. In each module below the export of the grammar is
-   there, and the reader must not reach it. *)
-let gives_no_name_when_the_export_count_disagrees () =
-  let check what shape =
-    Alcotest.(check (option string))
-      what None
-      (Parse.name_of_wasm (Generators.wasm_module shape ~name:"json"))
-  in
-  check "a section that declares two exports and holds three"
-    Generators.Too_few_exports_declared;
-  check
-    "a section that declares three exports and holds two, and the export of \
-     the grammar follows it"
-    Generators.Too_many_exports_declared
-
-(* A section whose body runs past the end of the module is no section.
-   The reader gives no name for such a module, even though the bytes
-   of the export are all there. *)
-let gives_no_name_for_a_module_cut_in_a_section () =
-  Alcotest.(check (option string))
-    "a module cut in the middle of its export section" None
-    (Parse.name_of_wasm
-       (Generators.wasm_module Generators.Cut_in_a_section ~name:"json"))
-
-(* The reader needs one byte after an export name, for the kind of the
-   export. The module below stops at the end of that name, so the byte
-   is outside the export section, and the reader gives no name. A
-   custom section of eight bytes follows, so that the name ends inside
-   the module and not at the end of it. *)
-let gives_no_name_for_an_export_name_that_ends_at_its_section () =
-  let export_name = "tree_sitter_json" in
-  let body =
-    Printf.sprintf "\001%c%s" (Char.chr (String.length export_name)) export_name
-  in
-  let custom = "\000\008\004name\255\255\255" in
-  Alcotest.(check (option string))
-    "an export name that ends at the end of its section is no name" None
-    (Parse.name_of_wasm (module_with_export_section body ^ custom))
-
-(* A reader that took bytes of eight or more for a module would walk
-   the section list of the bytes below and find the export of a
-   grammar in it. The first four bytes are not the magic number of a
-   module, so the reader gives no name. *)
-let gives_no_name_for_bytes_that_are_not_a_module () =
-  let wasm = Generators.wasm_module Generators.One_export ~name:"json" in
-  let bytes = Bytes.of_string wasm in
-  Bytes.set bytes 3 'X';
-  Alcotest.(check (option string))
-    "the same bytes under the magic number of a module name the grammar"
-    (Some "json") (Parse.name_of_wasm wasm);
-  Alcotest.(check (option string))
-    "the bytes without that magic number name nothing" None
-    (Parse.name_of_wasm (Bytes.to_string bytes))
-
-(* A file whose base name is the prefix and nothing else. The prefix
-   comes off only when the name is longer than it, so here it stays
-   and the grammar name is the whole base name. *)
-let keeps_a_base_name_that_is_the_prefix_alone () =
-  Alcotest.(check string)
-    "the base name tree-sitter- gives the grammar name tree_sitter_"
-    "tree_sitter_"
-    (Parse.grammar_name "packs/tree-sitter-.wasm")
-
-(* A capture that holds the one line feed of a one-byte file ends at
-   row 1, column 0: the start of a line that the file does not hold.
-   The record then names line 1, the line that holds the last byte,
-   and column 2, one past that byte. *)
-let places_the_end_of_a_capture_that_ends_before_byte_two () =
-  let capture : Sinter_bridge.capture =
-    {
-      pattern = 0;
-      name = "d";
-      node_type = "document";
-      start_byte = 0;
-      end_byte = 1;
-      start_row = 0;
-      start_column = 0;
-      end_row = 1;
-      end_column = 0;
-      text = "\n";
-    }
-  in
-  let record = Parse.record_of_capture ~path:"f.json" ~source:"\n" capture in
-  Alcotest.(check (option bool))
-    "eline is the line that holds the last byte" (Some true)
-    (Option.map (fun v -> v = Jsonl.int 1) (List.assoc_opt "eline" record));
-  Alcotest.(check (option bool))
-    "ecol is one past the last byte" (Some true)
-    (Option.map (fun v -> v = Jsonl.int 2) (List.assoc_opt "ecol" record))
-
-(* A capture that holds the two line feeds of a two-byte file ends at
-   row 2, column 0. The record names line 2, the line that holds the
-   last byte, and column 2, one past that byte on that line. A reader
-   that took byte 2 for a byte on the first line would name column 3.
-   *)
-let places_the_end_of_a_capture_that_ends_at_byte_two () =
-  let capture : Sinter_bridge.capture =
-    {
-      pattern = 0;
-      name = "d";
-      node_type = "document";
-      start_byte = 0;
-      end_byte = 2;
-      start_row = 0;
-      start_column = 0;
-      end_row = 2;
-      end_column = 0;
-      text = "\n\n";
-    }
-  in
-  let record = Parse.record_of_capture ~path:"f.json" ~source:"\n\n" capture in
-  Alcotest.(check (option bool))
-    "eline is the line that holds the last byte" (Some true)
-    (Option.map (fun v -> v = Jsonl.int 2) (List.assoc_opt "eline" record));
-  Alcotest.(check (option bool))
-    "ecol is one past the last byte on that line" (Some true)
-    (Option.map (fun v -> v = Jsonl.int 2) (List.assoc_opt "ecol" record))
-
 (* The name that the bridge needs comes from the module, so a file
    that a user renamed still loads. *)
 let loads_a_grammar_file_under_another_name () =
   let renamed = Filename.temp_file "grammar" ".wasm" in
-  let wasm = Parse.read_file grammar in
+  let wasm = In_channel.with_open_bin grammar In_channel.input_all in
   let channel = open_out_bin renamed in
   output_string channel wasm;
   close_out channel;
@@ -507,15 +314,6 @@ let writes_a_tree_that_nests_deeply () =
     "the tree of a file that nests 40000 deep is written" true
     (String.starts_with ~prefix:"(document" tree && String.length tree > depth)
 
-let names_the_grammar () =
-  let check expected path =
-    Alcotest.(check string) path expected (Parse.grammar_name path)
-  in
-  check "json" "test/fixtures/tree-sitter-json/tree-sitter-json.wasm";
-  check "json" "tree-sitter-json.wasm";
-  check "json" "json.wasm";
-  check "type_script" "packs/tree-sitter-type-script.wasm"
-
 (* The properties below check the pure functions of Parse against a
    reference that reads the source text and nothing else. *)
 
@@ -539,73 +337,13 @@ let string_field record name =
   | Some (Jsonl.Scalar (Jsonl.String found)) -> found
   | _ -> Alcotest.failf "the record holds no string field %s" name
 
-let field_names =
-  [
-    "cap";
-    "col";
-    "eb";
-    "ecol";
-    "eline";
-    "line";
-    "node";
-    "pat";
-    "path";
-    "sb";
-    "text";
-  ]
-
-let record_of source (capture : Sinter_bridge.capture) =
-  Parse.record_of_capture ~path:"f.json" ~source capture
-
-let the_span_of_a_record_agrees_with_the_source
-    (source, (capture : Sinter_bridge.capture)) =
-  let record = record_of source capture in
-  let line, col = position source capture.start_byte in
-  let eline, ecol =
-    if capture.end_byte > capture.start_byte then
-      let last_line, last_col = position source (capture.end_byte - 1) in
-      (last_line, last_col + 1)
-    else (line, col)
-  in
-  int_field record "line" = line
-  && int_field record "col" = col
-  && int_field record "eline" = eline
-  && int_field record "ecol" = ecol
-
-(* The generator builds the text of the capture as the byte range of
-   the source, so the last clause below states that record_of_capture
-   copies the field, and nothing more. That the bridge gives that
-   range is "a capture is a byte range inside the source", in
-   test_bridge.ml. *)
-let a_record_holds_the_bytes_of_the_capture
-    (source, (capture : Sinter_bridge.capture)) =
-  let record = record_of source capture in
-  int_field record "sb" = capture.start_byte
-  && int_field record "eb" = capture.end_byte
-  && String.equal
-       (string_field record "text")
-       (String.sub source capture.start_byte
-          (capture.end_byte - capture.start_byte))
-
-let a_record_holds_the_named_fields (source, capture) =
-  let record = record_of source capture in
-  List.equal String.equal (List.sort compare (List.map fst record)) field_names
-
-(* Jsonl.to_string refuses a string that is not UTF-8 and an integer
-   outside the range that a record allows. A record of a capture
-   breaks neither, so the call gives a line. *)
-let to_string_accepts_a_record_of_a_capture (source, capture) =
-  let line = Jsonl.to_string (record_of source capture) in
-  String.length line > 1
-  && line.[0] = '{'
-  && line.[String.length line - 1] = '}'
-
 (* One engine and one grammar for the property below. The language
    keeps its engine alive, and alcotest runs one test at a time. *)
 let language =
   lazy
-    (let wasm = Parse.read_file grammar in
-     Sinter_bridge.load (Sinter_bridge.create ()) ~name:"json" ~wasm)
+    (match Grammar.load (Sinter_bridge.create ()) ~path:grammar with
+    | Ok language -> language
+    | Error error -> Alcotest.fail (Grammar.message ~path:grammar error))
 
 (* The document node ends after the last line feed of the file, so a
    query that captures it tests the end of a span that no byte of the
@@ -632,17 +370,34 @@ let in_a_file source use =
         (fun () -> output_string channel source);
       use path)
 
-let records_of source =
-  in_a_file source (fun path ->
-      (path, Parse.captures (Lazy.force language) ~query:spanning_query ~path))
+(* The items that one fold over the one file at [path] gives. *)
+let items_of ~query path =
+  let seen = ref [] in
+  Parse.fold (Lazy.force language) ~query ~paths:[ path ] ~f:(fun item ->
+      seen := item :: !seen);
+  List.rev !seen
 
-(* Parse.tree reads the file and gives what the bridge gives for its
-   text. *)
+let records_of source =
+  in_a_file spanning_query (fun query ->
+      in_a_file source (fun path ->
+          ( path,
+            List.filter_map
+              (function
+                | Parse.Capture record -> Some record | Parse.Tree _ -> None)
+              (items_of ~query:(Some query) path) )))
+
+(* A fold with no query reads the file and gives what the bridge gives
+   for its text. *)
 let the_tree_of_a_file_is_the_tree_of_its_text document =
   let source = document ^ "\n" in
-  String.equal
-    (in_a_file source (fun path -> Parse.tree (Lazy.force language) ~path))
-    (Sinter_bridge.tree (Lazy.force language) ~source)
+  let expected =
+    match Sinter_bridge.Tree.parse (Lazy.force language) source with
+    | Ok tree -> Sinter_bridge.Tree.sexp tree
+    | Error error -> Alcotest.fail (Sinter_bridge.Tree.message error)
+  in
+  match in_a_file source (items_of ~query:None) with
+  | [ Parse.Tree { sexp; _ } ] -> String.equal sexp expected
+  | _ -> false
 
 let the_records_of_a_file_agree_with_the_source document =
   (* A file ends with a line feed, and the end of the document node
@@ -670,159 +425,6 @@ let the_records_of_a_file_agree_with_the_source document =
       && String.equal (string_field record "path") path)
     records
 
-let a_record_of_a_capture_outside_the_source_is_refused (source, capture) =
-  match record_of source capture with
-  | _ -> false
-  | exception Invalid_argument message ->
-      contains "not inside the source" message
-
-(* The capture below runs two bytes past a source of no bytes, and its
-   end column is 0, so the reader of the span looks for the line feed
-   that ends the line before it. The property
-   "a record of a capture outside the source is refused" found this
-   case, and the reader raised
-   Invalid_argument "String.rindex_from_opt / Bytes.rindex_from_opt".
-   The interface named no such failure. *)
-let refuses_a_capture_that_runs_past_the_source () =
-  let capture =
-    {
-      Sinter_bridge.pattern = 0;
-      name = "d";
-      node_type = "document";
-      start_byte = 0;
-      end_byte = 2;
-      start_row = 0;
-      start_column = 0;
-      end_row = 1;
-      end_column = 0;
-      text = "";
-    }
-  in
-  Alcotest.check_raises "a capture of two bytes in a source of none"
-    (Invalid_argument
-       "Sinter_core.Parse: the byte range of the capture is not inside the \
-        source") (fun () ->
-      ignore (Parse.record_of_capture ~path:"f.json" ~source:"" capture))
-
-(* One byte that starts no code point, so a string that holds it is
-   not valid UTF-8. *)
-let not_utf_8 = "\xff"
-
-(* A capture of the one byte of the source "a". Each argument replaces
-   one string of it; the byte range does not change, so the only thing
-   that can be wrong with the capture is the string the caller
-   replaced. *)
-let one_capture ?(name = "d") ?(node_type = "document") ?(text = "a") () =
-  {
-    Sinter_bridge.pattern = 0;
-    name;
-    node_type;
-    start_byte = 0;
-    end_byte = 1;
-    start_row = 0;
-    start_column = 0;
-    end_row = 0;
-    end_column = 1;
-    text;
-  }
-
-(* The message of the failure that [capture] causes. The test fails
-   when the call builds a record instead. *)
-let refusal ?(path = "f.json") capture =
-  match Parse.record_of_capture ~path ~source:"a" capture with
-  | _ -> Alcotest.fail "the call built a record"
-  | exception Parse.Error message -> message
-
-let a_capture_name_that_is_not_utf_8_is_refused () =
-  Alcotest.(check string)
-    "the message names the file and the string"
-    "f.json: the name of a capture is not UTF-8 text"
-    (refusal (one_capture ~name:not_utf_8 ()))
-
-let a_node_type_that_is_not_utf_8_is_refused () =
-  Alcotest.(check string)
-    "the message names the file and the string"
-    "f.json: the type of a node is not UTF-8 text"
-    (refusal (one_capture ~node_type:not_utf_8 ()))
-
-let a_text_that_is_not_utf_8_is_refused () =
-  Alcotest.(check string)
-    "the message names the file and the string"
-    "f.json: the text of a node is not UTF-8 text"
-    (refusal (one_capture ~text:not_utf_8 ()))
-
-let a_path_that_is_not_utf_8_is_refused () =
-  Alcotest.(check string)
-    "the message gives the file name as bytes"
-    "the file name is not UTF-8 text: \\255"
-    (refusal ~path:not_utf_8 (one_capture ()))
-
-(* Which string of a capture the generator below made bad. *)
-type bad_string = Capture_name | Node_type | Node_text
-
-(* A source, and a capture inside it whose one bad string is not valid
-   UTF-8. The integer fields do not change, so the byte range stays
-   inside the source and the string is the only thing that is wrong. *)
-let source_and_capture_with_a_bad_string =
-  let open QCheck2.Gen in
-  let* source, (capture : Sinter_bridge.capture) =
-    Generators.source_and_capture
-  in
-  let* text = Generators.not_utf_8_string in
-  let* which = oneof_list [ Capture_name; Node_type; Node_text ] in
-  let capture =
-    match which with
-    | Capture_name -> { capture with Sinter_bridge.name = text }
-    | Node_type -> { capture with Sinter_bridge.node_type = text }
-    | Node_text -> { capture with Sinter_bridge.text }
-  in
-  return (source, capture)
-
-(* A bad string gives Parse.Error and never Invalid_argument, which is
-   the whole of the change: a string the tool was given is a fault of
-   the environment, and only a fault of the tool leaves the command.
-   An Invalid_argument here would leave this check and fail the
-   property. *)
-let a_record_of_a_capture_with_a_bad_string_is_refused (source, capture) =
-  match Parse.record_of_capture ~path:"f.json" ~source capture with
-  | _ -> false
-  | exception Parse.Error message ->
-      String.starts_with ~prefix:"f.json: " message
-      && contains "is not UTF-8 text" message
-
-(* The two properties below state that the function is total: it
-   answers for every value of its argument type, and raises nothing.
-   Each one adds the cheapest clause that can fail, so that neither
-   passes because the call did nothing. *)
-let the_reader_of_a_module_answers_for_any_bytes wasm =
-  match Parse.name_of_wasm wasm with
-  | None -> true
-  | Some found -> contains ("tree_sitter_" ^ found) wasm
-
-(* The bridge refuses a grammar name that holds a NUL byte, so the
-   reader gives no such name and the caller falls back to the file
-   name. *)
-let a_name_from_a_module_can_name_a_grammar wasm =
-  match Parse.name_of_wasm wasm with
-  | None -> true
-  | Some name -> not (String.contains name '\000')
-
-let the_reader_of_a_module_finds_a_generated_export (name, wasm) =
-  Option.equal String.equal (Parse.name_of_wasm wasm) (Some name)
-
-(* A grammar name is the base name of the path without its extension,
-   so it is never longer than that base name. It can still hold a
-   slash: the base name of "/" is "/". *)
-let a_grammar_name_comes_back_for_any_file_name path =
-  String.length (Parse.grammar_name path)
-  <= String.length (Filename.basename path)
-
-let a_grammar_name_holds_no_hyphen path =
-  not (String.contains (Parse.grammar_name path) '-')
-
-let a_grammar_name_drops_the_prefix_and_the_extension name =
-  String.equal (Parse.grammar_name ("packs/tree-sitter-" ^ name ^ ".wasm")) name
-
 (* The module below exports "tree_sitter_a\000b". Before the reader
    refused such a name, "sinter parse" gave the person who ran it the
    message of the bridge, which names a function of the library. The
@@ -832,7 +434,8 @@ let a_grammar_name_drops_the_prefix_and_the_extension name =
 let refuses_a_module_that_names_itself_with_a_nul_byte () =
   let wasm = Generators.wasm_module Generators.One_export ~name:"a\000b" in
   Alcotest.(check (option string))
-    "a name with a NUL byte is no name" None (Parse.name_of_wasm wasm);
+    "a name with a NUL byte is no name" None
+    (Grammar_name.of_wasm wasm);
   let path = Filename.temp_file "sinter-parse" ".wasm" in
   let message =
     Fun.protect
@@ -853,53 +456,12 @@ let refuses_a_module_that_names_itself_with_a_nul_byte () =
 
 let properties =
   [
-    property ~name:"the span of a record agrees with the source"
-      ~print:Generators.print_source_and_capture Generators.source_and_capture
-      the_span_of_a_record_agrees_with_the_source;
-    property ~name:"a record holds the bytes of the capture"
-      ~print:Generators.print_source_and_capture Generators.source_and_capture
-      a_record_holds_the_bytes_of_the_capture;
-    property ~name:"a record holds the eleven named fields"
-      ~print:Generators.print_source_and_capture Generators.source_and_capture
-      a_record_holds_the_named_fields;
-    property ~name:"to_string accepts a record of a capture"
-      ~print:Generators.print_source_and_capture Generators.source_and_capture
-      to_string_accepts_a_record_of_a_capture;
-    property ~name:"a record of a capture outside the source is refused"
-      ~print:Generators.print_source_and_capture
-      Generators.source_and_capture_outside
-      a_record_of_a_capture_outside_the_source_is_refused;
-    property ~name:"a record of a capture with a bad string is refused"
-      ~print:Generators.print_source_and_capture
-      source_and_capture_with_a_bad_string
-      a_record_of_a_capture_with_a_bad_string_is_refused;
     property ~count:200 ~name:"the records of a file agree with the source"
       ~print:Fun.id Generators.json_source
       the_records_of_a_file_agree_with_the_source;
     property ~count:200 ~name:"the tree of a file is the tree of its text"
       ~print:Fun.id Generators.json_source
       the_tree_of_a_file_is_the_tree_of_its_text;
-    property ~name:"the reader of a wasm module answers for any bytes"
-      ~print:String.escaped Generators.wasm_bytes
-      the_reader_of_a_module_answers_for_any_bytes;
-    property ~name:"the reader of a wasm module finds a generated export"
-      ~print:(fun (name, wasm) -> name ^ " " ^ String.escaped wasm)
-      Generators.wasm_module_with_a_name
-      the_reader_of_a_module_finds_a_generated_export;
-    property ~name:"a name from a wasm module can name a grammar"
-      ~print:String.escaped Generators.wasm_bytes
-      a_name_from_a_module_can_name_a_grammar;
-    property ~name:"a module that names itself with a NUL byte has no name"
-      ~print:String.escaped Generators.wasm_module_whose_name_holds_a_nul
-      a_name_from_a_module_can_name_a_grammar;
-    property ~name:"a grammar name comes back for any file name"
-      ~print:String.escaped Generators.grammar_file_path
-      a_grammar_name_comes_back_for_any_file_name;
-    property ~name:"a grammar name holds no hyphen" ~print:String.escaped
-      Generators.grammar_file_path a_grammar_name_holds_no_hyphen;
-    property ~name:"a grammar name drops the prefix and the extension"
-      ~print:Fun.id Generators.grammar_export_name
-      a_grammar_name_drops_the_prefix_and_the_extension;
   ]
 
 (* An engine that the caller owns, with the grammar of the fixture
@@ -908,7 +470,10 @@ let with_language f =
   let engine = Sinter_bridge.create () in
   Fun.protect
     ~finally:(fun () -> Sinter_bridge.close engine)
-    (fun () -> f (Parse.load engine ~grammar))
+    (fun () ->
+      match Grammar.load engine ~path:grammar with
+      | Ok language -> f language
+      | Error error -> Alcotest.fail (Grammar.message ~path:grammar error))
 
 let folds_one_tree_over_each_file () =
   let items =
@@ -1089,34 +654,6 @@ let the_op_answers_with_the_lines_of_the_command =
       in
       same_control && same_items)
 
-(* [captures] and [tree] check the file name before they open the
-   file. A name that is not UTF-8 text therefore fails the same way
-   whether or not the file exists, and whether or not the query
-   captures anything in it. *)
-let captures_checks_the_file_name_first () =
-  let message =
-    try
-      ignore
-        (Parse.captures (Lazy.force language) ~query:"(document) @d"
-           ~path:"\xffnope.json");
-      "no failure"
-    with Parse.Error message -> message
-  in
-  Alcotest.(check string)
-    "the message gives the file name as bytes, not a failure to open"
-    "the file name is not UTF-8 text: \\255nope.json" message
-
-let tree_checks_the_file_name_first () =
-  let message =
-    try
-      ignore (Parse.tree (Lazy.force language) ~path:"\xffnope.json");
-      "no failure"
-    with Parse.Error message -> message
-  in
-  Alcotest.(check string)
-    "the message gives the file name as bytes, not a failure to open"
-    "the file name is not UTF-8 text: \\255nope.json" message
-
 (* [run] loads the grammar before it looks at any file, so when the
    grammar does not read and a file name is not UTF-8 text, the
    message names the grammar. *)
@@ -1166,56 +703,18 @@ let tests =
       reports_a_channel_that_cannot_be_written;
     Alcotest.test_case "rejects a file name that is not UTF-8" `Quick
       rejects_a_file_name_that_is_not_utf_8;
-    Alcotest.test_case "captures checks the file name first" `Quick
-      captures_checks_the_file_name_first;
-    Alcotest.test_case "tree checks the file name first" `Quick
-      tree_checks_the_file_name_first;
     Alcotest.test_case "names the grammar before a bad file name" `Quick
       names_the_grammar_before_a_bad_file_name;
     Alcotest.test_case "rejects a file name whose first byte is not UTF-8"
       `Quick rejects_a_file_name_whose_first_byte_is_not_utf_8;
-    Alcotest.test_case "reads the grammar name from the module" `Quick
-      reads_the_grammar_name_from_the_module;
     Alcotest.test_case "loads a grammar file under another name" `Quick
       loads_a_grammar_file_under_another_name;
     Alcotest.test_case "names a source that cannot be read" `Quick
       names_a_source_that_cannot_be_read;
     Alcotest.test_case "writes a tree that nests deeply" `Quick
       writes_a_tree_that_nests_deeply;
-    Alcotest.test_case "names the grammar" `Quick names_the_grammar;
-    Alcotest.test_case "refuses a capture that runs past the source" `Quick
-      refuses_a_capture_that_runs_past_the_source;
-    Alcotest.test_case "a capture name that is not UTF-8 is refused" `Quick
-      a_capture_name_that_is_not_utf_8_is_refused;
-    Alcotest.test_case "a node type that is not UTF-8 is refused" `Quick
-      a_node_type_that_is_not_utf_8_is_refused;
-    Alcotest.test_case "a text that is not UTF-8 is refused" `Quick
-      a_text_that_is_not_utf_8_is_refused;
-    Alcotest.test_case "a path that is not UTF-8 is refused" `Quick
-      a_path_that_is_not_utf_8_is_refused;
     Alcotest.test_case "refuses a module that names itself with a NUL byte"
       `Quick refuses_a_module_that_names_itself_with_a_nul_byte;
-    Alcotest.test_case "gives no name that holds a NUL byte" `Quick
-      gives_no_name_that_holds_a_nul_byte;
-    Alcotest.test_case "gives no name for a module the reader cannot follow"
-      `Quick gives_no_name_for_a_module_the_reader_cannot_follow;
-    Alcotest.test_case "reads the name of a module of any shape" `Quick
-      reads_the_name_of_a_module_of_any_shape;
-    Alcotest.test_case "gives no name when the export count disagrees" `Quick
-      gives_no_name_when_the_export_count_disagrees;
-    Alcotest.test_case "gives no name for a module cut in a section" `Quick
-      gives_no_name_for_a_module_cut_in_a_section;
-    Alcotest.test_case
-      "gives no name for an export name that ends at its section" `Quick
-      gives_no_name_for_an_export_name_that_ends_at_its_section;
-    Alcotest.test_case "gives no name for bytes that are not a module" `Quick
-      gives_no_name_for_bytes_that_are_not_a_module;
-    Alcotest.test_case "keeps a base name that is the prefix alone" `Quick
-      keeps_a_base_name_that_is_the_prefix_alone;
-    Alcotest.test_case "places the end of a capture that ends before byte two"
-      `Quick places_the_end_of_a_capture_that_ends_before_byte_two;
-    Alcotest.test_case "places the end of a capture that ends at byte two"
-      `Quick places_the_end_of_a_capture_that_ends_at_byte_two;
     Alcotest.test_case "folds one tree over each file" `Quick
       folds_one_tree_over_each_file;
     Alcotest.test_case "folds the captures of the query" `Quick
