@@ -224,9 +224,10 @@ Three boundary rules apply in markdown:
 
 1. Two extents that touch never merge into one extent. An extent ends
    where the next declaration begins. When one tag-bearing node holds
-   two or more declarations, the extent of each declaration but the
-   last ends at the line before the tag line of the next declaration.
-   The extent of each later declaration starts at its own tag line.
+   two or more declarations, the extent of each declaration, except
+   the last, ends at the line before the tag line of the next
+   declaration. The extent of each later declaration starts at its own
+   tag line.
    The extent of the last declaration runs to the end that it would
    have alone.
 2. A declaration in a nested section removes that section from the

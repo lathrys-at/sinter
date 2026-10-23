@@ -153,11 +153,12 @@ Example:
 | `csh` | string | the commitment-set hash, as the text after this table gives it |
 | `declined` | bool | *derived* |
 
-The **commitment-set hash** (`csh`) is SHA-256 over the canonical bytes
-of the plan's commitment set ([vocabulary.md](vocabulary.md) section
-10.6). The canonical bytes are one JSON object in the canonical form
-of RFC 8785 (JCS) that section 2 uses, with no LF at the end. The
-object has two keys:
+The **commitment-set hash** (`csh`) is SHA-256 over canonical bytes
+that hold the plan's commitment set ([vocabulary.md](vocabulary.md)
+section 10.6): the promises, each with the effective scope of its
+step, and the plan scope. The canonical bytes are one JSON object in
+the canonical form of RFC 8785 (JCS) that section 2 uses, with no LF
+at the end. The object has two keys:
 
 - `promises`: an array with one object for each promise record of the
   plan (section 5). Each object has three keys: `word` and `target`,
