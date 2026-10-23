@@ -341,7 +341,9 @@ let uncovered_names_what_is_missing () =
          - @satisfies b v1\n\
          - @verifies c v1\n\
          - @satisfies c v1\n\
-         - @cites a\n" );
+         - @cites a\n\
+         - @satisfies gh/1 v1\n\
+         - @verifies nothing v1\n" );
     ]
     [
       "docs/a.md:3:1-3:7 | finding:uncovered:req:a | nothing satisfies it, and \
@@ -418,7 +420,11 @@ let scope_overlap_sits_at_the_later_step () =
          @req b\n\n\
          ## Four\n\n\
          @req b\n\
-         @req a\n" );
+         @req a\n\n\
+         ## Five\n\n\
+         @scope lib/a/**\n\
+         @req c\n\
+         @design a\n" );
     ]
     [
       ".plans/p.md:12:1-12:7 | finding:scope-overlap:step:p/two | this step \

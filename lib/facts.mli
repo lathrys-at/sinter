@@ -94,7 +94,9 @@ type ack = private {
   path : string;
   span : Markdown.span;  (** the tag line *)
   block : string;  (** the id of the declaration or the site of the block *)
-  target : string;  (** the text between the tag word and the hash *)
+  target : string;
+      (** the text between the tag word and the hash, without the spaces and
+          tabs at its ends; never empty *)
   hash : string;  (** the last token of the line *)
   block_index : int;
       (** the index of the block of the tag line in the blocks of its document

@@ -637,7 +637,13 @@ let ack_target target =
     if index < length && not (blank target.[index]) then token_end (index + 1)
     else index
   in
-  let stop = token_end 0 in
+  let stop =
+    token_end
+      (0
+      [@mutaml.skip
+        "the tag target of an ack never starts with a space or a tab, so the \
+         first token ends at the same place when the scan starts at 1"])
+  in
   let rec rest_start index =
     if index < length && blank target.[index] then rest_start (index + 1)
     else index
