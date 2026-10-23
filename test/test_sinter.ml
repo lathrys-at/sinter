@@ -54,6 +54,7 @@ let () =
       ("line index", Test_line_index.tests);
       ("tag line", Test_tag_line.tests);
       ("slug", Test_slug.tests);
+      ("markdown", Test_markdown.tests);
       ("toml raw", Test_toml_raw.tests);
       ("toml", Test_toml.tests);
       ("toml conformance", Test_toml_conformance.tests);
