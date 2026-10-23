@@ -555,6 +555,45 @@ let merge_base_names_a_bad_second_revision () =
     "the second" (Error (Git.Bad_revision "nope"))
     (Git.merge_base t "main" "nope")
 
+(* A revision to a commit. *)
+
+let commit_of_gives_the_commit_of_a_revision () =
+  let _, t = open_shared () in
+  Alcotest.(check (result string error))
+    "the parent of main"
+    (Ok (commit_id "main~1"))
+    (Git.commit_of t "main~1");
+  Alcotest.(check (result string error))
+    "a remote branch"
+    (Ok (commit_id "refs/remotes/origin/orig"))
+    (Git.commit_of t "origin/orig");
+  Alcotest.(check (result string error))
+    "an object id names its commit"
+    (Ok (commit_id "main~1"))
+    (Git.commit_of t (commit_id "main~1"))
+
+let commit_of_peels_an_annotated_tag () =
+  let repo = Git_fixture.copy (Git_fixture.shared ()) in
+  ignore
+    (Git_fixture.git repo
+       [ "tag"; "--annotate"; "--message=tag"; "first"; "main~1" ]);
+  match Git.open_repo ~env:(Git_fixture.env repo) (Git_fixture.root repo) with
+  | Error _ -> Alcotest.fail "the copy does not open"
+  | Ok t ->
+      Alcotest.(check (result string error))
+        "the tag names the commit it points at"
+        (Ok (commit_id "main~1"))
+        (Git.commit_of t "first")
+
+let commit_of_names_a_revision_that_is_no_commit () =
+  let _, t = open_shared () in
+  List.iter
+    (fun rev ->
+      Alcotest.(check (result string error))
+        (Printf.sprintf "%S" rev) (Error (Git.Bad_revision rev))
+        (Git.commit_of t rev))
+    [ "nope"; "main^{tree}"; ""; "--all"; "-"; "ma\000in" ]
+
 (* The diff. *)
 
 let quoted_name = "caf\xc3\xa9\tdoc one.txt"
@@ -787,6 +826,11 @@ let tests =
       (not_found "deep");
     case "resolve_target finds no branch of a name with a NUL byte"
       (not_found "ma\000in");
+    case "commit_of gives the commit of a revision"
+      commit_of_gives_the_commit_of_a_revision;
+    case "commit_of peels an annotated tag" commit_of_peels_an_annotated_tag;
+    case "commit_of names a revision that is no commit"
+      commit_of_names_a_revision_that_is_no_commit;
     case "merge_base gives the common ancestor"
       merge_base_gives_the_common_ancestor;
     case "merge_base of unrelated commits is an error"

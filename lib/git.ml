@@ -725,9 +725,8 @@ let answer t args decode =
   | Unix.WEXITED 1 -> Ok None
   | _ -> failed args status stderr
 
-(* [commit_of repo rev] is the object id of the commit that [rev] names. A
-   revision that starts with a hyphen names no commit here, so that git
-   never reads [rev] as an option, and nor does one that holds a NUL
+(* A revision that starts with a hyphen names no commit here, so that
+   git never reads [rev] as an option, and nor does one that holds a NUL
    byte, which no argument of a process can hold. *)
 let commit_of t rev =
   if rev = "" || rev.[0] = '-' || String.contains rev '\000' then
