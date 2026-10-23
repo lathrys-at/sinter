@@ -25,7 +25,14 @@ pub(crate) const KIND_MATCHES: u32 = 6;
 /// The `kind` field of a buffer that holds the error report of a tree.
 pub(crate) const KIND_ERROR_REPORT: u32 = 7;
 
+/// The `kind` field of a buffer that holds the response of an adapter.
+pub(crate) const KIND_RESPONSE: u32 = 8;
+
 pub(crate) fn put_u32(buffer: &mut Vec<u8>, value: u32) {
+    buffer.extend_from_slice(&value.to_le_bytes());
+}
+
+pub(crate) fn put_u64(buffer: &mut Vec<u8>, value: u64) {
     buffer.extend_from_slice(&value.to_le_bytes());
 }
 
@@ -80,6 +87,13 @@ mod tests {
     fn a_length_over_32_bits_is_refused_and_not_truncated() {
         assert_eq!(length_prefix(u32::MAX as usize + 1), Err(TooLong));
         assert_eq!(length_prefix(usize::MAX), Err(TooLong));
+    }
+
+    #[test]
+    fn a_u64_is_written_little_endian() {
+        let mut buffer = Vec::new();
+        put_u64(&mut buffer, 0x0102_0304_0506_0708);
+        assert_eq!(buffer, vec![8, 7, 6, 5, 4, 3, 2, 1]);
     }
 
     #[test]

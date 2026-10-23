@@ -25,6 +25,7 @@ compile_error!("the bridge needs unwinding panics; do not build it with panic = 
 use std::cell::RefCell;
 use std::ffi::{c_char, CStr, CString};
 
+mod adapter;
 mod buffer;
 mod failure;
 mod syntax;
@@ -32,6 +33,7 @@ mod toml_document;
 
 use buffer::{
     length_prefix, put_bytes, put_header, put_u32, set_count, KIND_CAPTURES, KIND_DIGEST,
+    KIND_RESPONSE,
 };
 use failure::{last_failure, set_failure, Failure};
 use sha2::{Digest, Sha256};
@@ -86,6 +88,13 @@ pub struct SinterBridgeEngine {
     parser: Parser,
     /// The runtime that compiled every grammar of this engine.
     grammar_engine: wasmtime::Engine,
+    /// The settings of `grammar_engine`.
+    config: wasmtime::Config,
+    /// The runtime of adapters, made on the first load of an adapter.
+    /// It counts fuel, and a runtime that counts fuel cannot run a
+    /// grammar, so it is a second runtime. It is made from a copy of
+    /// `config`, which shares the cache of compiled modules.
+    adapter_engine: Option<wasmtime::Engine>,
     /// The query that `sinter_bridge_run` compiled last.
     query: Option<CompiledQuery>,
 }
@@ -120,6 +129,43 @@ pub struct SinterBridgeTree {
 pub struct SinterBridgeQuery {
     query: Query,
     language: Language,
+}
+
+/// The limits of one instance of an adapter. The fields match
+/// `sinter_bridge_limits` in the C header.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct SinterBridgeLimits {
+    /// The units of fuel for everything that the instance runs.
+    fuel: u64,
+    /// The most bytes that all linear memories of the instance may hold
+    /// together.
+    memory: u64,
+}
+
+/// A runner adapter: a compiled module that passed the checks of its
+/// interface. The module holds a counted reference to its runtime, so
+/// the adapter stays valid after its engine is freed.
+pub struct SinterBridgeAdapter {
+    adapter: adapter::Adapter,
+}
+
+impl SinterBridgeEngine {
+    /// The runtime of adapters, made on the first call.
+    fn adapter_engine(&mut self) -> Result<wasmtime::Engine, Failure> {
+        if let Some(engine) = &self.adapter_engine {
+            return Ok(engine.clone());
+        }
+        let mut config = self.config.clone();
+        config.consume_fuel(true);
+        let engine = wasmtime::Engine::new(&config).map_err(|error| {
+            Failure::Internal(format!(
+                "cannot create the WebAssembly engine for adapters: {error}"
+            ))
+        })?;
+        self.adapter_engine = Some(engine.clone());
+        Ok(engine)
+    }
 }
 
 /// The result of one run. The fields match `sinter_bridge_result` in
@@ -246,6 +292,8 @@ pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
         Box::into_raw(Box::new(SinterBridgeEngine {
             parser,
             grammar_engine,
+            config,
+            adapter_engine: None,
             query: None,
         }))
     })
@@ -539,6 +587,131 @@ pub unsafe extern "C" fn sinter_bridge_query_run(
             &tree.tree,
             &tree.source,
         ))
+    })
+}
+
+/// Load a runner adapter from WebAssembly bytes, check its interface,
+/// and read its `sinter_interface` in a new instance under the limits.
+/// Returns null on failure.
+///
+/// # Safety
+///
+/// `engine` must be a live pointer from `sinter_bridge_engine_new`.
+/// `wasm` must point to `wasm_len` readable bytes, or be null when
+/// `wasm_len` is 0.
+#[no_mangle]
+pub unsafe extern "C" fn sinter_bridge_adapter_load(
+    engine: *mut SinterBridgeEngine,
+    wasm: *const u8,
+    wasm_len: usize,
+    limits: SinterBridgeLimits,
+) -> *mut SinterBridgeAdapter {
+    guard(std::ptr::null_mut(), move || {
+        if engine.is_null() || (wasm.is_null() && wasm_len != 0) {
+            return handle_of(Err(null_argument()));
+        }
+        // Safety: the caller gives a live engine, and wasm_len readable
+        // bytes at wasm.
+        let engine = unsafe { &mut *engine };
+        let bytes = unsafe { slice_of(wasm, wasm_len) };
+        handle_of(
+            engine
+                .adapter_engine()
+                .and_then(|runtime| adapter::load(&runtime, bytes, limits.fuel, limits.memory))
+                .map(|adapter| SinterBridgeAdapter { adapter }),
+        )
+    })
+}
+
+/// The version of the interface that the `sinter_interface` of an
+/// adapter gave when it loaded, read as unsigned. Gives 0 for a null
+/// pointer.
+///
+/// # Safety
+///
+/// `adapter` must be null or a live pointer from
+/// `sinter_bridge_adapter_load`.
+#[no_mangle]
+pub unsafe extern "C" fn sinter_bridge_adapter_interface(
+    adapter: *const SinterBridgeAdapter,
+) -> u32 {
+    guard(0, move || {
+        if adapter.is_null() {
+            return 0;
+        }
+        // Safety: the caller gives a live adapter.
+        unsafe { &*adapter }.adapter.interface
+    })
+}
+
+/// Free an adapter.
+///
+/// # Safety
+///
+/// `adapter` must be null, or a pointer that
+/// `sinter_bridge_adapter_load` returned and that was not freed before.
+#[no_mangle]
+pub unsafe extern "C" fn sinter_bridge_adapter_free(adapter: *mut SinterBridgeAdapter) {
+    // Safety: the caller passes a pointer from sinter_bridge_adapter_load
+    // and does not use it again.
+    guard((), move || unsafe { drop_handle(adapter) })
+}
+
+/// Call a function of an adapter, in a new instance under the limits,
+/// and give the response in a buffer of kind 8. `function` is 0 for
+/// `sinter_recognise` and 1 for `sinter_bind`. Returns null on failure.
+///
+/// # Safety
+///
+/// `adapter` must be a live pointer from `sinter_bridge_adapter_load`.
+/// `request` must point to `request_len` readable bytes and `report` to
+/// `report_len` readable bytes; either may be null when its length is
+/// 0.
+#[no_mangle]
+pub unsafe extern "C" fn sinter_bridge_adapter_call(
+    adapter: *const SinterBridgeAdapter,
+    function: u32,
+    request: *const u8,
+    request_len: usize,
+    report: *const u8,
+    report_len: usize,
+    limits: SinterBridgeLimits,
+) -> *mut SinterBridgeResult {
+    guard(std::ptr::null_mut(), move || {
+        if adapter.is_null()
+            || (request.is_null() && request_len != 0)
+            || (report.is_null() && report_len != 0)
+        {
+            return result_of(Err(null_argument()));
+        }
+        let Some(function) = adapter::Function::of_number(function) else {
+            return result_of(Err(Failure::Internal(format!(
+                "the adapter has no function {function}"
+            ))));
+        };
+        // Safety: the caller gives a live adapter, and the readable
+        // bytes of the request and of the report.
+        let adapter = unsafe { &*adapter };
+        let request = unsafe { slice_of(request, request_len) };
+        let report = unsafe { slice_of(report, report_len) };
+        result_of(
+            adapter::call(
+                &adapter.adapter,
+                function,
+                request,
+                report,
+                limits.fuel,
+                limits.memory,
+            )
+            .and_then(|response| {
+                let mut buffer = Vec::new();
+                put_header(&mut buffer, KIND_RESPONSE);
+                put_bytes(&mut buffer, &response)
+                    .map_err(|_| Failure::Internal("the response is 4 GiB or more".to_owned()))?;
+                set_count(&mut buffer, 1);
+                Ok(buffer)
+            }),
+        )
     })
 }
 

@@ -6,9 +6,10 @@
 The bridge is a Rust crate. It links the tree-sitter library and the
 wasmtime runtime. It loads a tree-sitter grammar that is compiled to
 WebAssembly, parses a source text with that grammar, and runs a
-tree-sitter query over the parse tree. It also computes the SHA-256
-digest of a byte string, and reads a TOML document with the crate
-`toml_edit`. It gives the results to OCaml through a C interface.
+tree-sitter query over the parse tree. It calls a function of a runner
+adapter, a WebAssembly module, with bytes in and bytes out, under
+limits of fuel and memory. It also computes the SHA-256 digest of a
+byte string, and reads a TOML document with the crate `toml_edit`. It gives the results to OCaml through a C interface.
 
 The bridge knows about grammars, source text, queries, captures,
 digests, and TOML documents. It holds no Sinter vocabulary. The
@@ -86,6 +87,10 @@ functions:
 | `sinter_bridge_query_new` | compile a query |
 | `sinter_bridge_query_free` | free a query |
 | `sinter_bridge_query_run` | run a query over a tree |
+| `sinter_bridge_adapter_load` | load and check a runner adapter |
+| `sinter_bridge_adapter_interface` | read the interface version of an adapter |
+| `sinter_bridge_adapter_free` | free an adapter |
+| `sinter_bridge_adapter_call` | call a function of an adapter |
 | `sinter_bridge_run` | parse a source text and run a query |
 | `sinter_bridge_sha256` | compute the SHA-256 digest of a byte string |
 | `sinter_bridge_toml_parse` | read a TOML document |
@@ -93,13 +98,13 @@ functions:
 | `sinter_bridge_last_error` | read the message of the last failure |
 | `sinter_bridge_last_failure` | read the last failure |
 
-A **handle** is an engine, a language, a tree, or a query. These rules
-govern the lifetimes:
+A **handle** is an engine, a language, a tree, a query, or an adapter.
+These rules govern the lifetimes:
 
 1. The caller owns every handle and every result that a function
    returns, and frees each with its own function.
-2. Each handle owns what it needs. A language, a tree, and a query
-   stay valid after the engine is freed. A tree and a query stay valid
+2. Each handle owns what it needs. A language, a tree, a query, and an
+   adapter stay valid after the engine is freed. A tree and a query stay valid
    after their language is freed. A tree holds a copy of the source
    text it was parsed from.
 3. A result owns its buffer. Read the buffer before you free the
@@ -115,6 +120,29 @@ applies to a match: `#eq?`, `#not-eq?`, `#any-eq?`, `#any-not-eq?`,
 `#match?`, `#not-match?`, `#any-match?`, `#any-not-match?`,
 `#any-of?`, and `#not-any-of?`. A query with any other predicate, or
 with a directive such as `#set!`, does not compile.
+
+## Runner adapters
+
+An adapter runs in its own wasmtime engine, which counts **fuel**: a
+number that wasmtime lowers as WebAssembly code runs. Most
+instructions cost one unit. The engine of grammars counts no fuel,
+because tree-sitter's own WebAssembly code then fails. The engine of
+adapters is made on the first load of an adapter, from a copy of the
+settings of the engine of grammars, so the two share wasmtime's cache
+of compiled modules.
+
+Each call of an adapter runs in a new instance of the module, under
+two limits that the caller gives. The limit of fuel covers the start
+of the instance, the two calls of `sinter_alloc`, and the call of the
+function. The limit of memory bounds the size of all linear memories
+of the instance together. A growth past the limit stops the call, and
+the failure gives the size that the bridge refused.
+
+The tables of an instance hold at most 1,048,576 elements together.
+wasmtime allocates one pointer in the host for each element, so
+without a bound one `table.grow` could take all the memory of the
+process. A growth past the bound fails inside the module: `table.grow`
+gives -1. A module whose tables start larger does not start.
 
 ## The result buffer
 
@@ -138,7 +166,7 @@ The header is 16 bytes.
 | offset | size | field | meaning |
 |---|---|---|---|
 | 0 | 4 | magic | the ASCII bytes `S`, `B`, `R`, `1` |
-| 4 | 4 | kind | `0` for captures, `1` for a parse tree, `2` for a digest, `3` for a TOML document, `4` for a TOML error, `5` for a failure, `6` for captures with match numbers, `7` for an error report |
+| 4 | 4 | kind | `0` for captures, `1` for a parse tree, `2` for a digest, `3` for a TOML document, `4` for a TOML error, `5` for a failure, `6` for captures with match numbers, `7` for an error report, `8` for the response of an adapter |
 | 8 | 4 | count | the number of records that follow |
 | 12 | 4 | reserved | always `0` |
 
@@ -250,6 +278,21 @@ that code.
 | 5 | tree-sitter does not compile the query | the kind, a u32: `0` syntax, `1` node type, `2` field, `3` capture, `4` predicate, `5` structure, `6` language; the row, the column, and the byte offset, three u32 fields; the message, u32 + bytes |
 | 6 | a pattern holds a predicate outside the ten above, or a directive | the operator without its `#`, u32 + bytes; the index of the pattern, its first byte, its row, and its column in bytes, four u32 fields |
 | 7 | the query and the tree come from different languages | none |
+| 8 | the module is not a valid adapter | the cause, a u32, and then a count and that many strings, each u32 + bytes; see below |
+| 9 | the adapter ran out of fuel | none |
+| 10 | the adapter trapped, or its instance did not start | the message, u32 + bytes |
+| 11 | the adapter asked for more memory than its limit | the size in bytes of all its memories that the bridge refused, an unsigned 64-bit integer, little-endian |
+| 12 | `sinter_alloc` gave 0, or a range outside `memory` | the call, a u32: `0` for the request, `1` for the report; the address and the length, two u32 fields; the size of `memory` in bytes, an unsigned 64-bit integer |
+| 13 | the response lies outside `memory` | the address and the length, two u32 fields; the size of `memory` in bytes, an unsigned 64-bit integer |
+
+The cause of code 8, and its strings:
+
+| cause | meaning | strings |
+|---|---|---|
+| 0 | wasmtime does not compile the module | one: the message of wasmtime |
+| 1 | the module imports something | one for each import: the module and the name of the import, joined by `.` |
+| 2 | the module lacks `memory` or one of the four functions | one: the name of the export |
+| 3 | an export has the wrong kind or the wrong type | one: the name of the export |
 
 The row and the column of code 5 count from 0. For the kind
 predicate, tree-sitter gives the row where the pattern starts, and the
@@ -301,6 +344,11 @@ a lowest error node can stand near such a node.
 | error nodes | count × (u32 + node) | each `ERROR` node and each `MISSING` node that no `ERROR` node holds, in the order of the text. The u32 before each node is `0` for an `ERROR` node and `1` for a `MISSING` node. The type of a `MISSING` node is the type of the node that is missing |
 | lowest | u32 | `1` when a node follows, else `0` |
 | node | a node | the first lowest error node in the order of the text; present when the flag is `1` |
+
+### An adapter response, when kind is 8
+
+The buffer holds one record: the bytes of the response, u32 + bytes.
+The bridge does not read them, and they need not be UTF-8.
 
 ## The wasm surface of a grammar
 

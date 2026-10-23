@@ -6,7 +6,7 @@
 
 use std::cell::RefCell;
 
-use crate::buffer::{put_bytes, put_header, put_u32, set_count, KIND_FAILURE};
+use crate::buffer::{put_bytes, put_header, put_u32, put_u64, set_count, KIND_FAILURE};
 
 /// Why a call of the bridge failed. Each variant has the code that the
 /// buffer of a failure gives it.
@@ -43,6 +43,28 @@ pub(crate) enum Failure {
     },
     /// Code 7: the query and the tree come from different languages.
     LanguageMismatch,
+    /// Code 8: the module is not a valid adapter.
+    AdapterInvalid { cause: u32, details: Vec<String> },
+    /// Code 9: the adapter used all of its fuel.
+    AdapterOutOfFuel,
+    /// Code 10: the adapter trapped, or its instance did not start.
+    AdapterTrap(String),
+    /// Code 11: the adapter asked for more memory than its limit. The
+    /// value is the size in bytes that the bridge refused.
+    AdapterMemoryLimit(u64),
+    /// Code 12: `sinter_alloc` gave 0, or a range outside `memory`.
+    AdapterAlloc {
+        call: u32,
+        address: u32,
+        length: u32,
+        memory_size: u64,
+    },
+    /// Code 13: the response lies outside `memory`.
+    AdapterResponse {
+        address: u32,
+        length: u32,
+        memory_size: u64,
+    },
 }
 
 /// The `kind` of a grammar that the WebAssembly parser rejects.
@@ -53,6 +75,20 @@ pub(crate) const WASM_COMPILE: u32 = 1;
 pub(crate) const WASM_INSTANTIATE: u32 = 2;
 /// The `kind` of any other failure to load a grammar.
 pub(crate) const WASM_OTHER: u32 = 3;
+
+/// The `cause` of a module that wasmtime does not compile.
+pub(crate) const CAUSE_NOT_A_MODULE: u32 = 0;
+/// The `cause` of a module that imports something.
+pub(crate) const CAUSE_IMPORTS: u32 = 1;
+/// The `cause` of a module that lacks one of the five exports.
+pub(crate) const CAUSE_MISSING_EXPORT: u32 = 2;
+/// The `cause` of a module whose export has the wrong type.
+pub(crate) const CAUSE_EXPORT_TYPE: u32 = 3;
+
+/// The `call` of a failed `sinter_alloc` for the request.
+pub(crate) const CALL_REQUEST: u32 = 0;
+/// The `call` of a failed `sinter_alloc` for the report.
+pub(crate) const CALL_REPORT: u32 = 1;
 
 /// Write a string of a failure. A string of 2^32 bytes or more does not
 /// fit the format, so a fixed text takes its place.
@@ -74,6 +110,12 @@ impl Failure {
             Failure::Query { .. } => 5,
             Failure::PredicateNotAllowed { .. } => 6,
             Failure::LanguageMismatch => 7,
+            Failure::AdapterInvalid { .. } => 8,
+            Failure::AdapterOutOfFuel => 9,
+            Failure::AdapterTrap(_) => 10,
+            Failure::AdapterMemoryLimit(_) => 11,
+            Failure::AdapterAlloc { .. } => 12,
+            Failure::AdapterResponse { .. } => 13,
         }
     }
 
@@ -83,13 +125,18 @@ impl Failure {
         put_header(&mut buffer, KIND_FAILURE);
         put_u32(&mut buffer, self.code());
         match self {
-            Failure::Internal(message) => put_text(&mut buffer, message),
+            Failure::Internal(message) | Failure::AdapterTrap(message) => {
+                put_text(&mut buffer, message)
+            }
             Failure::GrammarLoad { kind, message } => {
                 put_u32(&mut buffer, *kind);
                 put_text(&mut buffer, message);
             }
             Failure::LanguageVersion(version) => put_u32(&mut buffer, *version),
-            Failure::ParseUnfinished | Failure::SourceTooLong | Failure::LanguageMismatch => {}
+            Failure::ParseUnfinished
+            | Failure::SourceTooLong
+            | Failure::LanguageMismatch
+            | Failure::AdapterOutOfFuel => {}
             Failure::Query {
                 kind,
                 row,
@@ -113,6 +160,34 @@ impl Failure {
                 for value in [*pattern, *offset, *row, *column] {
                     put_u32(&mut buffer, value);
                 }
+            }
+            Failure::AdapterInvalid { cause, details } => {
+                put_u32(&mut buffer, *cause);
+                put_u32(&mut buffer, details.len() as u32);
+                for detail in details {
+                    put_text(&mut buffer, detail);
+                }
+            }
+            Failure::AdapterMemoryLimit(size) => put_u64(&mut buffer, *size),
+            Failure::AdapterAlloc {
+                call,
+                address,
+                length,
+                memory_size,
+            } => {
+                for value in [*call, *address, *length] {
+                    put_u32(&mut buffer, value);
+                }
+                put_u64(&mut buffer, *memory_size);
+            }
+            Failure::AdapterResponse {
+                address,
+                length,
+                memory_size,
+            } => {
+                put_u32(&mut buffer, *address);
+                put_u32(&mut buffer, *length);
+                put_u64(&mut buffer, *memory_size);
             }
         }
         set_count(&mut buffer, 1);
@@ -169,6 +244,24 @@ mod tests {
                 column: 0,
             },
             Failure::LanguageMismatch,
+            Failure::AdapterInvalid {
+                cause: 1,
+                details: vec![],
+            },
+            Failure::AdapterOutOfFuel,
+            Failure::AdapterTrap(String::new()),
+            Failure::AdapterMemoryLimit(0),
+            Failure::AdapterAlloc {
+                call: 0,
+                address: 0,
+                length: 0,
+                memory_size: 0,
+            },
+            Failure::AdapterResponse {
+                address: 0,
+                length: 0,
+                memory_size: 0,
+            },
         ];
         for (index, failure) in all.iter().enumerate() {
             assert_eq!(failure.code(), index as u32);
@@ -210,6 +303,46 @@ mod tests {
         let fields: Vec<u32> = (0..4).map(|i| u32_at(&buffer, 28 + 4 * i)).collect();
         assert_eq!(fields, vec![1, 9, 1, 2]);
         assert_eq!(buffer.len(), 44);
+    }
+
+    #[test]
+    fn an_invalid_adapter_holds_its_cause_and_a_list_of_strings() {
+        let buffer = Failure::AdapterInvalid {
+            cause: 1,
+            details: vec!["env.f".to_owned(), "env.g".to_owned()],
+        }
+        .buffer();
+        assert_eq!(u32_at(&buffer, 20), 1);
+        assert_eq!(u32_at(&buffer, 24), 2);
+        assert_eq!(u32_at(&buffer, 28), 5);
+        assert_eq!(&buffer[32..37], b"env.f");
+        assert_eq!(u32_at(&buffer, 37), 5);
+        assert_eq!(&buffer[41..], b"env.g");
+    }
+
+    #[test]
+    fn the_sizes_of_memory_are_written_in_64_bits() {
+        let buffer = Failure::AdapterMemoryLimit(1 << 32).buffer();
+        assert_eq!(&buffer[20..], &(1u64 << 32).to_le_bytes());
+        let buffer = Failure::AdapterAlloc {
+            call: 1,
+            address: 8,
+            length: 16,
+            memory_size: 65536,
+        }
+        .buffer();
+        let fields: Vec<u32> = (0..3).map(|i| u32_at(&buffer, 20 + 4 * i)).collect();
+        assert_eq!(fields, vec![1, 8, 16]);
+        assert_eq!(&buffer[32..], &65536u64.to_le_bytes());
+        let buffer = Failure::AdapterResponse {
+            address: 4,
+            length: 2,
+            memory_size: 3,
+        }
+        .buffer();
+        assert_eq!(u32_at(&buffer, 20), 4);
+        assert_eq!(u32_at(&buffer, 24), 2);
+        assert_eq!(&buffer[28..], &3u64.to_le_bytes());
     }
 
     #[test]

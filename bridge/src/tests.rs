@@ -4,7 +4,10 @@
 //! Tests of the C interface, through the C functions.
 
 use super::*;
-use crate::buffer::{KIND_ERROR_REPORT, KIND_FAILURE, KIND_MATCHES, KIND_TREE, MAGIC};
+use crate::adapter::tests::{Wasm, BIND, RECOGNISED};
+use crate::buffer::{
+    KIND_ERROR_REPORT, KIND_FAILURE, KIND_MATCHES, KIND_RESPONSE, KIND_TREE, MAGIC,
+};
 use crate::failure::WASM_PARSE;
 use std::path::Path;
 
@@ -722,6 +725,111 @@ fn a_panic_becomes_a_failure_and_not_an_abort() {
         last_failure(),
         Failure::Internal("the parser bridge stopped on an internal fault".to_owned())
     );
+}
+
+const LIMITS: SinterBridgeLimits = SinterBridgeLimits {
+    fuel: 1_000_000,
+    memory: 1 << 20,
+};
+
+fn load_adapter(
+    engine: *mut SinterBridgeEngine,
+    wasm: &[u8],
+) -> Result<*mut SinterBridgeAdapter, Failure> {
+    made(unsafe { sinter_bridge_adapter_load(engine, wasm.as_ptr(), wasm.len(), LIMITS) })
+}
+
+/// The response of a call of `function` of an adapter.
+fn call_adapter(
+    adapter: *const SinterBridgeAdapter,
+    function: u32,
+    report: &[u8],
+) -> Result<Vec<u8>, Failure> {
+    let request = b"{}";
+    let bytes = take(unsafe {
+        sinter_bridge_adapter_call(
+            adapter,
+            function,
+            request.as_ptr(),
+            request.len(),
+            report.as_ptr(),
+            report.len(),
+            LIMITS,
+        )
+    })?;
+    let (mut reader, count) = Reader::new(&bytes, KIND_RESPONSE);
+    assert_eq!(count, 1);
+    let len = reader.u32() as usize;
+    let response = bytes[reader.at..reader.at + len].to_vec();
+    reader.at += len;
+    reader.end();
+    Ok(response)
+}
+
+#[test]
+fn an_adapter_loads_and_answers_both_calls_through_the_c_interface() {
+    let engine = new_engine();
+    let adapter = load_adapter(engine, &Wasm::good().bytes()).unwrap();
+    assert_eq!(unsafe { sinter_bridge_adapter_interface(adapter) }, 1);
+    assert_eq!(call_adapter(adapter, 0, b"r").unwrap(), RECOGNISED);
+    assert_eq!(call_adapter(adapter, 1, b"\xffr").unwrap(), b"\xffr");
+    unsafe { sinter_bridge_adapter_free(adapter) };
+    unsafe { sinter_bridge_engine_free(engine) };
+}
+
+#[test]
+fn an_adapter_outlives_its_engine() {
+    let engine = new_engine();
+    let first = load_adapter(engine, &Wasm::good().bytes()).unwrap();
+    let second = load_adapter(engine, &Wasm::good().body(BIND, vec![0x00]).bytes()).unwrap();
+    unsafe { sinter_bridge_engine_free(engine) };
+    assert_eq!(call_adapter(first, 1, b"r").unwrap(), b"r");
+    assert!(matches!(
+        call_adapter(second, 1, b"r"),
+        Err(Failure::AdapterTrap(_))
+    ));
+    unsafe { sinter_bridge_adapter_free(first) };
+    unsafe { sinter_bridge_adapter_free(second) };
+}
+
+#[test]
+fn an_adapter_that_does_not_load_gives_its_failure() {
+    let engine = new_engine();
+    assert!(matches!(
+        load_adapter(engine, b"not wasm"),
+        Err(Failure::AdapterInvalid { cause: 0, .. })
+    ));
+    unsafe { sinter_bridge_engine_free(engine) };
+}
+
+#[test]
+fn an_adapter_call_with_a_bad_argument_fails() {
+    let null = Failure::Internal("a required argument is null".to_owned());
+    let engine = new_engine();
+    assert_eq!(load_adapter(std::ptr::null_mut(), b""), Err(null.clone()));
+    assert_eq!(
+        made(unsafe { sinter_bridge_adapter_load(engine, std::ptr::null(), 1, LIMITS) }),
+        Err(null.clone())
+    );
+    assert_eq!(call_adapter(std::ptr::null(), 0, b""), Err(null.clone()));
+    let adapter = load_adapter(engine, &Wasm::good().bytes()).unwrap();
+    let report = unsafe {
+        sinter_bridge_adapter_call(adapter, 0, std::ptr::null(), 1, std::ptr::null(), 0, LIMITS)
+    };
+    assert_eq!(take(report), Err(null));
+    assert_eq!(
+        call_adapter(adapter, 2, b""),
+        Err(Failure::Internal(
+            "the adapter has no function 2".to_owned()
+        ))
+    );
+    assert_eq!(
+        unsafe { sinter_bridge_adapter_interface(std::ptr::null()) },
+        0
+    );
+    unsafe { sinter_bridge_adapter_free(adapter) };
+    unsafe { sinter_bridge_adapter_free(std::ptr::null_mut()) };
+    unsafe { sinter_bridge_engine_free(engine) };
 }
 
 /// The kind and the bytes of the result of the old `sinter_bridge_run`.

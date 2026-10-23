@@ -104,6 +104,7 @@ HANDLE_OPERATIONS(engine, sinter_bridge_engine_free)
 HANDLE_OPERATIONS(language, sinter_bridge_language_free)
 HANDLE_OPERATIONS(tree, sinter_bridge_tree_free)
 HANDLE_OPERATIONS(query, sinter_bridge_query_free)
+HANDLE_OPERATIONS(adapter, sinter_bridge_adapter_free)
 
 #define Engine_val(v)                                                          \
   ((sinter_bridge_engine *)live_handle(v, "Sinter_bridge: the engine is closed"))
@@ -114,6 +115,17 @@ HANDLE_OPERATIONS(query, sinter_bridge_query_free)
   ((sinter_bridge_tree *)live_handle(v, "Sinter_bridge: the tree is closed"))
 #define Query_val(v)                                                           \
   ((sinter_bridge_query *)live_handle(v, "Sinter_bridge: the query is closed"))
+#define Adapter_val(v)                                                         \
+  ((sinter_bridge_adapter *)live_handle(                                       \
+      v, "Sinter_bridge: the adapter is closed"))
+
+/* The OCaml side passes limits of 0 or more. */
+static sinter_bridge_limits limits_of(value fuel, value memory) {
+  sinter_bridge_limits limits;
+  limits.fuel = (uint64_t)Long_val(fuel);
+  limits.memory = (uint64_t)Long_val(memory);
+  return limits;
+}
 
 CAMLprim value sinter_bridge_engine_new_stub(value unit) {
   CAMLparam1(unit);
@@ -189,6 +201,44 @@ CAMLprim value sinter_bridge_query_run_stub(value query, value tree) {
   sinter_bridge_tree *tree_pointer = Tree_val(tree);
   CAMLreturn(take_result(sinter_bridge_query_run(query_pointer, tree_pointer),
                          "the bridge could not run the query"));
+}
+
+CAMLprim value sinter_bridge_adapter_load_stub(value engine, value wasm,
+                                               value fuel, value memory) {
+  CAMLparam4(engine, wasm, fuel, memory);
+  sinter_bridge_adapter *adapter = sinter_bridge_adapter_load(
+      Engine_val(engine), (const uint8_t *)String_val(wasm),
+      caml_string_length(wasm), limits_of(fuel, memory));
+  if (adapter == NULL) {
+    raise_failure("the bridge could not load the adapter");
+  }
+  CAMLreturn(
+      alloc_handle(&adapter_operations, adapter, caml_string_length(wasm)));
+}
+
+CAMLprim value sinter_bridge_adapter_interface_stub(value adapter) {
+  CAMLparam1(adapter);
+  CAMLreturn(Val_long(sinter_bridge_adapter_interface(Adapter_val(adapter))));
+}
+
+CAMLprim value sinter_bridge_adapter_call_stub(value adapter, value function,
+                                               value request, value report,
+                                               value fuel, value memory) {
+  CAMLparam5(adapter, function, request, report, fuel);
+  CAMLxparam1(memory);
+  sinter_bridge_result *response = sinter_bridge_adapter_call(
+      Adapter_val(adapter), (uint32_t)Long_val(function),
+      (const uint8_t *)String_val(request), caml_string_length(request),
+      (const uint8_t *)String_val(report), caml_string_length(report),
+      limits_of(fuel, memory));
+  CAMLreturn(take_result(response, "the bridge could not call the adapter"));
+}
+
+/* The bytecode form of a stub of more than five arguments. */
+CAMLprim value sinter_bridge_adapter_call_byte(value *argv, int argn) {
+  (void)argn;
+  return sinter_bridge_adapter_call_stub(argv[0], argv[1], argv[2], argv[3],
+                                         argv[4], argv[5]);
 }
 
 CAMLprim value sinter_bridge_run_stub(value engine, value language,

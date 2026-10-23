@@ -7,16 +7,19 @@
 
    The bridge loads a tree-sitter grammar that is compiled to
    WebAssembly, parses a source text with that grammar, and runs a
-   tree-sitter query over the parse tree. It also computes the SHA-256
-   digest of a byte string, and reads a TOML document.
+   tree-sitter query over the parse tree. It calls a function of a
+   runner adapter, a WebAssembly module, with bytes in and bytes out,
+   under limits of fuel and memory. It also computes the SHA-256 digest
+   of a byte string, and reads a TOML document.
 
    Every function that can fail returns NULL. Call
    sinter_bridge_last_failure for the reason.
 
-   A handle is an engine, a language, a tree, or a query. Each handle
-   owns what it needs, so the handles can be freed in any order: a
-   language, a tree, and a query stay valid after the engine is freed,
-   and a tree and a query stay valid after their language is freed.
+   A handle is an engine, a language, a tree, a query, or an adapter.
+   Each handle owns what it needs, so the handles can be freed in any
+   order: a language, a tree, a query, and an adapter stay valid after
+   the engine is freed, and a tree and a query stay valid after their
+   language is freed.
    One thread at a time may use one handle. */
 
 #ifndef SINTER_BRIDGE_H
@@ -40,6 +43,20 @@ typedef struct sinter_bridge_tree sinter_bridge_tree;
 
 /* A compiled query. */
 typedef struct sinter_bridge_query sinter_bridge_query;
+
+/* A runner adapter: a compiled WebAssembly module that passed the
+   checks of its interface. */
+typedef struct sinter_bridge_adapter sinter_bridge_adapter;
+
+/* The limits of one instance of an adapter. */
+typedef struct sinter_bridge_limits {
+  /* The units of fuel for everything that the instance runs. Most
+     WebAssembly instructions cost one unit. */
+  uint64_t fuel;
+  /* The most bytes that all linear memories of the instance may hold
+     together. */
+  uint64_t memory;
+} sinter_bridge_limits;
 
 /* The result of one call. "data" points to "len" bytes. Write to no
    field: sinter_bridge_result_free reads all three. */
@@ -132,6 +149,58 @@ void sinter_bridge_query_free(sinter_bridge_query *query);
    languages. */
 sinter_bridge_result *sinter_bridge_query_run(const sinter_bridge_query *query,
                                               const sinter_bridge_tree *tree);
+
+/* Load a runner adapter.
+
+   "wasm" points to "wasm_len" bytes: the content of a .wasm file. The
+   bridge compiles the module once. It checks that the module imports
+   nothing and exports "memory", a 32-bit memory that is not shared,
+   and the functions sinter_interface () -> i32, sinter_alloc (i32) ->
+   i32, sinter_recognise (i32, i32, i32, i32) -> i64, and sinter_bind
+   (i32, i32, i32, i32) -> i64. Other exports are allowed. It then calls
+   sinter_interface in a new instance under "limits".
+
+   The call fails when the module is not valid, and when the instance
+   or sinter_interface fails as a call can fail. The caller owns the
+   returned handle and frees it with sinter_bridge_adapter_free. */
+sinter_bridge_adapter *sinter_bridge_adapter_load(sinter_bridge_engine *engine,
+                                                  const uint8_t *wasm,
+                                                  size_t wasm_len,
+                                                  sinter_bridge_limits limits);
+
+/* The version that sinter_interface gave when the adapter loaded, read
+   as unsigned. 0 for a NULL pointer. */
+uint32_t sinter_bridge_adapter_interface(const sinter_bridge_adapter *adapter);
+
+/* Free an adapter. A NULL pointer is allowed and does nothing. */
+void sinter_bridge_adapter_free(sinter_bridge_adapter *adapter);
+
+/* Call a function of an adapter, and give the bytes of its response,
+   in the encoding that README.md beside this crate defines.
+
+   "function" is 0 for sinter_recognise and 1 for sinter_bind.
+   "request" points to "request_len" bytes and "report" to "report_len"
+   bytes; either may be NULL when its length is 0.
+
+   The bridge makes a new instance of the module for the call. It calls
+   sinter_alloc for the length of the request and writes the request
+   there, then does the same for the report. It calls the function with
+   the address and the length of the request and of the report. The
+   high 32 bits of the result are the address of the response, and the
+   low 32 bits its length. Every address and every length is unsigned.
+   One limit of fuel covers the start of the instance, both calls of
+   sinter_alloc, and the function. The tables of the instance hold at
+   most 1,048,576 elements together; a growth past that bound fails
+   inside the module, as a growth past a declared maximum does.
+
+   The call fails when the module traps, when it runs out of fuel, when
+   it asks for more memory than the limit, when sinter_alloc gives 0 or
+   a range outside "memory", and when the response lies outside
+   "memory". */
+sinter_bridge_result *sinter_bridge_adapter_call(
+    const sinter_bridge_adapter *adapter, uint32_t function,
+    const uint8_t *request, size_t request_len, const uint8_t *report,
+    size_t report_len, sinter_bridge_limits limits);
 
 /* Parse a source text and run a query over the parse tree.
 
