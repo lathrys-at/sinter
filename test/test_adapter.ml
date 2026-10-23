@@ -258,6 +258,18 @@ let refuses_a_limit_below_zero () =
     (Invalid_argument "Sinter_bridge.Adapter: the memory limit is below 0")
     (fun () -> ignore (load ~memory:(-1) W.adapter))
 
+(* A limit of 0 is a limit, not a fault of the caller: the module runs
+   out of fuel at once, and its one page of memory is past the limit. *)
+let takes_a_limit_of_zero () =
+  Alcotest.check error_t "a load with no fuel" A.Out_of_fuel
+    (load_error ~fuel:0 W.adapter);
+  Alcotest.check error_t "a load with no memory" (A.Memory_limit page)
+    (load_error ~memory:0 W.adapter);
+  Alcotest.check error_t "a call with no fuel" A.Out_of_fuel
+    (call_error ~fuel:0 W.adapter);
+  Alcotest.check error_t "a call with no memory" (A.Memory_limit page)
+    (call_error ~memory:0 W.adapter)
+
 let an_adapter_outlives_its_engine () =
   let engine = Sinter_bridge.create () in
   let adapter =
@@ -342,6 +354,7 @@ let tests =
       makes_each_call_in_a_new_instance;
     Alcotest.test_case "refuses a limit below zero" `Quick
       refuses_a_limit_below_zero;
+    Alcotest.test_case "takes a limit of zero" `Quick takes_a_limit_of_zero;
     Alcotest.test_case "an adapter outlives its engine" `Quick
       an_adapter_outlives_its_engine;
     Alcotest.test_case "gives a message for each error" `Quick

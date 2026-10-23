@@ -76,7 +76,11 @@ let with_language state path use =
   | found -> (
       Option.iter
         (fun entry -> Sinter_bridge.Language.close entry.language)
-        found;
+        found
+      [@mutaml.skip
+        "the entry leaves the table on the next line, and t is abstract, so no \
+         road reaches the old grammar again; without this call the garbage \
+         collector frees it later, which no caller can observe"];
       Hashtbl.remove state.grammars path;
       let language =
         match Grammar.load state.engine ~path with
