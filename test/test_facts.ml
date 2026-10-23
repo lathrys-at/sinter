@@ -885,6 +885,249 @@ let every_record_is_canonical =
         (fun record -> String.length (Jsonl.to_string record) > 0)
         (records files))
 
+(* {1 The facts as values} *)
+
+let span_text (span : Markdown.span) =
+  Printf.sprintf "%d:%d-%d:%d" span.start.line span.start.column span.stop.line
+    span.stop.column
+
+let the_view_gives_each_declaration_in_order () =
+  let facts =
+    facts
+      [
+        ( "docs/b.md",
+          "# B\n\n@req b v2 Text.\n\n## C\n\n@deprecated\n@design c\n" );
+        ("docs/a.md", "# A\n\n@decision a\n@rejected\n");
+      ]
+  in
+  Alcotest.(check (list string))
+    "kind, slug, rev, path, span, status"
+    [
+      "req b 2 docs/b.md 3:1-3:16 -";
+      "design c 1 docs/b.md 8:1-8:10 deprecated";
+      "decision a 1 docs/a.md 3:1-3:12 rejected";
+    ]
+    (List.map
+       (fun (d : Facts.declaration) ->
+         String.concat " "
+           [
+             d.kind;
+             d.slug;
+             string_of_int d.rev;
+             d.path;
+             span_text d.span;
+             Option.value d.status ~default:"-";
+           ])
+       (Facts.declarations facts))
+
+let is_in_force_reads_status_and_supersession () =
+  let facts =
+    facts
+      [
+        ( "docs/a.md",
+          "# A\n\n\
+           @decision a\n\n\
+           ## B\n\n\
+           @decision b\n\
+           @supersedes a v1\n\n\
+           ## C\n\n\
+           @decision c\n\
+           @deferred\n" );
+      ]
+  in
+  Alcotest.(check (list bool))
+    "a is superseded, b is in force, c is deferred" [ false; true; false ]
+    (List.mapi
+       (fun index _ -> Facts.is_in_force facts index)
+       (Facts.declarations facts));
+  List.iter
+    (fun index ->
+      match Facts.is_in_force facts index with
+      | (_ : bool) -> Alcotest.failf "index %d: no exception" index
+      | exception Invalid_argument _ -> ())
+    [ -1; 3 ]
+
+let edges_give_what_their_targets_resolve_to () =
+  let facts =
+    facts
+      [
+        ( "docs/a.md",
+          "# A\n\n@req a v1\n@cites gh/4 Text.\n\n## B\n\n@refines a v1\n" );
+        ( "docs/b.md",
+          "# B\n\nProse.\n\n- @cites zz/1\n- @cites nothing\n- @cites bad!\n" );
+      ]
+  in
+  let target = function
+    | Facts.Declaration index -> Printf.sprintf "declaration %d" index
+    | Facts.Ref { ns; id } -> Printf.sprintf "ref %s %s" ns id
+    | Facts.Unresolved { dangling } -> Printf.sprintf "unresolved %b" dangling
+  in
+  Alcotest.(check (list string))
+    "word, path, span, src, source, target, rev, desc, block, resolution"
+    [
+      "cites docs/a.md 4:1-4:18 req:a 0 gh/4 - Text. 0 ref gh 4";
+      "refines docs/a.md 8:1-8:14 req:a 0 a 1  1 declaration 0";
+      "cites docs/b.md 5:3-5:14 site:docs/b.md#b - zz/1 -  0 unresolved false";
+      "cites docs/b.md 6:3-6:17 site:docs/b.md#b - nothing -  1 unresolved true";
+      "cites docs/b.md 7:3-7:14 site:docs/b.md#b - bad! -  2 unresolved false";
+    ]
+    (List.map
+       (fun ((edge : Facts.edge), resolution) ->
+         String.concat " "
+           [
+             edge.word;
+             edge.path;
+             span_text edge.span;
+             edge.src;
+             Option.fold ~none:"-" ~some:string_of_int edge.source;
+             edge.target_text;
+             Option.fold ~none:"-" ~some:string_of_int edge.rev;
+             edge.desc;
+             string_of_int edge.block_index;
+             target resolution;
+           ])
+       (Facts.edges facts))
+
+let acks_give_their_block () =
+  let facts =
+    facts
+      [
+        ( "docs/a.md",
+          "# A\n\n@req a v1\n\n## B\n\n@cites a\n@ack disendorsed a 1234abcd\n"
+        );
+        ( "docs/b.md",
+          "# B\n\nText.\n\n## C\n\n@cites a\n@ack disendorsed 89abcdef\n" );
+      ]
+  in
+  Alcotest.(check (list string))
+    "path, span, block, target, hash, block index"
+    [
+      "docs/a.md 8:1-8:28 req:a disendorsed a 1234abcd 1";
+      "docs/b.md 8:1-8:26 site:docs/b.md#c disendorsed 89abcdef 0";
+    ]
+    (List.map
+       (fun (ack : Facts.ack) ->
+         String.concat " "
+           [
+             ack.path;
+             span_text ack.span;
+             ack.block;
+             ack.target;
+             ack.hash;
+             string_of_int ack.block_index;
+           ])
+       (Facts.acks facts))
+
+let plans_give_their_steps_and_promises () =
+  let facts =
+    facts
+      [
+        ( ".plans/p.md",
+          "# P\n\n\
+           @plan p\n\
+           @scope lib/**, test/**\n\n\
+           ## One\n\n\
+           @scope lib/**\n\
+           @req a\n\
+           @verifies a\n\n\
+           ## Two\n\n\
+           @cites b\n" );
+      ]
+  in
+  Alcotest.(check (list string))
+    "plans, steps, promises"
+    [
+      "plan p .plans/p.md 3:1-3:8 P lib/**,test/**";
+      "step one 6:1-6:7 One lib/** effective lib/**";
+      "promise req a 9:1-9:7";
+      "promise verifies a 10:1-10:12";
+      "step two 12:1-12:7 Two - effective lib/**,test/**";
+      "promise cites b 14:1-14:9";
+    ]
+    (List.concat_map
+       (fun (plan : Facts.plan) ->
+         String.concat " "
+           [
+             "plan";
+             plan.slug;
+             plan.path;
+             span_text plan.span;
+             Option.value plan.title ~default:"-";
+             String.concat "," plan.scope;
+           ]
+         :: List.concat_map
+              (fun (step : Facts.step) ->
+                String.concat " "
+                  [
+                    "step";
+                    step.slug;
+                    span_text step.span;
+                    step.title;
+                    Option.fold ~none:"-" ~some:(String.concat ",")
+                      step.own_scope;
+                    "effective";
+                    String.concat "," (Facts.effective_scope plan step);
+                  ]
+                :: List.map
+                     (fun (promise : Facts.promise) ->
+                       String.concat " "
+                         [
+                           "promise";
+                           promise.word;
+                           promise.target;
+                           span_text promise.span;
+                         ])
+                     step.promises)
+              plan.steps)
+       (Facts.plans facts))
+
+let discharge_names_the_residue_and_the_one_in_scope () =
+  let facts =
+    facts ~extra:"[plan]\nlocations.decision = [\"docs/decisions/\"]\n"
+      [
+        ( ".plans/p.md",
+          "# P\n\n\
+           @plan p\n\
+           @scope lib/**\n\n\
+           ## One\n\n\
+           @req a\n\
+           @req b\n\
+           @decision c\n\
+           @cites a\n\
+           @verifies a\n" );
+        ("docs/a.md", "# A\n\n@req a v1\n@cites a v2\n\n## C\n\n@cites a v1\n");
+        ("lib/a.md", "# A\n\n@req a v1\n");
+        ("docs/decisions/c.md", "# C\n\n@decision c\n");
+        ("lib/b.md", "# B\n\n@verifies a v1\n");
+      ]
+  in
+  match Facts.plans facts with
+  | [ ({ steps = [ step ]; _ } as plan) ] ->
+      let residue (residue : Facts.residue) =
+        Printf.sprintf "%s %s %s" residue.id residue.path
+          (span_text residue.span)
+      in
+      Alcotest.(check (list string))
+        "by, then the residue"
+        [
+          "req a: lib/a.md | req:a docs/a.md 3:1-3:10, req:a lib/a.md 3:1-3:10";
+          "req b: - | ";
+          "decision c: docs/decisions/c.md | decision:c docs/decisions/c.md \
+           3:1-3:12";
+          "cites a: - | cites:req:a->a docs/a.md 8:1-8:12";
+          "verifies a: - | ";
+        ]
+        (List.map
+           (fun (promise : Facts.promise) ->
+             let discharge = Facts.discharge facts plan step promise in
+             Printf.sprintf "%s %s: %s | %s" promise.word promise.target
+               (Option.fold ~none:"-"
+                  ~some:(fun (by : Facts.residue) -> by.path)
+                  discharge.by)
+               (String.concat ", " (List.map residue discharge.residue)))
+           step.promises)
+  | _ -> Alcotest.fail "one plan with one step"
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -1001,6 +1244,17 @@ let tests =
       a_plan_tag_outside_plans_gives_no_plan;
     case "the index names the tree and the base"
       the_index_names_the_tree_and_the_base;
+    case "the view gives each declaration in order"
+      the_view_gives_each_declaration_in_order;
+    case "is_in_force reads status and supersession"
+      is_in_force_reads_status_and_supersession;
+    case "edges give what their targets resolve to"
+      edges_give_what_their_targets_resolve_to;
+    case "acks give their block" acks_give_their_block;
+    case "plans give their steps and promises"
+      plans_give_their_steps_and_promises;
+    case "discharge names the residue and the one in scope"
+      discharge_names_the_residue_and_the_one_in_scope;
     records_come_in_their_order;
     every_reference_names_a_record;
     every_record_is_canonical;

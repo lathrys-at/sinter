@@ -117,6 +117,7 @@ type edge = {
   target_text : string;
   rev : int option;
   desc : string;
+  block_index : int;
 }
 
 let edge_id (edge : edge) = edge.word ^ ":" ^ edge.src ^ "->" ^ edge.target_text
@@ -135,6 +136,7 @@ type ack = {
   block : string;
   target : string;
   hash : string;
+  block_index : int;
 }
 
 type promise = { word : string; target : string; span : Markdown.span }
@@ -159,6 +161,7 @@ type plan = {
 type t = {
   manifest : Manifest.t;
   declarations : declaration array;
+  inforce : bool array;  (** whether each declaration is in force *)
   edges : edge list;
   targets : target list;  (** the target of each edge, in the same order *)
   sites : site list;
@@ -287,6 +290,7 @@ let ordinary_file ~base ~path (document : Markdown.t) =
                 target_text;
                 rev = tag.rev;
                 desc = trim tag.desc;
+                block_index = tag.block;
               }
         | _ -> None)
       (Array.to_list tags)
@@ -335,7 +339,15 @@ let ordinary_file ~base ~path (document : Markdown.t) =
         in
         match (tag.word, block, ack_parts tag.rest) with
         | "ack", Some block, Some (target, hash) ->
-            Some { path; span = tag.span; block; target; hash }
+            Some
+              {
+                path;
+                span = tag.span;
+                block;
+                target;
+                hash;
+                block_index = tag.block;
+              }
         | _ -> None)
       (Array.to_list tags)
   in
@@ -486,45 +498,14 @@ let resolve manifest (declarations : declaration array) edges =
           | None -> Unresolved { dangling = Slug.is_valid text }))
     edges
 
-let make manifest files =
-  let ordinary, plans =
-    List.partition_map
-      (fun (path, document) ->
-        match plan_tag ~path document with
-        | Some index -> Right (plan_file ~path document index)
-        | None -> Left (path, document))
-      files
-  in
-  let declarations, edges, sites, acks, _ =
-    List.fold_left
-      (fun (declarations, edges, sites, acks, base) (path, document) ->
-        let d, e, s, a = ordinary_file ~base ~path document in
-        ( List.rev_append d declarations,
-          List.rev_append e edges,
-          List.rev_append s sites,
-          List.rev_append a acks,
-          base + List.length d ))
-      ([], [], [], [], 0) ordinary
-  in
-  let declarations = Array.of_list (List.rev declarations) in
-  let edges = List.rev edges in
-  {
-    manifest;
-    declarations;
-    edges;
-    targets = resolve manifest declarations edges;
-    sites = List.rev sites;
-    acks = List.rev acks;
-    plans = List.filter_map Fun.id plans;
-  }
-
-let needs_changes facts =
-  List.exists
-    (fun plan ->
-      List.exists (fun (step : step) -> step.promises = []) plan.steps)
-    facts.plans
-
 (* {1 In force} *)
+
+(* Whether the declaration [index] is approved: its kind needs no
+   approval. *)
+let approved manifest (declarations : declaration array) index =
+  match manifest_kind declarations.(index).kind with
+  | Some kind -> not (List.mem kind (Manifest.approval_required manifest))
+  | None -> true
 
 (* Whether each declaration is in force. A declaration is in force when
    it has no status and no live supersedes edge points at it. An edge is
@@ -579,6 +560,49 @@ let in_force ~approved declarations edges targets =
         value
   in
   Array.init count force
+
+let make manifest files =
+  let ordinary, plans =
+    List.partition_map
+      (fun (path, document) ->
+        match plan_tag ~path document with
+        | Some index -> Right (plan_file ~path document index)
+        | None -> Left (path, document))
+      files
+  in
+  let declarations, edges, sites, acks, _ =
+    List.fold_left
+      (fun (declarations, edges, sites, acks, base) (path, document) ->
+        let d, e, s, a = ordinary_file ~base ~path document in
+        ( List.rev_append d declarations,
+          List.rev_append e edges,
+          List.rev_append s sites,
+          List.rev_append a acks,
+          base + List.length d ))
+      ([], [], [], [], 0) ordinary
+  in
+  let declarations = Array.of_list (List.rev declarations) in
+  let edges = List.rev edges in
+  let targets = resolve manifest declarations edges in
+  {
+    manifest;
+    declarations;
+    inforce =
+      in_force
+        ~approved:(approved manifest declarations)
+        declarations edges targets;
+    edges;
+    targets;
+    sites = List.rev sites;
+    acks = List.rev acks;
+    plans = List.filter_map Fun.id plans;
+  }
+
+let needs_changes facts =
+  List.exists
+    (fun plan ->
+      List.exists (fun (step : step) -> step.promises = []) plan.steps)
+    facts.plans
 
 (* {1 Records} *)
 
@@ -769,12 +793,13 @@ let ack_records facts =
    when its kind is the word of the promise. An edge counts when its tag
    target resolves and it is not suspect. A [verifies] edge in markdown
    is at the rung orphan, which discharges no promise. *)
+type residue = { id : string; path : string; span : Markdown.span }
+
 let residue facts (promise : promise) =
-  let order (_, path_a, (span_a : Markdown.span))
-      (_, path_b, (span_b : Markdown.span)) =
+  let order (a : residue) (b : residue) =
     compare
-      (path_a, span_a.start.line, span_a.start.column)
-      (path_b, span_b.start.line, span_b.start.column)
+      (a.path, a.span.start.line, a.span.start.column)
+      (b.path, b.span.start.line, b.span.start.column)
   in
   let found =
     if List.mem promise.word declaration_words then
@@ -783,7 +808,7 @@ let residue facts (promise : promise) =
           if
             String.equal d.kind promise.word
             && String.equal d.slug promise.target
-          then Some (declaration_id d, d.path, d.span)
+          then Some { id = declaration_id d; path = d.path; span = d.span }
           else None)
         (Array.to_list facts.declarations)
     else if String.equal promise.word "verifies" then []
@@ -802,11 +827,27 @@ let residue facts (promise : promise) =
                String.equal edge.word promise.word
                && String.equal edge.target_text promise.target
                && discharges
-             then Some (edge_id edge, edge.path, edge.span)
+             then Some { id = edge_id edge; path = edge.path; span = edge.span }
              else None)
            facts.edges facts.targets)
   in
   List.sort order found
+
+type discharge = { by : residue option; residue : residue list }
+
+let discharge facts plan step (promise : promise) =
+  let in_scope = Path_set.mem (path_set (effective_scope plan step)) in
+  let residue = residue facts promise in
+  let location =
+    Option.bind (manifest_kind promise.word) (Manifest.location facts.manifest)
+  in
+  let inside (residue : residue) =
+    in_scope residue.path
+    || Option.fold ~none:false
+         ~some:(fun set -> Path_set.mem set residue.path)
+         location
+  in
+  { by = List.find_opt inside residue; residue }
 
 let plan_records facts ~changed plan =
   let required = Manifest.approval_required facts.manifest in
@@ -831,19 +872,7 @@ let plan_records facts ~changed plan =
     let promises =
       List.map
         (fun (promise : promise) ->
-          let residue = residue facts promise in
-          let location =
-            Option.bind
-              (manifest_kind promise.word)
-              (Manifest.location facts.manifest)
-          in
-          let inside (_, path, _) =
-            in_scope path
-            || Option.fold ~none:false
-                 ~some:(fun set -> Path_set.mem set path)
-                 location
-          in
-          let by = List.find_opt inside residue in
+          let { by; residue } = discharge facts plan step promise in
           (promise, by, residue <> [] && Option.is_none by))
         step.promises
     in
@@ -890,22 +919,15 @@ let plan_records facts ~changed plan =
                 ("met", Jsonl.bool (Option.is_some by));
                 ("out_of_scope", Jsonl.bool out_of_scope);
               ]
-             @ optional "by" (Option.map (fun (id, _, _) -> Jsonl.string id) by)
-             ))
+             @ optional "by"
+                 (Option.map (fun (by : residue) -> Jsonl.string by.id) by)))
          promises
   in
   plan_record :: List.concat_map step_records plan.steps
 
 let records facts ~changed =
-  let required = Manifest.approval_required facts.manifest in
-  let approved index =
-    match manifest_kind facts.declarations.(index).kind with
-    | Some kind -> not (List.mem kind required)
-    | None -> true
-  in
-  let inforce =
-    in_force ~approved facts.declarations facts.edges facts.targets
-  in
+  let approved = approved facts.manifest facts.declarations in
+  let inforce = facts.inforce in
   List.map
     (fun fact -> fact.record)
     (List.stable_sort
@@ -919,6 +941,12 @@ let records facts ~changed =
             List.concat_map (plan_records facts ~changed) facts.plans;
           ]))
   @ ref_records facts
+
+let declarations facts = Array.to_list facts.declarations
+let is_in_force facts index = facts.inforce.(index)
+let edges facts = List.combine facts.edges facts.targets
+let acks facts = facts.acks
+let plans facts = facts.plans
 
 let index ~tree ~base ~target_branch ~manifest ~tool =
   [
