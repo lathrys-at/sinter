@@ -73,6 +73,7 @@ let () =
       ("manifest", Test_manifest.tests);
       ("facts", Test_facts.tests);
       ("finding", Test_finding.tests);
+      ("findings", Test_findings.tests);
       ("scan", Test_scan.tests);
       ( "cases",
         Fixture.tests ~binary mode
