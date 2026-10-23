@@ -631,6 +631,18 @@ let a_control_character_of_a_plan_stays_in_one_line () =
             ("docs/z\001q.md", "# Z\n\n@req z v1\n");
           ]))
 
+let a_ref_with_no_namespace_or_no_id_says_so () =
+  check Finding_class.Bad_target
+    [ ("docs/a.md", "# A\n\n@cites /x\n@cites gh/\n@cites zz/\n") ]
+    [
+      "docs/a.md:3:1-3:10 | finding:bad-target:tag:docs/a.md@L3C1 | the ref /x \
+       names no namespace";
+      "docs/a.md:4:1-4:11 | finding:bad-target:tag:docs/a.md@L4C1 | the ref \
+       gh/ names no id";
+      "docs/a.md:5:1-5:11 | finding:bad-target:tag:docs/a.md@L5C1 | the \
+       manifest declares no ref namespace zz";
+    ]
+
 (* {1 The global rules} *)
 
 let a_historical_path_gives_no_finding () =
@@ -707,6 +719,8 @@ let tests =
       a_line_feed_in_a_path_stays_in_one_line;
     case "a control character of a plan stays in one line"
       a_control_character_of_a_plan_stays_in_one_line;
+    case "a ref with no namespace or no id says so"
+      a_ref_with_no_namespace_or_no_id_says_so;
     case "a historical path gives no finding" a_historical_path_gives_no_finding;
     case "the findings are sorted" the_findings_are_sorted;
   ]

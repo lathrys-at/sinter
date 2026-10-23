@@ -89,8 +89,12 @@ let target_problem manifest ~word target =
           String.sub target (slash + 1) (String.length target - slash - 1)
         in
         match List.assoc_opt ns (Manifest.ref_namespaces manifest) with
+        | None when String.equal ns "" ->
+            Some (Printf.sprintf "the ref %s names no namespace" target)
         | None ->
             Some (Printf.sprintf "the manifest declares no ref namespace %s" ns)
+        | Some _ when String.equal id "" ->
+            Some (Printf.sprintf "the ref %s names no id" target)
         | Some pattern ->
             if Id_pattern.matches pattern id then None
             else
