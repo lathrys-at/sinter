@@ -99,7 +99,9 @@ meaning here. Other toolchains own some tag words, for example
 other toolchains own. That list is the pack's **foreign vocabulary**.
 
 A **block** is a sequence of tag lines inside one tag-bearing node,
-plus the trailing prose that follows those tag lines (section 3.2).
+plus the trailing prose that follows those tag lines (section 3.2). A
+tag line right after a line that is not a tag line starts a new block.
+So one tag-bearing node can hold several blocks.
 
 ### 3.2 Descriptions
 
@@ -107,11 +109,11 @@ A tag's **inline description** is the rest of its own line, after the
 tag target and the revision.
 
 A block's **trailing prose** is the sequence of lines that follow the
-last tag line and that do not start with `@`. The sequence ends at a
-blank line or at the end of the tag-bearing node. Trailing prose
-belongs to the block's declaration when the block contains one. When
-the block contains no declaration, the trailing prose belongs to the
-block's first tag.
+last tag line of the block and that are not tag lines. The sequence
+ends at a blank line, at the next tag line, or at the end of the
+tag-bearing node. Trailing prose belongs to the block's declaration
+when the block contains one. When the block contains no declaration,
+the trailing prose belongs to the block's first tag.
 
 Descriptions are part of the extent (section 6). Tools use them when
 they compile human-facing documents. Descriptions have no other
@@ -217,7 +219,12 @@ An item's **extent** is the text that its revision covers.
 Three boundary rules apply in markdown:
 
 1. Two extents that touch never merge into one extent. An extent ends
-   where the next declaration begins.
+   where the next declaration begins. When one tag-bearing node holds
+   two or more declarations, the extent of each declaration but the
+   last ends at the line before the tag line of the next declaration.
+   The extent of each later declaration starts at its own tag line.
+   The extent of the last declaration runs to the end that it would
+   have alone.
 2. A declaration in a nested section removes that section from the
    enclosing extent. A declaration in a list item removes that list
    item, with its sub-items, from the enclosing extent.
@@ -244,7 +251,13 @@ text. To normalize, apply these steps in order:
 2. Remove trailing whitespace from every line.
 3. Use LF as the line ending.
 4. Drop every `@ack` line.
-5. On the declaration's own tag line, drop the text `@word slug vN`.
+5. Replace the declaration's own tag line with its inline description
+   (section 3.2), without the spaces and tabs at its start. This step
+   removes the tag word, the slug, the revision token when the line
+   has one, and the spaces and tabs before, between, and after them.
+   On the first line of a list item, it also removes the list marker
+   and the task marker. A tag line with no inline description becomes
+   an empty line, and the empty line stays.
 6. On every citation line, drop the `vN` token.
 7. End the text with one final LF.
 
@@ -260,10 +273,11 @@ hash:
 - a re-pin of a citation.
 
 A change of the indentation before the comment sigils, of trailing
-whitespace, or of the line endings also does not change the extent
-hash. Every other byte change changes the extent hash. For example,
-when the opening sigil of a block comment moves onto a line of its
-own, the extent gains an empty line, and its hash changes.
+whitespace, of the line endings, of an `@ack` line, or of the text
+that step 5 removes also does not change the extent hash. Every other
+byte change changes the extent hash. For example, when the opening
+sigil of a block comment moves onto a line of its own, the extent
+gains an empty line, and its hash changes.
 
 ### 6.2 The code hash
 

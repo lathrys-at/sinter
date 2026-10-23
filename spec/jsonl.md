@@ -112,13 +112,24 @@ conformance fixtures ship their own ledger and evidence.
 | `xh` | string | extent hash ([vocabulary.md](vocabulary.md) section 6.1) |
 | `xline` `xeline` | int | extent span |
 | `title` | string | a declaration in a markdown section: the heading text of the section ([vocabulary.md](vocabulary.md) section 10.3); otherwise omitted |
-| `desc` | string | the description; omitted when empty |
+| `desc` | string | the description, as the text after this table gives it; omitted when empty |
 | `status` | string | `deprecated`, `rejected`, or `deferred`; omitted when none |
 | `inforce` | bool | *derived* |
 | `approved` | bool | *derived* |
 | `stamp` | string | *derived*: the id of the ledger stamp that approves the declaration; omitted when none |
 | `approval_required` | bool | whether the kind needs approval: `ledger.approval-required` lists it ([manifest.md](manifest.md) section 11.1) |
 | `declined` | bool | *derived*: a live decline exists for `(slug, xh)` |
+
+Sinter makes the field `desc` in three steps:
+
+1. Take the inline description of the declaration's tag, and then each
+   line of the trailing prose of its block
+   ([vocabulary.md](vocabulary.md) section 3.2).
+2. Remove the spaces and tabs at both ends of each of these parts.
+   Leave out the inline description when it is then empty.
+3. Join the parts, with one LF between each two parts.
+
+When the result is empty, the record omits `desc`.
 
 Example:
 
@@ -137,8 +148,54 @@ Example:
 | `stamp` | string | *derived* |
 | `active` | bool | *derived* from the session |
 | `open` | bool | *derived*: the plan is open — the ledger holds no `discharged` entry and no `abandoned` entry for it ([ledger.md](ledger.md) section 10) |
-| `csh` | string | the commitment-set hash. It is SHA-256 over a canonical form that holds no step names: the sorted `(word, target, effective step scope)` triples, plus the plan scope. A step rename therefore does not change `csh`, and a decline bound to `csh` stays live after a step rename |
+| `csh` | string | the commitment-set hash, as the text after this table gives it |
 | `declined` | bool | *derived* |
+
+The **commitment-set hash** (`csh`) is SHA-256 over the canonical bytes
+of the plan's commitment set ([vocabulary.md](vocabulary.md) section
+10.6). The canonical bytes are one JSON object in the canonical form
+of RFC 8785 (JCS) that section 2 uses, with no LF at the end. The
+object has two keys:
+
+- `promises`: an array with one object for each promise record of the
+  plan (section 5). Each object has three keys: `word` and `target`,
+  as the promise record gives them, and `scope`, the effective scope
+  of the promise's step. Two promises of two steps can give two equal
+  objects. Then the array holds both objects.
+- `scope`: the globs of the plan's own `@scope` line, or an empty
+  array when the plan has no `@scope` line.
+
+Each array of globs holds each glob once, sorted in byte order. The
+promise objects are sorted by `word`, then by `target`, then by the
+canonical bytes of their `scope` array, each in byte order. The rules
+of section 2 for the values of a record do not apply to this object.
+
+The object holds no step slug, and a step with no promise adds nothing
+to it. So a step rename does not change `csh`, and a decline bound to
+`csh` stays live after a step rename.
+
+Example: this plan file gives the canonical bytes below it.
+
+```
+# Auth lockout
+
+@plan auth-lockout
+@scope src/**
+
+## Lock the account
+
+@scope src/auth/**
+@req auth-lockout
+@verifies auth-lockout
+
+## Record the policy
+
+@decision lockout-policy
+```
+
+```
+{"promises":[{"scope":["src/**"],"target":"lockout-policy","word":"decision"},{"scope":["src/auth/**"],"target":"auth-lockout","word":"req"},{"scope":["src/auth/**"],"target":"auth-lockout","word":"verifies"}],"scope":["src/**"]}
+```
 
 **`step`**
 
@@ -188,7 +245,7 @@ the span of the record is the first paragraph of the section.
 | `target` | string | the tag target as written: a slug or `ns/id` |
 | `dst` | string | *derived*: id of the fact that the tag target resolves to; omitted when dangling |
 | `rev` | int | the pinned revision; omitted when unpinned |
-| `desc` | string | inline description; omitted when empty |
+| `desc` | string | inline description, without the spaces and tabs at both ends; omitted when empty |
 | `suspect` `dangling` | bool | *derived* |
 | `rung` | string | `verifies` only, *derived*: `orphan`, `never-ran`, `failed`, `disconnected`, `unattributed`, or `passing` |
 | `live` | bool | `supersedes` only, *derived* |
