@@ -172,6 +172,31 @@ let a_kind_that_needs_approval_is_not_approved () =
   check_field records "decision:policy" "approved" (bool true);
   check_field records "decision:policy" "approval_required" (bool false)
 
+let each_kind_needs_approval_alone () =
+  let file =
+    ("a.md", "# A\n\n@req r\n\n# B\n\n@design d\n\n# C\n\n@decision c\n")
+  in
+  Alcotest.(check (list (list string)))
+    "the approved declarations under each setting"
+    [
+      [ "design:d"; "req:r" ];
+      [ "decision:c"; "req:r" ];
+      [ "decision:c"; "design:d" ];
+    ]
+    (List.map
+       (fun kind ->
+         let records =
+           records
+             ~extra:
+               (Printf.sprintf "[ledger]\napproval-required = [\"%s\"]\n" kind)
+             [ file ]
+         in
+         List.filter
+           (fun id ->
+             field "approved" (find id records) = Some (Jsonl.bool true))
+           (ids records))
+       [ "decision"; "design"; "req" ])
+
 let a_rule_or_a_bad_slug_gives_no_declaration () =
   Alcotest.(check (list string))
     "no record" []
@@ -602,6 +627,29 @@ let a_plan_at_level_0_with_no_scope_has_no_title () =
   check_field records "plan:p" "scope" (Some (Jsonl.strings []));
   check_field records "step:p/s" "scope" (Some (Jsonl.strings []))
 
+let a_scope_line_holds_globs_between_commas () =
+  let records =
+    records
+      [ (".plans/p.md", "# P\n\n@plan p\n@scope a/**,  b/ ,, !a/x/\t,\n") ]
+  in
+  check_field records "plan:p" "scope"
+    (Some (Jsonl.strings [ "a/**"; "b/"; "!a/x/" ]))
+
+let a_glob_with_a_bang_narrows_the_scope_of_a_step () =
+  let records path =
+    records
+      [
+        ( ".plans/p.md",
+          "# P\n\n@plan p\n\n## S\n\n@scope src/**, !src/gen/, [x\n@req r\n" );
+        (path, "# R\n\n@req r\n");
+      ]
+  in
+  check_field (records "src/a.md") "promise:step:p/s:req:r" "met" (bool true);
+  check_field (records "src/gen/a.md") "promise:step:p/s:req:r" "met"
+    (bool false);
+  check_field (records "src/gen/a.md") "promise:step:p/s:req:r" "out_of_scope"
+    (bool true)
+
 let a_plan_that_needs_approval_is_not_approved () =
   check_field
     (records ~extra:"[ledger]\napproval-required = [\"plan\"]\n"
@@ -792,6 +840,7 @@ let tests =
       a_status_tag_applies_to_the_declaration_whose_extent_holds_it;
     case "a kind that needs approval is not approved"
       a_kind_that_needs_approval_is_not_approved;
+    case "each kind needs approval alone" each_kind_needs_approval_alone;
     case "a rule or a bad slug gives no declaration"
       a_rule_or_a_bad_slug_gives_no_declaration;
     case "a citation takes its declaration as source"
@@ -858,6 +907,10 @@ let tests =
       a_level_2_section_with_no_plan_tag_is_no_step;
     case "a plan at level 0 with no scope has no title"
       a_plan_at_level_0_with_no_scope_has_no_title;
+    case "a scope line holds globs between commas"
+      a_scope_line_holds_globs_between_commas;
+    case "a glob with a bang narrows the scope of a step"
+      a_glob_with_a_bang_narrows_the_scope_of_a_step;
     case "a plan that needs approval is not approved"
       a_plan_that_needs_approval_is_not_approved;
     case "tags in a plan file give no declaration and no edge"

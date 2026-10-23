@@ -191,11 +191,16 @@ let ordinary_file ~base ~path (document : Markdown.t) =
     let tag = tags.(index) in
     tag.word ^ ":" ^ Option.value tag.target ~default:""
   in
-  let is_site = Array.make (Array.length document.sections) false in
+  (* [site.(index)] is the span of the first citation of the section
+     [index] outside every extent, when the section has one. *)
+  let site = Array.make (Array.length document.sections) None in
   Array.iter
     (fun (tag : Markdown.tag) ->
-      if is_citation tag && Option.is_none (owner tag) then
-        is_site.(tag.section) <- true)
+      if
+        is_citation tag
+        && Option.is_none (owner tag)
+        && Option.is_none site.(tag.section)
+      then site.(tag.section) <- Some tag.span)
     tags;
   (* The status of each declaration: the first status tag of its block
      whose extent is its own and whose word applies to its kind. *)
@@ -277,20 +282,17 @@ let ordinary_file ~base ~path (document : Markdown.t) =
   let sites =
     List.filter_map
       (fun index ->
-        if not is_site.(index) then None
-        else
-          let section = document.sections.(index) in
-          let span =
-            match
-              (section.first_paragraph, section.extent, section.heading)
-            with
-            | Some span, _, _ | None, Some span, _ -> span
-            | None, None, Some heading -> heading.span
-            | None, None, None ->
-                let start = { Markdown.line = 1; column = 1 } in
-                { Markdown.start; stop = start }
-          in
-          Some
+        Option.map
+          (fun citation ->
+            let section = document.sections.(index) in
+            (* A section that holds a citation outside every extent
+               keeps the line of the citation in its extent, so the
+               extent is never [None] here. *)
+            let span =
+              match (section.first_paragraph, section.extent) with
+              | Some span, _ | None, Some span -> span
+              | None, None -> citation
+            in
             {
               id = site_id path section;
               path;
@@ -305,6 +307,7 @@ let ordinary_file ~base ~path (document : Markdown.t) =
                     (span.start.line, span.stop.line))
                   section.extent;
             })
+          site.(index))
       (List.init (Array.length document.sections) Fun.id)
   in
   let acks =
@@ -314,7 +317,7 @@ let ordinary_file ~base ~path (document : Markdown.t) =
           match owner tag with
           | Some index -> Some (id_of index)
           | None ->
-              if is_site.(tag.section) then
+              if Option.is_some site.(tag.section) then
                 Some (site_id path document.sections.(tag.section))
               else None
         in
