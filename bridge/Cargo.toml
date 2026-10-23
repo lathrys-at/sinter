@@ -21,6 +21,8 @@ tree-sitter = { version = "0.25", features = ["wasm"] }
 wasmtime = { version = "29", default-features = false, features = ["cache", "cranelift", "runtime", "std"] }
 # @cites sha256
 sha2 = "=0.10.9"
+# @cites toml-reader
+toml_edit = "=0.22.27"
 
 [profile.release]
 opt-level = 2

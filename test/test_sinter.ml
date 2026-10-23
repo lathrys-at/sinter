@@ -36,12 +36,22 @@ let () =
       ("parse", Test_parse.tests);
       ("bridge", Test_bridge.tests);
       ("sha256", Test_sha256.tests);
+      ("toml raw", Test_toml_raw.tests);
+      ("toml", Test_toml.tests);
+      ("toml conformance", Test_toml_conformance.tests);
       ("request", Test_request.tests);
       ("serve", Test_serve.tests);
       ("cli", Test_cli.tests);
       ("git", Test_git.tests);
       ("git diff", Test_git_diff.tests);
       ("fixture", Test_fixture.tests);
+      ("edit distance", Test_edit_distance.tests);
+      ("glob", Test_glob.tests);
+      ("id pattern", Test_id_pattern.tests);
+      ("branch name", Test_branch_name.tests);
+      ("finding class", Test_finding_class.tests);
+      ("major minor", Test_major_minor.tests);
+      ("manifest", Test_manifest.tests);
       ( "cases",
         Fixture.tests ~binary mode
           ~on_write:(fun path -> written := path :: !written)

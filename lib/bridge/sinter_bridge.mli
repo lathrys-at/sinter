@@ -5,7 +5,8 @@
 
 (** The parser bridge. The bridge loads a tree-sitter grammar that is compiled
     to WebAssembly, parses a source text with it, and runs a tree-sitter query
-    over the parse tree. It also computes the SHA-256 digest of a string. *)
+    over the parse tree. It also computes the SHA-256 digest of a string, and
+    reads a TOML document. *)
 
 exception Error of string
 (** The bridge failed. The string is the message of the failure. *)
@@ -99,3 +100,87 @@ val decode_digest : string -> string
 
     @raise Error
       if [buffer] is not one whole digest result buffer of that layout. *)
+
+(** A TOML document as the bridge reads it: byte offsets into the text, and the
+    messages of the TOML reader that the bridge links. *)
+module Toml_raw : sig
+  type offset =
+    | Utc  (** [Z] *)
+    | Minutes of int  (** an offset from UTC, in minutes *)
+
+  type datetime = {
+    date : (int * int * int) option;  (** the year, the month, the day *)
+    time : (int * int * int * int) option;
+        (** the hour, the minute, the second, the nanosecond *)
+    offset : offset option;
+  }
+  (** A date, a time, or both. [offset] is [Some _] only when [date] and [time]
+      are both [Some _]. *)
+
+  type value =
+    | String of string
+    | Integer of int64
+    | Float of float
+    | Boolean of bool
+    | Datetime of datetime
+    | Array of item list
+    | Table of table  (** a table that a table header or a dotted key makes *)
+    | Inline_table of table
+    | Array_of_tables of table list
+
+  and item = {
+    value : value;
+    start_byte : int;  (** the start of the value, a byte offset from 0 *)
+    end_byte : int;  (** the end of the value, exclusive, a byte offset *)
+  }
+  (** A value and its byte span. The span of an inline table holds its braces. A
+      table that a header or a dotted key makes, and an array of tables, take
+      the byte span of their key. *)
+
+  and table = entry list
+  (** The keys of one table, in the order in which the reader holds them. *)
+
+  and entry = {
+    name : string;  (** the key, decoded *)
+    key_start : int;  (** the start of the key in the text, a byte offset *)
+    key_end : int;  (** the end of the key, exclusive, a byte offset *)
+    item : item;
+  }
+
+  (** Why a text is not a TOML document. *)
+  type error =
+    | Crate_error of { start_byte : int; end_byte : int; message : string }
+        (** the reader's own error: the byte span where it stopped, and its
+            message, which can hold more than one line *)
+    | Header_table of {
+        start_byte : int;
+        end_byte : int;
+        key : string;
+        table : string list;
+        array : bool;
+        rest : string list;
+      }
+        (** a dotted key, at the byte span [start_byte] to [end_byte] and
+            written [key], adds a key to the table that [table] names from the
+            top level, and a table header made that table. [array] is [true]
+            when the table is the last table of an array of tables. [rest] is
+            the names of the dotted key after that table. *)
+
+  val parse : string -> (table, error) result
+  (** [parse text] reads [text] as a TOML document and gives its top-level
+      table, or the error. Every byte offset in the result is inside [text].
+
+      @raise Error
+        if [text] is not UTF-8, if it is 4 GiB or more, or if the bridge stops
+        on an internal fault. *)
+
+  val decode : length:int -> string -> (table, error) result
+  (** [decode ~length buffer] is the document or the error that [buffer] holds.
+      [buffer] is one result buffer of a TOML text of [length] bytes, in the
+      layout that the bridge writes.
+
+      @raise Error
+        if [buffer] is not one whole TOML result buffer of that layout, if a
+        string in it is not valid UTF-8, or if a byte span in it ends before it
+        starts or runs past [length]. *)
+end

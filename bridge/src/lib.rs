@@ -9,7 +9,8 @@
 //! WebAssembly, parses a source text with that grammar, and runs a
 //! tree-sitter query over the parse tree. It returns the captures, or
 //! the parse tree as an S-expression, in one flat buffer. It also
-//! computes the SHA-256 digest of a byte string.
+//! computes the SHA-256 digest of a byte string, and reads a TOML
+//! document.
 
 #![warn(unsafe_op_in_unsafe_fn)]
 
@@ -24,7 +25,10 @@ compile_error!("the bridge needs unwinding panics; do not build it with panic = 
 use std::cell::RefCell;
 use std::ffi::{c_char, CStr, CString};
 
+mod toml_document;
+
 use sha2::{Digest, Sha256};
+use toml_edit::ImDocument;
 use tree_sitter::{
     wasmtime, Language, Node, Parser, Query, QueryCursor, StreamingIterator, WasmStore,
 };
@@ -538,21 +542,72 @@ pub unsafe extern "C" fn sinter_bridge_sha256(
     })
 }
 
+/// Read a TOML document. Returns null on failure.
+///
+/// A text that is not a TOML document is no failure: the result then
+/// holds the error.
+///
+/// # Safety
+///
+/// `text` must point to `len` readable bytes, or be null when `len` is
+/// 0.
+// @cites toml-reader
+#[no_mangle]
+pub unsafe extern "C" fn sinter_bridge_toml_parse(
+    text: *const u8,
+    len: usize,
+) -> *mut SinterBridgeResult {
+    guard(std::ptr::null_mut(), move || {
+        if text.is_null() && len != 0 {
+            set_error("a required argument is null");
+            return std::ptr::null_mut();
+        }
+        if length_prefix(len).is_err() {
+            set_error(
+                "the TOML text is 4 GiB or more, and the result buffer holds no offset that large",
+            );
+            return std::ptr::null_mut();
+        }
+        // Safety: the caller gives len readable bytes at text.
+        let bytes = unsafe { slice_of(text, len) };
+        let Ok(text) = std::str::from_utf8(bytes) else {
+            set_error("the TOML text is not UTF-8");
+            return std::ptr::null_mut();
+        };
+        let written = match ImDocument::parse(text) {
+            Ok(document) => toml_document::document_buffer(&document),
+            Err(error) => toml_document::error_buffer(text, &error),
+        };
+        match written {
+            Ok(buffer) => into_result(buffer),
+            Err(toml_document::WriteError::TooLong) => {
+                set_error("a string of the TOML document is 4 GiB or more, and the result buffer holds no string that large");
+                std::ptr::null_mut()
+            }
+            Err(toml_document::WriteError::NoSpan) => {
+                set_error("the TOML reader gave a key or a value no place in the text");
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
 /// Free a result.
 ///
 /// # Safety
 ///
-/// `result` must be null, or a pointer that `sinter_bridge_run` or
-/// `sinter_bridge_sha256` returned and that was not freed before. The
-/// buffer that `data` points to becomes invalid.
+/// `result` must be null, or a pointer that `sinter_bridge_run`,
+/// `sinter_bridge_sha256`, or `sinter_bridge_toml_parse` returned and
+/// that was not freed before. The buffer that `data` points to becomes
+/// invalid.
 #[no_mangle]
 pub unsafe extern "C" fn sinter_bridge_result_free(result: *mut SinterBridgeResult) {
     guard((), move || {
         if result.is_null() {
             return;
         }
-        // Safety: the caller passes a pointer from sinter_bridge_run or
-        // sinter_bridge_sha256 and does not use it again.
+        // Safety: the caller passes a pointer that a function of this
+        // bridge returned, and does not use it again.
         let result = unsafe { Box::from_raw(result) };
         drop(unsafe { Vec::from_raw_parts(result.data, result.len, result.capacity) });
     })
@@ -951,6 +1006,67 @@ mod tests {
             .unwrap()
             .to_owned();
         assert_eq!(message, "a required argument is null");
+    }
+
+    /// The message of the last failure on this thread.
+    fn last_error() -> String {
+        unsafe { CStr::from_ptr(sinter_bridge_last_error()) }
+            .to_str()
+            .unwrap()
+            .to_owned()
+    }
+
+    /// The kind and the bytes of the result of `sinter_bridge_toml_parse`.
+    fn toml_result(text: &[u8]) -> Option<(u32, Vec<u8>)> {
+        let result = unsafe { sinter_bridge_toml_parse(text.as_ptr(), text.len()) };
+        if result.is_null() {
+            return None;
+        }
+        let bytes = unsafe { std::slice::from_raw_parts((*result).data, (*result).len) }.to_vec();
+        unsafe { sinter_bridge_result_free(result) };
+        let mut at = 0;
+        assert_eq!(take_u32(&bytes, &mut at), MAGIC);
+        Some((take_u32(&bytes, &mut at), bytes))
+    }
+
+    #[test]
+    fn a_toml_document_and_a_toml_error_have_their_kinds() {
+        let (kind, bytes) = toml_result(b"a = 'x'\n").unwrap();
+        assert_eq!(kind, toml_document::KIND_TOML_DOCUMENT);
+        let mut at = 8;
+        assert_eq!(take_u32(&bytes, &mut at), 1);
+        at += 4;
+        assert_eq!(take_u32(&bytes, &mut at), 1);
+        assert_eq!(take_string(&bytes, &mut at), "a");
+        let (kind, _) = toml_result(b"a = \n").unwrap();
+        assert_eq!(kind, toml_document::KIND_TOML_ERROR);
+    }
+
+    #[test]
+    fn a_toml_text_that_is_not_utf_8_fails_with_a_message() {
+        set_error("");
+        assert!(toml_result(b"a = '\xff'").is_none());
+        assert_eq!(last_error(), "the TOML text is not UTF-8");
+    }
+
+    #[test]
+    fn a_null_toml_text_with_a_length_fails_with_a_message() {
+        set_error("");
+        let result = unsafe { sinter_bridge_toml_parse(std::ptr::null(), 1) };
+        assert!(result.is_null());
+        assert_eq!(last_error(), "a required argument is null");
+    }
+
+    /// The check on the length runs before any byte of the text is
+    /// read, so the pointer below is never dereferenced.
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn a_toml_text_of_four_gib_or_more_fails_with_a_message() {
+        let one_byte = [b'a'];
+        set_error("");
+        let result = unsafe { sinter_bridge_toml_parse(one_byte.as_ptr(), u32::MAX as usize + 1) };
+        assert!(result.is_null());
+        assert!(last_error().contains("4 GiB or more"));
     }
 
     #[test]
