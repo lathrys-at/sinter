@@ -3,7 +3,7 @@
 
 # Sinter specification: JSON Lines interchange schema
 
-Status: draft. The five specifications share one version; see [docs/versioning.md](../docs/versioning.md).
+Status: draft. The six specifications share one version; see [docs/versioning.md](../docs/versioning.md).
 
 ## 1. Introduction
 
@@ -79,7 +79,12 @@ Located facts add:
 | `eline` `ecol` | int | inclusive end line; exclusive end column |
 
 Lines and columns count from 1. A column counts Unicode code points
-(characters), not bytes.
+(characters), not bytes. A line ends at a line feed (LF). A carriage
+return (CR) right before an LF is part of the line ending. The
+characters of a line ending count in no column. A byte order mark at
+the start of a file is part of no line, and it counts in no column. A
+span ends at its last character that is not part of a line ending
+([packs.md](packs.md) section 5.3).
 
 For a declaration in markdown, this span is the tag line only. The
 record carries the extent separately, in `xline` and `xeline`: the
@@ -143,13 +148,16 @@ Example:
 | `done` | bool | *derived* |
 | `active` | bool | *derived* |
 
-**`test`**
+**`test`** — a test, or a group of tests, that a language pack finds
+([packs.md](packs.md) section 8). The span of the record is the node
+of the test or the group.
 
 | field | type | meaning |
 |---|---|---|
-| `name` | string | the ID the pack's strategy produced — the same string the test runner reports |
-| `parents` | array of string | `describe`-style ancestry where the language has it, outermost first |
-| `dline` `deline` | int | span of the test's body |
+| `name` | string | the test's own name, as the source writes it ([packs.md](packs.md) section 8.3) |
+| `parents` | array of string | the names of the groups that hold the test, outermost first |
+| `group` | bool | `true` for a group of tests; omitted for a test |
+| `dline` `deline` | int | the first and the last line of the node of the test |
 
 **`site`** — an anonymous source: a code site, or a markdown section
 that holds a citation outside every declaration's extent
@@ -158,10 +166,10 @@ the span of the record is the first paragraph of the section.
 
 | field | type | meaning |
 |---|---|---|
-| `name` | string | code: the name of the attached definition, when the pack captured a name. In a language that nests definitions, the name carries the path of the containing impls, classes, or modules. Markdown: the slug of the section's heading, numbered as [vocabulary.md](vocabulary.md) section 7.2 says; omitted for the section of level 0 |
-| `node` | string | code only: the tree-sitter node type of the attached definition, for example `function_item` |
-| `dline` `deline` | int | code only: the span of the attached definition's body. Coverage for this site is measured over this span |
-| `ch` | string | code only: code hash ([vocabulary.md](vocabulary.md) section 6.2) |
+| `name` | string | code: the name path of the attached definition, when the pack captured a name ([packs.md](packs.md) section 6.5). In a language that nests definitions, the name path carries the names of the containing impls, classes, or modules. Markdown: the slug of the section's heading, numbered as [vocabulary.md](vocabulary.md) section 7.2 says; omitted for the section of level 0 |
+| `node` | string | code only: the tree-sitter node type of the attachment target, for example `function_item`; omitted when the block attaches to nothing |
+| `dline` `deline` | int | code only: the span of the body of the attachment target. Coverage for this site is measured over this span. Omitted when the block attaches to nothing |
+| `ch` | string | code only: code hash ([vocabulary.md](vocabulary.md) section 6.2); omitted when the block attaches to nothing |
 | `xline` `xeline` | int | markdown only: the span of the extent, the whole section |
 
 ## 5. Edge, ref, and promise records
@@ -186,7 +194,7 @@ promise records instead.
 Example:
 
 ```json
-{"col":5,"dst":"req:auth-lockout","ecol":31,"eline":40,"id":"verifies:test:auth::lockout::tests::locks_after_five_failures->auth-lockout","kind":"verifies","line":40,"pack":"rust","path":"src/auth/lockout.rs","rev":2,"rung":"passing","src":"test:auth::lockout::tests::locks_after_five_failures","target":"auth-lockout","v":1}
+{"col":5,"dst":"req:auth-lockout","ecol":31,"eline":40,"id":"verifies:test:src/auth/lockout.rs#tests::locks_after_five_failures->auth-lockout","kind":"verifies","line":40,"pack":"rust","path":"src/auth/lockout.rs","rev":2,"rung":"passing","src":"test:src/auth/lockout.rs#tests::locks_after_five_failures","target":"auth-lockout","v":1}
 ```
 
 **`ref`** — unlocated; one record per distinct ref.
@@ -216,8 +224,8 @@ record.
 
 | field | type | meaning |
 |---|---|---|
-| `test` | string | test fact id. When a run binds to no test fact, the scanner emits no `run` fact for that run; the evidence import reports the unbound run instead |
-| `status` | string | `pass`, `fail`, `error`, or `skip`. When several artifacts report one test, the fact carries the worst status among them. The order, from best to worst, is: `pass`, `skip`, `fail`, `error` |
+| `test` | string | test fact id: a test or a group ([packs.md](packs.md) section 9.2). When a result binds to no test fact, the scanner emits no `run` fact for that result; the evidence import reports the unbound result instead |
+| `status` | string | `pass`, `fail`, `error`, or `skip`. When several results bind to one test, the fact carries the worst status among them. The order, from best to worst, is: `pass`, `skip`, `fail`, `error` |
 | `tree` | string | tree key |
 | `sources` | array of string | artifact paths, as imported |
 | `ms` | int | duration, when the artifact reports one |
@@ -375,8 +383,8 @@ uses a position in the file only when no content can name the fact.
 |---|---|---|
 | `req` `design` `decision` `plan` | `<kind>:<slug>` | |
 | `step` | `step:<plan>/<step>` | |
-| `test` | `test:<name>` | `name` can contain spaces |
-| `site` | `site:<path>#<name>` | code: the fallback `site:<path>@L<line>` is positional and carries `"positional":true`. Markdown: `<name>` is the slug of the section's heading; the section of level 0 has the id `site:<path>` |
+| `test` | `test:<path>#<full name>` | the full name joins the names of the test's name path with the pack's name separator ([packs.md](packs.md) section 8.3). When two tests of one file have one full name, each later one in the order of the file adds `#2`, `#3`, and so on. The full name can contain spaces |
+| `site` | `site:<path>#<name>` | code: `<name>` is the name path of the attached definition; when two sites of one file have one name, each later one in the order of the file adds `#2`, `#3`, and so on ([packs.md](packs.md) section 6.5). A code site with no name has the positional id `site:<path>@L<line>C<column>`, from the position where its run starts, and its record carries `"positional":true`. Markdown: `<name>` is the slug of the section's heading; the section of level 0 has the id `site:<path>` |
 | edges | `<kind>:<src-id>-><target>` | `<target>` is the tag target. Parse from the right: a tag target cannot contain `->` |
 | `ref` | `ref:<ns>/<id>` | |
 | `promise` | `promise:<step-id>:<word>:<target>` | parse from the right |
@@ -432,7 +440,7 @@ use the tiers of the `turn` gate.
 | `declines` | int (live, in scope) |
 | `leases` `blocked` | int |
 | `code_drift` | int |
-| `law_touched` | bool |
+| `config_changed` | bool (`true` when the diff changes the configuration: the check reports at least one `config-changed` finding, [manifest.md](manifest.md) section 14.4) |
 
 ## 11. Conformance
 

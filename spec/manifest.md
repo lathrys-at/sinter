@@ -3,7 +3,7 @@
 
 # Sinter specification: manifest format
 
-Status: draft. The five specifications share one version; see [docs/versioning.md](../docs/versioning.md).
+Status: draft. The six specifications share one version; see [docs/versioning.md](../docs/versioning.md).
 
 ## 1. Introduction
 
@@ -135,7 +135,7 @@ tables, and each table holds the settings of one part of Sinter:
 | table | part of Sinter | what its settings decide |
 |---|---|---|
 | top level | every part | the version of the specifications; the target branch |
-| `[scan]` | the scanner | which files each pack reads; which refs resolve |
+| `[scan]` | the scanner | which files each pack reads; which test runners write the reports for its tests; which refs resolve |
 | `[check]` | findings | which facts can make findings; the tier of each built-in finding class |
 | `[plan]` | the plan check and promise discharge | which changes need a plan step; where a promised declaration can be met |
 | `[ledger]` | approval and the ledger | which kinds need approval; where the commands that write the ledger refuse |
@@ -171,6 +171,8 @@ the key (section 5).
 | `target` | string | `"main"` | the base of a diff | 6 | 1.0 |
 | `scan.packs.<name>.files` | path set | none: required for each pack | the scanner: the files of pack `<name>` | 8.1 | 1.0 |
 | `scan.packs.<name>.version` | string | none: required for each fetched pack; an error on `markdown` | the scanner: the release of pack `<name>` | 8.1 | 1.0 |
+| `scan.packs.<name>.runners` | array of strings: runner names | empty: the pack has no runner; an error on `markdown` | test evidence: the runners whose reports bind to the tests of pack `<name>` | 8.1 | 1.0 |
+| `scan.packs.<name>.<runner>.<key>` | the type that the descriptor of pack `<name>` gives the runner setting `<key>` | the default that the descriptor gives | test evidence: the runner setting `<key>` of the runner `<runner>` | 8.1 | 1.0 |
 | `scan.refs.<ns>` | string: an id pattern | absent: the namespace `<ns>` does not exist | the scanner and findings: which refs resolve | 8.3 | 1.0 |
 | `check.rollout-cap` | boolean | `false` | findings: tiers | 9.3 | 1.0 |
 | `check.historical` | path set | empty, with one built-in member | findings: which facts can make findings | 9.4 | 1.0 |
@@ -264,6 +266,7 @@ sinter: sinter.toml:8:15: 'rollout-cap' takes true or false, not a string
 sinter: sinter.toml:4:1: the dotted key 'b.ct' adds a key to the table 'a.b', which a table header made; write 'ct' under the header [a.b]
 sinter: sinter.toml:1:8: this manifest needs specification 1.2, and this sinter implements 1.1; install a newer sinter
 sinter: sinter.toml:5:1: the pack markdown is built into sinter and takes no version
+sinter: sinter.toml:7:29: the pack typescript has no runner 'jest'; its runners are vitest
 sinter: sinter.toml:12:1: 'config-changed' takes no tier; it always reports and never blocks
 sinter: sinter.toml:13:1: 'bad-scope' takes no tier at the gate 'target'
 sinter: sinter.toml:6:12: '.' is not in the id pattern language; put it in a class, for example [.]
@@ -433,9 +436,11 @@ manifest holds no other list of paths to leave out.
 
 ### 8.1 Packs
 
-A **pack** is the support for one language that Sinter loads: a
-grammar, and the queries that find the tag-bearing nodes in it
-([vocabulary.md](vocabulary.md) section 2). The name of a pack matches
+A **pack** is the support for one language that Sinter loads: one or
+more grammars; the queries that find the tag-bearing nodes
+([vocabulary.md](vocabulary.md) section 2), the definitions, and the
+tests of a file; and optional runner adapters. [packs.md](packs.md)
+defines the format of a pack. The name of a pack matches
 `[a-z][a-z0-9]*(-[a-z0-9]+)*`.
 
 `scan.packs.<name>.files` is a path set. The **files of a pack** are
@@ -447,7 +452,7 @@ least one pack.
 The pack `markdown` is built into the tool. Every other pack is a
 **fetched pack**: the command `sinter pack add` fetches it, and the
 lock file `sinter.lock` at the repository root fixes its bytes by
-their hash.
+their hash ([packs.md](packs.md) section 12.4).
 
 `scan.packs.<name>.version` names the release of a fetched pack that
 the repository uses. The value has the form `MAJOR.MINOR` of section 5.
@@ -457,11 +462,35 @@ pack. The pack `markdown` takes no `version`, and the key on it is an
 error.
 
 When a pack that the manifest names is not available to the tool, a
-command that reads the repository stops with exit code 3.
+command that reads the repository stops with exit code 3
+([packs.md](packs.md) section 12.5).
+
+`scan.packs.<name>.runners` is an array of runner names. A **runner**
+is a test runner whose reports Sinter binds to the tests of the pack
+([packs.md](packs.md) section 9). Each member is a runner that the
+descriptor of the pack lists, and no member occurs twice. One runner
+name stands in the `runners` of one pack at most. A runner name is
+never `files`, `version`, or `runners`. The default is
+empty: Sinter binds no report to the tests of the pack. The pack
+`markdown` has no runner, and the key on it is an error.
+
+`scan.packs.<name>.<runner>.<key>` sets the runner setting `<key>` of
+the runner `<runner>`. A **runner setting** is a key that the
+descriptor of the pack defines for the runner, with its type and its
+default value ([packs.md](packs.md) section 3.5). `<runner>` is a
+member of `scan.packs.<name>.runners`. The tool checks the names, the
+types, and the values of these keys against the descriptor when it
+loads the pack. It reports each error as section 4.2 says, and the
+command stops with exit code 3.
+
+`sinter evidence import` gives each report to the adapters of the
+runners that the manifest names. When the adapters of two runners
+recognise one report, the command stops with exit code 3 and asks for
+the option `--runner <name>` ([packs.md](packs.md) section 9.1).
 
 ### 8.2 Checks on the tree
 
-Two checks need the tree. Each check applies to every tree that a
+Three checks need the tree. Each check applies to every tree that a
 command reads. When a check fails, the command stops with exit code 3.
 
 1. **A file in two packs.** A file is in the files of two packs. The
@@ -469,6 +498,10 @@ command reads. When a check fails, the command stops with exit code 3.
 2. **A plan file that the pack `markdown` does not read.** A file of
    the file set matches `.plans/**/*.md`, and it is not in the files of
    the pack `markdown`. The message names the file.
+3. **A file that no grammar of its pack reads.** A file is in the
+   files of a fetched pack, and its name matches the `names` of no
+   grammar of the pack ([packs.md](packs.md) section 3.3). The message
+   names the file and the pack.
 
 ### 8.3 Ref namespaces
 
@@ -857,7 +890,9 @@ of the set has an id and a value, by the rules of sections 14.1 and
    a member that is also built in.
 
 `spec` has no entry. On the base side, only the key paths of section
-3.2 count, and only the values of the type that each key takes.
+3.2 count, and only the values of the type that each key takes. The
+type of a key `scan.packs.<name>.<runner>.<key>` is the type that the
+descriptor of the pack of the working tree gives it.
 
 **A change.** An id that is in one comparison set only is a change. An
 id whose two values differ is a change. Comments, blank lines, the
@@ -901,6 +936,8 @@ does not mean "reports more findings".
 | `target` | | | each change |
 | `scan.packs.<name>.files` | a plain glob added; a `!` glob removed | a plain glob removed; a `!` glob added | |
 | `scan.packs.<name>.version` | | | each change |
+| `scan.packs.<name>.runners` | | | each change |
+| `scan.packs.<name>.<runner>.<key>` | | | each change |
 | `scan.refs.<ns>` | a namespace removed | a namespace added | a pattern changed |
 | `check.rollout-cap` | `true` to `false` | `false` to `true` | |
 | `check.tiers.<gate>.<class>` | the tier that applies rises | the tier that applies falls | the tier that applies stays the same |
@@ -1012,6 +1049,7 @@ spec = "1.0"
 packs.markdown.files = ["**/*.md", "!test/fixtures/"]
 packs.typescript.files = ["**/*.ts", "!**/*.d.ts"]
 packs.typescript.version = "1.0"
+packs.typescript.runners = ["vitest"]
 refs.gh = "[1-9][0-9]*"
 refs.jira = "[A-Z]+-[1-9][0-9]*"
 
