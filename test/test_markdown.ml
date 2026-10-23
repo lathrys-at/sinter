@@ -167,6 +167,13 @@ let headings_give_text_slug_and_name =
        11:4-11:18 parent 9 first - extent 11:1-11:18";
     ]
 
+(* A run of # with no space after it, a run of seven, a line indented by
+   four spaces, and a setext heading open no section. The indented line
+   continues the paragraph. *)
+let only_atx_headings_open_sections =
+  check_structure "#NoSpace\n####### Seven\n    # Code\n\nText\n===\n"
+    [ "section 0 level 0 parent - first 1:1-3:11 extent 1:1-6:4" ]
+
 (* A heading in a block quote or a list item opens no section. Nothing
    in a block quote is read, and a paragraph after a heading in a list
    item is not the first paragraph of the item. *)
@@ -943,6 +950,8 @@ let tests =
       text_that_is_not_utf_8_gives_its_offset;
     Alcotest.test_case "headings give text, slug, and name" `Quick
       headings_give_text_slug_and_name;
+    Alcotest.test_case "only ATX headings open sections" `Quick
+      only_atx_headings_open_sections;
     Alcotest.test_case "block quotes and list items open no section" `Quick
       containers_open_no_section;
     Alcotest.test_case "the first block must be a paragraph" `Quick
