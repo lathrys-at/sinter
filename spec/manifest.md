@@ -426,6 +426,11 @@ that tree.
 - In both trees, Sinter does not read inside a submodule. It leaves
   each symbolic link out of the file set, and it does not follow a
   symbolic link.
+- In both trees, a file whose path is not valid UTF-8 is not in the
+  file set. The command prints one warning to stderr for each such
+  path. The warning gives the path with each byte that is not part of
+  a valid UTF-8 character written as `\x` and two lowercase hex
+  digits, for example `docs/caf\xe9.md`.
 
 Sinter reads a file only when the file is in the file set and in the
 files of a pack (section 8.1). A `!` glob in the files of a pack is

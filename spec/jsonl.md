@@ -37,10 +37,12 @@ The schema restricts values so that JCS stays trivial to implement:
 - **Value types:** string; integer in `[-(2^53-1), 2^53-1]`; boolean;
   or an array of those. No floats, no nulls, no nested objects. An
   absent value is an omitted key, never `null`.
-- **Strings:** the scanner normalizes strings that come from the text
-  of a governed file to Unicode NFC. It does not normalize ids, paths,
-  the strings of the manifest, or the strings of the front matter of a
-  rule file ([manifest.md](manifest.md) sections 2.2 and 15).
+- **Strings:** Sinter writes a string that comes from the text of a
+  file as the file holds it. It does not normalize Unicode in a string
+  of a governed file, of the manifest, or of the front matter of a
+  rule file ([manifest.md](manifest.md) sections 2.2 and 15). Tools
+  compare strings by their bytes: two strings are equal only when
+  their bytes are equal.
 - **Paths** are repository-relative, with forward slashes and no
   leading `./`.
 - **Hashes** are lowercase hex. An extent hash (`xh`) is 64 hex
@@ -146,7 +148,7 @@ Example:
 | `scope` | array of string | plan-level globs |
 | `approved` | bool | *derived*: the plan is approved ([algebra.md](algebra.md) section 6.5) |
 | `stamp` | string | *derived* |
-| `active` | bool | *derived* from the session |
+| `active` | bool | *derived* from the session; `false` when there is no session |
 | `open` | bool | *derived*: the plan is open — the ledger holds no `discharged` entry and no `abandoned` entry for it ([ledger.md](ledger.md) section 10) |
 | `csh` | string | the commitment-set hash, as the text after this table gives it |
 | `declined` | bool | *derived* |
@@ -208,7 +210,7 @@ Example: this plan file gives the canonical bytes below it.
 | `refactor` | bool | the step has no promises |
 | `met` `total` | int | *derived* promise counts |
 | `done` | bool | *derived* |
-| `active` | bool | *derived* |
+| `active` | bool | *derived* from the session; `false` when there is no session |
 
 **`test`** — a test, or a group of tests, that a language pack finds
 ([packs.md](packs.md) section 8). The span of the record is the node
