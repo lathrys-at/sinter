@@ -283,8 +283,9 @@ let check_cmd =
          or that takes no tier at the gate, reports nothing. Without \
          $(b,--gate), the command reports every finding, with no tier.";
       `P
-        "The command names the base on standard error, and each warning goes \
-         to standard error.";
+        "In text form, the command names the base on standard error; with \
+         $(b,--json), the index record names it. Each warning goes to standard \
+         error.";
     ]
   in
   let exits_doc =
