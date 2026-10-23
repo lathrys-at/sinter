@@ -384,11 +384,19 @@ let bad_scope_names_the_globs_outside_the_plan () =
   check Finding_class.Bad_scope
     [
       (".plans/p.md", "# P\n\n@plan p\n\n## S\n\n@scope a/**\n@req a\n");
-      (".plans/q.md", "# Q\n\n@plan q\n@scope **\n\n## S\n\n@scope a/**, b/c\n");
+      ( ".plans/q.md",
+        "# Q\n\n@plan q\n@scope **\n\n## S\n\n@scope a/**, b/c, b/, x/?\n" );
+      ( ".plans/r.md",
+        "# R\n\n@plan r\n@scope a/?, pkg/*\n\n## S\n\n@scope a/b, pkg/, pkg/a\n"
+      );
     ]
     [
       ".plans/p.md:5:1-5:5 | finding:bad-scope:step:p/s | the scope of the \
        plan does not hold a/**";
+      ".plans/q.md:6:1-6:5 | finding:bad-scope:step:q/s | the scope of the \
+       plan does not hold x/?";
+      ".plans/r.md:6:1-6:5 | finding:bad-scope:step:r/s | the scope of the \
+       plan does not hold a/b, pkg/";
     ]
 
 let scope_overlap_sits_at_the_later_step () =

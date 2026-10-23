@@ -459,54 +459,36 @@ let plain scope =
 (* [glob] with [**] after a [/] at its end, which means the same. *)
 let full glob = if String.ends_with ~suffix:"/" glob then glob ^ "**" else glob
 
-(* The paths that a literal path prefix [p] names a folder of: [p] and
-   each of its leading parts, by names. *)
-let leading_parts path =
-  let names = String.split_on_char '/' path in
-  List.init (List.length names) (fun count ->
-      String.concat "/" (List.filteri (fun index _ -> index <= count) names))
-
 (* Whether the glob [inner] is contained in the glob [outer] by the
-   rule of glob containment: [inner] equals [outer]; or [inner] is a
-   literal path that [outer] matches; or [inner] is a literal path
-   prefix whose folder [outer] holds whole; or [outer] is [<g>/**] and
-   [inner] is [<g>/] and more segments. A glob that ends with [/] is
-   read as the same glob with [**] added. A glob that is not valid is
+   rule of glob containment, where a glob that ends with [/] reads as
+   the same glob with [**] added, and [**] holds every valid glob.
+   [inner] is contained when it equals [outer]; when it is a literal
+   path that [outer] matches; when it is a literal path prefix [<p>/]
+   and [outer] is [<g>/**] and matches [<p>/x], so that [<g>] matches
+   [<p>] or a leading part of it; or when [outer] is [<g>/**] and
+   [inner] is [<g>/] and more segments. A glob that is not valid is
    contained only in itself. *)
 let contained inner outer =
   let inner_full = full inner and outer_full = full outer in
+  let folder =
+    if String.ends_with ~suffix:"/**" outer_full then
+      Some (String.sub outer_full 0 (String.length outer_full - 3))
+    else None
+  in
   String.equal inner_full outer_full
   ||
-  match Glob.of_string outer_full with
-  | Error _ -> false
-  | Ok outer_glob -> (
-      match Glob.of_string inner_full with
-      | Error _ -> false
-      | Ok _ -> (
-          let literal = not (String.contains inner '*') in
-          let folder =
-            (* [outer] is [<g>/**] or [**]: the part [<g>], or [""]. *)
-            if String.equal outer_full "**" then Some ""
-            else if String.ends_with ~suffix:"/**" outer_full then
-              Some (String.sub outer_full 0 (String.length outer_full - 3))
-            else None
-          in
-          if literal && not (String.ends_with ~suffix:"/" inner) then
-            Glob.matches outer_glob inner
-          else
-            match folder with
-            | None -> false
-            | Some "" -> true
-            | Some prefix -> (
-                String.starts_with ~prefix:(prefix ^ "/") inner
-                ||
-                match Glob.of_string prefix with
-                | Error _ -> false
-                | Ok prefix_glob ->
-                    literal
-                    && List.exists (Glob.matches prefix_glob)
-                         (leading_parts
-                            (String.sub inner 0 (String.length inner - 1))))))
+  match (Glob.of_string inner_full, Glob.of_string outer_full) with
+  | Ok _, Ok outer_glob ->
+      String.equal outer_full "**"
+      ||
+      if String.contains inner '*' then
+        Option.fold ~none:false
+          ~some:(fun prefix -> String.starts_with ~prefix:(prefix ^ "/") inner)
+          folder
+      else if String.ends_with ~suffix:"/" inner then
+        Option.is_some folder && Glob.matches outer_glob (inner ^ "x")
+      else Glob.matches outer_glob inner
+  | Error _, _ | _, Error _ -> false
 
 let bad_scopes facts =
   List.concat_map
