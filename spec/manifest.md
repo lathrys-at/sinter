@@ -88,9 +88,12 @@ z = 9
 ct = 1
 ```
 
-A dotted key can pass through a table that a header made, when the
-key goes into a new table below it. Under `[a]` in the first file,
-`b.x.y = 1` is valid, because no header made the table `a.b.x`.
+A dotted key can pass through a table that a header made only as a
+table above the one it names, when the key goes into a new table
+below it. Under `[a]` in the first file, `b.x.y = 1` is valid: the
+header on line 1 made the table `a.b` only as a table above `a.b.c`,
+and no header made the table `a.b.x`. But `b.c.x = 1` is an error,
+because the header on line 1 names the table `a.b.c` itself.
 
 ### 2.4 Commands that need a manifest
 
