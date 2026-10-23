@@ -463,7 +463,8 @@ let the_hash_of_an_ack_follows_its_last_blank () =
     records
       [
         ( "a.md",
-          "# A\n\n@req a\n@ack x y\tH1 \t\n\n# B\n\n@req b\n@ack p\tq R2\n" );
+          "# A\n\n@req a\n@ack x y\tH1 \t\n\n# B\n\n@req b\n@ack p\tq \t R2\n"
+        );
       ]
   in
   check_field records "ack:req:a:x y" "hash" (str "H1");

@@ -47,14 +47,13 @@ let ack_parts rest =
     | (Some _ as one), None | None, (Some _ as one) -> one
     | None, None -> None
   in
+  (* [text.[0]] is not blank, so the search back stops after it. *)
+  let rec target_end index =
+    if is_blank text.[index - 1] then target_end (index - 1) else index
+  in
   Option.map
     (fun blank ->
-      ( trim
-          (String.sub text 0
-             (blank
-             [@mutaml.skip
-               "the byte at [blank] is a space or a tab, which trim removes, \
-                so a target that takes one byte more is the same"])),
+      ( String.sub text 0 (target_end blank),
         String.sub text (blank + 1) (String.length text - blank - 1) ))
     blank
 
