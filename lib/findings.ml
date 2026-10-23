@@ -309,60 +309,76 @@ let suspect facts =
       | _ -> None)
     (Facts.edges facts)
 
+(* A node that the search of [components] has reached: the number of
+   its arrival, the lowest number that it reaches, and whether it is on
+   the stack of the search. *)
+type visit = { number : int; mutable low : int; mutable on_stack : bool }
+
+(* A call of the search: the nodes that the search still starts from,
+   or a node, its visit, and the successors that it has yet to visit.
+   The caller of a call is the call after it. *)
+type call = Start of int list | Visit of int * visit * int list
+
 (* The strongly connected components of the graph whose node [n] has
    the successors [successors.(n)], by Tarjan's algorithm with a stack
    of calls held in a list: each component once, in no fixed order. The
    time is linear in the number of nodes and edges. *)
 let components successors =
-  let count = Array.length successors in
-  let index = Array.make count None in
-  let low = Array.make count 0 in
-  let on_stack = Array.make count false in
-  let next = ref 0 in
+  let visits = Array.make (Array.length successors) None in
+  let next =
+    ref
+      (0
+      [@mutaml.skip
+        "the numbers of arrival only order the nodes, so every first number \
+         gives the same components"])
+  in
   let stack = ref [] in
   let found = ref [] in
   let enter node =
-    index.(node) <- Some !next;
-    low.(node) <- !next;
+    let visit = { number = !next; low = !next; on_stack = true } in
+    visits.(node) <- Some visit;
     incr next;
-    stack := node :: !stack;
-    on_stack.(node) <- true
+    stack := (node, visit) :: !stack;
+    visit
   in
   (* The component whose root is [root], taken off the stack, which
      holds [root]. *)
   let rec pop root members =
     match !stack with
     | [] -> members
-    | node :: rest ->
+    | (node, visit) :: rest ->
         stack := rest;
-        on_stack.(node) <- false;
+        visit.on_stack <- false;
         if node = root then node :: members else pop root (node :: members)
   in
-  (* Each call is a node and the successors that it has yet to visit;
-     the caller of a call is the call after it. *)
   let rec run = function
     | [] -> ()
-    | (node, successor :: rest) :: calls -> (
-        match index.(successor) with
+    | Start [] :: calls -> run calls
+    | Start (node :: rest) :: calls -> (
+        match visits.(node) with
+        | Some _ -> run (Start rest :: calls)
         | None ->
-            enter successor;
-            run ((successor, successors.(successor)) :: (node, rest) :: calls)
-        | Some position ->
-            if on_stack.(successor) then low.(node) <- min low.(node) position;
-            run ((node, rest) :: calls))
-    | (node, []) :: calls ->
+            let visit = enter node in
+            run (Visit (node, visit, successors.(node)) :: Start rest :: calls))
+    | Visit (node, visit, successor :: rest) :: calls -> (
+        match visits.(successor) with
+        | Some reached ->
+            if reached.on_stack then visit.low <- min visit.low reached.number;
+            run (Visit (node, visit, rest) :: calls)
+        | None ->
+            let reached = enter successor in
+            run
+              (Visit (successor, reached, successors.(successor))
+              :: Visit (node, visit, rest)
+              :: calls))
+    | Visit (node, visit, []) :: calls ->
         (match calls with
-        | (caller, _) :: _ -> low.(caller) <- min low.(caller) low.(node)
-        | [] -> ());
-        if index.(node) = Some low.(node) then found := pop node [] :: !found;
+        | Visit (_, caller, _) :: _ -> caller.low <- min caller.low visit.low
+        | Start _ :: _ | [] -> ());
+        if visit.low = visit.number then found := pop node [] :: !found;
         run calls
   in
-  Array.iteri
-    (fun node _ ->
-      if Option.is_none index.(node) then (
-        enter node;
-        run [ (node, successors.(node)) ]))
-    successors;
+  run [ Start (List.init (Array.length successors) Fun.id) ];
   !found
 
 let cycles facts =
