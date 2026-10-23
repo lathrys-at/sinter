@@ -62,6 +62,12 @@ let stamp path =
   | stats -> Some (stats.st_size, stats.st_mtime)
   | exception Unix.Unix_error _ -> None
 
+(* Take the grammar of the file at [path] out of the table, and free
+   the grammar that the table held for it, if any. *)
+let forget state path found =
+  Hashtbl.remove state.grammars path;
+  Option.iter (fun entry -> Sinter_bridge.Language.close entry.language) found
+
 (* Run [use] on the grammar of the file at [path], loaded once and
    kept. The loop reads the stamp before it reads the file, so a file
    that changes during the load is loaded again on the next request.
@@ -74,14 +80,7 @@ let with_language state path use =
   | Some entry when now = Some (entry.size, entry.modified) ->
       use entry.language
   | found -> (
-      Option.iter
-        (fun entry -> Sinter_bridge.Language.close entry.language)
-        found
-      [@mutaml.skip
-        "the entry leaves the table on the next line, and t is abstract, so no \
-         road reaches the old grammar again; without this call the garbage \
-         collector frees it later, which no caller can observe"];
-      Hashtbl.remove state.grammars path;
+      forget state path found;
       let language =
         match Grammar.load state.engine ~path with
         | Ok language -> language

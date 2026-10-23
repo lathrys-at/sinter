@@ -32,14 +32,18 @@ val captures :
     the text of the file and the captures, in the order of their matches. The
     tree is freed before the function returns.
 
-    @raise Invalid_argument if [language], its engine, or [query] is closed. *)
+    @raise Invalid_argument if [language], its engine, or [query] is closed.
+    @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
 
 val tree : Sinter_bridge.Language.t -> path:string -> (string, error) result
 (** [tree language ~path] reads the source file at [path] as UTF-8 text, parses
     it with [language], and gives the tree as an S-expression. The tree is freed
     before the function returns.
 
-    @raise Invalid_argument if [language] or its engine is closed. *)
+    @raise Invalid_argument if [language] or its engine is closed.
+    @raise Sinter_bridge.Error
+      if the S-expression is 2^32 bytes or more, or if the bridge stops on an
+      internal fault. *)
 
 val message : path:string -> error -> string
 (** [message ~path error] says why the file at [path] gives no result, for the

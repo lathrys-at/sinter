@@ -79,7 +79,8 @@ module Language : sig
       result, and frees it with {!close} or leaves it to the garbage collector.
 
       @raise Invalid_argument
-        if [name] holds a NUL byte, or if [engine] is closed. *)
+        if [name] holds a NUL byte, or if [engine] is closed.
+      @raise Error if the bridge stops on an internal fault. *)
 
   val close : t -> unit
   (** [close language] frees the grammar. Every later call that takes [language]
@@ -131,7 +132,8 @@ module Tree : sig
       engine of [language]. The text need not be UTF-8. The caller owns the
       result, and frees it with {!close} or leaves it to the garbage collector.
 
-      @raise Invalid_argument if [language] or its engine is closed. *)
+      @raise Invalid_argument if [language] or its engine is closed.
+      @raise Error if the bridge stops on an internal fault. *)
 
   val close : t -> unit
   (** [close tree] frees the tree. Every later call that takes [tree] raises
@@ -143,13 +145,16 @@ module Tree : sig
       is valid UTF-8.
 
       @raise Invalid_argument if [tree] is closed.
-      @raise Error if the S-expression is 2^32 bytes or more. *)
+      @raise Error
+        if the S-expression is 2^32 bytes or more, or if the bridge stops on an
+        internal fault. *)
 
   val errors : t -> report
   (** [errors tree] is the parse failures of [tree]. It walks down only into
       nodes whose error flag is set.
 
-      @raise Invalid_argument if [tree] is closed. *)
+      @raise Invalid_argument if [tree] is closed.
+      @raise Error if the bridge stops on an internal fault. *)
 
   val message : error -> string
   (** [message error] says why the parse gave no tree, for the person who runs
@@ -181,8 +186,9 @@ module Query : sig
         offset : int;  (** a byte offset into the query text *)
         message : string;  (** the message of tree-sitter *)
       }
-        (** tree-sitter refuses the query. For [Predicate], the position is the
-            start of the pattern; for [Language], it is 0. *)
+        (** tree-sitter refuses the query. For [Predicate], the row is the row
+            where the pattern starts, and the column and the offset are 0. For
+            [Language], all three are 0. *)
     | Not_allowed of {
         operator : string;
             (** the predicate or the directive, without its [#], for example
@@ -224,7 +230,8 @@ module Query : sig
       of a [.scm] file, for [language]. The caller owns the result, and frees it
       with {!close} or leaves it to the garbage collector.
 
-      @raise Invalid_argument if [language] is closed. *)
+      @raise Invalid_argument if [language] is closed.
+      @raise Error if the bridge stops on an internal fault. *)
 
   val close : t -> unit
   (** [close query] frees the query. Every later call that takes [query] raises
@@ -235,7 +242,8 @@ module Query : sig
       of their matches, and in the order of the pattern inside one match. A
       match that captures nothing gives no capture and no number.
 
-      @raise Invalid_argument if [query] or [tree] is closed. *)
+      @raise Invalid_argument if [query] or [tree] is closed.
+      @raise Error if the bridge stops on an internal fault. *)
 
   val message : error -> string
   (** [message error] says why the query does not compile, for the person who
@@ -304,7 +312,8 @@ module Adapter : sig
       garbage collector.
 
       @raise Invalid_argument
-        if [fuel] or [memory] is below 0, or if [engine] is closed. *)
+        if [fuel] or [memory] is below 0, or if [engine] is closed.
+      @raise Error if the bridge stops on an internal fault. *)
 
   val version : t -> int
   (** [version adapter] is what [sinter_interface] gave at the load, read as an
@@ -330,7 +339,8 @@ module Adapter : sig
       response need not be UTF-8.
 
       @raise Invalid_argument
-        if [fuel] or [memory] is below 0, or if [adapter] is closed. *)
+        if [fuel] or [memory] is below 0, or if [adapter] is closed.
+      @raise Error if the bridge stops on an internal fault. *)
 
   val close : t -> unit
   (** [close adapter] frees the adapter. Every later call that takes [adapter]
