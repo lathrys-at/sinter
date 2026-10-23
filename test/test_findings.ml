@@ -556,6 +556,81 @@ let an_ack_discharges_only_the_findings_of_its_block () =
        decision:old is deprecated | fix: @ack disendorsed old ba974016";
     ]
 
+(* {1 Text that holds control characters} *)
+
+(* Every finding of [files], each as {!show} gives it. *)
+let all ?extra files = List.map show (findings ?extra files)
+
+let a_lone_carriage_return_stays_in_one_line () =
+  Alcotest.(check (list string))
+    "the findings"
+    [
+      "docs/guide.md:3:1-3:15 | finding:bad-target:tag:docs/guide.md@L3C1 | \
+       foo\\rbar is not a valid slug";
+    ]
+    (all [ ("docs/guide.md", "# Guide\n\n@cites foo\rbar\n") ]);
+  Alcotest.(check (list string))
+    "the findings of a file with carriage returns for line endings"
+    [
+      "docs/a.md:1:6-1:32 | finding:bad-target:tag:docs/a.md@L1C6 | x.\\r\\r## \
+       is not a valid slug";
+      "docs/a.md:1:23-1:32 | finding:uncovered:req:b | nothing satisfies it, \
+       and nothing verifies it";
+    ]
+    (all [ ("docs/a.md", "# A\r\r@cites x.\r\r## B\r\r@req b v1\r") ])
+
+let a_line_feed_in_a_path_stays_in_one_line () =
+  Alcotest.(check (list string))
+    "the findings"
+    [
+      "docs/a\n\
+       b.md:3:1-3:10 | finding:uncovered:req:x | nothing satisfies it, and \
+       nothing verifies it";
+      "docs/c.md:3:1-3:10 | finding:duplicate:tag:docs/c.md@L3C1 | the slug x \
+       comes first at docs/a\\nb.md:3";
+      "docs/c.md:3:1-3:10 | finding:uncovered:req:x | nothing satisfies it, \
+       and nothing verifies it";
+    ]
+    (all
+       [
+         ("docs/a\nb.md", "# A\n\n@req x v1\n");
+         ("docs/c.md", "# C\n\n@req x v1\n");
+       ])
+
+let a_control_character_of_a_plan_stays_in_one_line () =
+  Alcotest.(check (list string))
+    "the findings"
+    [
+      ".plans/p.md:6:1-6:5 | finding:bad-scope:step:p/a | the scope of the \
+       plan does not hold src/**\\r";
+      ".plans/p.md:12:1-12:9 | finding:bad-target:tag:.plans/p.md@L12C1 | \
+       x\\ry is not a valid slug";
+      ".plans/p.md:12:1-12:9 | \
+       finding:unverified-promise:promise:step:p/b:req:x\ry | the plan \
+       promises no @verifies x\\ry";
+      ".plans/p.md:13:1-13:7 | \
+       finding:promise-out-of-scope:promise:step:p/b:req:z | req:z at \
+       docs/z\\x01q.md:3 is outside the scope of the step";
+      ".plans/p.md:13:1-13:7 | \
+       finding:unverified-promise:promise:step:p/b:req:z | the plan promises \
+       no @verifies z";
+    ]
+    (List.filter
+       (fun line -> String.starts_with ~prefix:".plans/" line)
+       (all
+          [
+            ( ".plans/p.md",
+              "# P\n\n\
+               @plan p\n\
+               @scope lib/**\n\n\
+               ## A\n\n\
+               @scope src/**\r\r\n\n\
+               ## B\n\n\
+               @req x\ry\n\
+               @req z\n" );
+            ("docs/z\001q.md", "# Z\n\n@req z v1\n");
+          ]))
+
 (* {1 The global rules} *)
 
 let a_historical_path_gives_no_finding () =
@@ -626,6 +701,12 @@ let tests =
     case "a void ack discharges nothing" a_void_ack_discharges_nothing;
     case "an ack discharges only the findings of its block"
       an_ack_discharges_only_the_findings_of_its_block;
+    case "a lone carriage return stays in one line"
+      a_lone_carriage_return_stays_in_one_line;
+    case "a line feed in a path stays in one line"
+      a_line_feed_in_a_path_stays_in_one_line;
+    case "a control character of a plan stays in one line"
+      a_control_character_of_a_plan_stays_in_one_line;
     case "a historical path gives no finding" a_historical_path_gives_no_finding;
     case "the findings are sorted" the_findings_are_sorted;
   ]

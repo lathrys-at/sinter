@@ -14,6 +14,10 @@ let place ?(path = "docs/a.md") ?(line = 3) ?(column = 1) ?(stop = 9) () =
 
 let fact = Finding.Fact { id = "cites:req:a->b"; ack_name = "b" }
 
+let property ?(count = 500) ~name ~print generator check =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count ~name ~print generator check)
+
 let subject_ids_have_the_forms_of_the_specification () =
   let check name expected subject =
     Alcotest.(check string) name expected (Finding.subject_id subject)
@@ -60,7 +64,7 @@ let make_keeps_each_part () =
   Alcotest.(check (option string)) "no detail" None bare.detail;
   Alcotest.(check (option string)) "no fix" None bare.fix
 
-let make_refuses_a_text_that_is_not_one_line () =
+let make_refuses_an_empty_text () =
   let refuses name make =
     match make () with
     | (_ : Finding.t) -> Alcotest.failf "%s: no exception" name
@@ -68,16 +72,41 @@ let make_refuses_a_text_that_is_not_one_line () =
   in
   refuses "an empty detail" (fun () ->
       Finding.make Finding_class.Orphan fact ~detail:"" ());
-  refuses "a detail with a line feed" (fun () ->
-      Finding.make Finding_class.Orphan fact ~detail:"a\nb" ());
-  refuses "a detail with a carriage return" (fun () ->
-      Finding.make Finding_class.Orphan fact ~detail:"a\rb" ());
   refuses "an empty fix" (fun () ->
-      Finding.make Finding_class.Orphan fact ~fix:"" ());
-  refuses "a fix with a line feed" (fun () ->
-      Finding.make Finding_class.Orphan fact ~fix:"a\n" ());
-  refuses "a fix with a carriage return" (fun () ->
-      Finding.make Finding_class.Orphan fact ~fix:"\rb" ())
+      Finding.make Finding_class.Orphan fact ~fix:"" ())
+
+let make_escapes_a_detail_and_a_fix () =
+  let finding =
+    Finding.make Finding_class.Orphan fact ~detail:"a\nb" ~fix:"c\rd" ()
+  in
+  Alcotest.(check (option string)) "the detail" (Some "a\\nb") finding.detail;
+  Alcotest.(check (option string)) "the fix" (Some "c\\rd") finding.fix
+
+let escape_writes_each_control_character () =
+  Alcotest.(check string)
+    "the text" "a\\rb\\nc\\x00d\\x1fe\\x7ff\tg h\xc3\xa9\\x08 ~"
+    (Finding.escape "a\rb\nc\x00d\x1fe\x7ff\tg h\xc3\xa9\x08 ~")
+
+let control c = (c < ' ' && c <> '\t') || c = '\x7f'
+let any_text = Gen.string_size ~gen:Gen.char (Gen.int_range 0 12)
+
+let escape_leaves_no_control_character_but_the_tab =
+  property ~name:"escape leaves no control character but the tab"
+    ~print:String.escaped any_text (fun text ->
+      not (String.exists control (Finding.escape text)))
+
+let escape_keeps_a_text_with_no_control_character =
+  property ~name:"escape keeps a text with no control character"
+    ~print:String.escaped any_text (fun text ->
+      String.exists control text || String.equal (Finding.escape text) text)
+
+let make_takes_any_text_that_is_not_empty =
+  property ~name:"make takes any text that is not empty, as one line"
+    ~print:String.escaped any_text (fun text ->
+      String.equal text ""
+      ||
+      let finding = Finding.make Finding_class.Orphan fact ~detail:text () in
+      finding.detail = Some (Finding.escape text))
 
 let the_id_names_the_class_and_the_subject () =
   Alcotest.(check string)
@@ -164,10 +193,6 @@ let print (finding : Finding.t) =
     | Some { path; span } ->
         Printf.sprintf "%s:%d:%d" path span.start.line span.start.column)
 
-let property ?(count = 500) ~name ~print generator check =
-  QCheck_alcotest.to_alcotest ~speed_level:`Quick
-    (QCheck2.Test.make ~count ~name ~print generator check)
-
 let sign n = Int.compare n 0
 
 let compare_is_antisymmetric =
@@ -240,8 +265,13 @@ let tests =
     case "the ack subject of a fact is its name"
       the_ack_subject_of_a_fact_is_its_name;
     case "make keeps each part" make_keeps_each_part;
-    case "make refuses a text that is not one line"
-      make_refuses_a_text_that_is_not_one_line;
+    case "make refuses an empty text" make_refuses_an_empty_text;
+    case "make escapes a detail and a fix" make_escapes_a_detail_and_a_fix;
+    case "escape writes each control character"
+      escape_writes_each_control_character;
+    escape_leaves_no_control_character_but_the_tab;
+    escape_keeps_a_text_with_no_control_character;
+    make_takes_any_text_that_is_not_empty;
     case "the id names the class and the subject"
       the_id_names_the_class_and_the_subject;
     case "ackable follows the column of the specification"

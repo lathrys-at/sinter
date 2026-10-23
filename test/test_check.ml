@@ -45,7 +45,7 @@ let tier = Alcotest.testable (Fmt.of_to_string Finding_class.tier_name) ( = )
 let word =
   Gen.(
     string_size
-      ~gen:(oneof_list [ 'a'; 'b'; '/'; '.'; ' '; '\t'; '"'; '\\' ])
+      ~gen:(oneof_list [ 'a'; 'b'; '/'; '.'; ' '; '\t'; '"'; '\\'; '\n'; '\r' ])
       (int_range 1 6))
 
 let position = Gen.(map2 at (int_range 1 99) (int_range 1 99))
@@ -323,6 +323,38 @@ let a_subject_with_a_space_stands_in_quotes () =
          };
        ])
 
+let a_control_character_in_a_path_or_a_subject_is_escaped () =
+  Alcotest.(check (list string))
+    "the lines"
+    [
+      "docs/a\\nb.md:1:1: unread-tag line:docs/a\\nb.md@L1";
+      "-:-:-: unread-tag line:my\\rdocs/\\x.md@L2";
+      "-:-:-: unread-tag \"line:my docs\\r/\\\\x.md@L3\"";
+    ]
+    (List.concat_map Check.text
+       [
+         {
+           Check.finding =
+             finding
+               ~place:(place ~path:"docs/a\nb.md" ~line:1 ~column:1 ())
+               Finding_class.Unread_tag
+               (Finding.Line { path = "docs/a\nb.md"; line = 1 });
+           tier = None;
+         };
+         {
+           finding =
+             finding Finding_class.Unread_tag
+               (Finding.Line { path = "my\rdocs/\\x.md"; line = 2 });
+           tier = None;
+         };
+         {
+           finding =
+             finding Finding_class.Unread_tag
+               (Finding.Line { path = "my docs\r/\\x.md"; line = 3 });
+           tier = None;
+         };
+       ])
+
 let a_finding_gives_one_line_and_one_more_for_a_fix =
   property "a finding gives one line, and one more for a fix"
     Gen.(pair finding_gen (option (oneof_list [ warn; block ])))
@@ -332,10 +364,15 @@ let a_finding_gives_one_line_and_one_more_for_a_fix =
       let place =
         match finding.place with
         | Some { path; span } ->
-            Printf.sprintf "%s:%d:%d: " path span.start.line span.start.column
+            Printf.sprintf "%s:%d:%d: " (Finding.escape path) span.start.line
+              span.start.column
         | None -> "-:-:-: "
       in
       List.length lines = 1 + Option.fold ~none:0 ~some:(fun _ -> 1) finding.fix
+      && List.for_all
+           (fun line ->
+             not (String.contains line '\n' || String.contains line '\r'))
+           lines
       &&
       match lines with
       | first :: rest ->
@@ -385,6 +422,12 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
   Git_fixture.write repo "docs/table.md"
     "# T\n\n| Name | D |\n| ---- | - |\n| `x`  | y |\n|      |   |\n";
   Git_fixture.write repo "docs/b.md" "# B\n\n@req \xff\n";
+  (* A file system can refuse a name that holds a line feed. *)
+  let line_feed =
+    match Git_fixture.write repo "docs/line\nfeed.md" "# L\n\n@cites x!\n" with
+    | () -> true
+    | exception Sys_error _ -> false
+  in
   ignore (Git_fixture.git repo [ "add"; "-A" ]);
   ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
   let head = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]) in
@@ -410,13 +453,17 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
     text.messages;
   Alcotest.(check (pair int (list string)))
     "the code and the places of the text"
-    (0, [ "docs/b.md:1:1:"; "docs/table.md:5:1:" ])
+    ( 0,
+      [ "docs/b.md:1:1:" ]
+      @ (if line_feed then [ "docs/line\\nfeed.md:3:1:" ] else [])
+      @ [ "docs/table.md:5:1:" ] )
     ( text.code,
       List.map (fun line -> List.hd (String.split_on_char ' ' line)) text.lines
     );
   let json = run Check.Json (Some Finding_class.Merge) in
   Alcotest.(check (pair int int))
-    "the code and the number of lines of the JSON" (1, 3)
+    "the code and the number of lines of the JSON"
+    (1, if line_feed then 4 else 3)
     (json.code, List.length json.lines);
   Alcotest.(check bool)
     "the index first, and no line that names the base" true
@@ -446,6 +493,8 @@ let tests =
       a_finding_with_no_place_prints_dashes;
     case "a subject with a space stands in quotes"
       a_subject_with_a_space_stands_in_quotes;
+    case "a control character in a path or a subject is escaped"
+      a_control_character_in_a_path_or_a_subject_is_escaped;
     a_finding_gives_one_line_and_one_more_for_a_fix;
     case "a record holds every field of a finding"
       a_record_holds_every_field_of_a_finding;

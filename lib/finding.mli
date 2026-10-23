@@ -37,9 +37,11 @@ type t = private {
   place : place option;
       (** where the finding sits: the place of its subject; [None] when the
           subject has no place *)
-  detail : string option;  (** one line for a person *)
+  detail : string option;
+      (** one line for a person, with no control character but the tab *)
   fix : string option;
-      (** one line: the text to paste, or an instruction for a person *)
+      (** one line, with no control character but the tab: the text to paste, or
+          an instruction for a person *)
 }
 (** One finding. *)
 
@@ -52,11 +54,17 @@ val make :
   unit ->
   t
 (** [make finding_class subject ?place ?detail ?fix ()] is the finding of
-    [finding_class] about [subject].
+    [finding_class] about [subject]. Its detail and its fix are [detail] and
+    [fix] as {!escape} writes them, so each is one line.
 
-    @raise Invalid_argument
-      if [detail] or [fix] is empty or holds a line feed or a carriage return.
-*)
+    @raise Invalid_argument if [detail] or [fix] is empty. *)
+
+val escape : string -> string
+(** [escape text] is [text] with each ASCII control character other than the tab
+    written as two or four characters: [\r] for a carriage return, [\n] for a
+    line feed, and [\x] and two lowercase hexadecimal digits for any other, for
+    example [\x00] or [\x7f]. Every other byte stays as it is. The result holds
+    no control character but the tab. *)
 
 val id : t -> string
 (** [id finding] is [finding:<class>:<subject id>]. *)

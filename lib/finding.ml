@@ -31,17 +31,26 @@ type t = {
   fix : string option;
 }
 
+let is_control c = (c < ' ' && c <> '\t') || c = '\x7f'
+
+let escape text =
+  String.concat ""
+    (List.map
+       (function
+         | '\r' -> "\\r"
+         | '\n' -> "\\n"
+         | c when is_control c -> Printf.sprintf "\\x%02x" (Char.code c)
+         | c -> String.make 1 c)
+       (List.of_seq (String.to_seq text)))
+
 let one_line name = function
-  | Some text
-    when String.equal text "" || String.contains text '\n'
-         || String.contains text '\r' ->
-      invalid_arg
-        (Printf.sprintf "Finding.make: the %s is not one line of text" name)
-  | Some _ | None -> ()
+  | Some text when String.equal text "" ->
+      invalid_arg (Printf.sprintf "Finding.make: the %s is empty" name)
+  | text -> Option.map escape text
 
 let make finding_class subject ?place ?detail ?fix () =
-  one_line "detail" detail;
-  one_line "fix" fix;
+  let detail = one_line "detail" detail in
+  let fix = one_line "fix" fix in
   { finding_class; subject; place; detail; fix }
 
 let id finding =

@@ -50,7 +50,8 @@ let text { finding; tier } =
   let place =
     match finding.place with
     | Some { path; span } ->
-        Printf.sprintf "%s:%d:%d:" path span.start.line span.start.column
+        Printf.sprintf "%s:%d:%d:" (Finding.escape path) span.start.line
+          span.start.column
     | None -> "-:-:-:"
   in
   let words =
@@ -59,7 +60,7 @@ let text { finding; tier } =
         (Option.map (fun (_, tier) -> Finding_class.tier_name tier) tier)
     @ [
         Finding_class.name finding.finding_class;
-        quoted (Finding.subject_id finding.subject);
+        Finding.escape (quoted (Finding.subject_id finding.subject));
       ]
     @ Option.to_list finding.detail
   in
