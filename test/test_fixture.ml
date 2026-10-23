@@ -238,6 +238,9 @@ let a_run_removes_its_temporary_folder () =
       let temporary = Filename.concat folder "tmp" in
       let case = Filename.concat folder "case" in
       write_files case (case_files "echo x > f");
+      (* The first run of the process makes the shared cache folder,
+         which outlives the run. *)
+      Alcotest.check outcome "a first run passes" (Ok []) (run case);
       Sys.mkdir temporary 0o755;
       let previous = Filename.get_temp_dir_name () in
       Fun.protect
@@ -247,6 +250,51 @@ let a_run_removes_its_temporary_folder () =
           Alcotest.check outcome "the run passes" (Ok []) (run case));
       Alcotest.(check (array string))
         "the temporary folder is empty" [||] (Sys.readdir temporary))
+
+(* The value of the key directory in the configuration of wasmtime at
+   [place] under HOME, in a shell script. *)
+let cache_directory place =
+  Printf.sprintf "sed -n 's/^directory = \"\\(.*\\)\"$/\\1/p' \"$HOME/%s\""
+    place
+
+let mac_configuration =
+  "Library/Application Support/BytecodeAlliance.wasmtime/config.toml"
+
+let linux_configuration = ".config/wasmtime/config.toml"
+
+let the_run_names_one_cache_folder_for_wasmtime_outside_the_case () =
+  check_run "both configurations name a folder outside home and the tree"
+    (Ok [])
+    (case_files ~stdout:"2\nshared\n"
+       (Printf.sprintf
+          "m=$(%s); l=$(%s); cat \"$HOME/%s\" \"$HOME/%s\" | grep -c '^enabled \
+           = true$'; [ \"$m\" = \"$l\" ] && [ -d \"$m\" ] && case \"$m\" in \
+           \"$HOME\"*|\"$PWD\"*) echo inside;; /*) echo shared;; esac"
+          (cache_directory mac_configuration)
+          (cache_directory linux_configuration)
+          mac_configuration linux_configuration))
+
+let every_run_shares_the_cache_folder_of_wasmtime () =
+  let directory = cache_directory linux_configuration in
+  check_run "the first run leaves a mark" (Ok [])
+    (case_files (Printf.sprintf "touch \"$(%s)/mark\"" directory));
+  check_run "the second run finds the mark" (Ok [])
+    (case_files ~stdout:"found\n"
+       (Printf.sprintf
+          "d=$(%s); test -f \"$d/mark\" && rm \"$d/mark\" && echo found"
+          directory))
+
+let the_tool_of_an_index_record_shows_as_tool () =
+  check_run "only the value of tool in an index record changes" (Ok [])
+    (case_files
+       ~stdout:
+         "{\"kind\":\"index\",\"tool\":\"<tool>\",\"v\":1}\n\
+          {\"kind\":\"req\",\"tool\":\"x\"}\n\
+          {\"kind\":\"index\"}\n\
+          {\"kind\":\"index\",\"tool\":\"<tool>\"}"
+       "printf '%s\\n' '{\"kind\":\"index\",\"tool\":\"v1-2-g\\\"x\",\"v\":1}' \
+        '{\"kind\":\"req\",\"tool\":\"x\"}' '{\"kind\":\"index\"}'; printf \
+        '%s' '{\"kind\":\"index\",\"tool\":\"abc\"}'")
 
 let a_run_past_its_bound_is_killed () =
   with_case (case_files "exec sleep 5") (fun case ->
@@ -258,6 +306,36 @@ let a_run_that_a_signal_ends_fails_the_case () =
     (Error (Fixture.Ended_by_signal Sys.sigkill)) (case_files "kill -9 $$")
 
 (* Entries. *)
+
+(* The commit id covers the files, the author, the committer, the
+   dates, and the message, and nothing of the machine. *)
+let a_case_with_repository_runs_in_a_commit_of_the_tree () =
+  check_run "the run starts in a clean repository on main, at a fixed commit"
+    (Ok [])
+    ([ ("repository", ""); ("tree/f", "one\n"); ("tree/sub/g", "two\n") ]
+    @ case_files
+        ~stdout:
+          "b5ec131631861a252f681068001c7a2d93d8029b tree\n\
+           ## main\n\
+           f\n\
+           sub/g\n\
+           .git\n\
+           f\n\
+           sub\n"
+        "git log --format='%H %s'; git status --porcelain --branch; git \
+         ls-tree -r --name-only HEAD; LC_ALL=C ls -A")
+
+let a_case_with_base_and_repository_fails () =
+  check_run "base and repository exclude each other"
+    (Error Fixture.Repository_with_base)
+    (("repository", "") :: ("base/", "") :: case_files "true")
+
+let base_and_repository_together_say_to_remove_repository () =
+  Alcotest.(check string)
+    "the message"
+    "case scan: the case holds both base and repository. A case with base \
+     already runs in a repository; remove repository."
+    (Fixture.message ~case:"scan" Fixture.Repository_with_base)
 
 let an_unknown_entry_fails_the_case () =
   check_run "argz is unknown" (Error (Fixture.Unknown_entry "argz"))
@@ -577,10 +655,23 @@ let tests =
       a_run_leaves_the_case_unchanged;
     Alcotest.test_case "a run removes its temporary folder" `Quick
       a_run_removes_its_temporary_folder;
+    Alcotest.test_case
+      "the run names one cache folder for wasmtime outside the case" `Quick
+      the_run_names_one_cache_folder_for_wasmtime_outside_the_case;
+    Alcotest.test_case "every run shares the cache folder of wasmtime" `Quick
+      every_run_shares_the_cache_folder_of_wasmtime;
+    Alcotest.test_case "the tool of an index record shows as <tool>" `Quick
+      the_tool_of_an_index_record_shows_as_tool;
     Alcotest.test_case "a run past its bound is killed" `Quick
       a_run_past_its_bound_is_killed;
     Alcotest.test_case "a run that a signal ends fails the case" `Quick
       a_run_that_a_signal_ends_fails_the_case;
+    Alcotest.test_case "a case with repository runs in a commit of the tree"
+      `Quick a_case_with_repository_runs_in_a_commit_of_the_tree;
+    Alcotest.test_case "a case with base and repository fails" `Quick
+      a_case_with_base_and_repository_fails;
+    Alcotest.test_case "base and repository together say to remove repository"
+      `Quick base_and_repository_together_say_to_remove_repository;
     Alcotest.test_case "an unknown entry fails the case" `Quick
       an_unknown_entry_fails_the_case;
     Alcotest.test_case "an unknown entry in expected fails the case" `Quick

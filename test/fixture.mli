@@ -11,6 +11,10 @@
     - [base/]: a folder, optional. When it exists, the case is a diff case: the
       run starts in a git repository whose one commit holds [base/] and whose
       working tree holds [tree/].
+    - [repository]: an empty file, optional, in a case without [base/]. When it
+      exists, the run starts in a git repository whose one commit holds [tree/],
+      and whose working tree holds the same files. Without it and without
+      [base/], the run starts in a plain folder.
     - [stdin]: a file, optional, the bytes on standard input. Without it,
       standard input is empty.
     - [expected/stdout], [expected/stderr], [expected/exit]: files. [exit] holds
@@ -46,6 +50,7 @@ type error =
   | Reserved_entry of string
       (** The case holds [ledger.jsonl] or [evidence], which the harness does
           not read yet. *)
+  | Repository_with_base  (** The case holds both [base/] and [repository]. *)
   | Did_not_end of float
       (** The run was still going after this many seconds, and was killed. *)
   | Ended_by_signal of int
@@ -93,13 +98,21 @@ val run :
     The run copies [tree/] into a new folder under the temporary folder of
     [Filename.get_temp_dir_name], and starts [binary] in that copy. The copy
     leaves out every file named [.gitkeep]. The output of the run holds the real
-    path of the copy as [<root>]. The run is killed after [bound] seconds; the
-    default is 10.
+    path of the copy as [<root>], and standard output holds the value of the
+    field [tool] of each index record, a JSON line whose field [kind] is
+    [index], as [<tool>]. The run is killed after [bound] seconds; the default
+    is 10.
+
+    Each run gets a new home folder that holds only a configuration of wasmtime.
+    The configuration names one cache folder for every run of the process. The
+    first run makes that folder under the temporary folder, and the process
+    removes it when it exits.
 
     The result is the list of the files that a promotion wrote, by their paths;
     it is empty in the mode [Compare]. The run removes every file it made under
-    the temporary folder before it returns. It writes into no folder but the
-    temporary folder, except the expected files that a promotion writes.
+    the temporary folder before it returns, except the shared cache folder. It
+    writes into no folder but the temporary folder, except the expected files
+    that a promotion writes.
 
     The run changes the working folder of the process while it starts a process,
     and changes it back. No other thread or domain may run meanwhile. *)
@@ -137,10 +150,10 @@ val with_repository :
     one commit holds the files of the folder [base], and its working tree holds
     the files of the folder [tree], uncommitted: a file only in [base] is
     deleted, and a file only in [tree] is untracked. Every git command runs with
-    a fixed configuration, home folder, author, committer, and date, so the
-    commit has the same id on every machine. The repository is removed when [f]
-    returns or raises. The rule of {!run} on the working folder of the process
-    holds here too.
+    a fixed configuration, home folder, author, committer, date, and message, so
+    the commit has the same id on every machine. The repository is removed when
+    [f] returns or raises. The rule of {!run} on the working folder of the
+    process holds here too.
 
     An exception that [f] raises passes through. It raises the exceptions of
     {!with_temporary_folder} when the temporary folder cannot be made or
