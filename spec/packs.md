@@ -399,18 +399,25 @@ A **parse failure** is a syntax tree that holds an `ERROR` node or a
 error flag of the root node shows it. So Sinter reads a parse failure
 from the error flag of the root node.
 
+The **error flag** of a node is set when the node, or a node below it,
+is an `ERROR` node or a `MISSING` node. A **lowest error node** is a
+node whose error flag is set, when no child of the node that the tree
+shows has its error flag set. When a `MISSING` node has no text, the
+tree does not show it, and the lowest error node is near its place.
+
 In a file of a fetched pack, a parse failure means that the file
 yields no fact. Sinter reports one `parse-error` finding for the
 file. The finding sits at the first `ERROR` or `MISSING` node
 in the order of the text. When the tree shows no such node, the
-finding sits at line 1, column 1.
+finding sits at the first lowest error node in the order of the
+text.
 
 In a markdown file, Sinter takes the facts of the file from the tree,
 as it does for a file with no parse failure. It reports one
 `parse-error` finding at each `ERROR` node and each `MISSING` node
 that no `ERROR` node holds. When the flag of the root shows a failure
-and the tree shows no such node, Sinter reports one finding at line 1,
-column 1. At a gate where the tier that applies to the class
+and the tree shows no such node, Sinter reports one finding at the
+first lowest error node in the order of the text. At a gate where the tier that applies to the class
 `parse-error` is `block` ([manifest.md](manifest.md) section 9.3), the
 tier of such a finding is `warn`. At every other gate, the tier is the
 tier that applies.
