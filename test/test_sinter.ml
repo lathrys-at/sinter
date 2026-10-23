@@ -72,6 +72,7 @@ let () =
       ("major minor", Test_major_minor.tests);
       ("manifest", Test_manifest.tests);
       ("facts", Test_facts.tests);
+      ("finding", Test_finding.tests);
       ("scan", Test_scan.tests);
       ( "cases",
         Fixture.tests ~binary mode

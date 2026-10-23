@@ -1,0 +1,70 @@
+(* SPDX-License-Identifier: Apache-2.0 *)
+(* Copyright 2026 The Sinter Authors *)
+
+type place = { path : string; span : Markdown.span }
+
+type subject =
+  | Fact of { id : string; ack_name : string }
+  | File of string
+  | Error_node of { path : string; position : Markdown.position }
+  | Line of { path : string; line : int }
+  | Tag of { path : string; position : Markdown.position }
+
+let subject_id = function
+  | Fact { id; _ } -> id
+  | File path -> "file:" ^ path
+  | Error_node { path; position } ->
+      Printf.sprintf "file:%s@L%dC%d" path position.line position.column
+  | Line { path; line } -> Printf.sprintf "line:%s@L%d" path line
+  | Tag { path; position } ->
+      Printf.sprintf "tag:%s@L%dC%d" path position.line position.column
+
+let ack_subject = function
+  | Fact { ack_name; _ } -> ack_name
+  | (File _ | Error_node _ | Line _ | Tag _) as subject -> subject_id subject
+
+type t = {
+  finding_class : Finding_class.t;
+  subject : subject;
+  place : place option;
+  detail : string option;
+  fix : string option;
+}
+
+let one_line name = function
+  | Some text
+    when String.equal text "" || String.contains text '\n'
+         || String.contains text '\r' ->
+      invalid_arg
+        (Printf.sprintf "Finding.make: the %s is not one line of text" name)
+  | Some _ | None -> ()
+
+let make finding_class subject ?place ?detail ?fix () =
+  one_line "detail" detail;
+  one_line "fix" fix;
+  { finding_class; subject; place; detail; fix }
+
+let id finding =
+  "finding:"
+  ^ Finding_class.name finding.finding_class
+  ^ ":" ^ subject_id finding.subject
+
+let ackable finding =
+  match finding.finding_class with
+  | Finding_class.Disendorsed | Finding_class.Disconnected -> true
+  | _ -> false
+
+let key finding =
+  match finding.place with
+  | Some { path; span } -> Some (path, span.start.line, span.start.column)
+  | None -> None
+
+let compare a b =
+  match (key a, key b) with
+  | Some _, None -> -1
+  | None, Some _ -> 1
+  | None, None -> String.compare (id a) (id b)
+  | Some ka, Some kb -> (
+      match Stdlib.compare ka kb with
+      | 0 -> String.compare (id a) (id b)
+      | order -> order)
