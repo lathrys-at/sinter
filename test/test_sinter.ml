@@ -35,6 +35,8 @@ let () =
       ("text file", Test_text_file.tests);
       ("grammar name", Test_grammar_name.tests);
       ("parse record", Test_parse_record.tests);
+      ("grammar", Test_grammar.tests);
+      ("query file", Test_query_file.tests);
       ("spec examples", Test_spec_examples.tests);
       ("bridge decode", Test_bridge_decode.tests);
       ("bridge decode v2", Test_bridge_decode_v2.tests);

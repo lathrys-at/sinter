@@ -45,17 +45,21 @@ let string_field record name =
    The record then names line 1, the line that holds the last byte,
    and column 2, one past that byte. *)
 let places_the_end_of_a_capture_that_ends_before_byte_two () =
-  let capture : Sinter_bridge.capture =
+  let capture =
     {
+      Sinter_bridge.Query.match_number = 0;
       pattern = 0;
       name = "d";
       node_type = "document";
-      start_byte = 0;
-      end_byte = 1;
-      start_row = 0;
-      start_column = 0;
-      end_row = 1;
-      end_column = 0;
+      range =
+        {
+          start_byte = 0;
+          end_byte = 1;
+          start_row = 0;
+          start_column = 0;
+          end_row = 1;
+          end_column = 0;
+        };
       text = "\n";
     }
   in
@@ -73,17 +77,21 @@ let places_the_end_of_a_capture_that_ends_before_byte_two () =
    that took byte 2 for a byte on the first line would name column 3.
    *)
 let places_the_end_of_a_capture_that_ends_at_byte_two () =
-  let capture : Sinter_bridge.capture =
+  let capture =
     {
+      Sinter_bridge.Query.match_number = 0;
       pattern = 0;
       name = "d";
       node_type = "document";
-      start_byte = 0;
-      end_byte = 2;
-      start_row = 0;
-      start_column = 0;
-      end_row = 2;
-      end_column = 0;
+      range =
+        {
+          start_byte = 0;
+          end_byte = 2;
+          start_row = 0;
+          start_column = 0;
+          end_row = 2;
+          end_column = 0;
+        };
       text = "\n\n";
     }
   in
@@ -110,16 +118,17 @@ let field_names =
     "text";
   ]
 
-let record_of source (capture : Sinter_bridge.capture) =
+let record_of source (capture : Sinter_bridge.Query.capture) =
   record_or_fail ~path:"f.json" ~source capture
 
 let the_span_of_a_record_agrees_with_the_source
-    (source, (capture : Sinter_bridge.capture)) =
+    (source, (capture : Sinter_bridge.Query.capture)) =
   let record = record_of source capture in
-  let line, col = position source capture.start_byte in
+  let range = capture.range in
+  let line, col = position source range.start_byte in
   let eline, ecol =
-    if capture.end_byte > capture.start_byte then
-      let last_line, last_col = position source (capture.end_byte - 1) in
+    if range.end_byte > range.start_byte then
+      let last_line, last_col = position source (range.end_byte - 1) in
       (last_line, last_col + 1)
     else (line, col)
   in
@@ -134,14 +143,14 @@ let the_span_of_a_record_agrees_with_the_source
    range is "a capture is a byte range inside the source", in
    test_bridge.ml. *)
 let a_record_holds_the_bytes_of_the_capture
-    (source, (capture : Sinter_bridge.capture)) =
+    (source, (capture : Sinter_bridge.Query.capture)) =
   let record = record_of source capture in
-  int_field record "sb" = capture.start_byte
-  && int_field record "eb" = capture.end_byte
+  int_field record "sb" = capture.range.start_byte
+  && int_field record "eb" = capture.range.end_byte
   && String.equal
        (string_field record "text")
-       (String.sub source capture.start_byte
-          (capture.end_byte - capture.start_byte))
+       (String.sub source capture.range.start_byte
+          (capture.range.end_byte - capture.range.start_byte))
 
 let a_record_holds_the_named_fields (source, capture) =
   let record = record_of source capture in
@@ -172,15 +181,19 @@ let a_record_of_a_capture_outside_the_source_is_refused (source, capture) =
 let refuses_a_capture_that_runs_past_the_source () =
   let capture =
     {
-      Sinter_bridge.pattern = 0;
+      Sinter_bridge.Query.match_number = 0;
+      pattern = 0;
       name = "d";
       node_type = "document";
-      start_byte = 0;
-      end_byte = 2;
-      start_row = 0;
-      start_column = 0;
-      end_row = 1;
-      end_column = 0;
+      range =
+        {
+          start_byte = 0;
+          end_byte = 2;
+          start_row = 0;
+          start_column = 0;
+          end_row = 1;
+          end_column = 0;
+        };
       text = "";
     }
   in
@@ -200,15 +213,19 @@ let not_utf_8 = "\xff"
    replaced. *)
 let one_capture ?(name = "d") ?(node_type = "document") ?(text = "a") () =
   {
-    Sinter_bridge.pattern = 0;
+    Sinter_bridge.Query.match_number = 0;
+    pattern = 0;
     name;
     node_type;
-    start_byte = 0;
-    end_byte = 1;
-    start_row = 0;
-    start_column = 0;
-    end_row = 0;
-    end_column = 1;
+    range =
+      {
+        start_byte = 0;
+        end_byte = 1;
+        start_row = 0;
+        start_column = 0;
+        end_row = 0;
+        end_column = 1;
+      };
     text;
   }
 
@@ -249,7 +266,7 @@ let a_path_that_is_not_utf_8_is_refused () =
    the only thing that is wrong. *)
 let source_and_capture_with_a_bad_string =
   let open QCheck2.Gen in
-  let* source, (capture : Sinter_bridge.capture) =
+  let* source, (capture : Sinter_bridge.Query.capture) =
     Generators.source_and_capture
   in
   let* text = Generators.not_utf_8_string in
@@ -263,9 +280,11 @@ let source_and_capture_with_a_bad_string =
   in
   let capture =
     match field with
-    | Parse_record.Capture_name -> { capture with Sinter_bridge.name = text }
-    | Parse_record.Node_type -> { capture with Sinter_bridge.node_type = text }
-    | Parse_record.Node_text -> { capture with Sinter_bridge.text }
+    | Parse_record.Capture_name ->
+        { capture with Sinter_bridge.Query.name = text }
+    | Parse_record.Node_type ->
+        { capture with Sinter_bridge.Query.node_type = text }
+    | Parse_record.Node_text -> { capture with Sinter_bridge.Query.text }
   in
   (source, capture, field)
 

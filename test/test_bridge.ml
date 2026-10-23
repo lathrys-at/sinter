@@ -5,15 +5,8 @@
    relative to that directory. *)
 let grammar = "fixtures/tree-sitter-json/tree-sitter-json.wasm"
 
-(* One engine and one grammar for every test below. The language keeps
-   its engine alive, and alcotest runs one test at a time. *)
-let json =
-  lazy
-    (let wasm = In_channel.with_open_bin grammar In_channel.input_all in
-     Sinter_bridge.load (Sinter_bridge.create ()) ~name:"json" ~wasm)
-
-(* One pattern with one capture. The query cursor gives one capture
-   per match, so the captures come in the order of the nodes. *)
+(* One pattern with one capture. The query gives one capture per match,
+   so the captures come in the order of the nodes. *)
 let one_capture_query = "(string_content) @s"
 
 let two_pattern_query =
@@ -23,165 +16,6 @@ let two_pattern_query =
 let property ?(count = 500) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count ~name ~print generator check)
-
-let a_capture_is_a_byte_range_inside_the_source source =
-  let found =
-    Sinter_bridge.captures (Lazy.force json) ~source ~query:two_pattern_query
-  in
-  List.for_all
-    (fun (capture : Sinter_bridge.capture) ->
-      0 <= capture.start_byte
-      && capture.start_byte <= capture.end_byte
-      && capture.end_byte <= String.length source
-      && String.equal capture.text
-           (String.sub source capture.start_byte
-              (capture.end_byte - capture.start_byte)))
-    found
-
-let a_row_and_a_column_agree_with_the_source source =
-  let found =
-    Sinter_bridge.captures (Lazy.force json) ~source ~query:two_pattern_query
-  in
-  List.for_all
-    (fun (capture : Sinter_bridge.capture) ->
-      capture.start_row = Generators.rows_before source capture.start_byte
-      && capture.start_column
-         = capture.start_byte
-           - Generators.start_of_line source capture.start_byte
-      && capture.end_row = Generators.rows_before source capture.end_byte
-      && capture.end_column
-         = capture.end_byte - Generators.start_of_line source capture.end_byte)
-    found
-
-let captures_come_in_the_order_of_the_cursor source =
-  let found =
-    Sinter_bridge.captures (Lazy.force json) ~source ~query:one_capture_query
-  in
-  let rec in_order = function
-    | (first : Sinter_bridge.capture) :: (next :: _ as rest) ->
-        first.start_byte <= next.start_byte && in_order rest
-    | _ -> true
-  in
-  in_order found
-
-let a_capture_name_belongs_to_the_query source =
-  let found =
-    Sinter_bridge.captures (Lazy.force json) ~source ~query:two_pattern_query
-  in
-  List.for_all
-    (fun (capture : Sinter_bridge.capture) ->
-      match capture.name with
-      | "key" | "value" -> capture.pattern = 0
-      | "number" -> capture.pattern = 1
-      | _ -> false)
-    found
-
-let a_tree_comes_back_for_any_text source =
-  let written = Sinter_bridge.tree (Lazy.force json) ~source in
-  String.length written > 0 && written.[0] = '('
-
-let contains needle haystack =
-  let n = String.length needle and h = String.length haystack in
-  let rec search index =
-    index + n <= h
-    && (String.equal (String.sub haystack index n) needle || search (index + 1))
-  in
-  search 0
-
-(* The source below is a JSON string that holds one byte that is not
-   UTF-8. The property "a capture is a byte range inside any UTF-8
-   text" found this case while its generator still gave bytes of any
-   value. The interface says that every string of every capture is
-   valid UTF-8, so this source has no captures to give. *)
-let reports_a_source_that_is_not_utf_8 () =
-  let message =
-    try
-      ignore
-        (Sinter_bridge.captures (Lazy.force json) ~source:"\"\xff\""
-           ~query:one_capture_query);
-      "no failure"
-    with Sinter_bridge.Error message -> message
-  in
-  Alcotest.(check bool)
-    "the message says that a string is not UTF-8 text" true
-    (contains "is not UTF-8 text" message)
-
-let rejects_an_empty_query () =
-  Alcotest.check_raises "an empty query"
-    (Invalid_argument "Sinter_bridge.captures: the query is empty") (fun () ->
-      ignore (Sinter_bridge.captures (Lazy.force json) ~source:"[]" ~query:""))
-
-let rejects_a_grammar_name_that_holds_a_nul_byte () =
-  let engine = Sinter_bridge.create () in
-  Fun.protect
-    ~finally:(fun () -> Sinter_bridge.close engine)
-    (fun () ->
-      Alcotest.check_raises "a NUL byte in the grammar name"
-        (Invalid_argument
-           "Sinter_bridge.Language.load: the grammar name holds a NUL byte")
-        (fun () -> ignore (Sinter_bridge.load engine ~name:"js\000on" ~wasm:"")))
-
-let reports_a_query_that_does_not_compile () =
-  let message =
-    try
-      ignore
-        (Sinter_bridge.captures (Lazy.force json) ~source:"[]"
-           ~query:"(no_such_node) @x");
-      "no failure"
-    with Sinter_bridge.Error message -> message
-  in
-  Alcotest.(check bool)
-    "the message names the node type that the grammar has not" true
-    (contains "no_such_node" message)
-
-let reports_a_grammar_that_does_not_load () =
-  let engine = Sinter_bridge.create () in
-  Fun.protect
-    ~finally:(fun () -> Sinter_bridge.close engine)
-    (fun () ->
-      let failed =
-        try
-          ignore (Sinter_bridge.load engine ~name:"json" ~wasm:"not a module");
-          false
-        with Sinter_bridge.Error _ -> true
-      in
-      Alcotest.(check bool)
-        "a grammar that is not wasm does not load" true failed)
-
-(* The interface says that a call after {!Sinter_bridge.close} raises
-   [Invalid_argument]. *)
-let a_closed_engine_refuses_every_call () =
-  let wasm = In_channel.with_open_bin grammar In_channel.input_all in
-  let engine = Sinter_bridge.create () in
-  let language = Sinter_bridge.load engine ~name:"json" ~wasm in
-  Sinter_bridge.close engine;
-  let closed = Invalid_argument "Sinter_bridge: the engine is closed" in
-  Alcotest.check_raises "captures after close" closed (fun () ->
-      ignore
-        (Sinter_bridge.captures language ~source:"[1]" ~query:"(number) @n"));
-  Alcotest.check_raises "tree after close" closed (fun () ->
-      ignore (Sinter_bridge.tree language ~source:"[1]"));
-  Alcotest.check_raises "load after close" closed (fun () ->
-      ignore (Sinter_bridge.load engine ~name:"json" ~wasm));
-  (* The interface says a program does not have to call close, so
-     closing twice must not fault. *)
-  Sinter_bridge.close engine
-
-(* The interface says that a program does not have to call
-   {!Sinter_bridge.close}: the collector frees an engine that no value
-   refers to. An engine that was closed must not be freed a second
-   time when the collector reaches it. *)
-let the_collector_frees_an_engine_that_no_value_refers_to () =
-  for index = 1 to 8 do
-    let engine = Sinter_bridge.create () in
-    if index mod 2 = 0 then Sinter_bridge.close engine
-  done;
-  Gc.full_major ();
-  Gc.full_major ();
-  Alcotest.(check bool)
-    "the bridge still parses after the collection" true
-    (String.starts_with ~prefix:"(document"
-       (Sinter_bridge.tree (Lazy.force json) ~source:"[1]"))
 
 (* The digest needs no engine. *)
 let sha256_gives_the_32_bytes_of_the_digest () =
@@ -404,8 +238,9 @@ let refuses_a_directive () =
     error;
   Alcotest.(check string)
     "the message names the place and the operator"
-    "Query error at 3:3. The pattern uses #set!, which is not one of the \
-     predicates that a query can use"
+    "Query error at 3:3. A query cannot use #set!. It can use only the \
+     predicates #eq?, #not-eq?, #any-eq?, #any-not-eq?, #match?, #not-match?, \
+     #any-match?, #any-not-match?, #any-of?, and #not-any-of?"
     (B.Query.message error)
 
 let refuses_each_predicate_outside_the_ten () =
@@ -568,6 +403,8 @@ let every_handle_refuses_a_call_after_close () =
   Alcotest.check_raises "run over a closed tree" (closed "tree") (fun () ->
       ignore (B.Query.run open_query tree));
   B.close engine;
+  Alcotest.check_raises "load with a closed engine" (closed "engine") (fun () ->
+      ignore (B.Language.load engine ~name:"json" ~wasm:(Lazy.force wasm)));
   Alcotest.check_raises "parse with a closed engine" (closed "engine")
     (fun () -> ignore (B.Tree.parse language "[1]"));
   B.Language.close language;
@@ -645,40 +482,30 @@ let handle_tests =
       ~print:String.escaped Generators.any_text a_sexp_comes_back_for_any_bytes;
   ]
 
+let one_capture = lazy (compiled one_capture_query)
+
+let captures_come_in_the_order_of_the_nodes source =
+  let tree = parsed source in
+  let found =
+    Fun.protect
+      ~finally:(fun () -> B.Tree.close tree)
+      (fun () -> captures_of (Lazy.force one_capture) tree)
+  in
+  let rec in_order = function
+    | (first : B.Query.capture) :: (next :: _ as rest) ->
+        first.range.start_byte <= next.range.start_byte
+        && first.match_number + 1 = next.match_number
+        && in_order rest
+    | _ -> true
+  in
+  in_order found
+
 let tests =
   [
-    property ~name:"a capture is a byte range inside the source" ~print:Fun.id
-      Generators.json_source a_capture_is_a_byte_range_inside_the_source;
-    property ~name:"a row and a column agree with the source" ~print:Fun.id
-      Generators.json_source a_row_and_a_column_agree_with_the_source;
-    property ~name:"a row and a column agree with any UTF-8 text"
-      ~print:String.escaped Generators.any_utf_8_text
-      a_row_and_a_column_agree_with_the_source;
-    property ~name:"captures come in the order of the cursor" ~print:Fun.id
-      Generators.json_source captures_come_in_the_order_of_the_cursor;
-    property ~name:"a capture name belongs to the query" ~print:Fun.id
-      Generators.json_source a_capture_name_belongs_to_the_query;
-    property ~name:"a tree comes back for a document" ~print:Fun.id
-      Generators.json_source a_tree_comes_back_for_any_text;
-    property ~name:"a tree comes back for any text" ~print:String.escaped
-      Generators.any_text a_tree_comes_back_for_any_text;
-    property ~name:"a capture is a byte range inside any UTF-8 text"
-      ~print:String.escaped Generators.any_utf_8_text
-      a_capture_is_a_byte_range_inside_the_source;
-    Alcotest.test_case "reports a source that is not UTF-8" `Quick
-      reports_a_source_that_is_not_utf_8;
-    Alcotest.test_case "rejects an empty query" `Quick rejects_an_empty_query;
-    Alcotest.test_case "rejects a grammar name that holds a NUL byte" `Quick
-      rejects_a_grammar_name_that_holds_a_nul_byte;
-    Alcotest.test_case "reports a query that does not compile" `Quick
-      reports_a_query_that_does_not_compile;
-    Alcotest.test_case "reports a grammar that does not load" `Quick
-      reports_a_grammar_that_does_not_load;
-    Alcotest.test_case "a closed engine refuses every call" `Quick
-      a_closed_engine_refuses_every_call;
-    Alcotest.test_case "the collector frees an engine that no value refers to"
-      `Quick the_collector_frees_an_engine_that_no_value_refers_to;
     Alcotest.test_case "sha256 gives the 32 bytes of the digest" `Quick
       sha256_gives_the_32_bytes_of_the_digest;
+    property ~count:200 ~name:"captures come in the order of the nodes"
+      ~print:Fun.id Generators.json_source
+      captures_come_in_the_order_of_the_nodes;
   ]
   @ handle_tests

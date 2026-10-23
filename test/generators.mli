@@ -64,10 +64,6 @@ val print_record : Sinter_core.Jsonl.record QCheck2.Print.t
 
 (** {1 The result buffer of the bridge} *)
 
-val encode_captures : Sinter_bridge.capture list -> string
-(** [encode_captures captures] is a result buffer that holds [captures], in the
-    layout that the bridge writes. *)
-
 val encode_tree : string -> string
 (** [encode_tree text] is a result buffer that holds the one parse tree [text],
     in the layout that the bridge writes. *)
@@ -75,13 +71,6 @@ val encode_tree : string -> string
 val encode_digest : string -> string
 (** [encode_digest digest] is a result buffer that holds the bytes [digest] as
     one digest, in the layout that the bridge writes. *)
-
-val capture : Sinter_bridge.capture QCheck2.Gen.t
-(** One capture. Every integer field is in the range of an unsigned 32-bit
-    integer, and every string field is valid UTF-8. *)
-
-val captures_buffer : (Sinter_bridge.capture list * string) QCheck2.Gen.t
-(** A list of at most four captures, and the result buffer that holds them. *)
 
 val tree_buffer : (string * string) QCheck2.Gen.t
 (** A parse tree text, and the result buffer that holds it. *)
@@ -114,10 +103,6 @@ val damaged :
     UTF-8; such a string takes the damage [Length_out_of_range] only. A buffer
     with no string can be damaged in five ways only. *)
 
-val damaged_captures_buffer : (damage * string) QCheck2.Gen.t
-(** A capture result buffer that was damaged in one of the seven ways, and the
-    way it was damaged. No damaged buffer is a valid capture result buffer. *)
-
 val damaged_tree_buffer : (damage * string) QCheck2.Gen.t
 (** A parse tree result buffer that was damaged in one of the seven ways, and
     the way it was damaged. No damaged buffer is a valid parse tree result
@@ -133,17 +118,13 @@ val print_buffer : string QCheck2.Print.t
     as hexadecimal. *)
 
 val print_damaged : (damage * string) QCheck2.Print.t
-(** The printer for a counterexample of {!damaged_captures_buffer} and
-    {!damaged_tree_buffer}. *)
-
-val print_captures : Sinter_bridge.capture list QCheck2.Print.t
-(** The printer for a counterexample that is a list of captures. *)
+(** The printer for a counterexample of a damaged buffer. *)
 
 val buffer_bytes : string QCheck2.Gen.t
 (** Bytes that a decoder of a result buffer must survive: any bytes; the four
-    bytes of the magic and then any bytes; a whole buffer with bytes written
-    over a run of it; a whole capture buffer; a whole parse tree buffer; and a
-    whole digest buffer. *)
+    bytes of the magic and then any bytes; a whole parse tree buffer with bytes
+    written over a run of it; a whole parse tree buffer; and a whole digest
+    buffer. *)
 
 (** {1 Source text, and a capture inside it} *)
 
@@ -161,24 +142,26 @@ val source_text : string QCheck2.Gen.t
     the tab, or a code point of one, two, three, or four bytes. The text is
     always valid UTF-8. *)
 
-val capture_in : string -> Sinter_bridge.capture QCheck2.Gen.t
+val capture_in : string -> Sinter_bridge.Query.capture QCheck2.Gen.t
 (** [capture_in source] is a capture of [source]. The byte range starts and ends
     at a code point boundary, as a capture of the bridge does. The rows and the
     columns are the rows and the byte columns of that range in [source], and the
     text is the bytes of that range. *)
 
-val capture_outside : string -> Sinter_bridge.capture QCheck2.Gen.t
+val capture_outside : string -> Sinter_bridge.Query.capture QCheck2.Gen.t
 (** [capture_outside source] is a capture whose byte range is not inside
     [source]: the end runs past [source], or the end is before the start, or the
     start is below 0. *)
 
-val source_and_capture : (string * Sinter_bridge.capture) QCheck2.Gen.t
+val source_and_capture : (string * Sinter_bridge.Query.capture) QCheck2.Gen.t
 (** A source text, and a capture inside it. *)
 
-val source_and_capture_outside : (string * Sinter_bridge.capture) QCheck2.Gen.t
+val source_and_capture_outside :
+  (string * Sinter_bridge.Query.capture) QCheck2.Gen.t
 (** A source text, and a capture whose byte range is not inside it. *)
 
-val print_source_and_capture : (string * Sinter_bridge.capture) QCheck2.Print.t
+val print_source_and_capture :
+  (string * Sinter_bridge.Query.capture) QCheck2.Print.t
 (** The printer for a counterexample of {!source_and_capture}. *)
 
 (** {1 Text for the bridge} *)

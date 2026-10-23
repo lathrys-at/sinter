@@ -14,7 +14,7 @@ type error =
 val of_capture :
   path:string ->
   source:string ->
-  Sinter_bridge.capture ->
+  Sinter_bridge.Query.capture ->
   (Jsonl.record, error) result
 (** [of_capture ~path ~source capture] is the JSONL record for one capture in
     the file at [path]. [source] is the text of that file.

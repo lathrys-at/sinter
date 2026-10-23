@@ -341,8 +341,9 @@ let string_field record name =
    keeps its engine alive, and alcotest runs one test at a time. *)
 let language =
   lazy
-    (let wasm = In_channel.with_open_bin grammar In_channel.input_all in
-     Sinter_bridge.load (Sinter_bridge.create ()) ~name:"json" ~wasm)
+    (match Grammar.load (Sinter_bridge.create ()) ~path:grammar with
+    | Ok language -> language
+    | Error error -> Alcotest.fail (Grammar.message ~path:grammar error))
 
 (* The document node ends after the last line feed of the file, so a
    query that captures it tests the end of a span that no byte of the
@@ -369,17 +370,34 @@ let in_a_file source use =
         (fun () -> output_string channel source);
       use path)
 
-let records_of source =
-  in_a_file source (fun path ->
-      (path, Parse.captures (Lazy.force language) ~query:spanning_query ~path))
+(* The items that one fold over the one file at [path] gives. *)
+let items_of ~query path =
+  let seen = ref [] in
+  Parse.fold (Lazy.force language) ~query ~paths:[ path ] ~f:(fun item ->
+      seen := item :: !seen);
+  List.rev !seen
 
-(* Parse.tree reads the file and gives what the bridge gives for its
-   text. *)
+let records_of source =
+  in_a_file spanning_query (fun query ->
+      in_a_file source (fun path ->
+          ( path,
+            List.filter_map
+              (function
+                | Parse.Capture record -> Some record | Parse.Tree _ -> None)
+              (items_of ~query:(Some query) path) )))
+
+(* A fold with no query reads the file and gives what the bridge gives
+   for its text. *)
 let the_tree_of_a_file_is_the_tree_of_its_text document =
   let source = document ^ "\n" in
-  String.equal
-    (in_a_file source (fun path -> Parse.tree (Lazy.force language) ~path))
-    (Sinter_bridge.tree (Lazy.force language) ~source)
+  let expected =
+    match Sinter_bridge.Tree.parse (Lazy.force language) source with
+    | Ok tree -> Sinter_bridge.Tree.sexp tree
+    | Error error -> Alcotest.fail (Sinter_bridge.Tree.message error)
+  in
+  match in_a_file source (items_of ~query:None) with
+  | [ Parse.Tree { sexp; _ } ] -> String.equal sexp expected
+  | _ -> false
 
 let the_records_of_a_file_agree_with_the_source document =
   (* A file ends with a line feed, and the end of the document node
@@ -452,7 +470,10 @@ let with_language f =
   let engine = Sinter_bridge.create () in
   Fun.protect
     ~finally:(fun () -> Sinter_bridge.close engine)
-    (fun () -> f (Parse.load engine ~grammar))
+    (fun () ->
+      match Grammar.load engine ~path:grammar with
+      | Ok language -> f language
+      | Error error -> Alcotest.fail (Grammar.message ~path:grammar error))
 
 let folds_one_tree_over_each_file () =
   let items =
@@ -633,34 +654,6 @@ let the_op_answers_with_the_lines_of_the_command =
       in
       same_control && same_items)
 
-(* [captures] and [tree] check the file name before they open the
-   file. A name that is not UTF-8 text therefore fails the same way
-   whether or not the file exists, and whether or not the query
-   captures anything in it. *)
-let captures_checks_the_file_name_first () =
-  let message =
-    try
-      ignore
-        (Parse.captures (Lazy.force language) ~query:"(document) @d"
-           ~path:"\xffnope.json");
-      "no failure"
-    with Parse.Error message -> message
-  in
-  Alcotest.(check string)
-    "the message gives the file name as bytes, not a failure to open"
-    "the file name is not UTF-8 text: \\255nope.json" message
-
-let tree_checks_the_file_name_first () =
-  let message =
-    try
-      ignore (Parse.tree (Lazy.force language) ~path:"\xffnope.json");
-      "no failure"
-    with Parse.Error message -> message
-  in
-  Alcotest.(check string)
-    "the message gives the file name as bytes, not a failure to open"
-    "the file name is not UTF-8 text: \\255nope.json" message
-
 (* [run] loads the grammar before it looks at any file, so when the
    grammar does not read and a file name is not UTF-8 text, the
    message names the grammar. *)
@@ -710,10 +703,6 @@ let tests =
       reports_a_channel_that_cannot_be_written;
     Alcotest.test_case "rejects a file name that is not UTF-8" `Quick
       rejects_a_file_name_that_is_not_utf_8;
-    Alcotest.test_case "captures checks the file name first" `Quick
-      captures_checks_the_file_name_first;
-    Alcotest.test_case "tree checks the file name first" `Quick
-      tree_checks_the_file_name_first;
     Alcotest.test_case "names the grammar before a bad file name" `Quick
       names_the_grammar_before_a_bad_file_name;
     Alcotest.test_case "rejects a file name whose first byte is not UTF-8"

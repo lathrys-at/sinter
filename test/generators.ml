@@ -200,7 +200,6 @@ let print_record fields =
 
 (* The result buffer of the bridge. *)
 
-let kind_captures = 0
 let kind_tree = 1
 let kind_digest = 2
 let add_u32 buffer value = Buffer.add_int32_le buffer (Int32.of_int value)
@@ -218,25 +217,6 @@ let add_header buffer ~kind ~count =
   add_u32 buffer count;
   add_u32 buffer 0
 
-let captures_bytes captures =
-  let buffer = Buffer.create 256 in
-  let runs = ref [] in
-  add_header buffer ~kind:kind_captures ~count:(List.length captures);
-  List.iter
-    (fun (c : Sinter_bridge.capture) ->
-      add_u32 buffer c.pattern;
-      add_u32 buffer c.start_byte;
-      add_u32 buffer c.end_byte;
-      add_u32 buffer c.start_row;
-      add_u32 buffer c.start_column;
-      add_u32 buffer c.end_row;
-      add_u32 buffer c.end_column;
-      add_run buffer runs c.name;
-      add_run buffer runs c.node_type;
-      add_run buffer runs c.text)
-    captures;
-  (Buffer.contents buffer, List.rev !runs)
-
 let tree_bytes text =
   let buffer = Buffer.create 256 in
   let runs = ref [] in
@@ -250,41 +230,8 @@ let digest_bytes digest =
   Buffer.add_string buffer digest;
   (Buffer.contents buffer, [])
 
-let encode_captures captures = fst (captures_bytes captures)
 let encode_tree text = fst (tree_bytes text)
 let encode_digest digest = fst (digest_bytes digest)
-let u32 = Gen.oneof [ Gen.nat_small; Gen.int_range 0 0xFFFFFFFF ]
-
-let capture =
-  let open Gen in
-  let* pattern = u32 in
-  let* start_byte = u32 in
-  let* end_byte = u32 in
-  let* start_row = u32 in
-  let* start_column = u32 in
-  let* end_row = u32 in
-  let* end_column = u32 in
-  let* name = utf_8_string in
-  let* node_type = utf_8_string in
-  let+ text = utf_8_string in
-  {
-    Sinter_bridge.pattern;
-    name;
-    node_type;
-    start_byte;
-    end_byte;
-    start_row;
-    start_column;
-    end_row;
-    end_column;
-    text;
-  }
-
-let captures_buffer =
-  Gen.map
-    (fun captures -> (captures, encode_captures captures))
-    (Gen.list_size (Gen.int_range 0 4) capture)
-
 let tree_buffer = Gen.map (fun text -> (text, encode_tree text)) utf_8_string
 
 let digest_buffer =
@@ -359,12 +306,6 @@ let damaged ?bytes:(unchecked = []) (buffer, runs) ~kind ~count =
     (truncated :: wrong_magic :: wrong_kind :: wrong_count :: trailing
     :: List.filter_map Fun.id [ length_out_of_range; not_utf_8 ])
 
-let damaged_captures_buffer =
-  let open Gen in
-  let* captures = list_size (int_range 0 3) capture in
-  damaged (captures_bytes captures) ~kind:kind_captures
-    ~count:(List.length captures)
-
 let damaged_tree_buffer =
   let open Gen in
   let* text = utf_8_string in
@@ -392,15 +333,13 @@ let print_damage = function
 let print_damaged (damage, buffer) =
   print_damage damage ^ " " ^ print_buffer buffer
 
-let print_capture (c : Sinter_bridge.capture) =
+let print_capture (c : Sinter_bridge.Query.capture) =
+  let r = c.range in
   Printf.sprintf
-    "{pattern=%d; name=%S; node_type=%S; sb=%d; eb=%d; sr=%d; sc=%d; er=%d; \
-     ec=%d; text=%S}"
-    c.pattern c.name c.node_type c.start_byte c.end_byte c.start_row
-    c.start_column c.end_row c.end_column c.text
-
-let print_captures captures =
-  "[" ^ String.concat "; " (List.map print_capture captures) ^ "]"
+    "{match=%d; pattern=%d; name=%S; node_type=%S; sb=%d; eb=%d; sr=%d; sc=%d; \
+     er=%d; ec=%d; text=%S}"
+    c.match_number c.pattern c.name c.node_type r.start_byte r.end_byte
+    r.start_row r.start_column r.end_row r.end_column c.text
 
 (* Splice [piece] into [text] at [at], over the bytes that stand
    there. *)
@@ -413,7 +352,7 @@ let splice text at piece =
 let buffer_bytes =
   let open Gen in
   let any = string_size (int_range 0 40) in
-  let whole = map (fun (_, buffer) -> buffer) captures_buffer in
+  let whole = map (fun (_, buffer) -> buffer) tree_buffer in
   oneof
     [
       any;
@@ -423,7 +362,6 @@ let buffer_bytes =
        let+ piece = string_size (int_range 1 6) in
        splice buffer at piece);
       whole;
-      map (fun (_, buffer) -> buffer) tree_buffer;
       map (fun (_, buffer) -> buffer) digest_buffer;
     ]
 
@@ -482,15 +420,19 @@ let capture_in source =
   in
   let start_byte = offsets.(first) and end_byte = offsets.(beyond) in
   {
-    Sinter_bridge.pattern;
+    Sinter_bridge.Query.match_number = 0;
+    pattern;
     name;
     node_type;
-    start_byte;
-    end_byte;
-    start_row = rows_before source start_byte;
-    start_column = start_byte - start_of_line source start_byte;
-    end_row = rows_before source end_byte;
-    end_column = end_byte - start_of_line source end_byte;
+    range =
+      {
+        start_byte;
+        end_byte;
+        start_row = rows_before source start_byte;
+        start_column = start_byte - start_of_line source start_byte;
+        end_row = rows_before source end_byte;
+        end_column = end_byte - start_of_line source end_byte;
+      };
     text = String.sub source start_byte (end_byte - start_byte);
   }
 
@@ -519,15 +461,19 @@ let capture_outside source =
   let* pattern = nat_small in
   let+ end_column = oneof_list [ 0; 0; 1; 2 ] in
   {
-    Sinter_bridge.pattern;
+    Sinter_bridge.Query.match_number = 0;
+    pattern;
     name = "d";
     node_type = "document";
-    start_byte;
-    end_byte;
-    start_row = rows_before source (held start_byte);
-    start_column = held start_byte - start_of_line source (held start_byte);
-    end_row = rows_before source (held end_byte) + 1;
-    end_column;
+    range =
+      {
+        start_byte;
+        end_byte;
+        start_row = rows_before source (held start_byte);
+        start_column = held start_byte - start_of_line source (held start_byte);
+        end_row = rows_before source (held end_byte) + 1;
+        end_column;
+      };
     text = "";
   }
 

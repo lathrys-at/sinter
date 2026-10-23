@@ -41,29 +41,10 @@ external query_free : query_handle -> unit = "sinter_bridge_query_free_stub"
 external query_run : query_handle -> tree_handle -> string
   = "sinter_bridge_query_run_stub"
 
-external run : engine -> handle -> string -> string -> string
-  = "sinter_bridge_run_stub"
-
 external sha256_buffer : string -> string = "sinter_bridge_sha256_stub"
 external toml_buffer : string -> string = "sinter_bridge_toml_parse_stub"
 
 type t = engine
-
-type capture = {
-  pattern : int;
-  name : string;
-  node_type : string;
-  start_byte : int;
-  end_byte : int;
-  start_row : int;
-  start_column : int;
-  end_row : int;
-  end_column : int;
-  text : string;
-}
-
-let create () = engine_new ()
-let close engine = engine_free engine
 
 (* @cites parser-bridge *)
 (* The decoder of the result buffer. Every integer in the buffer is
@@ -71,7 +52,6 @@ let close engine = engine_free engine
 
 let magic = "SBR1"
 let header_length = 16
-let kind_captures = 0
 let kind_tree = 1
 let kind_digest = 2
 let digest_length = 32
@@ -119,52 +99,11 @@ let read_header buffer expected_kind =
       (Printf.sprintf "the kind is %d, and %d was expected" kind expected_kind);
   read_int buffer 8
 
-let read_capture buffer offset =
-  let pattern = read_int buffer offset in
-  let start_byte = read_int buffer (offset + 4) in
-  let end_byte = read_int buffer (offset + 8) in
-  let start_row = read_int buffer (offset + 12) in
-  let start_column = read_int buffer (offset + 16) in
-  let end_row = read_int buffer (offset + 20) in
-  let end_column = read_int buffer (offset + 24) in
-  let name, offset =
-    read_string buffer (offset + 28) ~what:"the name of a capture"
-  in
-  let node_type, offset =
-    read_string buffer offset ~what:"the type of a node"
-  in
-  let text, offset = read_string buffer offset ~what:"the text of a node" in
-  ( {
-      pattern;
-      name;
-      node_type;
-      start_byte;
-      end_byte;
-      start_row;
-      start_column;
-      end_row;
-      end_column;
-      text;
-    },
-    offset )
-
 let check_whole buffer offset =
   if offset <> String.length buffer then
     malformed
       (Printf.sprintf "the records end at byte %d and the buffer holds %d bytes"
          offset (String.length buffer))
-
-let decode_captures buffer =
-  let count = read_header buffer kind_captures in
-  let rec read index offset acc =
-    if index = count then (List.rev acc, offset)
-    else
-      let capture, offset = read_capture buffer offset in
-      read (index + 1) offset (capture :: acc)
-  in
-  let found, offset = read 0 header_length [] in
-  check_whole buffer offset;
-  found
 
 let decode_tree buffer =
   let count = read_header buffer kind_tree in
@@ -184,8 +123,6 @@ let decode_digest buffer =
          count);
   check_whole buffer (header_length + digest_length);
   String.sub buffer header_length digest_length
-
-let sha256 data = decode_digest (sha256_buffer data)
 
 (* [read_list buffer offset read] reads a count and then that many
    elements with [read]. *)
@@ -354,8 +291,10 @@ module Query_types = struct
               what message)
     | Not_allowed { operator; row; column; _ } ->
         Printf.sprintf
-          "Query error at %d:%d. The pattern uses #%s, which is not one of the \
-           predicates that a query can use"
+          "Query error at %d:%d. A query cannot use #%s. It can use only the \
+           predicates #eq?, #not-eq?, #any-eq?, #any-not-eq?, #match?, \
+           #not-match?, #any-match?, #any-not-match?, #any-of?, and \
+           #not-any-of?"
           (row + 1) (column + 1) operator
     | Not_utf_8 offset ->
         Printf.sprintf "the query is not UTF-8 text, at byte %d" offset
@@ -430,7 +369,7 @@ type failure =
   | Run_failure of Query_types.run_error
   | Adapter_failure of Adapter_types.error
 
-let kind_captures_v2 = 6
+let kind_captures = 6
 let kind_report = 7
 let kind_response = 8
 let kind_failure = 5
@@ -607,7 +546,7 @@ let decode_failure buffer select =
 
 module Decode = struct
   let captures buffer =
-    let count = read_header buffer kind_captures_v2 in
+    let count = read_header buffer kind_captures in
     let rec read index offset acc =
       if index = count then (List.rev acc, offset)
       else
@@ -645,6 +584,18 @@ end
 
 (* A failure of the wrong family, or an internal fault, raises Error. *)
 let fault buffer = decode_failure buffer (fun _ -> None)
+
+let create () =
+  match engine_new () with
+  | engine -> engine
+  | exception Failed buffer -> fault buffer
+
+let close engine = engine_free engine
+
+let sha256 data =
+  match sha256_buffer data with
+  | buffer -> Decode.digest buffer
+  | exception Failed buffer -> fault buffer
 
 module Language = struct
   include Language_types
@@ -709,13 +660,6 @@ module Query = struct
     | buffer -> Ok (Decode.captures buffer)
     | exception Failed buffer -> Result.Error (Decode.run_error buffer)
 end
-
-type language = Language.t
-
-let load engine ~name ~wasm =
-  match Language.load engine ~name ~wasm with
-  | Ok language -> language
-  | Result.Error error -> raise (Error (Language.message error))
 
 module Adapter = Adapter_types
 
@@ -881,20 +825,15 @@ module Toml_raw = struct
            kind_document kind_error)
 
   let parse text =
-    decode
-      ~length:
-        (String.length text
-         [@mutaml.skip
-           "the bridge writes no span that runs past the text it reads, so a \
-            bound one byte larger accepts the same buffers; the tests of \
-            decode check the bound itself"])
-      (toml_buffer text)
+    match toml_buffer text with
+    | exception Failed buffer -> fault buffer
+    | buffer ->
+        decode
+          ~length:
+            (String.length text
+             [@mutaml.skip
+               "the bridge writes no span that runs past the text it reads, so \
+                a bound one byte larger accepts the same buffers; the tests of \
+                decode check the bound itself"])
+          buffer
 end
-
-let captures (language : Language.t) ~source ~query =
-  if String.length query = 0 then
-    invalid_arg "Sinter_bridge.captures: the query is empty";
-  decode_captures (run language.engine language.handle source query)
-
-let tree (language : Language.t) ~source =
-  decode_tree (run language.engine language.handle source "")

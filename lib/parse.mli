@@ -8,25 +8,6 @@ exception Error of string
 (** Something went wrong, and the string says what. The string is fit to show to
     the person who ran the command. *)
 
-val captures :
-  Sinter_bridge.language -> query:string -> path:string -> Jsonl.record list
-(** [captures language ~query ~path] reads the file at [path], parses it, runs
-    [query] over the parse tree, and gives one record per capture, in the order
-    the query produced them. Every string of every record is valid UTF-8.
-
-    @raise Error
-      if [path] is not UTF-8 text, if the file does not read or is not UTF-8
-      text, if the parse fails, or if a string of a record would not be valid
-      UTF-8. *)
-
-val tree : Sinter_bridge.language -> path:string -> string
-(** [tree language ~path] reads the file at [path], parses it, and gives the
-    parse tree as an S-expression. The result is valid UTF-8.
-
-    @raise Error
-      if [path] is not UTF-8 text, if the file does not read or is not UTF-8
-      text, or if the parse fails. *)
-
 (** One result of one file. *)
 type item =
   | Capture of Jsonl.record
@@ -34,16 +15,8 @@ type item =
   | Tree of { path : string; sexp : string }
       (** the parse tree of the file at [path], as an S-expression *)
 
-val load : Sinter_bridge.t -> grammar:string -> Sinter_bridge.language
-(** [load engine ~grammar] reads the grammar file at [grammar] and loads it into
-    [engine]. The grammar name comes from the module, and from the file name
-    when the module does not carry it. The result stays valid until [engine] is
-    closed.
-
-    @raise Error if the file does not read, or the grammar does not load. *)
-
 val fold :
-  Sinter_bridge.language ->
+  Sinter_bridge.Language.t ->
   query:string option ->
   paths:string list ->
   f:(item -> unit) ->
@@ -56,13 +29,15 @@ val fold :
     name that is not UTF-8 text fails before [f] sees any item.
 
     Every string of every record of an item is valid UTF-8, and so is the
-    S-expression of a tree item.
+    S-expression of a tree item. [fold] compiles the query once, and frees the
+    query and each tree before it returns.
 
     @raise Error
       if a file name is not UTF-8 text, if a file does not read, if the query
       file is empty or does not compile, if a parse fails, or if a string of a
       record would not be valid UTF-8. An exception that [f] raises passes
-      through. *)
+      through.
+    @raise Invalid_argument if [language] or its engine is closed. *)
 
 val run :
   grammar:string ->
@@ -74,8 +49,8 @@ val run :
     grammar file at [grammar] into it, then handles each file of [paths] in
     order. When [query] is the path of a query file, it writes one canonical
     JSONL line per capture. When [query] is [None], it writes the parse tree of
-    each file as an S-expression, one tree per line. It closes the engine before
-    it returns.
+    each file as an S-expression, one tree per line. It frees the grammar and
+    the engine before it returns.
 
     @raise Error on the first failure, and on a failure to write to [channel].
 *)
