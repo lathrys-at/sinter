@@ -24,3 +24,9 @@ Users log out after an hour.
 @design store v1
 @cites login v2
 The store keeps the sessions.
+
+## Uses
+
+@decision uses v1
+@cites logout
+@ack disendorsed logout e4c168f2
