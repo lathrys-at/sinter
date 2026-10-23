@@ -76,10 +76,10 @@ Every tag has one shape:
 @word target [vN]
 ```
 
-`@word` is the tag name. `target` is the **tag target**: it names the
-thing the tag declares or points at. `vN` is a revision (section 5). A
-description can follow on the same line and on later lines (section
-3.2).
+`@word` is the tag word (section 3.1). `target` is the **tag
+target**: it names the thing the tag declares or points at. `vN` is a
+revision (section 5). A description can follow on the same line and on
+later lines (section 3.2).
 
 ### 3.1 Tag lines and blocks
 
@@ -92,7 +92,11 @@ the indentation before it, and then the task marker, `[ ]`, `[x]`, or
 start of the line. The line is a tag line when the remaining text
 starts with `@`.
 
-Every such line is a tag line, whether or not its word is in this
+The **tag word** of a tag line is its `@` and the longest run of ASCII
+letters, ASCII digits, and `-` right after the `@`. Example: in the
+tag line `@foo-bar: text`, the tag word is `@foo-bar`.
+
+Every such line is a tag line, whether or not its tag word is in this
 vocabulary. Unknown words are not part of this vocabulary and have no
 meaning here. Other toolchains own some tag words, for example
 `@param` and `@returns`. A language pack lists the tag words that
@@ -366,9 +370,10 @@ needs a certain source and the citation does not have one. A
 `@verifies` needs a test. A `@refines` or a `@supersedes` needs an
 enclosing declaration.
 
-A citation is **dangling** when its tag target does not resolve: no
-declaration has the slug, or the ref's namespace is not declared, or
-the ref's id fails the namespace's pattern.
+A citation is **dangling** when its tag target is well formed and does
+not resolve: no declaration has the slug. A tag target that fails its
+pattern, or a ref whose namespace is not declared, is not dangling. It
+is the finding `bad-target` only (sections 4.1 and 4.2).
 
 A `@supersedes` edge whose source and tag target have different kinds
 is an error. A live `@supersedes` edge retires the declaration that
@@ -405,15 +410,17 @@ is one of:
   `disendorsed cache-ttl` or `disconnected`;
 - a rule name — for example `ste-docs`.
 
-The **subject** of a finding is the fact that the finding is about. An
-ack names the subject in the form that the checking tool reports in
-the field `ack_subject` of the finding ([jsonl.md](jsonl.md) section
-8):
+The **subject** of a finding is what the finding is about: a fact, or
+a file, a line, or a tag that is no fact. An ack names the subject in
+the form that the checking tool reports in the field `ack_subject` of
+the finding ([jsonl.md](jsonl.md) section 8):
 
 - for an edge, the tag target of the edge, as written;
 - for a fact that has a slug (a declaration, a plan, or a step), its
   slug;
-- for any other fact, its id.
+- for any other fact, its id;
+- for a subject that is no fact, its positional subject id
+  ([jsonl.md](jsonl.md) section 9).
 
 The hash is the first eight or more hex digits of the block hash
 (section 6.1) at the time of the judgment.
@@ -590,9 +597,10 @@ set of paths by the rule of a path set ([manifest.md](manifest.md)
 section 7.2): a glob that starts with `!` leaves paths out.
 
 A step with no `@scope` inherits the plan's scope. A step's `@scope`
-must be contained in its plan's scope (finding class `bad-scope`). A
-step's **effective scope** is its own scope when it has one, and
-otherwise the plan's scope.
+must be contained in its plan's scope, by the rule that
+[algebra.md](algebra.md) section 9 gives for the finding class
+`bad-scope`. A step's **effective scope** is its own scope when it has
+one, and otherwise the plan's scope.
 
 The manifest key `plan.shared` ([manifest.md](manifest.md) section
 10.3) names paths that every step of every plan can change, for
@@ -615,7 +623,8 @@ A promise is **met** as follows:
   without an entry has no default location.
 - A promised `@satisfies`, `@refines`, `@cites`, or `@supersedes` is
   met if and only if at least one such edge exists inside the step's
-  effective scope, and that edge is neither dangling nor suspect.
+  effective scope, the tag target of that edge resolves, and that
+  edge is not suspect.
 - A promised `@verifies` is met if and only if such an edge exists
   inside the step's effective scope at evidence rung `passing`. When
   `evidence.coverage-attribution` is `"optional"`, the default, an

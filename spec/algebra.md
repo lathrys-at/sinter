@@ -198,13 +198,14 @@ declaration. "Declaration" means a `req`, `design`, or `decision`.
 | `out(K, S)` | `S`: node, config | edges `e` with `kind(e) ∈ K` and `src(e) ∈ S` |
 | `in(K, S)` | `S`: node, ref | edges `e` with `kind(e) ∈ K` and `dst(e) ∈ S` |
 | `src(E)` | edge | the sources of the edges in `E` |
-| `dst(E)` | edge | the facts that the tag targets of the edges in `E` resolve to; a dangling edge contributes nothing |
-| `subject(F)` | finding | the subjects of the findings in `F` |
+| `dst(E)` | edge | the facts that the tag targets of the edges in `E` resolve to; an edge whose tag target resolves to nothing contributes nothing |
+| `subject(F)` | finding | the subjects of the findings in `F`; a subject that is no fact ([jsonl.md](jsonl.md) section 9) contributes nothing |
 
 ### 6.3 Closures
 
-Closures are least fixpoints. The tool ignores dangling edges. It
-follows suspect edges, because a stale citation is still a citation.
+Closures are least fixpoints. The tool ignores the edges whose tag
+target resolves to nothing. It follows suspect edges, because a stale
+citation is still a citation.
 
 | function | accepts | denotes |
 |---|---|---|
@@ -238,7 +239,7 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 | function | keeps `e ∈ E` iff |
 |---|---|
 | `suspect(E)` | `rev(e) ≠ ⊥`, `dst(e) ≠ ⊥`, `dst(e)` is a declaration, and `rev(dst(e)) ≠ rev(e)` |
-| `dangling(E)` | `dst(e) = ⊥`: no declaration has the slug, or the ref's namespace is undeclared, or its id fails the pattern |
+| `dangling(E)` | `dst(e) = ⊥`, and the tag target of `e` is well formed: no declaration has the slug. A tag target that fails its pattern, or a ref whose namespace is undeclared, is not dangling: it is `bad-target` only ([vocabulary.md](vocabulary.md) section 4) |
 
 ### 6.7 Evidence predicates
 
@@ -414,25 +415,25 @@ the cap ([manifest.md](manifest.md) section 9.3).
 | class | subject | definition | mode | A | F | tiers |
 |---|---|---|---|---|---|---|
 | `parse-error` | file | *engine*: a governed file with a parse failure ([packs.md](packs.md) section 5.2). In a file of a fetched pack, the file's facts are absent. In a markdown file, the facts stay, one finding sits at each error, and the tier of such a finding is `warn` where the class's tier is `block` | tree | · | · | warn, block, block |
-| `typo-tag` | line | *engine*: an unknown `@word` within Damerau–Levenshtein distance 2 of the vocabulary. The pack's foreign vocabulary is exempt | tree | · | F | warn, warn, warn |
+| `typo-tag` | line | *engine*: a tag line whose tag word ([vocabulary.md](vocabulary.md) section 3.1) is not in the vocabulary and lies within Damerau–Levenshtein distance 2 of a word of the vocabulary. The pack's foreign vocabulary is exempt. The `fix` names the nearest word of the vocabulary. When two words are equally near, it names the first in byte order, as [manifest.md](manifest.md) section 4.2 does for keys | tree | · | F | warn, warn, warn |
 | `unread-tag` | line | *engine*: in markdown, a paragraph that a section or a list item holds directly, that is not the first paragraph of that section or list item, that no block quote holds, and whose first line is a tag line. The scanner reads no tag in it ([packs.md](packs.md) section 7.2) | tree | · | · | warn, warn, warn |
-| `bad-target` | tag | *engine*: a slug or ref that fails its pattern, or an undeclared namespace | tree | · | · | block, block, block |
-| `duplicate` | node | *engine*: two slugs in one namespace that are equal, or that differ only in case ([vocabulary.md](vocabulary.md) section 4.1): two declarations; two plans (closed plans included); or two steps of one plan | tree | · | · | block, block, block |
-| `bad-scope` | step | *engine*: a step whose `@scope` is not contained in its plan's | tree | · | · | block, block, — |
-| `misplaced-plan` | node | *engine*: a `@plan` declaration outside `.plans/**` | tree | · | · | block, block, block |
+| `bad-target` | tag | *engine*: a tag target that fails its pattern: a slug that fails the slug pattern, or a ref whose namespace is undeclared or whose id fails the pattern of its namespace ([vocabulary.md](vocabulary.md) sections 4.1 and 4.2). Such a tag target is never `dangling` | tree | · | · | block, block, block |
+| `duplicate` | tag or line | *engine*: two slugs in one namespace that are equal, or that differ only in case ([vocabulary.md](vocabulary.md) section 4.1): two declarations; two plans (closed plans included); or two steps of one plan. Order the facts of one such group by the byte order of their paths, and then by their lines. Each fact after the first gives one finding. Its subject is the tag of that fact or, for a step, the line of the step's heading ([jsonl.md](jsonl.md) section 9) | tree | · | · | block, block, block |
+| `bad-scope` | step | *engine*: a step whose `@scope` is not contained in its plan's `@scope`. The tool decides containment on the plain globs ([manifest.md](manifest.md) section 7.2), by the rule of glob containment of [ledger.md](ledger.md) section 11: each plain glob of the step must be contained in a plain glob of the plan. A `!` glob of the step only narrows the step's scope, so it never breaks containment | tree | · | · | block, block, — |
+| `misplaced-plan` | tag | *engine*: a `@plan` tag that does not stand in the first tag block of a file under `.plans/`: a `@plan` outside `.plans/**`, or a `@plan` in a later block of a file under `.plans/` ([vocabulary.md](vocabulary.md) section 10.1) | tree | · | · | block, block, block |
 | `unpinned` | edge | *engine*: a `satisfies`, `verifies`, `refines`, or `supersedes` edge without a revision | tree | · | F | block, block, block |
 | `dangling` | edge | `dangling(kind(edge))`, minus edges whose tag target a lease promises to declare — those surface as `blocked-on` instead (*engine* performs this subtraction). When the tag target differs from a declared slug only in case, the `fix` of the finding names the declared spelling | tree | · | · | block, block, block |
 | `renamed` | edge | *engine*: dangling edges whose slug has a tombstone in `B` and a new declaration in `T` with an equal extent hash | diff | · | F | block, block, block |
 | `suspect` | edge | `suspect(kind(edge))` | tree | · | F | block, block, block |
 | `rev-owed` | node | `kind(req\|design\|decision) ^ changed(base) - bumped(all)` | diff | · | F | block, block, block |
-| `cycle` | node | *engine*: a cycle in `supersedes` or `refines` | tree | · | · | block, block, block |
+| `cycle` | node | *engine*: a cycle of `supersedes` and `refines` edges. Two facts belong to one cycle when each reaches the other along these edges. A fact with such an edge to itself is a cycle by itself. Each cycle gives one finding. Its subject is the member of the cycle with the smallest id in byte order, and its `detail` names the other members, in the byte order of their ids | tree | · | · | block, block, block |
 | `code-drift` | site | *engine*: the `ch` of a code site changed since the base while the site's comment hash did not. This class is not ackable: it is diff-relative, so an ack for it would become void when the branch merges | diff | · | · | warn, warn, — |
 | `declined` | node | `declined(kind(req\|design\|decision\|plan))`; the detail is the reason | tree | · | · | warn, block, — |
 | `unratified-req` | edge | `in(satisfies\|verifies, kind(req) - approved(all))`. A kind that does not need approval counts as approved, so in a repository where `ledger.approval-required` does not list `req` this class reports nothing | tree | · | · | block, block, block |
 | `unratified-design` | edge | `in(satisfies\|verifies, kind(design) - approved(all))` | tree | · | · | warn, warn, warn |
 | `unstamped` | node | `kind(req\|design\|decision) ^ inforce(all) - approved(all)` | tree | · | · | off, warn, warn |
 | `amendment` | plan | `kind(plan) ^ inforce(all) - approved(all)`. The engine writes the difference between the current commitment set and the stamped commitment set into the finding's `detail` field | tree | · | · | warn, block, — |
-| `disendorsed` | edge | `kind(cites) - dangling(all) - in(cites, inforce(all))` — a rule's origin edge included | tree | A | · | warn, block, block |
+| `disendorsed` | edge | `in(cites, all) - in(cites, inforce(all))`: the `cites` edges whose tag target resolves to a fact that is not in force — a rule's origin edge included | tree | A | · | warn, block, block |
 | `stale-ack` | ack | *engine*: an `@ack` whose hash no longer matches its block, or whose tag target names nothing in that block | tree | · | F | block, block, block |
 | `orphan` | edge | `orphan(kind(verifies)) + (kind(refines\|supersedes) - out(refines\|supersedes, kind(req\|design\|decision\|rule)))`: a citation whose kind needs a certain source and that does not have one ([vocabulary.md](vocabulary.md) section 7.2). A `@verifies` needs a test; a `@refines` or a `@supersedes` needs an enclosing declaration | tree | · | · | block, block, block |
 | `never-ran` | edge | `neverran(kind(verifies)) ^ scope(inforce(kind(plan)))` at `turn`; `neverran(kind(verifies))` at `merge` and `target` | tree | · | · | warn, block, block |
@@ -444,8 +445,8 @@ the cap ([manifest.md](manifest.md) section 9.3).
 | `unmet` | promise | `unmet(active)` where `unmet(p) = promises($p) - met(promises($p))` — incompleteness; enforced only by `status --done` | tree | · | · | off, off, — |
 | `promise-out-of-scope` | promise | *engine*: a promise met only by residue outside its step's scope | tree | · | · | warn, warn, — |
 | `unverified-promise` | promise | *engine*: a promised `req` or `design` with no promised `verifies` of it in the same plan | tree | · | · | warn, warn, — |
-| `promise-collision` | promise | *engine*: a promised declaration whose slug exists in the fact set of `B` or is promised by a lease | tree | · | · | block, block, — |
-| `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets | tree | · | · | warn, warn, — |
+| `promise-collision` | promise | *engine*: a promised declaration whose slug a lease promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise with the same plan, step, word, and target. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered | tree | · | · | block, block, — |
+| `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets. Two scopes intersect when a plain glob of one contains a plain glob of the other, or is contained in it, by the rule of glob containment of [ledger.md](ledger.md) section 11 | tree | · | · | warn, warn, — |
 | `blocked-on` | promise | `blocked(promises(kind(plan)))` — reported in place of `dangling`, with the lease and step named | tree | · | · | off, warn, — |
 | `lease-overlap` | step | *engine*: a step's scope intersects the scope of another branch's lease | tree | · | · | warn, warn, — |
 | `unmapped-work` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient - shared`. The engine also exempts hunks that are wholly mechanical repairs — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |

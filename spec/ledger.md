@@ -165,7 +165,7 @@ condition.
 these statements are true:
 
 - Every promised declaration exists.
-- Every promised edge exists, and that edge is neither dangling nor
+- Every promised edge exists, its tag target resolves, and it is not
   suspect.
 - When the job imports evidence: every promised `verifies` edge is at
   rung `passing`, or at rung `unattributed` when

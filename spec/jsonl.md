@@ -245,7 +245,7 @@ the span of the record is the first paragraph of the section.
 |---|---|---|
 | `src` | string | id of the source fact (a node or a rule) |
 | `target` | string | the tag target as written: a slug or `ns/id` |
-| `dst` | string | *derived*: id of the fact that the tag target resolves to; omitted when dangling |
+| `dst` | string | *derived*: id of the fact that the tag target resolves to; omitted when the tag target resolves to nothing |
 | `rev` | int | the pinned revision; omitted when unpinned |
 | `desc` | string | inline description, without the spaces and tabs at both ends; omitted when empty |
 | `suspect` `dangling` | bool | *derived* |
@@ -425,14 +425,14 @@ the position that [manifest.md](manifest.md) section 14.4 gives.
 | field | type | meaning |
 |---|---|---|
 | `class` | string | a class from [algebra.md](algebra.md) section 9 |
-| `subject` | string | id of the fact the finding is about |
+| `subject` | string | the subject id: the id of the fact that the finding is about, or a positional subject id (section 9) |
 | `ack_subject` | string | the subject in the form that an `@ack` names it ([vocabulary.md](vocabulary.md) section 7.4) |
 | `rule` | string | `rule-owed` findings only |
 | `detail` | string | one line, human-facing, deterministic |
 | `fix` | string | the exact `@ack` line to paste, or a one-line instruction; omitted when none |
 | `ackable` | bool | |
 | `acked` | bool | present only when acked findings are requested |
-| `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3) |
+| `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3); present only when the command runs with `--gate` |
 | `mode` | string | `tree` or `diff` |
 
 ## 9. Identity
@@ -463,12 +463,25 @@ uses a position in the file only when no content can name the fact.
 | `ack` | `ack:<block-id>:<target>` | anchored to the block, not to a line |
 | `hunk` | `hunk:<path>:<line>-<eline>` | positional by nature |
 | `tombstone` | `tombstone:<was>` | |
-| `finding` | `finding:<class>:<subject-id>[:<rule>]` | |
+| `finding` | `finding:<class>:<subject-id>[:<rule>]` | `<subject-id>` is the id of the fact that the finding is about, or a positional subject id (below) |
 
-An id is stable under re-indentation, reformatting, line shifts, and
-re-pinning. It changes under a slug rename (rename is deletion plus
-declaration), under moving a site to a different named definition, and
-under a change of an edge's tag target.
+A finding whose subject is no fact takes a **positional subject id**,
+in the style of the positional id of a site. Lines and columns count
+as section 3 says. Parse a positional subject id from the right: a
+path can contain `@`.
+
+| subject | positional subject id | findings |
+|---|---|---|
+| a file | `file:<path>` | `parse-error` in a file that yields no fact: a file that is not valid UTF-8, or a file of a fetched pack with a parse failure ([packs.md](packs.md) sections 5.1 and 5.2) |
+| an error node of a markdown file | `file:<path>@L<line>C<column>`, from the position where the node starts | `parse-error` in a markdown file ([packs.md](packs.md) section 5.2) |
+| a line | `line:<path>@L<line>` | `typo-tag` and `unread-tag`, at the tag line; `duplicate` of a step, at the line of the step's heading |
+| a tag | `tag:<path>@L<line>C<column>`, from the position of the `@` of the tag | `bad-target`; `misplaced-plan`; `duplicate` of a declaration or a plan |
+
+An id that is not positional is stable under re-indentation,
+reformatting, line shifts, and re-pinning. It changes under a slug
+rename (rename is deletion plus declaration), under moving a site to a
+different named definition, and under a change of an edge's tag
+target.
 
 ## 10. Header and summary records
 
