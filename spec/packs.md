@@ -771,6 +771,10 @@ network, and it sees no clock. It exports these five names:
 | `sinter_recognise` | `(i32, i32, i32, i32) -> i64` | the call `recognise` (section 10.4) |
 | `sinter_bind` | `(i32, i32, i32, i32) -> i64` | the call `bind` (section 10.5) |
 
+The module can export other names, and Sinter does not use them. For
+example, a module that the Rust compiler builds also exports the
+globals `__data_end` and `__heap_base`.
+
 This section defines version `1` of the interface.
 
 ### 10.2 A call
@@ -794,8 +798,9 @@ steps:
 Sinter reads each address and each length as an unsigned number.
 
 Sinter runs each call under two limits. The limit of **fuel** bounds
-the number of WebAssembly instructions that the call runs. The limit
-of memory bounds the size of `memory`. Fuel does not depend on the
+the number of WebAssembly instructions that the call runs, in the
+calls of `sinter_alloc` and in the call of the function together. The
+limit of memory bounds the size of `memory`. Fuel does not depend on the
 speed of the machine, so a call that exceeds the limit on one machine
 exceeds it on every machine. The tool fixes both limits. Neither a
 pack nor a manifest can change them.
@@ -873,7 +878,8 @@ A call **fails** in each of these cases:
 
 - the adapter is not valid;
 - the module traps;
-- the call exceeds its limit of fuel or its limit of memory;
+- the call exceeds its limit of fuel, or the module asks to grow
+  `memory` past its limit of memory;
 - `sinter_alloc` returns `0`, or an address whose bytes do not lie
   inside `memory`;
 - the bytes of the response do not lie inside `memory`;
