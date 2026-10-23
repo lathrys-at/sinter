@@ -9,10 +9,12 @@ WebAssembly, parses a source text with that grammar, and runs a
 tree-sitter query over the parse tree. It calls a function of a runner
 adapter, a WebAssembly module, with bytes in and bytes out, under
 limits of fuel and memory. It also computes the SHA-256 digest of a
-byte string, and reads a TOML document with the crate `toml_edit`. It gives the results to OCaml through a C interface.
+byte string, and reads a TOML document with the crate `toml_edit`. It
+gives the results to OCaml through a C interface.
 
-The bridge knows about grammars, source text, queries, captures,
-digests, and TOML documents. It holds no Sinter vocabulary. The
+The bridge knows about grammars, source text, queries, captures, error
+nodes, WebAssembly modules, digests, and TOML documents. It holds no
+Sinter vocabulary. The
 reasons are in
 [docs/decisions/parser-bridge.md](../docs/decisions/parser-bridge.md).
 

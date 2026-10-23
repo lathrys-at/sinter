@@ -9,7 +9,9 @@
 //! WebAssembly, parses a source text with that grammar, and runs a
 //! tree-sitter query over the parse tree. It returns the captures, the
 //! parse tree as an S-expression, or the error nodes of the tree, in
-//! one flat buffer. It also computes the SHA-256 digest of a byte
+//! one flat buffer. It calls a function of a runner adapter, a
+//! WebAssembly module, with bytes in and bytes out, under limits of
+//! fuel and memory. It also computes the SHA-256 digest of a byte
 //! string, and reads a TOML document.
 
 #![warn(unsafe_op_in_unsafe_fn)]
