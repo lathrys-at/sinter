@@ -6,15 +6,6 @@ exception Error of string
 let fail format = Printf.ksprintf (fun message -> raise (Error message)) format
 let is_utf_8 = Sinter_bridge.Utf_8.is_valid
 
-(* @cites json-handling *)
-(* Every string in a record is UTF-8. The text of a capture comes from
-   the file, and the name of the file goes into the record beside
-   it. *)
-let check_utf_8 path text =
-  match Sinter_bridge.Utf_8.first_invalid text with
-  | None -> ()
-  | Some offset -> fail "%s: the file is not UTF-8 text, at byte %d" path offset
-
 let check_path path =
   if not (is_utf_8 path) then
     fail "the file name is not UTF-8 text: %s" (String.escaped path)
@@ -25,23 +16,6 @@ let check_path path =
    that the message of a failure names a file the reader can read. *)
 let check_string path what text =
   if not (is_utf_8 text) then fail "%s: %s is not UTF-8 text" path what
-
-let read_file path =
-  if try Sys.is_directory path with Sys_error _ -> false then
-    fail "%s: is a directory" path;
-  let channel =
-    try open_in_bin path with Sys_error message -> fail "%s" message
-  in
-  Fun.protect
-    ~finally:(fun () -> close_in_noerr channel)
-    (fun () ->
-      try really_input_string channel (in_channel_length channel) with
-      | Sys_error message ->
-          (* The message of a failed read does not name the file, and
-             the message of a failed open does. *)
-          fail "%s: %s" path message
-      | End_of_file ->
-          fail "%s: the file ended sooner than its length says" path)
 
 (* The name of the grammar in a wasm module. The bridge needs the name,
    and the module carries it: a grammar exports one function whose
@@ -214,9 +188,9 @@ let record_of_capture ~path ~source (capture : Sinter_bridge.capture) =
   ]
 
 let read_source path =
-  let source = read_file path in
-  check_utf_8 path source;
-  source
+  match Text_file.read_text path with
+  | Ok source -> source
+  | Error error -> raise (Error (Text_file.message path error))
 
 let of_bridge path f =
   try f () with Sinter_bridge.Error message -> fail "%s: %s" path message
@@ -240,7 +214,11 @@ let tree language ~path =
 type item = Capture of Jsonl.record | Tree of { path : string; sexp : string }
 
 let load engine ~grammar =
-  let wasm = read_file grammar in
+  let wasm =
+    match Text_file.read grammar with
+    | Ok wasm -> wasm
+    | Error error -> raise (Error (Text_file.message grammar error))
+  in
   let name =
     match name_of_wasm wasm with
     | Some name -> name

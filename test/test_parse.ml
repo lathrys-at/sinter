@@ -246,7 +246,7 @@ let rejects_a_file_name_whose_first_byte_is_not_utf_8 () =
     (name_failure "\xffname.json")
 
 let reads_the_grammar_name_from_the_module () =
-  let wasm = Parse.read_file grammar in
+  let wasm = In_channel.with_open_bin grammar In_channel.input_all in
   Alcotest.(check (option string))
     "the module of the fixture names the grammar json" (Some "json")
     (Parse.name_of_wasm wasm);
@@ -442,7 +442,7 @@ let places_the_end_of_a_capture_that_ends_at_byte_two () =
    that a user renamed still loads. *)
 let loads_a_grammar_file_under_another_name () =
   let renamed = Filename.temp_file "grammar" ".wasm" in
-  let wasm = Parse.read_file grammar in
+  let wasm = In_channel.with_open_bin grammar In_channel.input_all in
   let channel = open_out_bin renamed in
   output_string channel wasm;
   close_out channel;
@@ -604,7 +604,7 @@ let to_string_accepts_a_record_of_a_capture (source, capture) =
    keeps its engine alive, and alcotest runs one test at a time. *)
 let language =
   lazy
-    (let wasm = Parse.read_file grammar in
+    (let wasm = In_channel.with_open_bin grammar In_channel.input_all in
      Sinter_bridge.load (Sinter_bridge.create ()) ~name:"json" ~wasm)
 
 (* The document node ends after the last line feed of the file, so a

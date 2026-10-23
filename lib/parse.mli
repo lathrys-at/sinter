@@ -8,13 +8,6 @@ exception Error of string
 (** Something went wrong, and the string says what. The string is fit to show to
     the person who ran the command. *)
 
-val read_file : string -> string
-(** [read_file path] is the whole content of the file at [path].
-
-    @raise Error
-      if [path] is a directory, if the file does not open, or if reading it
-      fails. *)
-
 val name_of_wasm : string -> string option
 (** [name_of_wasm wasm] is the name of the grammar in the wasm module [wasm],
     read from the export whose name starts with ["tree_sitter_"]. It is [None]

@@ -1,8 +1,6 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-open Sinter_core
-
 (* Dune runs the test in the build copy of test/, so the path below is
    relative to that directory. *)
 let grammar = "fixtures/tree-sitter-json/tree-sitter-json.wasm"
@@ -11,7 +9,7 @@ let grammar = "fixtures/tree-sitter-json/tree-sitter-json.wasm"
    its engine alive, and alcotest runs one test at a time. *)
 let json =
   lazy
-    (let wasm = Parse.read_file grammar in
+    (let wasm = In_channel.with_open_bin grammar In_channel.input_all in
      Sinter_bridge.load (Sinter_bridge.create ()) ~name:"json" ~wasm)
 
 (* One pattern with one capture. The query cursor gives one capture
@@ -153,7 +151,7 @@ let reports_a_grammar_that_does_not_load () =
 (* The interface says that a call after {!Sinter_bridge.close} raises
    [Invalid_argument]. *)
 let a_closed_engine_refuses_every_call () =
-  let wasm = Parse.read_file grammar in
+  let wasm = In_channel.with_open_bin grammar In_channel.input_all in
   let engine = Sinter_bridge.create () in
   let language = Sinter_bridge.load engine ~name:"json" ~wasm in
   Sinter_bridge.close engine;
