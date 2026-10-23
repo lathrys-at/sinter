@@ -27,91 +27,178 @@ static void raise_bridge_error(const char *fallback) {
   caml_raise_with_string(*exception, message);
 }
 
-/* The pointer is NULL once the engine is freed. Nothing frees an
-   engine twice, and a later call fails with a clear message. */
-
-#define Engine_val(v) (*((sinter_bridge_engine **)Data_custom_val(v)))
-
-static void finalize_engine(value v) {
-  sinter_bridge_engine *engine = Engine_val(v);
-  Engine_val(v) = NULL;
-  sinter_bridge_engine_free(engine);
-}
-
-static struct custom_operations engine_operations = {
-    "sinter.bridge.engine",     finalize_engine,
-    custom_compare_default,     custom_hash_default,
-    custom_serialize_default,   custom_deserialize_default,
-    custom_compare_ext_default, custom_fixed_length_default};
-
-static sinter_bridge_engine *live_engine(value v) {
-  sinter_bridge_engine *engine = Engine_val(v);
-  if (engine == NULL) {
-    caml_invalid_argument("Sinter_bridge: the engine is closed");
+/* Raise Sinter_bridge.Failed with the buffer of the last failure.
+   Without that exception, or without the buffer, raise
+   Sinter_bridge.Error with the message of the last failure. */
+static void raise_failure(const char *fallback) {
+  CAMLparam0();
+  CAMLlocal1(buffer);
+  const value *failed = caml_named_value("Sinter_bridge.Failed");
+  sinter_bridge_result *failure = sinter_bridge_last_failure();
+  if (failed == NULL || failure == NULL) {
+    sinter_bridge_result_free(failure);
+    raise_bridge_error(fallback);
   }
-  return engine;
+  buffer =
+      caml_alloc_initialized_string(failure->len, (const char *)failure->data);
+  sinter_bridge_result_free(failure);
+  caml_raise_with_arg(*failed, buffer);
+  CAMLnoreturn;
 }
 
-/* The engine owns the language, so the handle has no finalizer. The
-   OCaml side keeps the engine alive while a handle of it lives. */
+/* Copy a result into an OCaml string and free it. A NULL result
+   raises the last failure. No OCaml value points into memory that the
+   bridge owns. */
+static value take_result(sinter_bridge_result *result, const char *fallback) {
+  CAMLparam0();
+  CAMLlocal1(copy);
+  if (result == NULL) {
+    raise_failure(fallback);
+  }
+  copy = caml_alloc_initialized_string(result->len, (const char *)result->data);
+  sinter_bridge_result_free(result);
+  CAMLreturn(copy);
+}
 
-#define Language_val(v) (*((sinter_bridge_language **)Data_custom_val(v)))
+/* A custom block holds one pointer to a handle of the bridge. The
+   pointer is NULL once the handle is freed. Nothing frees a handle
+   twice, and a later call raises Invalid_argument. A finalizer only
+   frees the handle: it allocates nothing on the OCaml heap, raises
+   nothing, and calls no OCaml code. */
 
-static struct custom_operations language_operations = {
-    "sinter.bridge.language",   custom_finalize_default,
-    custom_compare_default,     custom_hash_default,
-    custom_serialize_default,   custom_deserialize_default,
-    custom_compare_ext_default, custom_fixed_length_default};
+#define Handle_val(v) (*((void **)Data_custom_val(v)))
+
+static void *live_handle(value v, const char *closed) {
+  void *handle = Handle_val(v);
+  if (handle == NULL) {
+    caml_invalid_argument(closed);
+  }
+  return handle;
+}
+
+static value alloc_handle(struct custom_operations *operations, void *handle,
+                          mlsize_t memory) {
+  value block = caml_alloc_custom_mem(operations, sizeof(void *), memory);
+  Handle_val(block) = handle;
+  return block;
+}
+
+#define HANDLE_OPERATIONS(kind, free_function)                                 \
+  static void finalize_##kind(value v) {                                       \
+    void *handle = Handle_val(v);                                              \
+    Handle_val(v) = NULL;                                                      \
+    free_function(handle);                                                     \
+  }                                                                            \
+  static struct custom_operations kind##_operations = {                        \
+      "sinter.bridge." #kind,     finalize_##kind,                             \
+      custom_compare_default,     custom_hash_default,                         \
+      custom_serialize_default,   custom_deserialize_default,                  \
+      custom_compare_ext_default, custom_fixed_length_default};                \
+  CAMLprim value sinter_bridge_##kind##_free_stub(value v) {                   \
+    CAMLparam1(v);                                                             \
+    finalize_##kind(v);                                                        \
+    CAMLreturn(Val_unit);                                                      \
+  }
+
+HANDLE_OPERATIONS(engine, sinter_bridge_engine_free)
+HANDLE_OPERATIONS(language, sinter_bridge_language_free)
+HANDLE_OPERATIONS(tree, sinter_bridge_tree_free)
+HANDLE_OPERATIONS(query, sinter_bridge_query_free)
+
+#define Engine_val(v)                                                          \
+  ((sinter_bridge_engine *)live_handle(v, "Sinter_bridge: the engine is closed"))
+#define Language_val(v)                                                        \
+  ((sinter_bridge_language *)live_handle(                                      \
+      v, "Sinter_bridge: the language is closed"))
+#define Tree_val(v)                                                            \
+  ((sinter_bridge_tree *)live_handle(v, "Sinter_bridge: the tree is closed"))
+#define Query_val(v)                                                           \
+  ((sinter_bridge_query *)live_handle(v, "Sinter_bridge: the query is closed"))
 
 CAMLprim value sinter_bridge_engine_new_stub(value unit) {
   CAMLparam1(unit);
-  CAMLlocal1(result);
   sinter_bridge_engine *engine = sinter_bridge_engine_new();
   if (engine == NULL) {
     raise_bridge_error("the bridge could not create an engine");
   }
   /* The last argument is the memory outside the OCaml heap that an
      engine holds. */
-  result = caml_alloc_custom_mem(&engine_operations,
-                                 sizeof(sinter_bridge_engine *), 4 << 20);
-  Engine_val(result) = engine;
-  CAMLreturn(result);
-}
-
-CAMLprim value sinter_bridge_engine_free_stub(value engine) {
-  CAMLparam1(engine);
-  sinter_bridge_engine *pointer = Engine_val(engine);
-  Engine_val(engine) = NULL;
-  sinter_bridge_engine_free(pointer);
-  CAMLreturn(Val_unit);
+  CAMLreturn(alloc_handle(&engine_operations, engine, 4 << 20));
 }
 
 CAMLprim value sinter_bridge_language_load_stub(value engine, value name,
                                                 value wasm) {
   CAMLparam3(engine, name, wasm);
-  CAMLlocal1(result);
-  sinter_bridge_engine *pointer = live_engine(engine);
+  sinter_bridge_engine *pointer = Engine_val(engine);
   /* String_val gives a whole C string here. The OCaml side rejects a
      name that holds a NUL byte. */
   sinter_bridge_language *language = sinter_bridge_language_load(
       pointer, String_val(name), (const uint8_t *)String_val(wasm),
       caml_string_length(wasm));
   if (language == NULL) {
-    raise_bridge_error("the bridge could not load the grammar");
+    raise_failure("the bridge could not load the grammar");
   }
-  result = caml_alloc_custom(&language_operations,
-                             sizeof(sinter_bridge_language *), 0, 1);
-  Language_val(result) = language;
-  CAMLreturn(result);
+  CAMLreturn(
+      alloc_handle(&language_operations, language, caml_string_length(wasm)));
+}
+
+CAMLprim value sinter_bridge_parse_stub(value engine, value language,
+                                        value source) {
+  CAMLparam3(engine, language, source);
+  /* C leaves the order of the arguments of a call open, so each check
+     of a closed handle runs on its own line. */
+  sinter_bridge_engine *engine_pointer = Engine_val(engine);
+  sinter_bridge_language *language_pointer = Language_val(language);
+  sinter_bridge_tree *tree =
+      sinter_bridge_parse(engine_pointer, language_pointer,
+                          (const uint8_t *)String_val(source),
+                          caml_string_length(source));
+  if (tree == NULL) {
+    raise_failure("the bridge could not parse the source text");
+  }
+  CAMLreturn(
+      alloc_handle(&tree_operations, tree, sinter_bridge_tree_memory(tree)));
+}
+
+CAMLprim value sinter_bridge_tree_sexp_stub(value tree) {
+  CAMLparam1(tree);
+  CAMLreturn(take_result(sinter_bridge_tree_sexp(Tree_val(tree)),
+                         "the bridge could not write the parse tree"));
+}
+
+CAMLprim value sinter_bridge_tree_errors_stub(value tree) {
+  CAMLparam1(tree);
+  CAMLreturn(take_result(sinter_bridge_tree_errors(Tree_val(tree)),
+                         "the bridge could not report the errors of a tree"));
+}
+
+CAMLprim value sinter_bridge_query_new_stub(value language, value text) {
+  CAMLparam2(language, text);
+  sinter_bridge_query *query = sinter_bridge_query_new(
+      Language_val(language), (const uint8_t *)String_val(text),
+      caml_string_length(text));
+  if (query == NULL) {
+    raise_failure("the bridge could not compile the query");
+  }
+  CAMLreturn(alloc_handle(&query_operations, query, caml_string_length(text)));
+}
+
+CAMLprim value sinter_bridge_query_run_stub(value query, value tree) {
+  CAMLparam2(query, tree);
+  sinter_bridge_query *query_pointer = Query_val(query);
+  sinter_bridge_tree *tree_pointer = Tree_val(tree);
+  CAMLreturn(take_result(sinter_bridge_query_run(query_pointer, tree_pointer),
+                         "the bridge could not run the query"));
 }
 
 CAMLprim value sinter_bridge_run_stub(value engine, value language,
                                       value source, value query) {
   CAMLparam4(engine, language, source, query);
   CAMLlocal1(result);
-  sinter_bridge_engine *pointer = live_engine(engine);
+  sinter_bridge_engine *pointer = Engine_val(engine);
+  sinter_bridge_language *language_pointer = Language_val(language);
   sinter_bridge_result *run = sinter_bridge_run(
-      pointer, Language_val(language), (const uint8_t *)String_val(source),
+      pointer, language_pointer, (const uint8_t *)String_val(source),
       caml_string_length(source), (const uint8_t *)String_val(query),
       caml_string_length(query));
   if (run == NULL) {
