@@ -643,6 +643,65 @@ let a_ref_with_no_namespace_or_no_id_says_so () =
        manifest declares no ref namespace zz";
     ]
 
+(* {1 The components of cycles} *)
+
+let cycle_finds_each_component_once () =
+  (* The declarations come in this order: a, b, c, d, e, f, g, h. a and
+     b make a cycle that is done before c is reached; c reaches a, d,
+     and back to c; e, f, and g make a cycle with a branch from f back
+     to e; h refines a member of a cycle and is in none. *)
+  check Finding_class.Cycle
+    [
+      ( "docs/a.md",
+        "# A\n\n\
+         @req a\n\
+         @refines b v1\n\n\
+         ## B\n\n\
+         @req b\n\
+         @refines a v1\n\n\
+         ## C\n\n\
+         @req c\n\
+         @refines a v1\n\
+         @refines d v1\n\n\
+         ## D\n\n\
+         @req d\n\
+         @supersedes c v1\n\n\
+         ## E\n\n\
+         @req e\n\
+         @refines f v1\n\n\
+         ## F\n\n\
+         @req f\n\
+         @refines g v1\n\
+         @refines e v1\n\n\
+         ## G\n\n\
+         @req g\n\
+         @refines e v1\n\n\
+         ## H\n\n\
+         @req h\n\
+         @refines g v1\n" );
+    ]
+    [
+      "docs/a.md:3:1-3:7 | finding:cycle:req:a | with req:b";
+      "docs/a.md:13:1-13:7 | finding:cycle:req:c | with req:d";
+      "docs/a.md:24:1-24:7 | finding:cycle:req:e | with req:f, req:g";
+    ]
+
+let cycle_takes_its_subject_by_id_not_by_place () =
+  check Finding_class.Cycle
+    [
+      ( "docs/a.md",
+        "# A\n\n\
+         @req z\n\
+         @refines m v1\n\n\
+         ## M\n\n\
+         @req m\n\
+         @refines b v1\n\n\
+         ## B\n\n\
+         @req b\n\
+         @refines z v1\n" );
+    ]
+    [ "docs/a.md:13:1-13:7 | finding:cycle:req:b | with req:m, req:z" ]
+
 (* {1 The global rules} *)
 
 let a_historical_path_gives_no_finding () =
@@ -721,6 +780,9 @@ let tests =
       a_control_character_of_a_plan_stays_in_one_line;
     case "a ref with no namespace or no id says so"
       a_ref_with_no_namespace_or_no_id_says_so;
+    case "cycle finds each component once" cycle_finds_each_component_once;
+    case "cycle takes its subject by id, not by place"
+      cycle_takes_its_subject_by_id_not_by_place;
     case "a historical path gives no finding" a_historical_path_gives_no_finding;
     case "the findings are sorted" the_findings_are_sorted;
   ]

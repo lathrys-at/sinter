@@ -299,10 +299,65 @@ let suspect facts =
       | _ -> None)
     (Facts.edges facts)
 
+(* The strongly connected components of the graph whose node [n] has
+   the successors [successors.(n)], by Tarjan's algorithm with a stack
+   of calls held in a list: each component once, in no fixed order. The
+   time is linear in the number of nodes and edges. *)
+let components successors =
+  let count = Array.length successors in
+  let index = Array.make count None in
+  let low = Array.make count 0 in
+  let on_stack = Array.make count false in
+  let next = ref 0 in
+  let stack = ref [] in
+  let found = ref [] in
+  let enter node =
+    index.(node) <- Some !next;
+    low.(node) <- !next;
+    incr next;
+    stack := node :: !stack;
+    on_stack.(node) <- true
+  in
+  (* The component whose root is [root], taken off the stack, which
+     holds [root]. *)
+  let rec pop root members =
+    match !stack with
+    | [] -> members
+    | node :: rest ->
+        stack := rest;
+        on_stack.(node) <- false;
+        if node = root then node :: members else pop root (node :: members)
+  in
+  (* Each call is a node and the successors that it has yet to visit;
+     the caller of a call is the call after it. *)
+  let rec run = function
+    | [] -> ()
+    | (node, successor :: rest) :: calls -> (
+        match index.(successor) with
+        | None ->
+            enter successor;
+            run ((successor, successors.(successor)) :: (node, rest) :: calls)
+        | Some position ->
+            if on_stack.(successor) then low.(node) <- min low.(node) position;
+            run ((node, rest) :: calls))
+    | (node, []) :: calls ->
+        (match calls with
+        | (caller, _) :: _ -> low.(caller) <- min low.(caller) low.(node)
+        | [] -> ());
+        if index.(node) = Some low.(node) then found := pop node [] :: !found;
+        run calls
+  in
+  Array.iteri
+    (fun node _ ->
+      if Option.is_none index.(node) then (
+        enter node;
+        run [ (node, successors.(node)) ]))
+    successors;
+  !found
+
 let cycles facts =
   let declarations = Array.of_list (Facts.declarations facts) in
-  let count = Array.length declarations in
-  let successors = Array.make count [] in
+  let successors = Array.make (Array.length declarations) [] in
   List.iter
     (fun ((edge : Facts.edge), target) ->
       match (edge.word, edge.source, target) with
@@ -310,22 +365,6 @@ let cycles facts =
           successors.(source) <- target :: successors.(source)
       | _ -> ())
     (Facts.edges facts);
-  (* [reach.(node)] is the set of the nodes that one edge or more lead
-     to from [node]. *)
-  let reach =
-    Array.init count (fun node ->
-        let seen = Array.make count false in
-        let rec visit = function
-          | [] -> ()
-          | next :: rest ->
-              if seen.(next) then visit rest
-              else (
-                seen.(next) <- true;
-                visit (successors.(next) @ rest))
-        in
-        visit successors.(node);
-        seen)
-  in
   let order a b =
     compare
       ( Facts.declaration_id declarations.(a),
@@ -335,17 +374,15 @@ let cycles facts =
         declarations.(b).path,
         declarations.(b).span.start.line )
   in
-  let members node =
-    List.sort order
-      (List.filter
-         (fun other -> reach.(node).(other) && reach.(other).(node))
-         (List.init count Fun.id))
-  in
+  (* A component is a cycle when it holds two members or more, or one
+     member with an edge to itself. *)
   List.filter_map
-    (fun node ->
-      match if reach.(node).(node) then members node else [] with
-      | first :: others when first = node ->
-          let declaration = declarations.(node) in
+    (fun component ->
+      match List.sort order component with
+      | [] -> None
+      | [ node ] when not (List.mem node successors.(node)) -> None
+      | first :: others ->
+          let declaration = declarations.(first) in
           let detail =
             match others with
             | [] -> None
@@ -362,9 +399,8 @@ let cycles facts =
             (Finding.make Finding_class.Cycle
                (declaration_subject declaration)
                ~place:(place declaration.path declaration.span)
-               ?detail ())
-      | _ -> None)
-    (List.init count Fun.id)
+               ?detail ()))
+    (components successors)
 
 (* The block hash of the block [index] of the document at [path]. *)
 let block_hash documents path index =
