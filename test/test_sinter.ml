@@ -5,6 +5,12 @@
    sits beside it in the build copy of bin/. *)
 let binary = Filename.concat (Sys.getcwd ()) "../bin/main.exe"
 
+(* Many shells of Rust developers set RUST_BACKTRACE, and a Rust
+   backtrace inside the process stopped it on macOS until the bridge
+   turned backtraces off. The suite always runs with it set, so that
+   the adapter tests, whose errors come from wasmtime, keep that fixed. *)
+let () = Unix.putenv "RUST_BACKTRACE" "full"
+
 let () =
   let mode =
     match

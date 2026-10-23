@@ -193,6 +193,27 @@ unsafe fn drop_handle<T>(handle: *mut T) {
     }
 }
 
+/// Turn off every Rust backtrace in the process, once.
+///
+/// A backtrace that Rust captures inside the `sinter` process stops the
+/// process with SIGTRAP on macOS on arm64: the walk goes up through the
+/// frames of the OCaml runtime. An error of wasmtime captures one when
+/// `RUST_BACKTRACE` or `RUST_LIB_BACKTRACE` asks for it, and many shells
+/// of Rust developers set `RUST_BACKTRACE`. So the bridge sets
+/// `RUST_LIB_BACKTRACE` to `0`, which turns off the capture for errors,
+/// before it makes any error. It also replaces the default panic hook,
+/// which prints a backtrace, with one that prints the message alone;
+/// `guard` turns the panic into a failure.
+fn keep_backtraces_off() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        std::env::set_var("RUST_LIB_BACKTRACE", "0");
+        std::panic::set_hook(Box::new(|info| {
+            eprintln!("sinter: the bridge stopped on an internal fault: {info}");
+        }));
+    });
+}
+
 /// Run `body`. Turn a panic into `failure`, so that no panic reaches
 /// the C caller.
 ///
@@ -204,6 +225,7 @@ unsafe fn drop_handle<T>(handle: *mut T) {
 /// profile that sets `panic = "abort"` makes every guard in the crate
 /// dead, and the process aborts again.
 fn guard<T>(failure: T, body: impl FnOnce() -> T) -> T {
+    keep_backtraces_off();
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
         Ok(value) => value,
         Err(_) => {
