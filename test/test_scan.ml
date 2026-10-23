@@ -303,12 +303,13 @@ let a_plan_file_needs_the_pack_markdown_when_it_names_none () =
    sits beside it in the build copy of bin/. *)
 let sinter = Filename.concat (Sys.getcwd ()) "../bin/main.exe"
 
-(* A scan of the shared repository whose standard output is a pipe that
-   nobody reads, with SIGPIPE ignored, so that the first write fails:
-   the exit status and what the scan wrote to standard error. The scan
-   gets the environment of the repository with the HOME of the suite,
-   where wasmtime keeps its cache of compiled grammars. *)
-let scan_into_a_closed_pipe () =
+(* A run of the command [command] in the shared repository whose
+   standard output is a pipe that nobody reads, with SIGPIPE ignored, so
+   that the first write fails: the exit status and what the run wrote to
+   standard error. The run gets the environment of the repository with
+   the HOME of the suite, where wasmtime keeps its cache of compiled
+   grammars. *)
+let into_a_closed_pipe command =
   let repo, _, _ = Lazy.force shared in
   let environment =
     Array.map
@@ -341,10 +342,11 @@ let scan_into_a_closed_pipe () =
               [|
                 "/bin/sh";
                 "-c";
-                "cd \"$1\" && exec \"$2\" scan";
+                "cd \"$1\" && exec \"$2\" \"$3\"";
                 "sh";
                 Git_fixture.root repo;
                 sinter;
+                command;
               |]
               environment Unix.stdin writing to_errors)
       in
@@ -357,12 +359,25 @@ let scan_into_a_closed_pipe () =
 
 let a_scan_that_cannot_write_its_output_says_so () =
   let _, _, { Scan.warnings; _ } = Lazy.force shared in
-  let status, errors = scan_into_a_closed_pipe () in
+  let status, errors = into_a_closed_pipe "scan" in
   Alcotest.(check (pair int (list string)))
     "the exit code and the lines of standard error"
     ( 3,
       List.map (fun warning -> "sinter: " ^ warning) warnings
       @ [ "sinter: cannot write the output: Broken pipe" ] )
+    ( status,
+      List.filter (fun line -> line <> "") (String.split_on_char '\n' errors) )
+
+let a_check_that_cannot_write_its_output_says_so () =
+  let _, (tree : Scan.tree) = Lazy.force shared_tree in
+  let status, errors = into_a_closed_pipe "check" in
+  Alcotest.(check (pair int (list string)))
+    "the exit code and the lines of standard error"
+    ( 3,
+      List.map
+        (fun line -> "sinter: " ^ line)
+        ((Scan.base_message tree.base :: tree.warnings)
+        @ [ "cannot write the output: Broken pipe" ]) )
     ( status,
       List.filter (fun line -> line <> "") (String.split_on_char '\n' errors) )
 
@@ -500,5 +515,7 @@ let tests =
       a_plan_file_needs_the_pack_markdown_when_it_names_none;
     case "a scan that cannot write its output says so"
       a_scan_that_cannot_write_its_output_says_so;
+    case "a check that cannot write its output says so"
+      a_check_that_cannot_write_its_output_says_so;
     case "each error says what is wrong" each_error_says_what_is_wrong;
   ]
