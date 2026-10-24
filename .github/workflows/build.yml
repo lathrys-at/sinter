@@ -389,10 +389,10 @@ jobs:
     # the fixes. Remove the pin, and install a release instead, when
     # upstream publishes a version that does all three.
     env:
-      # The head of the fork's main branch, after its pull request 7.
+      # The head of the fork's main branch, after its pull request 8.
       # A commit, never a branch, so that every run builds the same
       # source.
-      MUTAML_COMMIT: "b3c6b062522d1b8ac3b9615f84320e5d7e8d8ac8"
+      MUTAML_COMMIT: "40cf168bebe7392c01f17aa150d25499b9811d55"
       # The job fails when the score is below this number. The
       # maintainer fixed it at 95 on 2026-09-16. It does not follow
       # the measurement: it does not rise when the score rises, and
