@@ -479,10 +479,10 @@ approved retires nothing yet.
 An edge stays live when a later edge supersedes its source. In a
 **chain** of `@supersedes` edges, each declaration supersedes the one
 before it. When every edge of a chain is live, every declaration of
-the chain before the last one is retired. Example: `b` supersedes `a`, and `c` supersedes `b`. Both
-edges are live, so `a` and `b` are retired, and `c` is in force. When
-`b` carries a status tag, the edge from `b` to `a` is not live, and
-`a` is in force.
+the chain before the last one is retired. Example: `b` supersedes
+`a`, and `c` supersedes `b`. Both edges are live, so `a` and `b` are
+retired, and `c` is in force. When `b` carries a status tag, the edge
+from `b` to `a` is not live, and `a` is in force.
 
 A declaration sits on a **cycle** when it reaches itself along
 `@supersedes` edges, live or not. A declaration on a cycle that
