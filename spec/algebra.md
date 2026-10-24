@@ -228,7 +228,7 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 
 | function | accepts | keeps `f ∈ S` iff |
 |---|---|---|
-| `inforce(S)` | any | For a declaration: `f` carries no status tag and no live `@supersedes` edge points at `f` ([vocabulary.md](vocabulary.md) section 8.1). The tool computes edge liveness as a fixpoint over the chains of `@supersedes` edges. On a cycle, the tool counts every member of the cycle as in force and reports the `cycle` finding. For a plan, for its steps, and for its promises: the plan is open — the ledger holds no `discharged` entry and no `abandoned` entry for it. The predicate keeps every fact of every other kind |
+| `inforce(S)` | any | For a declaration: `f` carries no status tag and no live `@supersedes` edge points at `f` ([vocabulary.md](vocabulary.md) section 8.1). A member of a cycle of `@supersedes` edges that carries no status tag is in force, and the tool reports the `cycle` finding. For a plan, for its steps, and for its promises: the plan is open — the ledger holds no `discharged` entry and no `abandoned` entry for it. The predicate keeps every fact of every other kind |
 | `approved(S)` | any | A kind needs approval when `ledger.approval-required` lists it ([manifest.md](manifest.md) section 11.1). The predicate keeps `f` when any one of these conditions holds: `f` is a declaration of a kind that needs approval, and the ledger holds a stamp for `f`'s `(slug, rev, xh)`; `f` is a declaration of a kind that does not need approval; `f` is a plan, the kind `plan` needs approval, and `f`'s current commitment set is approved against the plan's latest stamped set ([ledger.md](ledger.md) section 11); `f` is a plan, and the kind `plan` does not need approval; `f` is a step of an approved plan; `f` is a fact of any other kind |
 | `bumped(S)` | node | `f` is a declaration absent from the fact set of `B`, or present there with a smaller revision |
 | `declined(S)` | node | `f` is a declaration or a plan with a live decline: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
@@ -390,8 +390,10 @@ Four global rules apply after evaluation. They are never written into
 definitions:
 
 1. Historical facts generate no findings of any class.
-2. A live `@ack` discharges findings of ackable classes. The tool
-   judges liveness before it removes the acked findings.
+2. A live `@ack` discharges the findings that accept an ack: the
+   findings of a class that column `A` marks, and the findings of a
+   class that column `A*` marks when the condition of its row holds.
+   The tool judges liveness before it removes the acked findings.
 3. The tool evaluates the classes `never-ran`, `failed`,
    `disconnected`, and `unattributed` only when an evidence set exists
    for the tree. The tool reports an unmeasured tree as unmeasured; it
@@ -402,15 +404,19 @@ definitions:
    promises — generate no findings. A closed plan is a record, not an
    agreement.
 
-Column `A` marks ackable classes; `A*` means ackable only under the
-condition the row states. Column `F` marks classes with a mechanical
-fix. The `tiers` column gives each class's built-in tier at the gates
-`(turn, merge, target)` ([manifest.md](manifest.md) section 9.1). A
-`—` means that the class takes no tier at that gate. The **rollout
-cap** (`check.rollout-cap`) lowers each `block` of the column to
-`warn`, at every gate. `sinter init` writes the cap, so a new
-repository starts under it. A tier that `check.tiers` writes passes
-the cap ([manifest.md](manifest.md) section 9.3).
+A finding is **ackable**, or accepts an ack, when a live `@ack` can
+discharge it. Column `A` marks the classes whose findings are all
+ackable. `A*` means that a finding of the class is ackable only when
+the condition that the row states holds. Column `F` marks classes with
+a mechanical fix. A class that column `F` does not mark can still give
+a `fix` ([jsonl.md](jsonl.md) section 8), such as the `@ack` line for
+a finding. The `tiers` column gives each class's built-in tier at the
+gates `(turn, merge, target)` ([manifest.md](manifest.md) section
+9.1). A `—` means that the class takes no tier at that gate.
+The **rollout cap** (`check.rollout-cap`) lowers each `block` of the
+column to `warn`, at every gate. `sinter init` writes the cap, so a
+new repository starts under it. A tier that `check.tiers` writes
+passes the cap ([manifest.md](manifest.md) section 9.3).
 
 | class | subject | definition | mode | A | F | tiers |
 |---|---|---|---|---|---|---|
@@ -433,8 +439,8 @@ the cap ([manifest.md](manifest.md) section 9.3).
 | `unratified-design` | edge | `in(satisfies\|verifies, kind(design) - approved(all))` | tree | · | · | warn, warn, warn |
 | `unstamped` | node | `kind(req\|design\|decision) ^ inforce(all) - approved(all)` | tree | · | · | off, warn, warn |
 | `amendment` | plan | `kind(plan) ^ inforce(all) - approved(all)`. The engine writes the difference between the current commitment set and the stamped commitment set into the finding's `detail` field | tree | · | · | warn, block, — |
-| `disendorsed` | edge | `in(cites, all) - in(cites, inforce(all))`: the `cites` edges whose tag target resolves to a fact that is not in force — a rule's origin edge included | tree | A | · | warn, block, block |
-| `stale-ack` | ack | *engine*: an `@ack` whose hash no longer matches its block, or whose tag target names nothing in that block | tree | · | F | block, block, block |
+| `disendorsed` | edge | `in(cites, all) - in(cites, inforce(all))`: the `cites` edges whose tag target resolves to a fact that is not in force — a rule's origin edge included. When the cited fact has successors ([vocabulary.md](vocabulary.md) section 8.2), the `detail` names the cited fact and then its successors, in the byte order of their ids, for example `decision:a is superseded by decision:b, decision:c`. The `fix` is then the citation of a successor that replaces the edge: `@cites`, the slug of the successor, and the current revision of the successor when the edge carries a revision. With several successors, the `fix` gives one such citation for each, in the same order, for example `@cites b v2 or @cites c v1`. Ackable only when the cited fact has no successor; the `fix` is then the `@ack` line for the finding | tree | A* | · | warn, block, block |
+| `stale-ack` | ack | *engine*: an `@ack` whose hash no longer matches its block, or whose tag target names neither an ackable finding nor an obligation of a rule in that block ([vocabulary.md](vocabulary.md) section 7.4) | tree | · | F | block, block, block |
 | `orphan` | edge | `orphan(kind(verifies)) + (kind(refines\|supersedes) - out(refines\|supersedes, kind(req\|design\|decision\|rule)))`: a citation whose kind needs a certain source and that does not have one ([vocabulary.md](vocabulary.md) section 7.2). A `@verifies` needs a test; a `@refines` or a `@supersedes` needs an enclosing declaration | tree | · | · | block, block, block |
 | `never-ran` | edge | `neverran(kind(verifies)) ^ scope(inforce(kind(plan)))` at `turn`; `neverran(kind(verifies))` at `merge` and `target` | tree | · | · | warn, block, block |
 | `failed` | edge | `failed(kind(verifies))` | tree | · | · | block, block, block |

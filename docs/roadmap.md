@@ -17,6 +17,12 @@
 - **`sinter check`**
   - The built-in finding classes, `spec/algebra.md` section 9.
   - Classes that need no ledger and no evidence first.
+- **`sinter patch`** — print the mechanical fixes of the findings as a
+  diff for `git apply`, design notes section 11.10. Sinter itself
+  writes no file.
+  - Among its fixes: move a citation of a superseded item to its
+    successor, and bump the revision of the citing declaration (record
+    `cite-the-successor`).
 - **Ledger commands and evidence import**
 - **`sinter search`**
   - Keyword search over titles, descriptions, and extents.

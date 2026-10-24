@@ -282,26 +282,73 @@ let cycle_names_its_smallest_member_and_the_others () =
       "docs/a.md:18:1-18:12 | finding:cycle:decision:d";
     ]
 
-let disendorsed_pastes_the_ack_of_its_block () =
+let disendorsed_of_a_status_pastes_the_ack_of_its_block () =
+  check Finding_class.Disendorsed
+    [
+      ( "docs/a.md",
+        "# A\n\n@decision old\n@deprecated\n\n## B\n\n@decision new\n" );
+      ("docs/b.md", "# B\n\n@cites old\n@cites new\n@refines old v1\n");
+    ]
+    [
+      "docs/b.md:3:1-3:11 | finding:disendorsed:cites:site:docs/b.md#b->old | \
+       decision:old is deprecated | fix: @ack disendorsed old 393d3530";
+    ]
+
+(* Records where new, at v3, supersedes gone; and z supersedes y, which
+   supersedes x. *)
+let superseded =
+  ( "docs/a.md",
+    "# A\n\n\
+     @decision new v3\n\
+     @supersedes gone v1\n\n\
+     ## Gone\n\n\
+     @decision gone\n\n\
+     ## Z\n\n\
+     @decision z\n\
+     @supersedes y v1\n\n\
+     ## Y\n\n\
+     @decision y v2\n\
+     @supersedes x v1\n\n\
+     ## X\n\n\
+     @decision x\n" )
+
+let disendorsed_of_a_superseded_item_names_its_successor () =
+  check Finding_class.Disendorsed
+    [
+      superseded;
+      ( "docs/b.md",
+        "# B\n\n@cites gone\n@cites gone v1\n@cites x v1\n@cites y\n" );
+    ]
+    [
+      "docs/b.md:3:1-3:12 | finding:disendorsed:cites:site:docs/b.md#b->gone | \
+       decision:gone is superseded by decision:new | fix: @cites new";
+      "docs/b.md:4:1-4:15 | finding:disendorsed:cites:site:docs/b.md#b->gone | \
+       decision:gone is superseded by decision:new | fix: @cites new v3";
+      "docs/b.md:5:1-5:12 | finding:disendorsed:cites:site:docs/b.md#b->x | \
+       decision:x is superseded by decision:z | fix: @cites z v1";
+      "docs/b.md:6:1-6:9 | finding:disendorsed:cites:site:docs/b.md#b->y | \
+       decision:y is superseded by decision:z | fix: @cites z";
+    ]
+
+let disendorsed_names_each_successor_in_the_order_of_their_ids () =
   check Finding_class.Disendorsed
     [
       ( "docs/a.md",
         "# A\n\n\
-         @decision old\n\
-         @deprecated\n\n\
+         @decision c\n\
+         @supersedes a v1\n\n\
          ## B\n\n\
-         @decision new\n\
-         @supersedes gone v1\n\n\
-         ## C\n\n\
-         @decision gone\n" );
-      ( "docs/b.md",
-        "# B\n\n@cites old\n@cites gone v1\n@cites new\n@refines old v1\n" );
+         @decision b v2\n\
+         @supersedes a v1\n\n\
+         ## A\n\n\
+         @decision a\n\
+         @deprecated\n" );
+      ("docs/b.md", "# B\n\n@cites a v1\n");
     ]
     [
-      "docs/b.md:3:1-3:11 | finding:disendorsed:cites:site:docs/b.md#b->old | \
-       decision:old is deprecated | fix: @ack disendorsed old 99349b41";
-      "docs/b.md:4:1-4:15 | finding:disendorsed:cites:site:docs/b.md#b->gone | \
-       decision:gone is superseded | fix: @ack disendorsed gone 99349b41";
+      "docs/b.md:3:1-3:12 | finding:disendorsed:cites:site:docs/b.md#b->a | \
+       decision:a is superseded by decision:b, decision:c | fix: @cites b v2 \
+       or @cites c v1";
     ]
 
 let orphan_sits_at_a_citation_without_its_source () =
@@ -556,6 +603,73 @@ let an_ack_discharges_only_the_findings_of_its_block () =
        decision:old is deprecated | fix: @ack disendorsed old ba974016";
     ]
 
+(* Each finding of [files] of the class disendorsed, as {!show} gives
+   it, with whether it is ackable. *)
+let disendorsed_ackable files =
+  List.filter_map
+    (fun (finding : Finding.t) ->
+      if finding.finding_class = Finding_class.Disendorsed then
+        Some (show finding, finding.ackable)
+      else None)
+    (findings files)
+
+let an_ack_does_not_discharge_the_finding_of_a_superseded_item () =
+  let files records ack =
+    [ records; ("docs/b.md", "# B\n\n@cites gone\n" ^ ack) ]
+  in
+  let acks =
+    [ "@ack disendorsed gone 62671b3a\n"; "@ack disendorsed 62671b3a\n" ]
+  in
+  List.iter
+    (fun ack ->
+      Alcotest.(check (list (pair string bool)))
+        ack
+        [
+          ( "docs/b.md:3:1-3:12 | \
+             finding:disendorsed:cites:site:docs/b.md#b->gone | decision:gone \
+             is superseded by decision:new | fix: @cites new",
+            false );
+        ]
+        (disendorsed_ackable (files superseded ack)))
+    ("" :: acks);
+  (* The hash of each ack is the block hash: each discharges the finding
+     when a status tag retires gone. *)
+  List.iter
+    (fun ack ->
+      Alcotest.(check (list (pair string bool)))
+        ("a status tag, " ^ ack) []
+        (disendorsed_ackable
+           (files ("docs/a.md", "# A\n\n@decision gone\n@deprecated\n") ack)))
+    acks
+
+let an_ack_still_discharges_the_finding_of_an_item_that_a_status_retires () =
+  let files ack =
+    [
+      superseded;
+      ("docs/c.md", "# C\n\n@decision old\n@deprecated\n");
+      ("docs/b.md", "# B\n\n@cites old\n@cites gone\n" ^ ack);
+    ]
+  in
+  Alcotest.(check (list (pair string bool)))
+    "both findings"
+    [
+      ( "docs/b.md:3:1-3:11 | finding:disendorsed:cites:site:docs/b.md#b->old \
+         | decision:old is deprecated | fix: @ack disendorsed old 0fda7530",
+        true );
+      ( "docs/b.md:4:1-4:12 | finding:disendorsed:cites:site:docs/b.md#b->gone \
+         | decision:gone is superseded by decision:new | fix: @cites new",
+        false );
+    ]
+    (disendorsed_ackable (files ""));
+  Alcotest.(check (list (pair string bool)))
+    "the finding of gone"
+    [
+      ( "docs/b.md:4:1-4:12 | finding:disendorsed:cites:site:docs/b.md#b->gone \
+         | decision:gone is superseded by decision:new | fix: @cites new",
+        false );
+    ]
+    (disendorsed_ackable (files "@ack disendorsed 0fda7530\n"))
+
 (* {1 Text that holds control characters} *)
 
 (* Every finding of [files], each as {!show} gives it. *)
@@ -755,8 +869,12 @@ let tests =
       suspect_pastes_the_current_revision;
     case "cycle names its smallest member and the others"
       cycle_names_its_smallest_member_and_the_others;
-    case "disendorsed pastes the ack of its block"
-      disendorsed_pastes_the_ack_of_its_block;
+    case "disendorsed of a status pastes the ack of its block"
+      disendorsed_of_a_status_pastes_the_ack_of_its_block;
+    case "disendorsed of a superseded item names its successor"
+      disendorsed_of_a_superseded_item_names_its_successor;
+    case "disendorsed names each successor in the order of their ids"
+      disendorsed_names_each_successor_in_the_order_of_their_ids;
     case "orphan sits at a citation without its source"
       orphan_sits_at_a_citation_without_its_source;
     case "uncovered names what is missing" uncovered_names_what_is_missing;
@@ -772,6 +890,10 @@ let tests =
     case "a void ack discharges nothing" a_void_ack_discharges_nothing;
     case "an ack discharges only the findings of its block"
       an_ack_discharges_only_the_findings_of_its_block;
+    case "an ack does not discharge the finding of a superseded item"
+      an_ack_does_not_discharge_the_finding_of_a_superseded_item;
+    case "an ack still discharges the finding of an item that a status retires"
+      an_ack_still_discharges_the_finding_of_an_item_that_a_status_retires;
     case "a lone carriage return stays in one line"
       a_lone_carriage_return_stays_in_one_line;
     case "a line feed in a path stays in one line"

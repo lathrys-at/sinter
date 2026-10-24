@@ -369,25 +369,59 @@ let a_source_that_is_not_approved_retires_nothing () =
   check_field records "supersedes:decision:new->old" "live" (bool false);
   check_field records "decision:old" "inforce" (bool true)
 
-let a_retired_source_retires_nothing () =
+(* A chain of three: c supersedes b, and b supersedes a. [kind] is the
+   kind of b, and [middle] the tag lines of b after its declaration. *)
+let chain ?(kind = "decision") ?(middle = "") () =
+  [
+    ( "a.md",
+      "# A\n\n@decision c\n@supersedes b v1\n\n# B\n\n@" ^ kind ^ " b\n"
+      ^ middle ^ "@supersedes a v1\n\n# C\n\n@decision a\n" );
+  ]
+
+let a_chain_retires_each_declaration_before_its_end () =
+  let records = records (chain ()) in
+  check_field records "supersedes:decision:c->b" "live" (bool true);
+  check_field records "supersedes:decision:b->a" "live" (bool true);
+  check_field records "decision:c" "inforce" (bool true);
+  check_field records "decision:b" "inforce" (bool false);
+  check_field records "decision:a" "inforce" (bool false)
+
+let a_status_tag_on_the_middle_of_a_chain_brings_back_the_first () =
+  let records = records (chain ~middle:"@deprecated\n" ()) in
+  check_field records "supersedes:decision:c->b" "live" (bool true);
+  check_field records "supersedes:decision:b->a" "live" (bool false);
+  check_field records "decision:b" "inforce" (bool false);
+  check_field records "decision:a" "inforce" (bool true)
+
+let a_middle_that_is_not_approved_retires_nothing () =
+  let records =
+    (* Only b needs approval: it is the only design. *)
+    records ~extra:"[ledger]\napproval-required = [\"design\"]\n"
+      (chain ~kind:"design" ())
+  in
+  check_field records "supersedes:decision:c->b" "live" (bool true);
+  check_field records "supersedes:design:b->a" "live" (bool false);
+  check_field records "design:b" "inforce" (bool false);
+  check_field records "decision:a" "inforce" (bool true)
+
+let two_declarations_that_supersede_one_both_retire_it () =
   let records =
     records
       [
         ( "a.md",
           "# A\n\n\
-           @decision c\n\
-           @supersedes b v1\n\n\
-           # B\n\n\
            @decision b\n\
+           @supersedes a v1\n\n\
+           # B\n\n\
+           @decision c\n\
            @supersedes a v1\n\n\
            # C\n\n\
            @decision a\n" );
       ]
   in
-  check_field records "decision:c" "inforce" (bool true);
-  check_field records "decision:b" "inforce" (bool false);
-  check_field records "supersedes:decision:b->a" "live" (bool false);
-  check_field records "decision:a" "inforce" (bool true)
+  check_field records "supersedes:decision:b->a" "live" (bool true);
+  check_field records "supersedes:decision:c->a" "live" (bool true);
+  check_field records "decision:a" "inforce" (bool false)
 
 let declarations_of_two_files_keep_their_own_numbers () =
   let records =
@@ -427,6 +461,28 @@ let every_member_of_a_supersedes_cycle_is_in_force () =
   List.iter
     (fun id -> check_field records id "inforce" (bool true))
     [ "decision:a"; "decision:b"; "decision:s" ]
+
+let a_cycle_counts_its_edges_that_are_not_live () =
+  let records =
+    records
+      [
+        ( "a.md",
+          "# Z\n\n\
+           @decision z\n\
+           @supersedes x v1\n\n\
+           # X\n\n\
+           @decision x\n\
+           @supersedes y v1\n\n\
+           # Y\n\n\
+           @decision y\n\
+           @deprecated\n\
+           @supersedes x v1\n" );
+      ]
+  in
+  check_field records "supersedes:decision:z->x" "live" (bool true);
+  check_field records "supersedes:decision:y->x" "live" (bool false);
+  check_field records "decision:x" "inforce" (bool true);
+  check_field records "decision:y" "inforce" (bool false)
 
 let a_supersedes_edge_from_a_site_is_not_live () =
   let records =
@@ -947,6 +1003,176 @@ let is_in_force_reads_status_and_supersession () =
       | exception Invalid_argument _ -> ())
     [ -1; 3 ]
 
+(* The successors of the declaration [id] of [facts], each as its id
+   and its path. *)
+let successors facts id =
+  let declarations = Array.of_list (Facts.declarations facts) in
+  let place index =
+    let declaration = declarations.(index) in
+    Facts.declaration_id declaration ^ " " ^ declaration.path
+  in
+  match
+    List.find_opt
+      (fun index -> String.equal (Facts.declaration_id declarations.(index)) id)
+      (List.init (Array.length declarations) Fun.id)
+  with
+  | Some index -> List.map place (Facts.successors facts index)
+  | None -> Alcotest.failf "no declaration has the id %s" id
+
+let check_successors facts id expected =
+  Alcotest.(check (list string)) id expected (successors facts id)
+
+let successors_follow_a_chain_to_its_end () =
+  let facts = facts (chain ()) in
+  check_successors facts "decision:a" [ "decision:c a.md" ];
+  check_successors facts "decision:b" [ "decision:c a.md" ];
+  check_successors facts "decision:c" []
+
+let successors_stop_where_a_status_tag_stops_an_edge () =
+  let facts = facts (chain ~middle:"@deprecated\n" ()) in
+  check_successors facts "decision:b" [ "decision:c a.md" ];
+  check_successors facts "decision:a" []
+
+let a_status_tag_alone_gives_no_successors () =
+  check_successors
+    (facts [ ("a.md", "# A\n\n@decision a\n@rejected\n") ])
+    "decision:a" []
+
+let successors_come_in_the_order_of_their_ids () =
+  check_successors
+    (facts
+       [
+         ( "a.md",
+           "# C\n\n\
+            @decision c\n\
+            @supersedes a v1\n\n\
+            # B\n\n\
+            @decision b\n\
+            @supersedes a v1\n\n\
+            # A\n\n\
+            @decision a\n" );
+       ])
+    "decision:a"
+    [ "decision:b a.md"; "decision:c a.md" ]
+
+let a_successor_that_two_paths_reach_comes_once () =
+  check_successors
+    (facts
+       [
+         ( "a.md",
+           "# D\n\n\
+            @decision d\n\
+            @supersedes b v1\n\
+            @supersedes c v1\n\n\
+            # C\n\n\
+            @decision c\n\
+            @supersedes a v1\n\n\
+            # B\n\n\
+            @decision b\n\
+            @supersedes a v1\n\n\
+            # A\n\n\
+            @decision a\n" );
+       ])
+    "decision:a" [ "decision:d a.md" ]
+
+let of_two_successors_with_one_id_the_first_record_stays () =
+  check_successors
+    (facts
+       [
+         ("z.md", "# Z\n\n@decision b v2\n@supersedes a v1\n");
+         ( "y.md",
+           "# Y\n\n@decision b v3\n@supersedes a v1\n\n## A\n\n@decision a\n" );
+       ])
+    "decision:a" [ "decision:b y.md" ]
+
+let a_member_of_a_cycle_has_no_successors () =
+  let facts =
+    facts
+      [
+        ( "a.md",
+          "# A\n\n\
+           @decision a\n\
+           @supersedes b v1\n\
+           @supersedes x v1\n\n\
+           # B\n\n\
+           @decision b\n\
+           @supersedes a v1\n\n\
+           # X\n\n\
+           @decision x\n" );
+      ]
+  in
+  check_successors facts "decision:a" [];
+  check_successors facts "decision:b" [];
+  check_successors facts "decision:x" [ "decision:a a.md" ]
+
+let successors_refuse_an_index_out_of_range () =
+  let facts = facts (chain ()) in
+  List.iter
+    (fun index ->
+      match Facts.successors facts index with
+      | (_ : int list) -> Alcotest.failf "index %d: no exception" index
+      | exception Invalid_argument _ -> ())
+    [ -1; 3 ]
+
+(* A graph of supersedes edges and status tags: each declaration, as
+   its kind, its status tag or [""], and the numbers of the declarations
+   that it supersedes. A number past the last declaration names no
+   declaration. A design needs approval and lacks it. *)
+let graph =
+  Gen.(
+    list_size (int_range 1 6)
+      (triple
+         (oneof_list [ "decision"; "decision"; "design" ])
+         (oneof_list [ ""; ""; ""; "@deprecated\n"; "@rejected\n" ])
+         (list_size (int_bound 2) (int_bound 6))))
+
+let graph_text declarations =
+  "# G\n\n"
+  ^ String.concat ""
+      (List.mapi
+         (fun n (kind, status, superseded) ->
+           Printf.sprintf "## D%d\n\n@%s d%d\n%s%s\n" n kind n status
+             (String.concat ""
+                (List.map (Printf.sprintf "@supersedes d%d v1\n") superseded)))
+         declarations)
+
+let successors_end_in_force_and_only_live_edges_retire =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200
+       ~name:
+         "a declaration that a live edge retires has successors, each in \
+          force; only a status tag or a live edge retires a declaration"
+       ~print:graph_text graph (fun graph ->
+         let facts =
+           facts ~extra:"[ledger]\napproval-required = [\"design\"]\n"
+             [ ("a.md", graph_text graph) ]
+         in
+         let declarations = Array.of_list (Facts.declarations facts) in
+         let live_into index =
+           List.exists
+             (fun ((edge : Facts.edge), target) ->
+               match (edge.word, edge.source, target) with
+               | "supersedes", Some source, Facts.Declaration target ->
+                   target = index
+                   && Option.is_none declarations.(source).status
+                   && not (String.equal declarations.(source).kind "design")
+               | _ -> false)
+             (Facts.edges facts)
+         in
+         List.for_all
+           (fun index ->
+             let in_force = Facts.is_in_force facts index in
+             let successors = Facts.successors facts index in
+             let retired_by_an_edge = (not in_force) && live_into index in
+             (if retired_by_an_edge then
+                successors <> []
+                && List.for_all (Facts.is_in_force facts) successors
+              else successors = [])
+             && (Option.is_some declarations.(index).status
+                || live_into index || in_force)
+             && (Option.is_none declarations.(index).status || not in_force))
+           (List.init (Array.length declarations) Fun.id)))
+
 let edges_give_what_their_targets_resolve_to () =
   let facts =
     facts
@@ -1184,13 +1410,22 @@ let tests =
       a_live_supersedes_edge_retires_its_target;
     case "a source that is not approved retires nothing"
       a_source_that_is_not_approved_retires_nothing;
-    case "a retired source retires nothing" a_retired_source_retires_nothing;
+    case "a chain retires each declaration before its end"
+      a_chain_retires_each_declaration_before_its_end;
+    case "a status tag on the middle of a chain brings back the first"
+      a_status_tag_on_the_middle_of_a_chain_brings_back_the_first;
+    case "a middle that is not approved retires nothing"
+      a_middle_that_is_not_approved_retires_nothing;
+    case "two declarations that supersede one both retire it"
+      two_declarations_that_supersede_one_both_retire_it;
     case "declarations of two files keep their own numbers"
       declarations_of_two_files_keep_their_own_numbers;
     case "a rule that supersedes retires its target"
       a_rule_that_supersedes_retires_its_target;
     case "every member of a supersedes cycle is in force"
       every_member_of_a_supersedes_cycle_is_in_force;
+    case "a cycle counts its edges that are not live"
+      a_cycle_counts_its_edges_that_are_not_live;
     case "a supersedes edge from a site is not live"
       a_supersedes_edge_from_a_site_is_not_live;
     case "an ack names the fact of its block" an_ack_names_the_fact_of_its_block;
@@ -1248,6 +1483,23 @@ let tests =
       the_view_gives_each_declaration_in_order;
     case "is_in_force reads status and supersession"
       is_in_force_reads_status_and_supersession;
+    case "successors follow a chain to its end"
+      successors_follow_a_chain_to_its_end;
+    case "successors stop where a status tag stops an edge"
+      successors_stop_where_a_status_tag_stops_an_edge;
+    case "a status tag alone gives no successors"
+      a_status_tag_alone_gives_no_successors;
+    case "successors come in the order of their ids"
+      successors_come_in_the_order_of_their_ids;
+    case "a successor that two paths reach comes once"
+      a_successor_that_two_paths_reach_comes_once;
+    case "of two successors with one id, the first record stays"
+      of_two_successors_with_one_id_the_first_record_stays;
+    case "a member of a cycle has no successors"
+      a_member_of_a_cycle_has_no_successors;
+    case "successors refuse an index out of range"
+      successors_refuse_an_index_out_of_range;
+    successors_end_in_force_and_only_live_edges_retire;
     case "edges give what their targets resolve to"
       edges_give_what_their_targets_resolve_to;
     case "acks give their block" acks_give_their_block;

@@ -35,8 +35,8 @@ let error_node = Finding.Error_node { path = "docs/a.md"; position = at 5 1 }
 let file = Finding.File "docs/b.md"
 let edge = Finding.Fact { id = "cites:site:docs/a.md->x"; ack_name = "x" }
 
-let finding ?place ?detail ?fix c subject =
-  Finding.make c subject ?place ?detail ?fix ()
+let finding ?place ?detail ?fix ?ackable c subject =
+  Finding.make c subject ?place ?detail ?fix ?ackable ()
 
 let tier = Alcotest.testable (Fmt.of_to_string Finding_class.tier_name) ( = )
 
@@ -390,7 +390,7 @@ let a_record_holds_every_field_of_a_finding () =
        (Check.record
           {
             finding =
-              finding ~place:(place ()) ~detail:"d" ~fix:"f"
+              finding ~place:(place ()) ~detail:"d" ~fix:"f" ~ackable:true
                 Finding_class.Disendorsed edge;
             tier = Some (Finding_class.Merge, Finding_class.Block);
           }))

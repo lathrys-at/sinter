@@ -251,7 +251,7 @@ the span of the record is the first paragraph of the section.
 | `desc` | string | inline description, without the spaces and tabs at both ends; omitted when empty |
 | `suspect` `dangling` | bool | *derived* |
 | `rung` | string | `verifies` only, *derived*: `orphan`, `never-ran`, `failed`, `disconnected`, `unattributed`, or `passing` |
-| `live` | bool | `supersedes` only, *derived* |
+| `live` | bool | `supersedes` only, *derived*: whether the edge is live ([vocabulary.md](vocabulary.md) section 8.1) |
 
 Tags inside plan files never produce edge records. These tags produce
 promise records instead.
@@ -397,7 +397,7 @@ the repository is unlocated.
 | `target` | string | the tag target, as written, for example `disendorsed cache-ttl` or `ste-docs` |
 | `hash` | string | as written |
 | `live` | bool | *derived* |
-| `void` | string | *derived*: `hash` or `target`, naming the failed condition; omitted when live |
+| `void` | string | *derived*: `hash` or `target`, naming the failed condition ([vocabulary.md](vocabulary.md) section 7.4); omitted when live |
 | `for` | string | *derived*: id of the finding discharged, or of the rule, when live |
 
 **`hunk`** — diff mode only; new-side coordinates. A pure deletion has
@@ -430,8 +430,8 @@ the position that [manifest.md](manifest.md) section 14.4 gives.
 | `ack_subject` | string | the subject in the form that an `@ack` names it ([vocabulary.md](vocabulary.md) section 7.4) |
 | `rule` | string | `rule-owed` findings only |
 | `detail` | string | one line, human-facing, deterministic |
-| `fix` | string | the exact `@ack` line to paste, or a one-line instruction; omitted when none |
-| `ackable` | bool | |
+| `fix` | string | the repair of the finding, on one line; omitted when none. It is a line to paste, or an instruction. A line to paste is, for example, an `@ack` line, a tag line with a corrected word or revision, or, for a `disendorsed` finding, the citation of a successor that replaces the edge. With several successors, the fix gives the citation of each, and a person chooses one ([algebra.md](algebra.md) section 9) |
+| `ackable` | bool | whether a live `@ack` can discharge this finding ([algebra.md](algebra.md) section 9, column `A`). For a class that the column marks `A*`, the value depends on the finding |
 | `acked` | bool | present only when acked findings are requested |
 | `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3); present only when the command runs with `--gate` |
 | `mode` | string | `tree` or `diff` |

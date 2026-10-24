@@ -29,6 +29,7 @@ type t = {
   place : place option;
   detail : string option;
   fix : string option;
+  ackable : bool;
 }
 
 let is_control c = (c < ' ' && c <> '\t') || c = '\x7f'
@@ -48,20 +49,28 @@ let one_line name = function
       invalid_arg (Printf.sprintf "Finding.make: the %s is empty" name)
   | text -> Option.map escape text
 
-let make finding_class subject ?place ?detail ?fix () =
+let make finding_class subject ?place ?detail ?fix ?ackable () =
   let detail = one_line "detail" detail in
   let fix = one_line "fix" fix in
-  { finding_class; subject; place; detail; fix }
+  let ackable =
+    match (finding_class, ackable) with
+    | (Finding_class.Disendorsed | Finding_class.Rule_owed), ackable ->
+        Option.value ackable ~default:false
+    | Finding_class.Disconnected, None -> true
+    | _, None -> false
+    | _, Some _ ->
+        invalid_arg
+          (Printf.sprintf
+             "Finding.make: the class %s alone decides whether an ack \
+              discharges a finding"
+             (Finding_class.name finding_class))
+  in
+  { finding_class; subject; place; detail; fix; ackable }
 
 let id finding =
   "finding:"
   ^ Finding_class.name finding.finding_class
   ^ ":" ^ subject_id finding.subject
-
-let ackable finding =
-  match finding.finding_class with
-  | Finding_class.Disendorsed | Finding_class.Disconnected -> true
-  | _ -> false
 
 (* The key of order of a finding: [false] before [true] puts a finding
    with a place first. Stdlib.compare orders strings in byte order. *)

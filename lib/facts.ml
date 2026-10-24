@@ -162,6 +162,9 @@ type t = {
   manifest : Manifest.t;
   declarations : declaration array;
   inforce : bool array;  (** whether each declaration is in force *)
+  retirers : int list array;
+      (** the sources of the live supersedes edges that point at each
+          declaration *)
   edges : edge list;
   targets : target list;  (** the target of each edge, in the same order *)
   sites : site list;
@@ -507,21 +510,37 @@ let approved manifest (declarations : declaration array) index =
   | Some kind -> not (List.mem kind (Manifest.approval_required manifest))
   | None -> true
 
-(* Whether each declaration is in force. A declaration is in force when
-   it has no status and no live supersedes edge points at it. An edge is
-   live when its source is a declaration that is in force and approved.
-   A declaration on a cycle of supersedes edges counts as in force when
-   it has no status. *)
-let in_force ~approved declarations edges targets =
+(* Whether a supersedes edge whose source is the declaration [index] is
+   live: the source has no status and is approved. *)
+let live_source manifest (declarations : declaration array) index =
+  Option.is_none declarations.(index).status
+  && approved manifest declarations index
+
+(* The sources of the live supersedes edges that point at each
+   declaration. *)
+let retirers manifest (declarations : declaration array) edges targets =
+  let found = Array.make (Array.length declarations) [] in
+  List.iter2
+    (fun (edge : edge) target ->
+      match (edge.word, edge.source, target) with
+      | "supersedes", Some source, Declaration target
+        when live_source manifest declarations source ->
+          found.(target) <- source :: found.(target)
+      | _ -> ())
+    edges targets;
+  found
+
+(* Whether each declaration is in force: it has no status, and either
+   no live supersedes edge points at it or it is on a cycle of
+   supersedes edges. [retirers] is as {!retirers} gives it. *)
+let in_force ~retirers (declarations : declaration array) edges targets =
   let count = Array.length declarations in
-  let successors = Array.make count [] in
-  let predecessors = Array.make count [] in
+  let superseded = Array.make count [] in
   List.iter2
     (fun (edge : edge) target ->
       match (edge.word, edge.source, target) with
       | "supersedes", Some source, Declaration target ->
-          successors.(source) <- target :: successors.(source);
-          predecessors.(target) <- source :: predecessors.(target)
+          superseded.(source) <- target :: superseded.(source)
       | _ -> ())
     edges targets;
   (* A declaration is on a cycle when it reaches itself along the
@@ -533,33 +552,13 @@ let in_force ~approved declarations edges targets =
           next = node
           ||
           if List.mem next seen then search seen rest
-          else search (next :: seen) (successors.(next) @ rest)
+          else search (next :: seen) (superseded.(next) @ rest)
     in
-    search [] successors.(node)
+    search [] superseded.(node)
   in
-  (* Off the cycles, the edges form no cycle, so the recursion ends. *)
-  let memo = Array.make count None in
-  let rec force node =
-    match memo.(node) with
-    | Some value -> value
-    | None ->
-        let value =
-          Option.is_none declarations.(node).status
-          && (on_cycle node
-             || List.for_all
-                  (fun source -> not (approved source && force source))
-                  predecessors.(node))
-        in
-        let () =
-          memo.(node) <-
-            (Some value
-            [@mutaml.skip
-              "the memo only saves work: a value that it does not keep is \
-               computed again, and is the same"])
-        in
-        value
-  in
-  Array.init count force
+  Array.init count (fun node ->
+      Option.is_none declarations.(node).status
+      && (retirers.(node) = [] || on_cycle node))
 
 let make manifest files =
   let ordinary, plans =
@@ -584,13 +583,12 @@ let make manifest files =
   let declarations = Array.of_list (List.rev declarations) in
   let edges = List.rev edges in
   let targets = resolve manifest declarations edges in
+  let retirers = retirers manifest declarations edges targets in
   {
     manifest;
     declarations;
-    inforce =
-      in_force
-        ~approved:(approved manifest declarations)
-        declarations edges targets;
+    inforce = in_force ~retirers declarations edges targets;
+    retirers;
     edges;
     targets;
     sites = List.rev sites;
@@ -704,7 +702,7 @@ let declaration_records facts ~inforce ~approved =
            (manifest_kind d.kind))
        (Array.to_list facts.declarations))
 
-let edge_records facts ~inforce ~approved =
+let edge_records facts =
   List.map2
     (fun (edge : edge) target ->
       let dst, dangling =
@@ -721,7 +719,7 @@ let edge_records facts ~inforce ~approved =
       in
       let live =
         match edge.source with
-        | Some index -> inforce.(index) && approved index
+        | Some index -> live_source facts.manifest facts.declarations index
         | None -> false
       in
       located ~kind:edge.word ~id:(edge_id edge) ~path:edge.path ~span:edge.span
@@ -939,7 +937,7 @@ let records facts ~changed =
        (List.concat
           [
             declaration_records facts ~inforce ~approved;
-            edge_records facts ~inforce ~approved;
+            edge_records facts;
             site_records facts;
             ack_records facts;
             List.concat_map (plan_records facts ~changed) facts.plans;
@@ -948,6 +946,52 @@ let records facts ~changed =
 
 let declarations facts = Array.to_list facts.declarations
 let is_in_force facts index = facts.inforce.(index)
+
+module Indices = Set.Make (Int)
+
+let successors facts index =
+  let declarations = facts.declarations in
+  (* [walk reached nodes] is [reached] and the declarations that the
+     walk reaches from [nodes]. The walk goes from a declaration to the
+     sources of the live supersedes edges that point at it, and stops at
+     a declaration in force. *)
+  let rec walk reached = function
+    | [] -> reached
+    | node :: rest ->
+        if Indices.mem node reached then walk reached rest
+        else
+          walk (Indices.add node reached)
+            (if facts.inforce.(node) then rest else facts.retirers.(node) @ rest)
+  in
+  let reached =
+    if facts.inforce.(index) then Indices.empty
+    else walk Indices.empty facts.retirers.(index)
+  in
+  let order a b =
+    compare
+      ( declaration_id declarations.(a),
+        declarations.(a).path,
+        declarations.(a).span.start.line )
+      ( declaration_id declarations.(b),
+        declarations.(b).path,
+        declarations.(b).span.start.line )
+  in
+  (* Of the declarations that share an id, the first in this order. *)
+  List.rev
+    (List.fold_left
+       (fun found node ->
+         match found with
+         | kept :: _
+           when String.equal
+                  (declaration_id declarations.(kept))
+                  (declaration_id declarations.(node)) ->
+             found
+         | _ -> node :: found)
+       []
+       (List.sort order
+          (Indices.elements
+             (Indices.filter (fun node -> facts.inforce.(node)) reached))))
+
 let edges facts = List.combine facts.edges facts.targets
 let acks facts = facts.acks
 let plans facts = facts.plans

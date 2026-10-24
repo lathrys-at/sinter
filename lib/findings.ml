@@ -442,19 +442,45 @@ let disendorsed facts documents =
         when String.equal edge.word "cites"
              && not (Facts.is_in_force facts index) ->
           let declaration = declarations.(index) in
-          let hash = block_hash documents edge.path edge.block_index in
+          let finding =
+            Finding.make Finding_class.Disendorsed (edge_subject edge)
+              ~place:(place edge.path edge.span)
+          in
+          (* A declaration that is not in force and carries no status has
+             a live supersedes edge into it, and so a successor. *)
           Some
             ( edge,
-              Finding.make Finding_class.Disendorsed (edge_subject edge)
-                ~place:(place edge.path edge.span)
-                ~detail:
-                  (Printf.sprintf "%s is %s"
-                     (Facts.declaration_id declaration)
-                     (Option.value declaration.status ~default:"superseded"))
-                ~fix:
-                  (Printf.sprintf "@ack disendorsed %s %s" edge.target_text
-                     (String.sub hash 0 8))
-                () )
+              match
+                ( List.map (Array.get declarations)
+                    (Facts.successors facts index),
+                  declaration.status )
+              with
+              | [], Some status ->
+                  let hash = block_hash documents edge.path edge.block_index in
+                  finding
+                    ~detail:
+                      (Printf.sprintf "%s is %s"
+                         (Facts.declaration_id declaration)
+                         status)
+                    ~fix:
+                      (Printf.sprintf "@ack disendorsed %s %s" edge.target_text
+                         (String.sub hash 0 8))
+                    ~ackable:true ()
+              | successors, _ ->
+                  finding
+                    ~detail:
+                      (Printf.sprintf "%s is superseded by %s"
+                         (Facts.declaration_id declaration)
+                         (String.concat ", "
+                            (List.map Facts.declaration_id successors)))
+                    ~fix:
+                      (String.concat " or "
+                         (List.map
+                            (fun (successor : Facts.declaration) ->
+                              citation ~word:edge.word ~target:successor.slug
+                                (Option.map (fun _ -> successor.rev) edge.rev))
+                            successors))
+                    ~ackable:false () )
       | _ -> None)
     (Facts.edges facts)
 
@@ -758,8 +784,9 @@ let tree manifest documents ~not_text =
             suspect facts;
             cycles facts;
             List.filter_map
-              (fun (edge, finding) ->
-                if acked facts documents edge then None else Some finding)
+              (fun (edge, (finding : Finding.t)) ->
+                if finding.ackable && acked facts documents edge then None
+                else Some finding)
               (disendorsed facts documents);
             orphans facts;
             uncovered facts;

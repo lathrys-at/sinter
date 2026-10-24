@@ -100,7 +100,7 @@ let record { finding; tier } =
     ("class", Jsonl.string (Finding_class.name finding.finding_class));
     ("subject", Jsonl.string (Finding.subject_id finding.subject));
     ("ack_subject", Jsonl.string (Finding.ack_subject finding.subject));
-    ("ackable", Jsonl.bool (Finding.ackable finding));
+    ("ackable", Jsonl.bool finding.ackable);
     ("mode", Jsonl.string "tree");
   ]
   @ optional "detail" finding.detail

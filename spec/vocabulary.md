@@ -430,8 +430,9 @@ An ack is **live** if and only if both conditions hold:
 
 1. The hash matches the block's current block hash.
 2. The tag target of the ack still names something in this block: a
-   finding of that class, or an obligation of that rule. When the ack
-   gives a subject, the finding must also have that subject.
+   finding of that class that accepts an ack, or an obligation of that
+   rule. When the ack gives a subject, the finding must also have that
+   subject.
 
 The checking tool removes acked findings at the end of a check. It
 judges condition 2 against the findings and obligations that exist
@@ -441,8 +442,11 @@ definition. An ack therefore cannot make itself void by removing the
 finding it names.
 
 When either condition fails, the ack is **void**. A void ack is itself
-a finding (`stale-ack`). Only some finding classes accept an ack; the
-finding-class table in [algebra.md](algebra.md) section 9 marks them.
+a finding (`stale-ack`). Only some findings accept an ack. The
+finding-class table in [algebra.md](algebra.md) section 9 marks the
+classes whose findings accept one, and it states the condition when
+only some findings of a class accept one. An ack that names only
+findings that accept no ack is void by condition 2.
 
 **`@pin <ref>`** is deferred. A future version will use it to watch
 external content for changes. A person endorses the content's current
@@ -459,28 +463,67 @@ finding stays until a person endorses the new hash.
 
 ### 8.1 In force
 
-An item is **in force** if and only if it carries no status tag and no
-live `@supersedes` edge points at it.
+An item is **in force** if and only if it carries no status tag and one
+of two conditions holds: no live `@supersedes` edge points at it, or
+it sits on a cycle of `@supersedes` edges (below).
 
 A `@supersedes` edge is **live** if and only if both conditions hold.
-First: the edge's source is a declaration, and that declaration is
-itself in force. Second: when the source's kind needs approval, the
-source is approved at its current revision. The manifest key
+First: the edge's source is a declaration, and that declaration
+carries no status tag. Second: when the source's kind needs approval,
+the source is approved at its current revision. The manifest key
 `ledger.approval-required` lists the kinds that need approval
 ([manifest.md](manifest.md) section 11.1). The ledger specification,
 [ledger.md](ledger.md), defines approval. An edge whose source is not
 approved retires nothing yet.
 
-On a `@supersedes` cycle, every member of the cycle counts as in
-force, and the cycle is an error (finding class `cycle`).
+An edge stays live when a later edge supersedes its source. In a
+**chain** of `@supersedes` edges, each declaration supersedes the one
+before it. When every edge of a chain is live, every declaration of
+the chain before the last one is retired. Example: `b` supersedes
+`a`, and `c` supersedes `b`. Both edges are live, so `a` and `b` are
+retired, and `c` is in force. When `b` carries a status tag, the edge
+from `b` to `a` is not live, and `a` is in force.
+
+A declaration sits on a **cycle** when it reaches itself along
+`@supersedes` edges, live or not. A declaration on a cycle that
+carries no status tag is in force, even when a live edge points at it.
+The cycle is an error (finding class `cycle`).
 
 ### 8.2 Retirement
 
 An item that is not in force is **retired**. Two triggers retire an
 item: a status tag, or a live `@supersedes` edge. Retirement does not
 cascade. A citation of a retired item is a finding (`disendorsed`),
-never an automatic retirement of the citing item. Only a person can
-decide whether the citing item is still correct for other reasons.
+never an automatic retirement of the citing item.
+
+The **successors** of a retired declaration are the declarations in
+force that replace it. To find them, take the source of each live
+`@supersedes` edge that points at the declaration. A source that is
+in force is a successor. For a source that is retired, take the
+successors of that source instead. Such a source carries no status
+tag, because it is the source of a live edge. It is retired all the
+same, so a live edge points at it, and it sits on no cycle (section
+8.1). The search therefore never comes back to a declaration, and it
+ends at declarations in force. In the chain of section 8.1, `c` is
+the successor of `a` and of `b`. A declaration that a live edge
+retires has at least one successor. A declaration that only a status
+tag retires has no successor.
+
+The repair of a citation of a retired declaration depends on the
+successors of that declaration:
+
+- When the declaration has successors, the citation moves to a
+  successor. A person changes the tag target of the citation to the
+  slug of a successor. When the citation carries a revision, the
+  person writes the current revision of the successor. When the
+  citation stands in the extent of a declaration, that extent changes,
+  so the revision of that declaration must increase (section 9). The
+  finding accepts no ack. When the cited declaration has several
+  successors, a person chooses one of them.
+- When the declaration has no successor, only a person can decide
+  whether the citing item is still correct for other reasons. The
+  person edits the citing item, or writes an `@ack` line for the
+  finding (section 7.4).
 
 ### 8.3 Decisions are never deleted
 
