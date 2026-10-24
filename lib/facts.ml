@@ -951,10 +951,10 @@ module Indices = Set.Make (Int)
 
 let successors facts index =
   let declarations = facts.declarations in
-  (* The declarations that the walk from [index] reaches, with
-     [reached]. The walk goes from a declaration to the sources of the
-     live supersedes edges that point at it, and stops at a declaration
-     in force. *)
+  (* [walk reached nodes] is [reached] and the declarations that the
+     walk reaches from [nodes]. The walk goes from a declaration to the
+     sources of the live supersedes edges that point at it, and stops at
+     a declaration in force. *)
   let rec walk reached = function
     | [] -> reached
     | node :: rest ->
