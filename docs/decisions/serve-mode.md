@@ -4,6 +4,7 @@
 # Keep a warm parser through a serve loop, first as a child process
 @decision serve-mode
 @cites parser-bridge
+@ack disendorsed parser-bridge b9b70923
 Sinter has a serve loop that answers many requests in one process; its first form is `sinter serve`, a child of its caller over standard input and output, and later adapters put the same loop on a socket, behind the Model Context Protocol, and behind the Language Server Protocol.
 
 ## Context
