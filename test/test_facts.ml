@@ -369,33 +369,35 @@ let a_source_that_is_not_approved_retires_nothing () =
   check_field records "supersedes:decision:new->old" "live" (bool false);
   check_field records "decision:old" "inforce" (bool true)
 
-(* A chain of three: c supersedes b, and b supersedes a. [middle] is
-   the tag lines of b after its declaration. *)
-let chain ?(middle = "") () =
+(* A chain of three: c supersedes b, and b supersedes a. [kind] is the
+   kind of b, and [middle] the tag lines of b after its declaration. *)
+let chain ?(kind = "decision") ?(middle = "") () =
   [
     ( "a.md",
-      "# A\n\n@decision c\n@supersedes b v1\n\n# B\n\n@design b\n" ^ middle
-      ^ "@supersedes a v1\n\n# C\n\n@decision a\n" );
+      "# A\n\n@decision c\n@supersedes b v1\n\n# B\n\n@" ^ kind ^ " b\n"
+      ^ middle ^ "@supersedes a v1\n\n# C\n\n@decision a\n" );
   ]
 
 let a_chain_retires_each_declaration_before_its_end () =
   let records = records (chain ()) in
   check_field records "supersedes:decision:c->b" "live" (bool true);
-  check_field records "supersedes:design:b->a" "live" (bool true);
+  check_field records "supersedes:decision:b->a" "live" (bool true);
   check_field records "decision:c" "inforce" (bool true);
-  check_field records "design:b" "inforce" (bool false);
+  check_field records "decision:b" "inforce" (bool false);
   check_field records "decision:a" "inforce" (bool false)
 
 let a_status_tag_on_the_middle_of_a_chain_brings_back_the_first () =
   let records = records (chain ~middle:"@deprecated\n" ()) in
   check_field records "supersedes:decision:c->b" "live" (bool true);
-  check_field records "supersedes:design:b->a" "live" (bool false);
-  check_field records "design:b" "inforce" (bool false);
+  check_field records "supersedes:decision:b->a" "live" (bool false);
+  check_field records "decision:b" "inforce" (bool false);
   check_field records "decision:a" "inforce" (bool true)
 
 let a_middle_that_is_not_approved_retires_nothing () =
   let records =
-    records ~extra:"[ledger]\napproval-required = [\"design\"]\n" (chain ())
+    (* Only b needs approval: it is the only design. *)
+    records ~extra:"[ledger]\napproval-required = [\"design\"]\n"
+      (chain ~kind:"design" ())
   in
   check_field records "supersedes:decision:c->b" "live" (bool true);
   check_field records "supersedes:design:b->a" "live" (bool false);
@@ -1023,12 +1025,12 @@ let check_successors facts id expected =
 let successors_follow_a_chain_to_its_end () =
   let facts = facts (chain ()) in
   check_successors facts "decision:a" [ "decision:c a.md" ];
-  check_successors facts "design:b" [ "decision:c a.md" ];
+  check_successors facts "decision:b" [ "decision:c a.md" ];
   check_successors facts "decision:c" []
 
 let successors_stop_where_a_status_tag_stops_an_edge () =
   let facts = facts (chain ~middle:"@deprecated\n" ()) in
-  check_successors facts "design:b" [ "decision:c a.md" ];
+  check_successors facts "decision:b" [ "decision:c a.md" ];
   check_successors facts "decision:a" []
 
 let a_status_tag_alone_gives_no_successors () =
@@ -1139,7 +1141,7 @@ let successors_end_in_force_and_only_live_edges_retire =
     (QCheck2.Test.make ~count:200
        ~name:
          "a declaration that a live edge retires has successors, each in \
-          force; a status retires, and nothing else does"
+          force; only a status tag or a live edge retires a declaration"
        ~print:graph_text graph (fun graph ->
          let facts =
            facts ~extra:"[ledger]\napproval-required = [\"design\"]\n"

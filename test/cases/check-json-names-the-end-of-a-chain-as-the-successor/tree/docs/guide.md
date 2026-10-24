@@ -2,4 +2,5 @@
 
 @cites memory-store v1
 @cites file-store
-@ack disendorsed file-store ba9b0aee
+@cites cookie-store
+@ack disendorsed e81ce481

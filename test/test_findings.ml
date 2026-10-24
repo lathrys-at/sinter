@@ -614,20 +614,33 @@ let disendorsed_ackable files =
     (findings files)
 
 let an_ack_does_not_discharge_the_finding_of_a_superseded_item () =
-  let files ack = [ superseded; ("docs/b.md", "# B\n\n@cites gone\n" ^ ack) ] in
-  let finding =
-    [
-      ( "docs/b.md:3:1-3:12 | finding:disendorsed:cites:site:docs/b.md#b->gone \
-         | decision:gone is superseded by decision:new | fix: @cites new",
-        false );
-    ]
+  let files records ack =
+    [ records; ("docs/b.md", "# B\n\n@cites gone\n" ^ ack) ]
+  in
+  let acks =
+    [ "@ack disendorsed gone 62671b3a\n"; "@ack disendorsed 62671b3a\n" ]
   in
   List.iter
     (fun ack ->
       Alcotest.(check (list (pair string bool)))
-        ack finding
-        (disendorsed_ackable (files ack)))
-    [ ""; "@ack disendorsed gone 62671b3a\n"; "@ack disendorsed 62671b3a\n" ]
+        ack
+        [
+          ( "docs/b.md:3:1-3:12 | \
+             finding:disendorsed:cites:site:docs/b.md#b->gone | decision:gone \
+             is superseded by decision:new | fix: @cites new",
+            false );
+        ]
+        (disendorsed_ackable (files superseded ack)))
+    ("" :: acks);
+  (* The hash of each ack is the block hash: each discharges the finding
+     when a status tag retires gone. *)
+  List.iter
+    (fun ack ->
+      Alcotest.(check (list (pair string bool)))
+        ("a status tag, " ^ ack) []
+        (disendorsed_ackable
+           (files ("docs/a.md", "# A\n\n@decision gone\n@deprecated\n") ack)))
+    acks
 
 let an_ack_still_discharges_the_finding_of_an_item_that_a_status_retires () =
   let files ack =
