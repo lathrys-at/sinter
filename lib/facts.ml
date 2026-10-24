@@ -947,24 +947,26 @@ let records facts ~changed =
 let declarations facts = Array.to_list facts.declarations
 let is_in_force facts index = facts.inforce.(index)
 
+module Indices = Set.Make (Int)
+
 let successors facts index =
   let declarations = facts.declarations in
-  let count = Array.length declarations in
-  (* [reached.(node)] is [true] once the walk from [index] meets
-     [node]. The walk goes from a declaration to the sources of the live
-     supersedes edges that point at it, and stops at a declaration in
-     force. *)
-  let reached = Array.make count false in
-  let rec walk = function
-    | [] -> ()
+  (* The declarations that the walk from [index] reaches, with
+     [reached]. The walk goes from a declaration to the sources of the
+     live supersedes edges that point at it, and stops at a declaration
+     in force. *)
+  let rec walk reached = function
+    | [] -> reached
     | node :: rest ->
-        if reached.(node) then walk rest
-        else (
-          reached.(node) <- true;
-          walk
-            (if facts.inforce.(node) then rest else facts.retirers.(node) @ rest))
+        if Indices.mem node reached then walk reached rest
+        else
+          walk (Indices.add node reached)
+            (if facts.inforce.(node) then rest else facts.retirers.(node) @ rest)
   in
-  if not facts.inforce.(index) then walk facts.retirers.(index);
+  let reached =
+    if facts.inforce.(index) then Indices.empty
+    else walk Indices.empty facts.retirers.(index)
+  in
   let order a b =
     compare
       ( declaration_id declarations.(a),
@@ -987,9 +989,8 @@ let successors facts index =
          | _ -> node :: found)
        []
        (List.sort order
-          (List.filter
-             (fun node -> reached.(node) && facts.inforce.(node))
-             (List.init count Fun.id))))
+          (Indices.elements
+             (Indices.filter (fun node -> facts.inforce.(node)) reached))))
 
 let edges facts = List.combine facts.edges facts.targets
 let acks facts = facts.acks
