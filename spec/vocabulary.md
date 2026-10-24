@@ -501,12 +501,13 @@ force that replace it. To find them, take the source of each live
 `@supersedes` edge that points at the declaration. A source that is
 in force is a successor. For a source that is retired, take the
 successors of that source instead. Such a source carries no status
-tag, because it is the source of a live edge. So a live edge points
-at it, and it sits on no cycle. The search therefore never comes back
-to a declaration, and it ends at declarations in force. In the chain
-of section 8.1, `c` is the successor of `a` and of `b`. A declaration
-that a live edge retires has at least one successor. A declaration
-that only a status tag retires has no successor.
+tag, because it is the source of a live edge. It is retired all the
+same, so a live edge points at it, and it sits on no cycle (section
+8.1). The search therefore never comes back to a declaration, and it
+ends at declarations in force. In the chain of section 8.1, `c` is
+the successor of `a` and of `b`. A declaration that a live edge
+retires has at least one successor. A declaration that only a status
+tag retires has no successor.
 
 The repair of a citation of a retired declaration depends on the
 successors of that declaration:

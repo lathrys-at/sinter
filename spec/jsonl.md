@@ -430,7 +430,7 @@ the position that [manifest.md](manifest.md) section 14.4 gives.
 | `ack_subject` | string | the subject in the form that an `@ack` names it ([vocabulary.md](vocabulary.md) section 7.4) |
 | `rule` | string | `rule-owed` findings only |
 | `detail` | string | one line, human-facing, deterministic |
-| `fix` | string | the repair of the finding, on one line; omitted when none. It is one of three things: the exact `@ack` line to paste; for a `disendorsed` finding, the citation of a successor that replaces the edge, or the citations of several successors to choose from ([algebra.md](algebra.md) section 9); or an instruction |
+| `fix` | string | the repair of the finding, on one line; omitted when none. It is a line to paste, or an instruction. A line to paste is, for example, an `@ack` line, a tag line with a corrected word or revision, or, for a `disendorsed` finding, the citation of a successor that replaces the edge. With several successors, the fix gives the citation of each, and a person chooses one ([algebra.md](algebra.md) section 9) |
 | `ackable` | bool | whether a live `@ack` can discharge this finding ([algebra.md](algebra.md) section 9, column `A`). For a class that the column marks `A*`, the value depends on the finding |
 | `acked` | bool | present only when acked findings are requested |
 | `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3); present only when the command runs with `--gate` |
