@@ -369,25 +369,57 @@ let a_source_that_is_not_approved_retires_nothing () =
   check_field records "supersedes:decision:new->old" "live" (bool false);
   check_field records "decision:old" "inforce" (bool true)
 
-let a_retired_source_retires_nothing () =
+(* A chain of three: c supersedes b, and b supersedes a. [middle] is
+   the tag lines of b after its declaration. *)
+let chain ?(middle = "") () =
+  [
+    ( "a.md",
+      "# A\n\n@decision c\n@supersedes b v1\n\n# B\n\n@design b\n" ^ middle
+      ^ "@supersedes a v1\n\n# C\n\n@decision a\n" );
+  ]
+
+let a_chain_retires_each_declaration_before_its_end () =
+  let records = records (chain ()) in
+  check_field records "supersedes:decision:c->b" "live" (bool true);
+  check_field records "supersedes:design:b->a" "live" (bool true);
+  check_field records "decision:c" "inforce" (bool true);
+  check_field records "design:b" "inforce" (bool false);
+  check_field records "decision:a" "inforce" (bool false)
+
+let a_status_tag_on_the_middle_of_a_chain_brings_back_the_first () =
+  let records = records (chain ~middle:"@deprecated\n" ()) in
+  check_field records "supersedes:decision:c->b" "live" (bool true);
+  check_field records "supersedes:design:b->a" "live" (bool false);
+  check_field records "design:b" "inforce" (bool false);
+  check_field records "decision:a" "inforce" (bool true)
+
+let a_middle_that_is_not_approved_retires_nothing () =
+  let records =
+    records ~extra:"[ledger]\napproval-required = [\"design\"]\n" (chain ())
+  in
+  check_field records "supersedes:decision:c->b" "live" (bool true);
+  check_field records "supersedes:design:b->a" "live" (bool false);
+  check_field records "design:b" "inforce" (bool false);
+  check_field records "decision:a" "inforce" (bool true)
+
+let two_declarations_that_supersede_one_both_retire_it () =
   let records =
     records
       [
         ( "a.md",
           "# A\n\n\
-           @decision c\n\
-           @supersedes b v1\n\n\
-           # B\n\n\
            @decision b\n\
+           @supersedes a v1\n\n\
+           # B\n\n\
+           @decision c\n\
            @supersedes a v1\n\n\
            # C\n\n\
            @decision a\n" );
       ]
   in
-  check_field records "decision:c" "inforce" (bool true);
-  check_field records "decision:b" "inforce" (bool false);
-  check_field records "supersedes:decision:b->a" "live" (bool false);
-  check_field records "decision:a" "inforce" (bool true)
+  check_field records "supersedes:decision:b->a" "live" (bool true);
+  check_field records "supersedes:decision:c->a" "live" (bool true);
+  check_field records "decision:a" "inforce" (bool false)
 
 let declarations_of_two_files_keep_their_own_numbers () =
   let records =
@@ -427,6 +459,28 @@ let every_member_of_a_supersedes_cycle_is_in_force () =
   List.iter
     (fun id -> check_field records id "inforce" (bool true))
     [ "decision:a"; "decision:b"; "decision:s" ]
+
+let a_cycle_counts_its_edges_that_are_not_live () =
+  let records =
+    records
+      [
+        ( "a.md",
+          "# Z\n\n\
+           @decision z\n\
+           @supersedes x v1\n\n\
+           # X\n\n\
+           @decision x\n\
+           @supersedes y v1\n\n\
+           # Y\n\n\
+           @decision y\n\
+           @deprecated\n\
+           @supersedes x v1\n" );
+      ]
+  in
+  check_field records "supersedes:decision:z->x" "live" (bool true);
+  check_field records "supersedes:decision:y->x" "live" (bool false);
+  check_field records "decision:x" "inforce" (bool true);
+  check_field records "decision:y" "inforce" (bool false)
 
 let a_supersedes_edge_from_a_site_is_not_live () =
   let records =
@@ -1184,13 +1238,22 @@ let tests =
       a_live_supersedes_edge_retires_its_target;
     case "a source that is not approved retires nothing"
       a_source_that_is_not_approved_retires_nothing;
-    case "a retired source retires nothing" a_retired_source_retires_nothing;
+    case "a chain retires each declaration before its end"
+      a_chain_retires_each_declaration_before_its_end;
+    case "a status tag on the middle of a chain brings back the first"
+      a_status_tag_on_the_middle_of_a_chain_brings_back_the_first;
+    case "a middle that is not approved retires nothing"
+      a_middle_that_is_not_approved_retires_nothing;
+    case "two declarations that supersede one both retire it"
+      two_declarations_that_supersede_one_both_retire_it;
     case "declarations of two files keep their own numbers"
       declarations_of_two_files_keep_their_own_numbers;
     case "a rule that supersedes retires its target"
       a_rule_that_supersedes_retires_its_target;
     case "every member of a supersedes cycle is in force"
       every_member_of_a_supersedes_cycle_is_in_force;
+    case "a cycle counts its edges that are not live"
+      a_cycle_counts_its_edges_that_are_not_live;
     case "a supersedes edge from a site is not live"
       a_supersedes_edge_from_a_site_is_not_live;
     case "an ack names the fact of its block" an_ack_names_the_fact_of_its_block;

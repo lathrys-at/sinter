@@ -149,9 +149,9 @@ val declarations : t -> declaration list
 val is_in_force : t -> int -> bool
 (** [is_in_force facts index] is [true] when the declaration at [index] is in
     force: it carries no status and no live [supersedes] edge points at it. A
-    [supersedes] edge is live when its source is a declaration that is in force
-    and whose kind needs no approval. A declaration with no status on a cycle of
-    [supersedes] edges is in force.
+    [supersedes] edge is live when its source is a declaration that carries no
+    status and whose kind needs no approval. A declaration with no status on a
+    cycle of [supersedes] edges is in force.
 
     @raise Invalid_argument if [index] is not an index of {!declarations}. *)
 
