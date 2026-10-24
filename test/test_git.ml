@@ -892,6 +892,35 @@ let copy_run =
      in
      (t, with_ignored, with_untracked, failed, left))
 
+(* An edit that keeps the size of a file, where the file and the index
+   keep the time of the old content. git sees the edit only because the
+   entry is not older than the index, so the copy of the index must keep
+   that check. The repository does not trust ctime, so that the test does
+   not depend on the second in which it runs. *)
+let tree_key_sees_an_edit_that_keeps_size_and_time () =
+  let repo = Repo.copy (Lazy.force shared) in
+  ignore (Repo.git repo [ "config"; "core.trustctime"; "false" ]);
+  let file = Filename.concat (Repo.root repo) "same.txt" in
+  let index =
+    let path =
+      String.trim (Repo.git repo [ "rev-parse"; "--git-path"; "index" ])
+    in
+    if Filename.is_relative path then Filename.concat (Repo.root repo) path
+    else path
+  in
+  let old = 1_000_000_000. in
+  Repo.write repo "same.txt" "one\n";
+  Unix.utimes file old old;
+  ignore (Repo.git repo [ "add"; "same.txt" ]);
+  Repo.write repo "same.txt" "two\n";
+  Unix.utimes file old old;
+  Unix.utimes index old old;
+  let t = ok (Git.open_repo ~env:(Repo.env repo) (Repo.root repo)) in
+  let key = ok (Git.tree_key t) in
+  ignore (Repo.git repo [ "add"; "-A" ]);
+  let tree = String.trim (Repo.git repo [ "write-tree" ]) in
+  Alcotest.(check string) "the tree" tree key
+
 let tree_key_does_not_change_with_an_ignored_file () =
   let key, _, _, _ = Lazy.force key_run in
   let _, with_ignored, _, _, _ = Lazy.force copy_run in
@@ -1259,6 +1288,8 @@ let tests =
         tree_key_leaves_the_index_unchanged;
       quick "tree_key leaves no temporary file"
         tree_key_leaves_no_temporary_file;
+      quick "tree_key sees an edit that keeps the size and the time"
+        tree_key_sees_an_edit_that_keeps_size_and_time;
       quick "tree_key does not change with an ignored file"
         tree_key_does_not_change_with_an_ignored_file;
       quick "tree_key changes with an untracked file"

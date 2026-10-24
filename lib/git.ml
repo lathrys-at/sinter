@@ -979,10 +979,27 @@ let diff t ~base =
 (* [copy_index ~index ~copy] writes the content of the file at [index] to
    the file at [copy]. When no file is at [index], it removes [copy], so
    that git reads no index there and starts from an empty one. *)
+(* The copy takes the time of the index, less one second. git reads a
+   file again, and does not trust its size and its time, when the entry
+   of the file is not older than the index: that check sees an edit that
+   keeps the size of a file, made in the second of the last write of the
+   index. A copy with a new time would lose the check, and the tree key
+   would hold the old content. One second less makes git read again every
+   file that it would read with the index itself, and a few more. *)
 let copy_index ~index ~copy =
   if Sys.file_exists index then
     match In_channel.with_open_bin index In_channel.input_all with
-    | content -> write_file copy content
+    | content -> (
+        let* () = write_file copy content in
+        match Unix.stat index with
+        | { Unix.st_mtime; _ } -> (
+            let time = st_mtime -. 1. in
+            match Unix.utimes copy time time with
+            | () -> Ok ()
+            | exception Unix.Unix_error (error, _, _) ->
+                Error (File_error (copy ^ ": " ^ Unix.error_message error)))
+        | exception Unix.Unix_error (error, _, _) ->
+            Error (File_error (index ^ ": " ^ Unix.error_message error)))
     | exception Sys_error message -> Error (File_error message)
   else (
     remove_quietly copy;
