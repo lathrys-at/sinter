@@ -16,8 +16,8 @@ Never delete a decision record.
 
 The full tag specification is at
 <https://github.com/lathrys-at/sinter/blob/main/spec/vocabulary.md>,
-sections 4, 7.1, and 8.3. The rules below are the parts this skill
-needs.
+sections 4, 6, 7.1, 8, and 9. The rules below are the parts this
+skill needs.
 
 ## Input
 
@@ -52,6 +52,29 @@ Look in `docs/decisions/` for a record on the same subject.
   Write `v1` when the old record shows no revision. Do not edit or
   delete the old record.
 - If one exists and the decision is the same, stop and tell the user.
+
+When the new record supersedes an old record, move the citations of
+the old record to the new record in the same change. Do these steps
+after you write the new record in step 3:
+
+1. Search the whole repository, code included, for the citations
+   `@cites <old-slug>`. Include the citations that give a revision
+   after the slug. Leave the citations in the files under a
+   historical path: a path of the manifest key `check.historical`,
+   or a plan journal, `.plans/**/*.log.md`. Those files record what
+   held at their time.
+2. Change each citation to `@cites <new-slug>`. When the citation
+   gives a revision, write `v1`, the revision of the new record.
+3. Raise the revision of each declaration that holds a changed
+   citation. A declaration holds the tag lines in its extent: the text
+   that its revision covers, for example its whole section in
+   markdown. Write the next revision on the tag line of the
+   declaration: `v2` when it shows `v1` or no revision, `v3` after
+   `v2`, and so on. When the same change already raised that
+   revision, raise it no further.
+4. Add no `@ack` line for these citations. Sinter reports a citation
+   of a superseded record until the citation moves, and an `@ack`
+   line does not stop that report.
 
 ### 3. Write the record
 
@@ -159,3 +182,7 @@ follow them too.
   and no account of how the thing is built. It fits on one screen.
 - Every `@cites` target exists in the repository or is a declared
   ref.
+- When the record supersedes an old record, no `@cites` line names
+  the old slug outside the historical paths. Each declaration that
+  held such a citation has a higher revision, and no new `@ack` line
+  names the old slug.
