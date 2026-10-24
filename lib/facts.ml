@@ -162,6 +162,9 @@ type t = {
   manifest : Manifest.t;
   declarations : declaration array;
   inforce : bool array;  (** whether each declaration is in force *)
+  retirers : int list array;
+      (** the sources of the live supersedes edges that point at each
+          declaration *)
   edges : edge list;
   targets : target list;  (** the target of each edge, in the same order *)
   sites : site list;
@@ -585,6 +588,7 @@ let make manifest files =
     manifest;
     declarations;
     inforce = in_force ~retirers declarations edges targets;
+    retirers;
     edges;
     targets;
     sites = List.rev sites;
@@ -942,6 +946,51 @@ let records facts ~changed =
 
 let declarations facts = Array.to_list facts.declarations
 let is_in_force facts index = facts.inforce.(index)
+
+let successors facts index =
+  let declarations = facts.declarations in
+  let count = Array.length declarations in
+  (* [reached.(node)] is [true] once the walk from [index] meets
+     [node]. The walk goes from a declaration to the sources of the live
+     supersedes edges that point at it, and stops at a declaration in
+     force. *)
+  let reached = Array.make count false in
+  let rec walk = function
+    | [] -> ()
+    | node :: rest ->
+        if reached.(node) then walk rest
+        else (
+          reached.(node) <- true;
+          walk
+            (if facts.inforce.(node) then rest else facts.retirers.(node) @ rest))
+  in
+  if not facts.inforce.(index) then walk facts.retirers.(index);
+  let order a b =
+    compare
+      ( declaration_id declarations.(a),
+        declarations.(a).path,
+        declarations.(a).span.start.line )
+      ( declaration_id declarations.(b),
+        declarations.(b).path,
+        declarations.(b).span.start.line )
+  in
+  (* Of the declarations that share an id, the first in this order. *)
+  List.rev
+    (List.fold_left
+       (fun found node ->
+         match found with
+         | kept :: _
+           when String.equal
+                  (declaration_id declarations.(kept))
+                  (declaration_id declarations.(node)) ->
+             found
+         | _ -> node :: found)
+       []
+       (List.sort order
+          (List.filter
+             (fun node -> reached.(node) && facts.inforce.(node))
+             (List.init count Fun.id))))
+
 let edges facts = List.combine facts.edges facts.targets
 let acks facts = facts.acks
 let plans facts = facts.plans
