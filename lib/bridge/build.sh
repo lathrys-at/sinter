@@ -32,7 +32,7 @@ else
   flags=$4
 fi
 
-# @cites parser-bridge
+# @cites rust-bridge
 # Cargo's build output must live outside _build, and each checkout
 # must build in a directory of its own. "dune clean" does not remove
 # that directory; remove it by hand to build the crate from nothing.

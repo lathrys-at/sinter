@@ -60,7 +60,7 @@ external toml_buffer : string -> string = "sinter_bridge_toml_parse_stub"
 
 type t = engine
 
-(* @cites parser-bridge *)
+(* @cites rust-bridge *)
 (* The decoder of the result buffer. Every integer in the buffer is
    unsigned, 32 bits wide, and little-endian. *)
 

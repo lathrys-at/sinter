@@ -1,7 +1,7 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* @cites parser-bridge *)
+(* @cites rust-bridge *)
 
 (** The parser bridge. The bridge loads tree-sitter grammars that are compiled
     to WebAssembly, parses text with them, and runs tree-sitter queries over the

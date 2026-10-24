@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 The Sinter Authors
 
-// @cites parser-bridge
+// @cites rust-bridge
 
 //! The C interface that Sinter uses to parse source text.
 //!
@@ -239,7 +239,7 @@ fn guard<T>(failure: T, body: impl FnOnce() -> T) -> T {
 #[no_mangle]
 pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
     guard(std::ptr::null_mut(), move || {
-        // @cites parser-bridge
+        // @cites rust-bridge
         // The engine uses wasmtime's compiled-module cache, in wasmtime's
         // default directory. Without that directory the engine runs with
         // no cache and compiles every grammar on each load.

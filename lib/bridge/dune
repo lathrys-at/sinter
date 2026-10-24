@@ -25,7 +25,7 @@
 ; the system libraries that the static link needs, and build.sh writes
 ; them to link_flags.sexp.
 ;
-; @cites parser-bridge
+; @cites rust-bridge
 ; Cargo's build output stays outside _build, in a directory of its own
 ; for each checkout. build.sh chooses it; the second argument below is
 ; the directory to use when the environment names none.
