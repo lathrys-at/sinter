@@ -140,23 +140,44 @@ let ack_cells () =
       else None)
     (String.split_on_char '\n' text)
 
-let ackable_follows_the_column_of_the_specification () =
+(* Each class of the table, with the cell of its column A. *)
+let ack_classes () =
   let cells = ack_cells () in
   Alcotest.(check int)
     "a cell for each class"
     (List.length Finding_class.all)
     (List.length cells);
-  List.iter
+  List.map
     (fun (name, cell) ->
       match Finding_class.of_name name with
       | None -> Alcotest.failf "no class %s" name
-      | Some finding_class ->
-          let ackable = Finding.ackable (Finding.make finding_class fact ()) in
-          (* A* is ackable only under a condition of the rule, which a
-             finding of the class carries in no field yet. *)
-          Alcotest.(check bool)
-            ("ackable " ^ name) (String.equal cell "A") ackable)
+      | Some finding_class -> (name, finding_class, cell))
     cells
+
+let ackable_follows_the_column_of_the_specification () =
+  List.iter
+    (fun (name, finding_class, cell) ->
+      let finding = Finding.make finding_class fact () in
+      (* A finding of a class of A* is ackable only when its maker says
+         that the condition of the class holds. *)
+      Alcotest.(check bool)
+        ("ackable " ^ name) (String.equal cell "A") finding.ackable)
+    (ack_classes ())
+
+let only_a_class_of_a_star_takes_ackable () =
+  List.iter
+    (fun (name, finding_class, cell) ->
+      let ackable given =
+        match Finding.make finding_class fact ~ackable:given () with
+        | finding -> Some finding.ackable
+        | exception Invalid_argument _ -> None
+      in
+      Alcotest.(check (list (option bool)))
+        ("ackable " ^ name)
+        (if String.equal cell "A*" then [ Some true; Some false ]
+         else [ None; None ])
+        [ ackable true; ackable false ])
+    (ack_classes ())
 
 (* {1 The order} *)
 
@@ -276,6 +297,7 @@ let tests =
       the_id_names_the_class_and_the_subject;
     case "ackable follows the column of the specification"
       ackable_follows_the_column_of_the_specification;
+    case "only a class of A* takes ackable" only_a_class_of_a_star_takes_ackable;
     case "compare orders by path, line, column, and id"
       compare_orders_by_path_line_column_and_id;
     compare_is_antisymmetric;

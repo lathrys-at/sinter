@@ -454,7 +454,7 @@ let disendorsed facts documents =
                 ~fix:
                   (Printf.sprintf "@ack disendorsed %s %s" edge.target_text
                      (String.sub hash 0 8))
-                () )
+                ~ackable:true () )
       | _ -> None)
     (Facts.edges facts)
 
@@ -758,8 +758,9 @@ let tree manifest documents ~not_text =
             suspect facts;
             cycles facts;
             List.filter_map
-              (fun (edge, finding) ->
-                if acked facts documents edge then None else Some finding)
+              (fun (edge, (finding : Finding.t)) ->
+                if finding.ackable && acked facts documents edge then None
+                else Some finding)
               (disendorsed facts documents);
             orphans facts;
             uncovered facts;

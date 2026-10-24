@@ -42,6 +42,7 @@ type t = private {
   fix : string option;
       (** one line, with no control character but the tab: the text to paste, or
           an instruction for a person *)
+  ackable : bool;  (** [true] when an [@ack] can discharge the finding *)
 }
 (** One finding. *)
 
@@ -51,13 +52,21 @@ val make :
   ?place:place ->
   ?detail:string ->
   ?fix:string ->
+  ?ackable:bool ->
   unit ->
   t
-(** [make finding_class subject ?place ?detail ?fix ()] is the finding of
-    [finding_class] about [subject]. Its detail and its fix are [detail] and
+(** [make finding_class subject ?place ?detail ?fix ?ackable ()] is the finding
+    of [finding_class] about [subject]. Its detail and its fix are [detail] and
     [fix] as {!escape} writes them, so each is one line.
 
-    @raise Invalid_argument if [detail] or [fix] is empty. *)
+    A finding of the class [disconnected] is ackable, and a finding of a class
+    other than [disendorsed] and [rule-owed] is not. A finding of [disendorsed]
+    or [rule-owed] is ackable only under a condition of its class; [ackable]
+    says whether the condition holds, and is [false] when absent.
+
+    @raise Invalid_argument
+      if [detail] or [fix] is empty, or if [ackable] is given for a class other
+      than [disendorsed] and [rule-owed]. *)
 
 val escape : string -> string
 (** [escape text] is [text] with each ASCII control character other than the tab
@@ -68,10 +77,6 @@ val escape : string -> string
 
 val id : t -> string
 (** [id finding] is [finding:<class>:<subject id>]. *)
-
-val ackable : t -> bool
-(** [ackable finding] is [true] when an [@ack] can discharge the finding: its
-    class is [disendorsed] or [disconnected]. *)
 
 val compare : t -> t -> int
 (** [compare a b] orders two findings by the path of their places, the line and
