@@ -16,7 +16,7 @@ The bridge knows about grammars, source text, queries, captures, error
 nodes, WebAssembly modules, digests, and TOML documents. It holds no
 Sinter vocabulary. The
 reasons are in
-[docs/decisions/parser-bridge.md](../docs/decisions/parser-bridge.md).
+[docs/decisions/rust-bridge.md](../docs/decisions/rust-bridge.md).
 
 ## Build
 

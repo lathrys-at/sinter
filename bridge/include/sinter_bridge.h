@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Copyright 2026 The Sinter Authors */
 
-/* @cites parser-bridge */
+/* @cites rust-bridge */
 
 /* The C interface of the Sinter parser bridge.
 
