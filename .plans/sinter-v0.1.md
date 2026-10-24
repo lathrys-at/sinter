@@ -1,6 +1,6 @@
 # Sinter v0.1
 @plan sinter-v0.1
-@scope spec/**, docs/**, CLAUDE.md, README.md, CONTRIBUTING.md, THIRD_PARTY.md, REUSE.toml, LICENSES/**, lib/**, bin/**, bridge/**, test/**, dune-project, sinter.opam, sinter.opam.locked, sinter.toml, .github/workflows/**, .plans/**
+@scope spec/**, docs/**, CLAUDE.md, README.md, CONTRIBUTING.md, THIRD_PARTY.md, REUSE.toml, LICENSES/**, lib/**, bin/**, bridge/**, test/**, dune-project, sinter.opam, sinter.opam.locked, sinter.toml, .github/workflows/**, .plans/**, plugins/**, .claude-plugin/**
 Deliver the first useful version of Sinter: the tag graph of a
 repository, checked with test evidence. It reads markdown with a
 built-in pack and TypeScript, Rust, and OCaml with fetched packs.
@@ -97,6 +97,17 @@ them with `sinter scan`.
 Add `sinter check` for the finding classes that the facts of markdown,
 the manifest, and git give, in tree mode, with tiers, gates, and exit
 codes, as text and as JSON.
+
+## Cite the successor of a superseded item
+@scope spec/**, lib/**, test/**, docs/**, CONTRIBUTING.md, plugins/**, .claude-plugin/**
+@decision supersession-chains
+@decision cite-the-successor
+Keep a `@supersedes` edge live when its source is itself superseded,
+so that a chain of records retires each record before its end. Give a
+citation of a superseded item a fix that names the item that
+supersedes it, and let no `@ack` discharge that finding. Tell authors,
+in the decision skill and in `CONTRIBUTING.md`, to move such a
+citation in the change that supersedes the item.
 
 ## Measure and improve the performance of scan and check
 @scope lib/**, bin/**, bridge/**, test/**, docs/**
