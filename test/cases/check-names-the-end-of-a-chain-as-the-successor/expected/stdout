@@ -1,0 +1,4 @@
+docs/guide.md:3:1: disendorsed cites:site:docs/guide.md#guide->memory-store decision:memory-store is superseded by decision:database-store
+  fix: @cites database-store v3
+docs/guide.md:4:1: disendorsed cites:site:docs/guide.md#guide->file-store decision:file-store is superseded by decision:database-store
+  fix: @cites database-store
