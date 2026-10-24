@@ -446,6 +446,8 @@ let disendorsed facts documents =
             Finding.make Finding_class.Disendorsed (edge_subject edge)
               ~place:(place edge.path edge.span)
           in
+          (* A declaration that is not in force and carries no status has
+             a live supersedes edge into it, and so a successor. *)
           Some
             ( edge,
               match

@@ -59,10 +59,10 @@ val make :
     of [finding_class] about [subject]. Its detail and its fix are [detail] and
     [fix] as {!escape} writes them, so each is one line.
 
-    A finding of the class [disconnected] is ackable, and a finding of a class
-    other than [disendorsed] and [rule-owed] is not. A finding of [disendorsed]
-    or [rule-owed] is ackable only under a condition of its class; [ackable]
-    says whether the condition holds, and is [false] when absent.
+    A finding of [disconnected] is ackable. A finding of [disendorsed] or
+    [rule-owed] is ackable only under a condition of its class: when [ackable]
+    is [true]. [ackable] is [false] when absent. A finding of any other class is
+    not ackable.
 
     @raise Invalid_argument
       if [detail] or [fix] is empty, or if [ackable] is given for a class other
