@@ -2,10 +2,9 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Read TOML with toml_edit through the bridge
-@decision toml-reader
-@cites parser-bridge
+@decision toml-reader v2
+@cites rust-bridge
 @cites licensing
-@ack disendorsed parser-bridge 8a2c5368
 Sinter reads `sinter.toml` and the front matter of rule files with the Rust crate `toml_edit` 0.22.27, through one function of the parser bridge, behind a TOML interface of Sinter's own in `lib/`.
 
 ## Context

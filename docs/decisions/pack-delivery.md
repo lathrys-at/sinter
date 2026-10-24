@@ -2,9 +2,8 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Build in only the markdown pack; fetch every other pack
-@decision pack-delivery
-@cites parser-bridge
-@ack disendorsed parser-bridge 71a70656
+@decision pack-delivery v2
+@cites rust-bridge
 The markdown pack is built into the tool, and every other language pack is fetched from a packs repository, checked against its SHA-256 hash, and recorded in a lock file.
 
 ## Context
