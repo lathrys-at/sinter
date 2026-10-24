@@ -489,7 +489,11 @@ sign off code that you did not review.
 - Decisions that shape the project live in `docs/decisions/`, one file
   per decision, with a `@decision` tag. Read the record before you
   re-argue a choice. To record a new decision, use the
-  `/sinter:decision` skill or follow its format. "Alternatives
+  `/sinter:decision` skill or follow its format. A pull request that
+  supersedes a record moves the citations of the old record to the
+  new one, with the revision bumps that the move owes, and adds no
+  `@ack` for those citations. The journals of plans record the past,
+  so their citations stay as they are. "Alternatives
   considered" lists only the alternatives that someone put forward
   and that were deliberated: in an issue, a pull request, a plan, the
   design notes, or with the maintainer. When nobody put one forward,
