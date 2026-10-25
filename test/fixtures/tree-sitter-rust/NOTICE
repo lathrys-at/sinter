@@ -1,0 +1,6 @@
+The file tree-sitter-rust.wasm is the prebuilt grammar of the
+repository https://github.com/tree-sitter/tree-sitter-rust, from
+release tag v0.24.2, asset tree-sitter-rust.wasm. The license is MIT
+(SPDX-License-Identifier: MIT); the file LICENSE beside this file is
+the license text of that release. The SHA-256 of the wasm file is
+24c89bd9252255e4aebbcbd7d2d308bd92c86dd95a130fdc80efa49577b8d738.

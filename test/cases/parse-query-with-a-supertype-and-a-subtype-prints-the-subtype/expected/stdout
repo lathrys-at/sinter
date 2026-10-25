@@ -1,0 +1,4 @@
+{"cap":"binding","col":10,"eb":91,"ecol":15,"eline":4,"line":4,"node":"identifier","pat":1,"path":"sample.rs","sb":86,"text":"items"}
+{"cap":"generic","col":17,"eb":100,"ecol":24,"eline":4,"line":4,"node":"generic_type","pat":0,"path":"sample.rs","sb":93,"text":"Vec<u8>"}
+{"cap":"generic","col":29,"eb":115,"ecol":39,"eline":4,"line":4,"node":"generic_type","pat":0,"path":"sample.rs","sb":105,"text":"Option<u8>"}
+{"cap":"binding","col":9,"eb":130,"ecol":13,"eline":5,"line":5,"node":"identifier","pat":1,"path":"sample.rs","sb":126,"text":"head"}
