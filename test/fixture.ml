@@ -333,7 +333,7 @@ let wasmtime_configurations =
    shared cache folder. *)
 let configure_wasmtime home =
   let text =
-    Printf.sprintf "[cache]\nenabled = true\ndirectory = %s\n"
+    Printf.sprintf "[cache]\ndirectory = %s\n"
       (toml_string (Lazy.force wasmtime_cache))
   in
   List.iter

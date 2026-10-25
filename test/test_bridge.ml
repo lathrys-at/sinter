@@ -221,12 +221,13 @@ let gives_the_kind_and_the_place_of_a_query_error () =
          row = 0;
          column = 1;
          offset = 1;
-         message = "no_such_node";
+         message = "\"no_such_node\"";
        })
     error;
   Alcotest.(check string)
     "the message of tree-sitter"
-    "Query error at 1:2. Invalid node type no_such_node" (B.Query.message error)
+    "Query error at 1:2. Invalid node type \"no_such_node\""
+    (B.Query.message error)
 
 let refuses_a_directive () =
   let error =
@@ -252,7 +253,19 @@ let refuses_each_predicate_outside_the_ten () =
       | B.Query.Not_allowed found ->
           Alcotest.(check string) operator operator found.operator
       | other -> Alcotest.fail (B.Query.message other))
-    [ "is?"; "is-not?"; "lua-match?"; "eq"; "select-adjacent!"; "strip!" ]
+    [ "is?"; "is-not?"; "lua-match?"; "foo?"; "select-adjacent!"; "strip!" ]
+
+let refuses_a_predicate_whose_name_ends_in_neither_mark () =
+  Alcotest.check error_t "a syntax error at the name"
+    (B.Query.Invalid
+       {
+         kind = B.Query.Syntax;
+         row = 0;
+         column = 17;
+         offset = 17;
+         message = "((string) @s (#eq @s \"x\"))\n                 ^";
+       })
+    (compile_error "((string) @s (#eq @s \"x\"))")
 
 let compiles_each_of_the_ten_predicates () =
   List.iter
@@ -446,6 +459,8 @@ let handle_tests =
     Alcotest.test_case "refuses a directive" `Quick refuses_a_directive;
     Alcotest.test_case "refuses each predicate outside the ten" `Quick
       refuses_each_predicate_outside_the_ten;
+    Alcotest.test_case "refuses a predicate whose name ends in neither mark"
+      `Quick refuses_a_predicate_whose_name_ends_in_neither_mark;
     Alcotest.test_case "compiles each of the ten predicates" `Quick
       compiles_each_of_the_ten_predicates;
     Alcotest.test_case "refuses a query that is not UTF-8" `Quick

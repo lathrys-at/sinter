@@ -59,7 +59,7 @@ let names_the_query_error () =
     "the message of tree-sitter after the file"
     (path
    ^ ": cannot read the query: Query error at 1:2. Invalid node type \
-      no_such_node")
+      \"no_such_node\"")
     (message_of path compiled)
 
 let query text =

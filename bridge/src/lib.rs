@@ -240,13 +240,18 @@ fn guard<T>(failure: T, body: impl FnOnce() -> T) -> T {
 pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
     guard(std::ptr::null_mut(), move || {
         // @cites rust-bridge
-        // The engine uses wasmtime's compiled-module cache, in wasmtime's
-        // default directory. Without that directory the engine runs with
-        // no cache and compiles every grammar on each load.
+        // The engine uses wasmtime's compiled-module cache. Wasmtime's
+        // default cache configuration file sets it up. When that file is
+        // missing, the cache is in wasmtime's default directory. When
+        // wasmtime cannot read the file or make the directory, the engine
+        // runs with no cache and compiles every grammar on each load.
         let mut config = wasmtime::Config::new();
-        if config.cache_config_load_default().is_err() {
-            config = wasmtime::Config::new();
+        if let Ok(cache) = wasmtime::Cache::from_file(None) {
+            config.cache(Some(cache));
         }
+        // A module with a 64-bit memory does not compile, in this engine
+        // and in the engine of adapters, which copies `config`.
+        config.wasm_memory64(false);
         let grammar_engine = match wasmtime::Engine::new(&config) {
             Ok(engine) => engine,
             Err(error) => {

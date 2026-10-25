@@ -277,9 +277,10 @@ let the_run_names_one_cache_folder_for_wasmtime_outside_the_case () =
     (Ok [])
     (case_files ~stdout:"2\nshared\n"
        (Printf.sprintf
-          "m=$(%s); l=$(%s); cat \"$HOME/%s\" \"$HOME/%s\" | grep -c '^enabled \
-           = true$'; [ \"$m\" = \"$l\" ] && [ -d \"$m\" ] && case \"$m\" in \
-           \"$HOME\"*|\"$PWD\"*) echo inside;; /*) echo shared;; esac"
+          "m=$(%s); l=$(%s); cat \"$HOME/%s\" \"$HOME/%s\" | grep -c \
+           '^\\[cache\\]$'; [ \"$m\" = \"$l\" ] && [ -d \"$m\" ] && case \
+           \"$m\" in \"$HOME\"*|\"$PWD\"*) echo inside;; /*) echo shared;; \
+           esac"
           (cache_directory mac_configuration)
           (cache_directory linux_configuration)
           mac_configuration linux_configuration))
