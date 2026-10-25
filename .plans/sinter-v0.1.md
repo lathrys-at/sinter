@@ -109,6 +109,16 @@ supersedes it, and let no `@ack` discharge that finding. Tell authors,
 in the decision skill and in `CONTRIBUTING.md`, to move such a
 citation in the change that supersedes the item.
 
+## Move to tree-sitter 0.26 and wasmtime 36
+@scope bridge/**, lib/**, test/**, docs/**, CONTRIBUTING.md, THIRD_PARTY.md
+@decision current-dependencies
+Move the bridge from tree-sitter 0.25.10 and wasmtime 29.0.1 to
+tree-sitter 0.26.13 and wasmtime 36.0.19. The store of the grammars
+then stops growing with each parse, and the bridge leaves two critical
+security advisories of wasmtime 29. Keep the refusal of an adapter
+with a 64-bit memory. Test that a query that names a supertype with a
+subtype runs.
+
 ## Measure and improve the performance of scan and check
 @scope lib/**, bin/**, bridge/**, test/**, docs/**
 Add a benchmark that measures the time and the peak memory of
@@ -116,6 +126,15 @@ Add a benchmark that measures the time and the peak memory of
 trees of 1,000, 10,000, and 100,000 declarations. Profile them, fix the
 largest costs, and record a baseline and budgets that later steps
 keep.
+
+## Move to tree-sitter 0.27 and wasmtime 48
+@scope bridge/**, lib/**, test/**, spec/**, docs/**, CONTRIBUTING.md, THIRD_PARTY.md, .github/workflows/**
+Move the bridge to the first release of tree-sitter 0.27 or later that
+reads the supertypes of a WebAssembly grammar correctly, with
+wasmtime 48, and move the pinned Rust version to the version that
+wasmtime 48 needs. Keep a limit of fuel that a call exceeds on every
+machine or on none (`spec/packs.md` section 10.2). Measure the
+baseline of the performance step again.
 
 ## Check a diff
 @scope lib/**, bin/**, test/**
