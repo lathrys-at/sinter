@@ -315,6 +315,14 @@ let numbers_the_matches_of_a_query () =
        (fun (c : B.Query.capture) -> (c.match_number, c.pattern, c.name))
        found)
 
+let a_supertype_with_a_subtype_captures_the_subtype () =
+  let query = compiled "(_value/object) @o" in
+  let found = captures_of query (parsed "[{}, 1, {\"a\": {}}, \"b\"]") in
+  Alcotest.(check (list (pair string string)))
+    "the type and the text of each object"
+    [ ("object", "{}"); ("object", "{\"a\": {}}"); ("object", "{}") ]
+    (List.map (fun (c : B.Query.capture) -> (c.node_type, c.text)) found)
+
 let refuses_a_query_over_a_tree_of_another_grammar () =
   let other = lazy (loaded (B.create ())) in
   let tree = parsed ~language:other "[1]" in
@@ -469,6 +477,8 @@ let handle_tests =
       an_empty_query_captures_nothing;
     Alcotest.test_case "numbers the matches of a query" `Quick
       numbers_the_matches_of_a_query;
+    Alcotest.test_case "a supertype with a subtype captures the subtype" `Quick
+      a_supertype_with_a_subtype_captures_the_subtype;
     Alcotest.test_case "refuses a query over a tree of another grammar" `Quick
       refuses_a_query_over_a_tree_of_another_grammar;
     Alcotest.test_case "names each grammar error" `Quick
