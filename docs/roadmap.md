@@ -24,6 +24,19 @@
     successor, and bump the revision of the citing declaration (record
     `cite-the-successor`).
 - **Ledger commands and evidence import**
+- **Observations of the outside world** — an obligation that a
+  decision record makes and that never ends, where the work depends on
+  events outside the repository. An example is a decision to keep
+  every dependency at its newest release.
+  - A routine outside Sinter checks outside sources on a schedule,
+    for example new releases and security advisories. It writes what
+    it finds into a file in the repository, as evidence import does.
+    `sinter check` never reads the network.
+  - A rule (design notes section 7) whose origin is the record
+    triggers on that file. A plan that cites the observation, or an
+    `@ack`, discharges the obligation.
+  - It shares its design with `@pin` (`spec/vocabulary.md` section
+    7.4) and with evidence import. Not designed.
 - **`sinter search`**
   - Keyword search over titles, descriptions, and extents.
   - Semantic search: a bundled local model, an external service
