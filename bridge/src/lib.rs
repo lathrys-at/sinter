@@ -19,7 +19,7 @@
 #[cfg(panic = "abort")]
 compile_error!("the bridge needs unwinding panics; do not build it with panic = \"abort\"");
 
-use std::ffi::{c_char, CStr};
+use std::ffi::{CStr, c_char};
 
 mod adapter;
 mod buffer;
@@ -27,11 +27,11 @@ mod failure;
 mod syntax;
 mod toml_document;
 
-use buffer::{length_prefix, put_bytes, put_header, set_count, KIND_DIGEST, KIND_RESPONSE};
-use failure::{last_failure, set_failure, Failure};
+use buffer::{KIND_DIGEST, KIND_RESPONSE, length_prefix, put_bytes, put_header, set_count};
+use failure::{Failure, last_failure, set_failure};
 use sha2::{Digest, Sha256};
 use toml_edit::ImDocument;
-use tree_sitter::{wasmtime, Language, Parser, Query, Tree, WasmStore};
+use tree_sitter::{Language, Parser, Query, Tree, WasmStore, wasmtime};
 
 fn set_error(message: impl Into<String>) {
     set_failure(Failure::Internal(message.into()));
@@ -166,7 +166,7 @@ unsafe fn drop_handle<T>(handle: *mut T) {
 fn keep_backtraces_off() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        std::env::set_var("RUST_LIB_BACKTRACE", "0");
+        unsafe { std::env::set_var("RUST_LIB_BACKTRACE", "0") };
         std::panic::set_hook(Box::new(|info| {
             eprintln!("sinter: the bridge stopped on an internal fault: {info}");
         }));
@@ -185,7 +185,7 @@ fn guard<T>(failure: T, body: impl FnOnce() -> T) -> T {
 }
 
 /// Create an engine. Returns null on failure.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
     guard(std::ptr::null_mut(), move || {
         // @cites rust-bridge
@@ -233,7 +233,7 @@ pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
 ///
 /// `engine` must be null, or a pointer that
 /// `sinter_bridge_engine_new` returned and that was not freed before.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_engine_free(engine: *mut SinterBridgeEngine) {
     guard((), move || unsafe { drop_handle(engine) })
 }
@@ -245,7 +245,7 @@ pub unsafe extern "C" fn sinter_bridge_engine_free(engine: *mut SinterBridgeEngi
 /// `engine` must be a live pointer from `sinter_bridge_engine_new`.
 /// `name` must point to a NUL-terminated string. `wasm` must point to
 /// `wasm_len` readable bytes, or be null when `wasm_len` is 0.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_language_load(
     engine: *mut SinterBridgeEngine,
     name: *const c_char,
@@ -302,7 +302,7 @@ pub unsafe extern "C" fn sinter_bridge_language_load(
 /// `language` must be null, or a pointer that
 /// `sinter_bridge_language_load` returned and that was not freed
 /// before.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_language_free(language: *mut SinterBridgeLanguage) {
     guard((), move || unsafe { drop_handle(language) })
 }
@@ -315,7 +315,7 @@ pub unsafe extern "C" fn sinter_bridge_language_free(language: *mut SinterBridge
 /// and `language` a live pointer from `sinter_bridge_language_load`.
 /// `source` must point to `source_len` readable bytes, or be null when
 /// `source_len` is 0.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_parse(
     engine: *mut SinterBridgeEngine,
     language: *const SinterBridgeLanguage,
@@ -361,7 +361,7 @@ pub unsafe extern "C" fn sinter_bridge_parse(
 ///
 /// `tree` must be null, or a pointer that `sinter_bridge_parse`
 /// returned and that was not freed before.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_tree_free(tree: *mut SinterBridgeTree) {
     guard((), move || unsafe { drop_handle(tree) })
 }
@@ -374,7 +374,7 @@ const BYTES_PER_NODE: usize = 64;
 /// # Safety
 ///
 /// `tree` must be null or a live pointer from `sinter_bridge_parse`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_tree_memory(tree: *const SinterBridgeTree) -> usize {
     guard(0, move || {
         if tree.is_null() {
@@ -394,7 +394,7 @@ pub unsafe extern "C" fn sinter_bridge_tree_memory(tree: *const SinterBridgeTree
 /// # Safety
 ///
 /// `tree` must be a live pointer from `sinter_bridge_parse`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_tree_sexp(
     tree: *const SinterBridgeTree,
 ) -> *mut SinterBridgeResult {
@@ -412,7 +412,7 @@ pub unsafe extern "C" fn sinter_bridge_tree_sexp(
 /// # Safety
 ///
 /// `tree` must be a live pointer from `sinter_bridge_parse`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_tree_errors(
     tree: *const SinterBridgeTree,
 ) -> *mut SinterBridgeResult {
@@ -431,7 +431,7 @@ pub unsafe extern "C" fn sinter_bridge_tree_errors(
 /// `language` must be a live pointer from `sinter_bridge_language_load`.
 /// `text` must point to `len` readable bytes, or be null when `len` is
 /// 0.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_query_new(
     language: *const SinterBridgeLanguage,
     text: *const u8,
@@ -458,7 +458,7 @@ pub unsafe extern "C" fn sinter_bridge_query_new(
 ///
 /// `query` must be null, or a pointer that `sinter_bridge_query_new`
 /// returned and that was not freed before.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_query_free(query: *mut SinterBridgeQuery) {
     guard((), move || unsafe { drop_handle(query) })
 }
@@ -470,7 +470,7 @@ pub unsafe extern "C" fn sinter_bridge_query_free(query: *mut SinterBridgeQuery)
 ///
 /// `query` must be a live pointer from `sinter_bridge_query_new`, and
 /// `tree` a live pointer from `sinter_bridge_parse`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_query_run(
     query: *const SinterBridgeQuery,
     tree: *const SinterBridgeTree,
@@ -501,7 +501,7 @@ pub unsafe extern "C" fn sinter_bridge_query_run(
 /// `engine` must be a live pointer from `sinter_bridge_engine_new`.
 /// `wasm` must point to `wasm_len` readable bytes, or be null when
 /// `wasm_len` is 0.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_adapter_load(
     engine: *mut SinterBridgeEngine,
     wasm: *const u8,
@@ -531,7 +531,7 @@ pub unsafe extern "C" fn sinter_bridge_adapter_load(
 ///
 /// `adapter` must be null or a live pointer from
 /// `sinter_bridge_adapter_load`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_adapter_interface(
     adapter: *const SinterBridgeAdapter,
 ) -> u32 {
@@ -549,7 +549,7 @@ pub unsafe extern "C" fn sinter_bridge_adapter_interface(
 ///
 /// `adapter` must be null, or a pointer that
 /// `sinter_bridge_adapter_load` returned and that was not freed before.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_adapter_free(adapter: *mut SinterBridgeAdapter) {
     guard((), move || unsafe { drop_handle(adapter) })
 }
@@ -564,7 +564,7 @@ pub unsafe extern "C" fn sinter_bridge_adapter_free(adapter: *mut SinterBridgeAd
 /// `request` must point to `request_len` readable bytes and `report` to
 /// `report_len` readable bytes; either may be null when its length is
 /// 0.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_adapter_call(
     adapter: *const SinterBridgeAdapter,
     function: u32,
@@ -617,7 +617,7 @@ pub unsafe extern "C" fn sinter_bridge_adapter_call(
 /// `data` must point to `len` readable bytes, or be null when `len` is
 /// 0.
 // @cites sha256
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_sha256(
     data: *const u8,
     len: usize,
@@ -646,7 +646,7 @@ pub unsafe extern "C" fn sinter_bridge_sha256(
 /// `text` must point to `len` readable bytes, or be null when `len` is
 /// 0.
 // @cites toml-reader
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_toml_parse(
     text: *const u8,
     len: usize,
@@ -674,7 +674,9 @@ pub unsafe extern "C" fn sinter_bridge_toml_parse(
         match written {
             Ok(buffer) => into_result(buffer),
             Err(toml_document::WriteError::TooLong) => {
-                set_error("a string of the TOML document is 4 GiB or more, and the result buffer holds no string that large");
+                set_error(
+                    "a string of the TOML document is 4 GiB or more, and the result buffer holds no string that large",
+                );
                 std::ptr::null_mut()
             }
             Err(toml_document::WriteError::NoSpan) => {
@@ -692,7 +694,7 @@ pub unsafe extern "C" fn sinter_bridge_toml_parse(
 /// `result` must be null, or a pointer that a function of this bridge
 /// returned as a `SinterBridgeResult` and that was not freed before.
 /// The buffer that `data` points to becomes invalid.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn sinter_bridge_result_free(result: *mut SinterBridgeResult) {
     guard((), move || {
         if result.is_null() {
@@ -705,7 +707,7 @@ pub unsafe extern "C" fn sinter_bridge_result_free(result: *mut SinterBridgeResu
 
 /// The last failure on the calling thread, in a buffer of kind 5.
 /// Returns null only on an internal fault.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sinter_bridge_last_failure() -> *mut SinterBridgeResult {
     guard(std::ptr::null_mut(), move || {
         into_result(last_failure().buffer())

@@ -11,8 +11,8 @@ use tree_sitter::{
 };
 
 use crate::buffer::{
-    length_prefix, put_bytes, put_header, put_u32, set_count, TooLong, KIND_ERROR_REPORT,
-    KIND_MATCHES, KIND_TREE,
+    KIND_ERROR_REPORT, KIND_MATCHES, KIND_TREE, TooLong, length_prefix, put_bytes, put_header,
+    put_u32, set_count,
 };
 use crate::failure::{Failure, WASM_COMPILE, WASM_INSTANTIATE, WASM_OTHER, WASM_PARSE};
 

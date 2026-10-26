@@ -4,7 +4,7 @@
 //! Tests of the C interface, through the C functions.
 
 use super::*;
-use crate::adapter::tests::{Wasm, BIND, RECOGNISED};
+use crate::adapter::tests::{BIND, RECOGNISED, Wasm};
 use crate::buffer::{
     KIND_ERROR_REPORT, KIND_FAILURE, KIND_MATCHES, KIND_RESPONSE, KIND_TREE, MAGIC,
 };
@@ -371,7 +371,7 @@ fn the_tree_holds_the_source_as_given() {
 #[cfg(target_pointer_width = "64")]
 fn a_source_of_four_gib_or_more_fails_before_it_is_read() {
     let json = Json::new();
-    let one_byte = [b'1'];
+    let one_byte = *b"1";
     let tree = unsafe {
         sinter_bridge_parse(
             json.engine,
@@ -925,7 +925,7 @@ fn a_null_toml_text_with_a_length_fails_with_a_message() {
 #[test]
 #[cfg(target_pointer_width = "64")]
 fn a_toml_text_of_four_gib_or_more_fails_with_a_message() {
-    let one_byte = [b'a'];
+    let one_byte = *b"a";
     let result = unsafe { sinter_bridge_toml_parse(one_byte.as_ptr(), u32::MAX as usize + 1) };
     assert!(result.is_null());
     assert!(

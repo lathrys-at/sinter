@@ -8,7 +8,7 @@
 
 use toml_edit::{Datetime, ImDocument, Item, Key, Offset, Table, TomlError, Value};
 
-use crate::buffer::{length_prefix, put_bytes, put_header, put_u32, set_count, TooLong};
+use crate::buffer::{TooLong, length_prefix, put_bytes, put_header, put_u32, set_count};
 
 /// The `kind` field of a buffer that holds a TOML document.
 pub(crate) const KIND_TOML_DOCUMENT: u32 = 3;
@@ -257,10 +257,10 @@ fn current_table(root: &Table) -> (&Table, Vec<String>) {
                 _ => Vec::new(),
             };
             for child in children {
-                if let Some(position) = child.position() {
-                    if position > best.0 {
-                        best = (position, child, path.clone());
-                    }
+                if let Some(position) = child.position()
+                    && position > best.0
+                {
+                    best = (position, child, path.clone());
                 }
                 pending.push((child, path.clone()));
             }

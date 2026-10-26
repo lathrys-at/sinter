@@ -45,7 +45,7 @@ jobs:
           rustflags: ""
           cache: false
           override: true
-          toolchain: 1.94.1
+          toolchain: 1.99.1
           components: rustfmt, clippy
       - name: Cache the cargo state
         uses: actions/cache@v6
@@ -160,7 +160,7 @@ jobs:
           rustflags: ""
           cache: false
           override: true
-          toolchain: 1.94.1
+          toolchain: 1.99.1
           components: rustfmt, clippy
       - name: Cache the cargo state
         uses: actions/cache@v6
@@ -219,7 +219,7 @@ jobs:
           rustflags: ""
           cache: false
           override: true
-          toolchain: 1.94.1
+          toolchain: 1.99.1
       - name: Cache the cargo state
         uses: actions/cache@v6
         with:
@@ -341,7 +341,7 @@ jobs:
           rustflags: ""
           cache: false
           override: true
-          toolchain: 1.94.1
+          toolchain: 1.99.1
       - name: Cache the cargo state
         if: steps.scope.outputs.mode != 'none'
         uses: actions/cache@v6

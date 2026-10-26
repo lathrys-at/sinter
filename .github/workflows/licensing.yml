@@ -88,6 +88,7 @@ jobs:
         with:
           rustflags: ""
           cache: false
+          toolchain: 1.99.1
       - name: Check the Rust dependencies for forbidden licenses
         run: |
           set -eu

@@ -6,7 +6,7 @@
 
 use std::cell::RefCell;
 
-use crate::buffer::{put_bytes, put_header, put_u32, put_u64, set_count, KIND_FAILURE};
+use crate::buffer::{KIND_FAILURE, put_bytes, put_header, put_u32, put_u64, set_count};
 
 /// Why a call of the bridge failed. Each variant has the code that the
 /// buffer of a failure gives it.

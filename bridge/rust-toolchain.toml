@@ -3,5 +3,5 @@
 
 # @cites rust-bridge
 [toolchain]
-channel = "1.94.1"
+channel = "1.99.1"
 components = ["rustfmt", "clippy"]
