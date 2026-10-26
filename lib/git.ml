@@ -17,9 +17,6 @@ type error =
 
 type object_format = Sha1 | Sha256
 
-(* [env] is the environment of every child, with the changes that
-   [open_repo] makes already in it. [git] is the absolute path of the
-   executable. *)
 type t = {
   root : string;
   git : string;
@@ -97,8 +94,6 @@ module Decode = struct
     | "tag" -> Some Tag
     | _ -> None
 
-  (* [split_record record] is the part of [record] in front of its first
-     tab, split at each space, and the part after that tab. *)
   let split_record record =
     match String.index_opt record '\t' with
     | None -> None
@@ -181,8 +176,6 @@ module Decode = struct
     Option.to_result decoded
       ~none:(Printf.sprintf "%S is not a header of git cat-file --batch" header)
 
-  (* Refs. *)
-
   type ref_entry = {
     refname : string;
     kind : kind;
@@ -209,8 +202,6 @@ module Decode = struct
       let* records = line output in
       all ref_entry (String.split_on_char '\n' records)
 
-  (* Diff output. *)
-
   type header = {
     old_start : int;
     old_count : int;
@@ -218,13 +209,8 @@ module Decode = struct
     new_count : int;
   }
 
-  (* A number in a hunk header has at most this many digits, so that a
-     line number, and a line number plus a count of lines, stay inside
-     the range of a JSONL integer. *)
   let max_digits = 15
 
-  (* [number text i] reads the decimal number at offset [i] of [text],
-     and gives it with the offset after it. *)
   let number text i =
     let n = String.length text in
     let rec stop j =
@@ -236,15 +222,11 @@ module Decode = struct
       Error (Printf.sprintf "%S has a number too large at offset %d" text i)
     else Ok (int_of_string (String.sub text i (j - i)), j)
 
-  (* [literal text i word] is the offset after [word] when [text] holds
-     [word] at offset [i]. *)
   let literal text i word =
     let n = String.length word in
     if i + n <= String.length text && String.sub text i n = word then Ok (i + n)
     else Error (Printf.sprintf "%S has no %S at offset %d" text word i)
 
-  (* A range of a hunk header: a start, and a count that is 1 when the
-     header leaves it out. *)
   let range text i =
     let* start, i = number text i in
     if i < String.length text && text.[i] = ',' then
@@ -266,10 +248,6 @@ module Decode = struct
       Error (Printf.sprintf "%S starts its new lines at line 0" text)
     else Ok { old_start; old_count; new_start; new_count }
 
-  (* [unquote text i] reads the C-style quoted name whose opening double
-     quote is at offset [i] of [text]. It gives the bytes of the name
-     and the offset after the closing quote. [bytes] holds the bytes read
-     so far, latest first. *)
   let unquote text i =
     let n = String.length text in
     let octal_at k = k < n && text.[k] >= '0' && text.[k] <= '7' in
@@ -314,8 +292,6 @@ module Decode = struct
            (String.length name - String.length prefix))
     else Error (Printf.sprintf "the name %S does not start with %S" name prefix)
 
-  (* The path of a line "diff --git a/<path> b/<path>". Git quotes both
-     names, or neither. With renames off, both name the same path. *)
   let path_of_git_line line =
     let* i = literal line 0 "diff --git " in
     let rest = String.sub line i (String.length line - i) in
@@ -335,8 +311,6 @@ module Decode = struct
         Error (Printf.sprintf "%S names two paths" line)
       else Ok path
     else
-      (* Unquoted, [rest] is "a/<path> b/<path>", so its length gives the
-         length of the path. *)
       let size = (n - 5) / 2 in
       let twice () =
         Error (Printf.sprintf "%S does not name one path twice" line)
@@ -347,12 +321,8 @@ module Decode = struct
         if String.equal rest ("a/" ^ path ^ " b/" ^ path) then Ok path
         else twice ()
 
-  (* The changes of one section of the diff: whether git called the file
-     binary, and the runs of changed lines, latest first. *)
   type section = { binary : bool; runs : hunk list }
 
-  (* [add_run run runs] puts the run [(line, added, removed)], when there
-     is one, in front of [runs]. *)
   let add_run run runs =
     match run with
     | None -> runs
@@ -362,12 +332,6 @@ module Decode = struct
 
   let starts prefix line = String.starts_with ~prefix line
 
-  (* [hunk_lines header runs lines] reads the lines of the hunk that
-     [header] opens. It gives [runs] with the runs of the hunk in front,
-     and the lines after the hunk. In [go], [cursor] is the number, in the
-     working tree, of the next line that the working tree holds. A
-     context line ends a run; git writes an empty context line as an
-     empty line when its configuration asks for that. *)
   let hunk_lines header runs lines =
     let misfit line =
       Error
@@ -409,8 +373,6 @@ module Decode = struct
     in
     go header.old_count header.new_count cursor None runs lines
 
-  (* [section lines] reads one section from the lines after its
-     "diff --git" line. It gives the section and the lines after it. *)
   let section lines =
     let rec headers binary = function
       | line :: rest when starts "@@" line -> hunks binary [] (line :: rest)
@@ -431,9 +393,6 @@ module Decode = struct
   let change_of_section { binary; runs } =
     if binary then Binary else Modified (List.rev runs)
 
-  (* [join later earlier] is one section that holds the changes of two
-     sections of one path, which git writes when the type of the file
-     changed. *)
   let join later earlier =
     {
       binary = later.binary || earlier.binary;
@@ -456,8 +415,6 @@ module Decode = struct
           read ((path, section) :: found) rest
     in
     let* found = read [] lines in
-    (* [found] is latest first, and the stable sort keeps that order
-       among the sections of one path. *)
     let rec group done_ = function
       | (path, later) :: (other, earlier) :: rest when String.equal path other
         ->
@@ -471,23 +428,17 @@ module Decode = struct
          (List.stable_sort (fun (a, _) (b, _) -> String.compare a b) found))
 end
 
-(* Processes. *)
-
 let file_error path error =
   File_error (Printf.sprintf "%s: %s" path (Unix.error_message error))
 
 let remove_quietly path = try Sys.remove path with Sys_error _ -> ()
 
-(* [with_temp_file suffix f] calls [f] with the path of a new empty file,
-   and removes the file when [f] returns or raises. *)
 let with_temp_file suffix f =
   match Filename.temp_file "sinter-git" suffix with
   | exception Sys_error message -> Error (File_error message)
   | path ->
       Fun.protect ~finally:(fun () -> remove_quietly path) (fun () -> f path)
 
-(* [with_fd path flags f] calls [f] with a descriptor of the file at
-   [path], and closes it when [f] returns or raises. *)
 let with_fd path flags f =
   match
     Unix.openfile path (Unix.O_CLOEXEC :: flags)
@@ -507,8 +458,6 @@ let write_file path text =
   | () -> Ok ()
   | exception Sys_error message -> Error (File_error message)
 
-(* The first bytes of the file at [path]: as many as an error carries of
-   what git wrote to its standard error. *)
 let head path =
   match
     In_channel.with_open_bin path (fun channel ->
@@ -524,11 +473,6 @@ let rec wait pid =
   | _, status -> status
   | exception Unix.Unix_error (Unix.EINTR, _, _) -> wait pid
 
-(* [read_exactly channel size] is the next [size] bytes of [channel]. It
-   reads them in pieces, so that it never holds more than [channel] gives,
-   whatever [size] says.
-
-   @raise End_of_file if [channel] ends first. *)
 let read_exactly channel size =
   let piece =
     Bytes.create
@@ -553,9 +497,6 @@ let rec drain channel =
   | Some _ -> drain channel
   | None -> ()
 
-(* [with_stdin input f] calls [f] with the descriptor for the standard
-   input of a child: the text [input] when there is one, and the empty
-   input when there is none. *)
 let with_stdin input f =
   match input with
   | None -> with_fd "/dev/null" [ Unix.O_RDONLY ] f
@@ -564,13 +505,6 @@ let with_stdin input f =
           let* () = write_file path text in
           with_fd path [ Unix.O_RDONLY ] f)
 
-(* [exec ~git ~env ?input args consume] runs [git] with the arguments
-   [args] and the environment [env], and gives its standard output to
-   [consume]. The result is the exit status, what [consume] gave, and the
-   first part of the standard error. The output that [consume] leaves is
-   read and dropped, so the child never waits on a full pipe.
-   [End_of_file] from [consume] gives [Malformed_output]. Any other
-   exception from [consume] passes through, after the child ends. *)
 let exec ~git ~env ?input args consume =
   with_temp_file ".err" (fun err_path ->
       with_stdin input (fun stdin ->
@@ -613,8 +547,6 @@ let exec ~git ~env ?input args consume =
 
 let read_all channel = Ok (In_channel.input_all channel)
 
-(* The variables of the caller's environment that a child does not get,
-   and the two that [open_repo] sets for every child. *)
 let removed_variables =
   [
     "GIT_DIR";
@@ -648,8 +580,6 @@ let is_executable_file path =
   | _ -> false
   | exception Unix.Unix_error _ -> false
 
-(* The first [git] of the directories of [PATH] in [env]. An empty entry
-   of [PATH] names no directory here. *)
 let find_git env =
   let path =
     Array.to_list env
@@ -678,9 +608,6 @@ let decoded args decode output =
     (fun detail -> Malformed_output { args; detail })
     (decode output)
 
-(* [run ?env repo args decode] runs git in the root of [repo] and
-   decodes its whole standard output with [decode]. An exit status other
-   than 0 gives [Command_failed]. *)
 let run ?env t args decode =
   let args = "-C" :: t.root :: args in
   let env = Option.value env ~default:t.env in
@@ -711,9 +638,6 @@ let open_repo ~env dir =
         Ok { root; git; env; format }
     | _ -> Error (Not_a_repository { dir; detail = stderr })
 
-(* [answer repo args decode] runs git in the root of [repo], for a command
-   whose exit status 1 says "no". It is [Some] of the decoded output for
-   the status 0, and [None] for the status 1. *)
 let answer t args decode =
   let args = "-C" :: t.root :: args in
   let* status, output, stderr = exec ~git:t.git ~env:t.env args read_all in
@@ -725,9 +649,6 @@ let answer t args decode =
   | Unix.WEXITED 1 -> Ok None
   | _ -> failed args status stderr
 
-(* A revision that starts with a hyphen names no commit here, so that
-   git never reads [rev] as an option, and nor does one that holds a NUL
-   byte, which no argument of a process can hold. *)
 let commit_of t rev =
   if rev = "" || rev.[0] = '-' || String.contains rev '\000' then
     Error (Bad_revision rev)
@@ -739,8 +660,6 @@ let commit_of t rev =
     in
     Option.to_result commit ~none:(Bad_revision rev)
 
-(* The working tree's file set. *)
-
 module Paths = Set.Make (String)
 
 type entry = { path : string; tracked : bool }
@@ -748,9 +667,6 @@ type entry = { path : string; tracked : bool }
 let symbolic_link_mode = 0o120000
 let submodule_mode = 0o160000
 
-(* [is_regular_file repo path] is [true] when [path] names a regular
-   file under the root, and [false] when it names something else or
-   nothing. *)
 let is_regular_file t path =
   let full = Filename.concat t.root path in
   match Unix.lstat full with
@@ -774,8 +690,6 @@ let file_set t =
         else special)
       Paths.empty staged
   in
-  (* [others] names a directory that holds a repository of its own as
-     [dir/], and [is_regular_file] leaves that name out. *)
   let candidates =
     List.filter_map
       (fun (entry : Decode.stage_entry) ->
@@ -796,18 +710,12 @@ let file_set t =
 
 let files t = Result.map (List.map (fun entry -> entry.path)) (file_set t)
 
-(* The target branch and the merge base. *)
-
 type source = Upstream | Local_branch | Origin_branch
 type target = { source : source; refname : string; commit : string }
 
-(* The format of [refs]: the fields that {!Decode.refs} reads. *)
 let ref_format =
   "--format=%(refname)%00%(objecttype)%00%(objectname)%00%(upstream)"
 
-(* [refs repo patterns] is each ref that [patterns] match. A pattern
-   matches a ref of its own name, and also, as a prefix, the refs under
-   it, and it can hold glob characters. *)
 let refs t patterns =
   run t ("for-each-ref" :: ref_format :: patterns) Decode.refs
 
@@ -827,8 +735,6 @@ let resolve_target t name =
       | Some { upstream; _ } when upstream <> "" -> Some upstream
       | _ -> None
     in
-    (* An upstream other than the branch of [origin], for example a
-       local branch, needs a second look. *)
     let* entries =
       match upstream_of found with
       | Some upstream when Option.is_none (find upstream found) ->
@@ -854,16 +760,10 @@ let merge_base t a b =
   | Ok (Some base) -> Ok base
   | Ok None -> Error (No_merge_base (a, b))
   | Error failure ->
-      (* Git names no revision in its status, so [commit_of] finds the
-         one that names no commit. *)
       let* _ = commit_of t a in
       let* _ = commit_of t b in
       Error failure
 
-(* The base tree. *)
-
-(* [base_tree_of_commit repo commit] is [base_tree] for the object id
-   [commit] of a commit. *)
 let base_tree_of_commit t commit =
   let* entries =
     run t [ "ls-tree"; "-r"; "-z"; "--full-tree"; commit ] Decode.ls_tree
@@ -922,11 +822,6 @@ let fold_blobs t ids ~init ~f =
       | Unix.WEXITED 0 -> value
       | _ -> failed args status stderr)
 
-(* The diff. *)
-
-(* The options fix the form of the output and the edges of the hunks
-   against the configuration of the repository and of the person who
-   runs the tool, so that one tree and one base give one diff. *)
 let diff_options =
   [
     "diff";
@@ -974,18 +869,6 @@ let diff t ~base =
        (fun path -> Option.map (fun change -> (path, change)) (change path))
        paths)
 
-(* The tree key. *)
-
-(* [copy_index ~index ~copy] writes the content of the file at [index] to
-   the file at [copy]. When no file is at [index], it removes [copy], so
-   that git reads no index there and starts from an empty one. *)
-(* The copy takes the time of the index, less one second. git reads a
-   file again, and does not trust its size and its time, when the entry
-   of the file is not older than the index: that check sees an edit that
-   keeps the size of a file, made in the second of the last write of the
-   index. A copy with a new time would lose the check, and the tree key
-   would hold the old content. One second less makes git read again every
-   file that it would read with the index itself, and a few more. *)
 let copy_index ~index ~copy =
   if Sys.file_exists index then
     match In_channel.with_open_bin index In_channel.input_all with

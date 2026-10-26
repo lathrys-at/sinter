@@ -9,8 +9,6 @@ let is_alphanumeric = function
   | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' -> true
   | _ -> false
 
-(* The first offset from [offset] whose byte [keep] refuses, or the
-   length of [text]. *)
 let rec skip keep text offset =
   if offset < String.length text && keep text.[offset] then
     skip keep text (offset + 1)
@@ -36,10 +34,8 @@ type parts = {
   description : string;
 }
 
-(* 2^53 - 1, the largest integer of a JSON Lines record. *)
 let largest_revision = 9_007_199_254_740_991
 
-(* A number with no leading zero is 1 or more. *)
 let revision token =
   if String.starts_with ~prefix:"v" token then
     let digits = String.sub token 1 (String.length token - 1) in
@@ -55,9 +51,6 @@ let revision token =
 
 let is_token_byte byte = not (is_blank byte)
 
-(* The offsets of the target token and of the revision token, when
-   they exist: [(target_start, target_stop, revision)] with [revision]
-   the start and the stop of the revision token and its value. *)
 let tokens rest =
   let start = skip is_blank rest 0 in
   if start >= String.length rest then None

@@ -11,7 +11,6 @@ type response = {
   outcome : control;
 }
 
-(* One grammar, and the state of its file when the loop loaded it. *)
 type entry = {
   language : Sinter_bridge.Language.t;
   size : int;
@@ -54,26 +53,15 @@ let close state =
        road reads a grammar or the table after close; dropping a line only \
        leaves the grammars to the garbage collector"])
 
-(* The size and the modification time of the file at [path]. The pair
-   is None when the file does not stat; the loader then reports what is
-   wrong with the file. *)
 let stamp path =
   match Unix.stat path with
   | stats -> Some (stats.st_size, stats.st_mtime)
   | exception Unix.Unix_error _ -> None
 
-(* Take the grammar of the file at [path] out of the table, and free
-   the grammar that the table held for it, if any. *)
 let forget state path found =
   Hashtbl.remove state.grammars path;
   Option.iter (fun entry -> Sinter_bridge.Language.close entry.language) found
 
-(* Run [use] on the grammar of the file at [path], loaded once and
-   kept. The loop reads the stamp before it reads the file, so a file
-   that changes during the load is loaded again on the next request.
-   A grammar that is loaded again replaces the old one, which the loop
-   frees. A grammar that does not load is not kept, and neither is one
-   whose file does not stat; the loop frees that one after use. *)
 let with_language state path use =
   let now = stamp path in
   match Hashtbl.find_opt state.grammars path with
@@ -95,9 +83,6 @@ let with_language state path use =
             ~finally:(fun () -> Sinter_bridge.Language.close language)
             (fun () -> use language))
 
-(* A message goes into a record, and a string of a record is UTF-8.
-   Every message this library builds is UTF-8; a message from
-   elsewhere that is not is escaped rather than dropped. *)
 let printable message =
   if Sinter_bridge.Utf_8.is_valid message then message
   else String.escaped message

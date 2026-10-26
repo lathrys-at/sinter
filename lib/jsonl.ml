@@ -12,7 +12,7 @@ let strings l = Array (List.map (fun s -> String s) l)
 let ints l = Array (List.map (fun i -> Int i) l)
 
 (* @cites json-handling *)
-(* The canonical form allows an integer in this range only. *)
+(* The range of an integer in the canonical form. *)
 let max_int_value = 9007199254740991
 let min_int_value = -9007199254740991
 

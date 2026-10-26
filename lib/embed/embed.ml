@@ -1,9 +1,6 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* embed NAME FILE [NAME FILE]... writes to standard output an OCaml
-   module that binds each NAME to the bytes of its FILE, as a string. *)
-
 let rec bind = function
   | [] -> ()
   | name :: file :: rest ->

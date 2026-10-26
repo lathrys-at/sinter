@@ -11,8 +11,6 @@ let check_path path =
   if not (Sinter_bridge.Utf_8.is_valid path) then
     raise (Error (Parse_record.message ~path Parse_record.Path_not_utf_8))
 
-(* An internal fault of the bridge names the file that the bridge was
-   working on. *)
 let of_bridge path f =
   try f () with Sinter_bridge.Error message -> fail "%s: %s" path message
 
@@ -20,8 +18,6 @@ let or_fail path = function
   | Ok value -> value
   | Error error -> raise (Error (Query_file.message ~path error))
 
-(* Every record of a file is built before the caller sees one, so the
-   caller sees no record of a file that fails. *)
 let records ~path ~source found =
   List.map
     (fun capture ->
@@ -35,9 +31,6 @@ let load engine ~grammar =
   | Ok language -> language
   | Error error -> raise (Error (Grammar.message ~path:grammar error))
 
-(* The name of the file goes into every record, so a name that is not
-   UTF-8 text fails before any file is read, and it fails the same way
-   for a file that gives no capture. *)
 let fold language ~query ~paths ~f =
   List.iter check_path paths;
   match query with
@@ -51,8 +44,6 @@ let fold language ~query ~paths ~f =
           f (Tree { path; sexp }))
         paths
   | Some query_path ->
-      (* A query that does not compile fails in the same way for every
-         file, so the failure names the query file. *)
       let query =
         or_fail query_path
           (of_bridge query_path (fun () ->
@@ -74,9 +65,6 @@ let fold language ~query ~paths ~f =
             paths)
 
 let run ~grammar ~query ~paths channel =
-  (* fold checks every path before it reads one. So with a grammar
-     that does not load and a file name that is not UTF-8 text given
-     together, the failure names the grammar. *)
   let engine =
     try Sinter_bridge.create ()
     with Sinter_bridge.Error message ->

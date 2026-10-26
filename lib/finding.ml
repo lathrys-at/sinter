@@ -72,8 +72,6 @@ let id finding =
   ^ Finding_class.name finding.finding_class
   ^ ":" ^ subject_id finding.subject
 
-(* The key of order of a finding: [false] before [true] puts a finding
-   with a place first. Stdlib.compare orders strings in byte order. *)
 let key finding =
   ( Option.is_none finding.place,
     Option.map
