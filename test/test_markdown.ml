@@ -601,6 +601,49 @@ let declaration_needs_a_slug =
       "block 0 tags 0,1,2,3 prose  hash 3a664064";
     ]
 
+let bound = 5.0
+
+let timed_structure text =
+  let start = Unix.gettimeofday () in
+  let result = structure text in
+  (result, Unix.gettimeofday () -. start)
+
+let check_quick_structure name text expected =
+  let result, seconds = timed_structure text in
+  Alcotest.(check string) (name ^ ": the structure") expected result;
+  Alcotest.(check bool)
+    (Printf.sprintf "%s: read in %.3f s, under %.0f s" name seconds bound)
+    true (seconds < bound)
+
+let long_runs_read_quickly () =
+  List.iter
+    (fun mark ->
+      check_quick_structure
+        (Printf.sprintf "a run of %c" mark)
+        ("# Title\n\nx" ^ String.make 100_000 mark ^ "\n")
+        "section 0 level 1 \"Title\" slug title name title at 1:1-1:8 parent - \
+         first 3:1-3:100002 extent 1:1-3:100002")
+    [ '*'; '_'; '`'; '~' ]
+
+let deep_nesting_reads_quickly () =
+  List.iter
+    (fun (name, marker, expected) ->
+      check_quick_structure name
+        ("# Title\n\n"
+        ^ String.concat "" (List.init 10_000 (fun _ -> marker))
+        ^ "x\n")
+        expected)
+    [
+      ( "10,000 levels of >",
+        ">",
+        "section 0 level 1 \"Title\" slug title name title at 1:1-1:8 parent - \
+         first - extent 1:1-3:10002" );
+      ( "10,000 levels of list items",
+        "- ",
+        "section 0 level 1 \"Title\" slug title name title at 1:1-1:8 parent - \
+         first - extent 1:1-3:20002" );
+    ]
+
 let error_node_gives_its_span =
   check_structure
     "# T\n\n| Name | D |\n| ---- | - |\n| `x`  | y |\n|      |   |\n"
@@ -1039,6 +1082,10 @@ let tests =
       nested_extent_hashes_skip_the_holes;
     Alcotest.test_case "a declaration needs a slug" `Quick
       declaration_needs_a_slug;
+    Alcotest.test_case "long runs of one mark read quickly" `Quick
+      long_runs_read_quickly;
+    Alcotest.test_case "deep nesting reads quickly" `Quick
+      deep_nesting_reads_quickly;
     Alcotest.test_case "an ERROR node gives its span" `Quick
       error_node_gives_its_span;
     Alcotest.test_case "a MISSING node gives an empty span" `Quick
