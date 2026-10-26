@@ -1,11 +1,11 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 <!-- Copyright 2026 The Sinter Authors -->
 
-# Measure a pull request on the lines it changed, and main whole
-@decision mutation-job-scope
+# Measure a pull request on the lines it changed, a dependency move whole, and main whole
+@decision mutation-job-scope v2
 @cites mutation-testing
 @cites mutation-gate
-On a pull request the mutation job runs only the mutants on the lines the pull request changed and never holds the merge; the full set runs on every push to main and once a day; an author runs the pass on the branch before opening the pull request.
+On a pull request the mutation job runs only the mutants on the lines the pull request changed, or the full set when the pull request changes a dependency, and never holds the merge; the full set runs on every push to main and once a day; an author runs the pass on the branch before opening the pull request.
 
 ## Context
 
@@ -17,6 +17,9 @@ minutes of that was the mutant run itself, and the number grows with
 every mutant. The maintainer found the wait too long for each pull
 request. The fork of `mutaml` already had the switch that tests only
 the mutants on changed lines, `--changed-since`, built for this use.
+On 2026-10-26 the move to OCaml 5.5.2 changed no line under `lib/` or
+`bin/`, so its pull request ran no mutant, and nothing showed that the
+mutation build worked on the new compiler.
 
 ## Decision
 
@@ -24,8 +27,14 @@ the mutants on changed lines, `--changed-since`, built for this use.
   a line the pull request changed since its base, with the same three
   seeds and the same gate. Every other mutant is recorded as not run
   and stays outside the score.
-- A pull request that changed no file under `lib/` or `bin/` runs no
-  mutant. The job ends at once and passes.
+- A pull request that changes a dependency runs the full set: the
+  lock file or the package files of the OCaml build, the CI workflow
+  that pins the compiler and the mutation tool, the crate files or the
+  toolchain file of the bridge, the embedded grammar, or the script
+  that runs a mutant. A dependency can change the behavior of lines
+  that the pull request did not change.
+- A pull request that changed no dependency and no file under `lib/`
+  or `bin/` runs no mutant. The job ends at once and passes.
 - The full set runs on every push to `main` and once a day on a
   schedule, so that `main` is always measured whole.
 - The job is not a required check. It never holds a merge. A failure
@@ -41,6 +50,10 @@ the mutants on changed lines, `--changed-since`, built for this use.
 
 ## Alternatives considered
 
+- **Run the full set only when the OCaml toolchain or its packages
+  change** — not chosen. The move to tree-sitter 0.26 changed the
+  bridge's crates and changed parse results across Sinter; such a
+  move needs the full set as much.
 - **Run the full set once a day against `main`, and not on pull
   requests** — the maintainer's first proposal. Not taken alone. The
   check would then run after a merge and not before it, a pull
