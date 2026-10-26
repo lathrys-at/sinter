@@ -3,10 +3,6 @@
 
 open Cmdliner
 
-(* The two values that decide the version, and nothing more: the
-   version of the package, which only a release build carries, and
-   the description of the checkout. Sinter_core.Version.render turns
-   the pair into the line to print, and it is tested on every pair. *)
 let version =
   Sinter_core.Version.render
     ~package:
@@ -33,11 +29,9 @@ let environment_exit =
 
 let refused_exit = Cmd.Exit.info ~doc:"when the command refuses to act." refused
 
-(* Every command of the tool uses these five codes. *)
 let exits =
   [ clean_exit; findings_exit; usage_exit; environment_exit; refused_exit ]
 
-(* parse reports captures, not findings, and it asks for no approval. *)
 let parse_exits = [ clean_exit; usage_exit; environment_exit ]
 
 let parse_cmd =
@@ -106,9 +100,6 @@ let parse_cmd =
           (false, "--query and --tree exclude each other; give one of the two")
     | None, false -> `Error (false, "give either --query or --tree")
     | query, _ -> (
-        (* An exception that is a fault of the tool leaves this command
-           and reaches the argument parser, which reports its own code.
-           Parse.Error and Sys_error are faults of the environment. *)
         try
           Sinter_core.Parse.run ~grammar ~query ~paths stdout;
           `Ok clean
@@ -118,8 +109,6 @@ let parse_cmd =
   in
   Cmd.v info Term.(ret (const run $ grammar $ query $ tree $ paths))
 
-(* serve prints its outcome in the answer, so it reports no finding of
-   its own, and it asks for no approval. *)
 let serve_exits = [ clean_exit; usage_exit; environment_exit ]
 
 let serve_cmd =
@@ -186,17 +175,12 @@ let serve_cmd =
         Fun.protect
           ~finally:(fun () -> Sinter_core.Serve.close state)
           (fun () ->
-            (* An exception that is a fault of the tool leaves the
-               loop and reaches the argument parser, which reports its
-               own code. A write that fails is a fault of the
-               environment. *)
             try answer state
             with Sys_error message ->
               report (Printf.sprintf "cannot write the output: %s" message))
   in
   Cmd.v info Term.(const run $ const ())
 
-(* scan prints facts, not findings, and it asks for no approval. *)
 let scan_exits = [ clean_exit; usage_exit; environment_exit ]
 
 let scan_cmd =
@@ -246,7 +230,6 @@ let scan_cmd =
         environment_error
     | Ok { warnings; records } -> (
         report warnings;
-        (* A write that fails is a fault of the environment. *)
         try
           List.iter (Sinter_core.Jsonl.output stdout) records;
           flush stdout;
@@ -257,7 +240,6 @@ let scan_cmd =
   in
   Cmd.v info Term.(const run $ manifest $ base)
 
-(* check reports findings, and it asks for no approval. *)
 let check_exits = [ clean_exit; findings_exit; usage_exit; environment_exit ]
 
 let check_cmd =
@@ -353,7 +335,6 @@ let check_cmd =
         environment_error
     | Ok { messages; lines; code } -> (
         report messages;
-        (* A write that fails is a fault of the environment. *)
         try
           List.iter
             (fun line ->
@@ -375,11 +356,6 @@ let cmd =
     ~default:Term.(ret (const (`Help (`Pager, None))))
     [ check_cmd; parse_cmd; scan_cmd; serve_cmd ]
 
-(* A descriptor that is closed when the process starts goes to the next
-   file that any thread opens, and the wasm engine's cache thread opens
-   files. So each closed standard descriptor is opened on /dev/null
-   before any other work. They are opened in the order 0, 1, 2, so each
-   open gives the lowest free number, which is the one it reserves. *)
 let reserve fd flags =
   match Unix.fstat fd with
   | _ -> false
