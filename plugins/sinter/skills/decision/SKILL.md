@@ -1,6 +1,6 @@
 ---
 name: decision
-description: Write a decision record in docs/decisions/ with a @decision tag, from a decision the user made in conversation or in a plan. Use when the user says "record this decision", "write a decision record", "write an ADR", runs /sinter:decision, or when a plan step promises a @decision. Do not use for plan files (use /sinter:plan), for requirements or design items, or for changing the meaning of an existing record; a changed decision gets a new record that supersedes the old one.
+description: Write a decision record in docs/decisions/ with a @decision tag, from a decision the user made in conversation or in a plan. Use when the user says "record this decision", "write a decision record", "write an ADR", runs /sinter:decision, or when a plan step promises a @decision. Do not use for plan files (use /sinter:plan), for requirements or design items, A record that still decides the same question is revised in place with a higher revision; a different choice gets a new record that supersedes the old one.
 user-invocable: true
 argument-hint: "[slug or subject of the decision]"
 ---
@@ -46,7 +46,10 @@ Confirm the slug with the user.
 Look in `docs/decisions/` for a record on the same subject.
 
 - If none exists, write a new record.
-- If one exists and the new decision replaces it, write a new record
+- If one exists, still decides the same question, and only some of
+  its rules change, revise it: follow "Revise a record" below, and
+  skip step 3.
+- If one exists and a different choice replaces it, write a new record
   with a new slug. Add `@supersedes <old-slug> vN` to the tag block
   of the new record. `vN` is the current revision of the old record.
   Write `v1` when the old record shows no revision. Do not edit or
@@ -75,6 +78,23 @@ after you write the new record in step 3:
 4. Add no `@ack` line for these citations. Sinter reports a citation
    of a superseded record until the citation moves, and an `@ack`
    line does not stop that report.
+
+#### Revise a record
+
+1. Edit the record so that it states the decision as it now stands.
+   Keep the slug.
+2. Raise the revision on the `@decision` line: `v2` when it shows
+   `v1` or no revision, `v3` after `v2`, and so on.
+3. Search the whole repository, code included, for the citations
+   `@cites <slug> vN` that give the old revision. Leave the citations
+   under a historical path, as in the steps above. For each citation,
+   read the citing text against the revised record. When it still
+   holds, change the revision to the new one. When it no longer holds,
+   tell the user, and change nothing in that place.
+4. Raise the revision of each declaration that holds a changed
+   citation, as in the steps above.
+
+A citation that gives no revision needs no change.
 
 ### 3. Write the record
 
