@@ -2,8 +2,9 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Develop through branches and pull requests
-@decision branch-workflow
+@decision branch-workflow v2
 @cites licensing
+@cites pull-request-descriptions
 Every change reaches `main` through a pull request; every commit is signed off; the build and licensing workflows must pass; the maintainer reviews and squash-merges.
 
 ## Context
@@ -17,12 +18,16 @@ every commit. Two CI workflows exist: `build` and `licensing`.
 
 - No commit goes to `main` directly. Every change lives on a branch
   and reaches `main` through a pull request. Branch names carry a
-  prefix: `feat/`, `docs/`, `spike/`, or `fix/`.
+  prefix that names the kind of change: `feat/`, `fix/`, `docs/`,
+  `spec/`, `plans/`, `ci/`, `test/`, `refactor/`, `tools/`, or
+  `spike/`.
 - Every commit is signed off with `git commit -s`, and a commit that
   an agent wrote carries an `Assisted-by:` or `Co-Authored-By:`
   trailer that names the agent.
-- A pull request states what changed and how it was verified. All
-  jobs of both workflows must pass before a merge.
+- A pull request description names only the plan step or the issue
+  that the change carries out and what the change adds, as the record
+  `pull-request-descriptions` says. All jobs of both workflows must
+  pass before a merge.
 - The maintainer reviews and merges. Merges are squash merges, so
   `main` holds one commit per reviewed change.
 - The repository setting that adds a sign-off to commits made in the
