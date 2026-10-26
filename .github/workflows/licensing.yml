@@ -1,18 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Sinter Authors
 
-# This workflow runs the four licensing checks:
-# 1. DCO: every commit has a Signed-off-by line.
-# 2. REUSE: the repository passes "reuse lint".
-# 3. Third-party manifest: THIRD_PARTY.md exists and its table is well-formed.
-#    When the build system exists, this check will regenerate the file and
-#    compare it. A difference will then fail the job.
-# 4. Forbidden licenses: neither the table in THIRD_PARTY.md nor the Rust
-#    dependencies of the parser bridge carry a GPL, AGPL, SSPL, or unknown
-#    license. LGPL is allowed only for the OCaml runtime, because of its
-#    linking exception, and for a crate that offers another license beside
-#    it.
-
 name: licensing
 
 on:
@@ -64,15 +52,12 @@ jobs:
         run: |
           set -eu
           test -f THIRD_PARTY.md
-          # Every table row must have a component, a license, and a link.
           awk -F'|' '
             /^\|/ && $0 !~ /^\|---/ && $0 !~ /component/ {
               if (NF < 4) { print "Bad row: " $0; bad = 1 }
             }
             END { exit bad }
           ' THIRD_PARTY.md
-          # TODO: when the build system exists, regenerate THIRD_PARTY.md
-          # here and fail on any difference.
 
   forbidden-licenses:
     name: No forbidden licenses
@@ -82,7 +67,6 @@ jobs:
       - name: Check the dependency list for forbidden licenses
         run: |
           set -eu
-          # Read the component and license columns from the table.
           awk -F'|' '
             /^\|/ && $0 !~ /^\|---/ && $0 !~ /component/ {
               c = $2; l = $3
@@ -108,14 +92,10 @@ jobs:
         run: |
           set -eu
           licenses=$(mktemp)
-          # The table above names a few crates. This reads every crate of
-          # the lock file, with the license that its own manifest states.
           cargo metadata --format-version 1 --locked \
             --manifest-path bridge/Cargo.toml |
             jq -r '.packages[] | "\(.name)\t\(.license // "unknown")"' \
             > "$licenses"
-          # A license expression that offers several choices passes when
-          # one choice is free of a forbidden license.
           awk -F'\t' '
             {
               name = $1; expression = $2

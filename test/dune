@@ -21,10 +21,6 @@
   yojson
   unix))
 
-; Dune leaves a folder whose name starts with a full stop out of the
-; source tree, and so out of the build copy of a case. Each case whose
-; tree or base holds the folder .plans names it here.
-
 (subdir
  cases/scan-prints-the-facts-of-the-repository/tree
  (dirs :standard .plans))
