@@ -11,7 +11,7 @@ on:
     - cron: "17 6 * * *"
 
 env:
-  OCAML_VERSION: "5.5.0"
+  OCAML_VERSION: "5.5.2"
 
 jobs:
   build:
