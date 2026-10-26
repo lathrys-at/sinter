@@ -20,7 +20,7 @@ tree-sitter = { version = "0.26", features = ["wasm"] }
 # wasmtime: it adds the "cache" feature to the copy tree-sitter builds.
 wasmtime = { version = "36", default-features = false, features = ["cache", "cranelift", "runtime", "std"] }
 # @cites sha256
-sha2 = "=0.10.9"
+sha2 = "=0.11.1"
 # @cites toml-reader
 toml_edit = "=0.22.27"
 
