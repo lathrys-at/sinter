@@ -49,7 +49,7 @@ type error =
           folder where a file belongs. *)
   | Reserved_entry of string
       (** The case holds [ledger.jsonl] or [evidence], which the harness does
-          not read yet. *)
+          not read. *)
   | Repository_with_base  (** The case holds both [base/] and [repository]. *)
   | Did_not_end of float
       (** The run was still going after this many seconds, and was killed. *)
