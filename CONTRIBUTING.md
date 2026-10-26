@@ -102,6 +102,10 @@ projects depend on. The rules:
 - Prefer the standard library. Add a dependency only when the code it
   replaces would be larger than a module of our own, and record the
   choice in a decision record.
+- Keep each dependency at its newest release. When a crate, a
+  toolchain, an OCaml package, a tool pin, an action, or a grammar has
+  a new release, move to it as soon as the build and the checks pass
+  with it (`docs/decisions/current-dependencies.md`).
 
 ## Tests
 

@@ -208,10 +208,11 @@ let content_last_line lines node =
 
 (* {1 Headings} *)
 
-(* The offset of the first [#] of the line [content] of an ATX heading,
-   its level, and its heading text. In the line without its opening [#]
-   and the spaces and tabs at both ends, a closing sequence is the run of
-   [#] at the end: the whole text, or a run after a space or a tab. *)
+(* The offset of the first [#] of [content], the text of an ATX heading
+   from its start to the end of its line; its level; and its heading
+   text. In [content] without its opening [#] and the spaces and tabs
+   at both ends, a closing sequence is the run of [#] at the end: the
+   whole text, or a run after a space or a tab. *)
 let heading_text content =
   let length = String.length content in
   let rec skip keep offset =
@@ -339,18 +340,22 @@ and walk_section walk ~parent ~holder section =
   let level, heading, blocks =
     match section.children with
     | ({ kind = Heading; _ } as node) :: blocks ->
+        (* A heading starts at its node: after a parse error, other text
+           of its line can stand before the node. *)
         let line = Line_index.line_of lines node.start in
-        let content = Line_index.content lines line in
+        let content =
+          String.sub (Line_index.text lines) node.start
+            (Line_index.content_end lines line - node.start)
+        in
         let marks, level, text = heading_text content in
         let slug = Slug.of_heading text in
-        let first = Line_index.first lines line in
         ( level,
           Some
             {
               text;
               slug;
               name = walk.number slug;
-              span = tag_span lines (first + marks) line;
+              span = tag_span lines (node.start + marks) line;
             },
           blocks )
     | blocks -> (0, None, blocks)

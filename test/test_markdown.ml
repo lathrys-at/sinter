@@ -174,6 +174,33 @@ let only_atx_headings_open_sections =
   check_structure "#NoSpace\n####### Seven\n    # Code\n\nText\n===\n"
     [ "section 0 level 0 parent - first 1:1-3:11 extent 1:1-6:4" ]
 
+(* After a parse error, tree-sitter can start a heading in the middle of
+   its line, here after the "- " of line 9. *)
+let a_heading_in_the_middle_of_its_line_starts_at_its_first_mark =
+  check_structure
+    "\xEF\xBB\xBF# H\n\
+     # H\n\
+     # H\n\
+     | a | b |\n\
+     |  |  |\n\
+     - [x] @cites h\n\
+     # H\n\
+     |  |  |\n\
+     - # In item"
+    [
+      "section 0 level 1 \"H\" slug h name h at 1:1-1:4 parent - first - \
+       extent 1:1-1:4";
+      "section 1 level 1 \"H\" slug h name h-1 at 2:1-2:4 parent - first - \
+       extent 2:1-2:4";
+      "section 2 level 1 \"H\" slug h name h-2 at 3:1-3:4 parent - first - \
+       extent 3:1-9:12";
+      "section 3 level 1 \"In item\" slug in-item name in-item at 9:3-9:12 \
+       parent - first - extent 9:1-9:12";
+      "error 5:4-5:8";
+      "error 6:3-7:4";
+      "error 8:4-8:8";
+    ]
+
 (* A heading in a block quote or a list item opens no section. Nothing
    in a block quote is read, and a paragraph after a heading in a list
    item is not the first paragraph of the item. *)
@@ -952,6 +979,9 @@ let tests =
       headings_give_text_slug_and_name;
     Alcotest.test_case "only ATX headings open sections" `Quick
       only_atx_headings_open_sections;
+    Alcotest.test_case
+      "a heading in the middle of its line starts at its first mark" `Quick
+      a_heading_in_the_middle_of_its_line_starts_at_its_first_mark;
     Alcotest.test_case "block quotes and list items open no section" `Quick
       containers_open_no_section;
     Alcotest.test_case "the first block must be a paragraph" `Quick

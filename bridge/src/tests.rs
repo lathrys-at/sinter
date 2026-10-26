@@ -8,7 +8,7 @@ use crate::adapter::tests::{Wasm, BIND, RECOGNISED};
 use crate::buffer::{
     KIND_ERROR_REPORT, KIND_FAILURE, KIND_MATCHES, KIND_RESPONSE, KIND_TREE, MAGIC,
 };
-use crate::failure::WASM_PARSE;
+use crate::failure::{WASM_COMPILE, WASM_PARSE};
 use std::ffi::CString;
 use std::path::Path;
 
@@ -478,6 +478,29 @@ fn a_grammar_cut_short_does_not_load() {
 }
 
 #[test]
+fn a_grammar_with_a_64_bit_memory_does_not_compile() {
+    let mut wasm = fixture_wasm();
+    let import = b"\x03env\x06memory\x02";
+    let flags = wasm
+        .windows(import.len())
+        .position(|bytes| bytes == import)
+        .expect("the fixture imports its memory")
+        + import.len();
+    wasm[flags] |= 0x04;
+    let engine = new_engine();
+    let failure = load(engine, &wasm).unwrap_err();
+    assert!(
+        matches!(
+            &failure,
+            Failure::GrammarLoad { kind, message }
+                if *kind == WASM_COMPILE && message.contains("memory64")
+        ),
+        "{failure:?}"
+    );
+    unsafe { sinter_bridge_engine_free(engine) };
+}
+
+#[test]
 fn an_empty_query_compiles_and_captures_nothing() {
     assert_eq!(Json::new().captures("", "[1]"), vec![]);
     assert_eq!(Json::new().captures("; a comment\n", "[1]"), vec![]);
@@ -546,7 +569,7 @@ fn every_other_predicate_and_every_directive_is_refused() {
         ("#select-adjacent! @s @s", "select-adjacent!"),
         ("#strip! @s \"a\"", "strip!"),
         ("#lua-match? @s \"a\"", "lua-match?"),
-        ("#eq @s \"a\"", "eq"),
+        ("#foo? @s", "foo?"),
     ] {
         let query = format!("(number) @n\n  ((string_content) @s ({predicate}))");
         assert_eq!(
@@ -561,6 +584,22 @@ fn every_other_predicate_and_every_directive_is_refused() {
             "{predicate}"
         );
     }
+}
+
+#[test]
+fn a_predicate_whose_name_ends_in_neither_mark_is_a_syntax_error() {
+    let query = "(number) @n\n  ((string_content) @s (#eq @s \"a\"))";
+    assert_eq!(
+        query_failure(query),
+        Failure::Query {
+            kind: 0,
+            row: 1,
+            column: 27,
+            offset: 39,
+            message: "  ((string_content) @s (#eq @s \"a\"))\n                           ^"
+                .to_owned(),
+        }
+    );
 }
 
 #[test]

@@ -277,9 +277,10 @@ let the_run_names_one_cache_folder_for_wasmtime_outside_the_case () =
     (Ok [])
     (case_files ~stdout:"2\nshared\n"
        (Printf.sprintf
-          "m=$(%s); l=$(%s); cat \"$HOME/%s\" \"$HOME/%s\" | grep -c '^enabled \
-           = true$'; [ \"$m\" = \"$l\" ] && [ -d \"$m\" ] && case \"$m\" in \
-           \"$HOME\"*|\"$PWD\"*) echo inside;; /*) echo shared;; esac"
+          "m=$(%s); l=$(%s); cat \"$HOME/%s\" \"$HOME/%s\" | grep -c \
+           '^\\[cache\\]$'; [ \"$m\" = \"$l\" ] && [ -d \"$m\" ] && case \
+           \"$m\" in \"$HOME\"*|\"$PWD\"*) echo inside;; /*) echo shared;; \
+           esac"
           (cache_directory mac_configuration)
           (cache_directory linux_configuration)
           mac_configuration linux_configuration))
@@ -293,6 +294,26 @@ let every_run_shares_the_cache_folder_of_wasmtime () =
        (Printf.sprintf
           "d=$(%s); test -f \"$d/mark\" && rm \"$d/mark\" && echo found"
           directory))
+
+(* Dune runs the suite in the build copy of test/, and the executable
+   sits beside it in the build copy of bin/. *)
+let sinter = Filename.concat (Sys.getcwd ()) "../bin/main.exe"
+
+let json_grammar =
+  Filename.concat (Sys.getcwd ())
+    "fixtures/tree-sitter-json/tree-sitter-json.wasm"
+
+let a_run_of_a_grammar_puts_a_compiled_module_into_the_cache_folder () =
+  check_run "the cache folder holds a compiled module" (Ok [])
+    (case_files ~stdout:"(document (object))\nfilled\n"
+       (Printf.sprintf
+          "d=\"$(pwd -P)/cache\"; mkdir \"$d\" && for f in \"$HOME/%s\" \
+           \"$HOME/%s\"; do sed \"s|^directory = .*|directory = \\\"$d\\\"|\" \
+           \"$f\" > \"$f.new\" && mv \"$f.new\" \"$f\" || exit 9; done; printf \
+           '{}\\n' > s.json; %s parse --grammar %s --tree s.json && find \
+           \"$d/modules\" -type f ! -name '*.stats' | grep -q . && echo filled"
+          mac_configuration linux_configuration (Filename.quote sinter)
+          (Filename.quote json_grammar)))
 
 let the_tool_of_an_index_record_shows_as_tool () =
   check_run "only the value of tool in an index record changes" (Ok [])
@@ -674,6 +695,9 @@ let tests =
       the_run_names_one_cache_folder_for_wasmtime_outside_the_case;
     Alcotest.test_case "every run shares the cache folder of wasmtime" `Quick
       every_run_shares_the_cache_folder_of_wasmtime;
+    Alcotest.test_case
+      "a run of a grammar puts a compiled module into the cache folder" `Quick
+      a_run_of_a_grammar_puts_a_compiled_module_into_the_cache_folder;
     Alcotest.test_case "the tool of an index record shows as <tool>" `Quick
       the_tool_of_an_index_record_shows_as_tool;
     Alcotest.test_case "a run past its bound is killed" `Quick
