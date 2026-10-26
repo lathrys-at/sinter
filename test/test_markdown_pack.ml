@@ -18,8 +18,6 @@ let with_grammar use =
       | Ok language -> use language
       | Error error -> Alcotest.fail (Sinter_bridge.Language.message error))
 
-(* The SHA-256 of the release asset tree-sitter-markdown.wasm of
-   tree-sitter-markdown v0.5.3, which the release also states. *)
 let grammar_is_the_release_file () =
   Alcotest.(check string)
     "the SHA-256 of the grammar"

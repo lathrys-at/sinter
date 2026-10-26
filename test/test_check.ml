@@ -12,8 +12,6 @@ let manifest_of text =
 let packs = "[scan]\npacks.markdown.files = [\"**/*.md\"]\n"
 let plain = manifest_of packs
 
-(* Under the rollout cap, with a tier that passes it, and a class that the
-   manifest turns off. *)
 let capped =
   manifest_of
     (packs
@@ -39,8 +37,6 @@ let finding ?place ?detail ?fix ?ackable c subject =
   Finding.make c subject ?place ?detail ?fix ?ackable ()
 
 let tier = Alcotest.testable (Fmt.of_to_string Finding_class.tier_name) ( = )
-
-(* Generators. *)
 
 let word =
   Gen.(
@@ -91,8 +87,6 @@ let property ?(count = 300) name gen print f =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count ~name ~print gen f)
 
-(* Tiers. *)
-
 let a_parse_error_at_an_error_node_warns_where_its_class_blocks () =
   let tiers manifest gate =
     List.map
@@ -142,8 +136,6 @@ let only_a_parse_error_at_an_error_node_changes_its_tier =
       Check.tier manifest gate finding
       = if lowered then Some Finding_class.Warn else applies)
 
-(* Selection. *)
-
 let entries_of = List.map (fun (entry : Check.entry) -> entry.finding)
 
 let with_no_gate_every_finding_counts_with_no_tier () =
@@ -158,7 +150,6 @@ let with_no_gate_every_finding_counts_with_no_tier () =
     "no tier" true
     (List.for_all (fun (entry : Check.entry) -> entry.tier = None) entries)
 
-(* Each class and the gate and tier of its entry. *)
 let tiers_of entries =
   List.map
     (fun (entry : Check.entry) ->
@@ -217,8 +208,6 @@ let a_gate_keeps_each_finding_that_warns_or_blocks_in_order =
         (Check.select manifest (Some gate) findings)
       = expected)
 
-(* Exit codes. *)
-
 let entry ?tier c = { Check.finding = finding c edge; tier }
 let warn = (Finding_class.Turn, Finding_class.Warn)
 let block = (Finding_class.Turn, Finding_class.Block)
@@ -263,8 +252,6 @@ let a_finding_blocks_at_its_tier_or_under_strict =
         || (strict && tiers <> [])
       then Exit_code.findings
       else Exit_code.clean)
-
-(* The text form. *)
 
 let a_finding_prints_its_place_tier_class_subject_and_detail () =
   Alcotest.(check (list string))
@@ -380,8 +367,6 @@ let a_finding_gives_one_line_and_one_more_for_a_fix =
           && List.for_all (String.starts_with ~prefix:"  fix: ") rest
       | [] -> false)
 
-(* Records. *)
-
 let a_record_holds_every_field_of_a_finding () =
   Alcotest.(check string)
     "the record"
@@ -414,15 +399,12 @@ let a_record_is_canonical_and_names_a_gate_only_with_a_tier =
       && List.mem_assoc "tier" record = Option.is_some tier
       && List.mem_assoc "path" record = Option.is_some finding.place)
 
-(* The check of a repository. *)
-
 let a_check_reads_the_repository_and_reports_at_its_gate () =
   let repo = Git_fixture.init () in
   Git_fixture.write repo "sinter.toml" packs;
   Git_fixture.write repo "docs/table.md"
     "# T\n\n| Name | D |\n| ---- | - |\n| `x`  | y |\n|      |   |\n";
   Git_fixture.write repo "docs/b.md" "# B\n\n@req \xff\n";
-  (* A file system can refuse a name that holds a line feed. *)
   let line_feed =
     match Git_fixture.write repo "docs/line\nfeed.md" "# L\n\n@cites x!\n" with
     | () -> true

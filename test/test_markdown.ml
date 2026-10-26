@@ -8,8 +8,6 @@ let property ?(count = 500) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count ~name ~print generator check)
 
-(* One reader for the whole group: loading the grammar is the slow
-   part. *)
 let reader =
   lazy
     (match Markdown.create (Sinter_bridge.create ()) with
@@ -24,9 +22,6 @@ let span (span : Markdown.span) =
 
 let option show = function None -> "-" | Some value -> show value
 
-(* The structure as lines of text, one line for each section, tag line,
-   block, unread paragraph, and parse failure. A hash shows its first
-   eight digits. *)
 let describe (file : Markdown.t) =
   let sections =
     Array.to_list
@@ -101,8 +96,6 @@ let file text =
 
 let hex text = Sha256.hex text
 
-(* {1 The reader} *)
-
 let read_after_close_is_refused () =
   match Markdown.create (Sinter_bridge.create ()) with
   | Error _ -> Alcotest.fail "the reader does not start"
@@ -126,8 +119,6 @@ let create_on_a_closed_engine_is_refused () =
 
 let text_that_is_not_utf_8_gives_its_offset =
   check_structure "# A\n@req a v1 caf\xe9\n" [ "not UTF-8 at 17" ]
-
-(* {1 Sections} *)
 
 let headings_give_text_slug_and_name =
   check_structure
@@ -167,15 +158,10 @@ let headings_give_text_slug_and_name =
        11:4-11:18 parent 9 first - extent 11:1-11:18";
     ]
 
-(* A run of # with no space after it, a run of seven, a line indented by
-   four spaces, and a setext heading open no section. The indented line
-   continues the paragraph. *)
 let only_atx_headings_open_sections =
   check_structure "#NoSpace\n####### Seven\n    # Code\n\nText\n===\n"
     [ "section 0 level 0 parent - first 1:1-3:11 extent 1:1-6:4" ]
 
-(* After a parse error, tree-sitter can start a heading in the middle of
-   its line, here after the "- " of line 9. *)
 let a_heading_in_the_middle_of_its_line_starts_at_its_first_mark =
   check_structure
     "\xEF\xBB\xBF# H\n\
@@ -201,9 +187,6 @@ let a_heading_in_the_middle_of_its_line_starts_at_its_first_mark =
       "error 8:4-8:8";
     ]
 
-(* A heading in a block quote or a list item opens no section. Nothing
-   in a block quote is read, and a paragraph after a heading in a list
-   item is not the first paragraph of the item. *)
 let containers_open_no_section =
   check_structure
     "# Title\n\n\
@@ -303,8 +286,6 @@ let paragraph_of_one_character_has_its_span =
        extent 1:1-2:2";
     ]
 
-(* {1 Tag lines} *)
-
 let list_items_drop_their_markers =
   check_structure
     "- @req a v1\n\
@@ -353,8 +334,6 @@ let list_items_drop_their_markers =
       "block 9 tags 9 prose  hash 01ba4719";
     ]
 
-(* A byte order mark, CRLF line endings, and characters of two and
-   four bytes. *)
 let places_count_characters =
   check_structure
     "\xef\xbb\xbf# H\xc3\xa9 \r\n\
@@ -383,8 +362,6 @@ let tag_line_after_prose_starts_a_block =
       "block 0 tags 0,1 prose \"Prose one.\"|\"Prose two.\" hash f4f985ed";
       "block 1 tags 2 prose \"More.\" hash fcd61be0";
     ]
-
-(* {1 Extents} *)
 
 let two_declarations_split_one_node =
   check_structure
@@ -455,9 +432,6 @@ let extent_hashes_follow_the_rules () =
   Alcotest.(check string)
     "the block of the citation in Inner" (hex "@cites b\n") file.blocks.(3).hash
 
-(* An ack line goes, the own tag line becomes its trimmed description,
-   and a citation loses its revision and the blanks before it. A token
-   that is not a revision stays. *)
 let hash_normalizes_each_line () =
   let file =
     file
@@ -548,8 +522,6 @@ let nested_extent_hashes_skip_the_holes () =
        (fun (extent : Markdown.extent) -> extent.hash)
        file.tags.(0).extent)
 
-(* A tag of a declaration word with no target, or with a target that is
-   not a slug, declares nothing: it claims no extent and splits none. *)
 let declaration_needs_a_slug =
   check_structure "# A\n@req\n@req a/b v1\n@design ok v1\n@req -bad\n"
     [
@@ -566,8 +538,6 @@ let declaration_needs_a_slug =
       "block 0 tags 0,1,2,3 prose  hash 3a664064";
     ]
 
-(* {1 Parse failures} *)
-
 let error_node_gives_its_span =
   check_structure
     "# T\n\n| Name | D |\n| ---- | - |\n| `x`  | y |\n|      |   |\n"
@@ -581,9 +551,6 @@ let missing_node_gives_an_empty_span =
   check_structure "| a |\n|---|\n| x\xe2\x80\x94 |\n|  |\n"
     [ "section 0 level 0 parent - first - extent 1:1-4:5"; "error 4:4-4:4" ]
 
-(* {1 Properties} *)
-
-(* Lines that collide often with the forms of markdown and of tags. *)
 let markdown_line =
   Gen.oneof_list
     [
@@ -651,7 +618,6 @@ let read_answers_any_bytes =
       | Error (Markdown.Not_utf_8 offset), Some first -> offset = first
       | _ -> false)
 
-(* The characters of a line, as strings, in the order of the line. *)
 let characters_of line =
   let length = String.length line in
   let rec go offset acc =
@@ -667,8 +633,6 @@ let characters_of line =
   in
   go 0 []
 
-(* Every span of a structure, each with the character that must stand
-   at its start, when one must. *)
 let spans (file : Markdown.t) =
   List.concat
     [
@@ -780,8 +744,6 @@ let structure_holds_together =
       in
       sections_agree && tags_agree && blocks_agree)
 
-(* A markdown file built from parts, so that a test can make an edit
-   that the extent hash must not see. *)
 type part =
   | Declaration of {
       word : string;
@@ -807,11 +769,6 @@ type section = {
   later : string list;
 }
 
-(* The edits that keep every extent hash and every block hash: a bump
-   of each declaration, a re-pin of each citation, a rename of each
-   declaration, spaces and tabs at the end of each line, CRLF line
-   endings, an ack line after each declaration, and blank lines at the
-   end of the file. *)
 type edit = {
   bump : int;
   repin : int;

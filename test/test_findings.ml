@@ -34,16 +34,12 @@ let place_text (finding : Finding.t) =
       Printf.sprintf "%s:%d:%d-%d:%d" path span.start.line span.start.column
         span.stop.line span.stop.column
 
-(* One finding as one line: its place, its id, its detail, and its
-   fix. *)
 let show (finding : Finding.t) =
   String.concat " | "
     ([ place_text finding; Finding.id finding ]
     @ Option.to_list finding.detail
     @ Option.fold ~none:[] ~some:(fun fix -> [ "fix: " ^ fix ]) finding.fix)
 
-(* Checks that the findings of [files] of the class [finding_class] are
-   [expected], each as {!show} gives it. *)
 let check ?extra ?not_text finding_class files expected =
   Alcotest.(check (list string))
     (Finding_class.name finding_class)
@@ -52,8 +48,6 @@ let check ?extra ?not_text finding_class files expected =
        (List.filter
           (fun (finding : Finding.t) -> finding.finding_class = finding_class)
           (findings ?extra ?not_text files)))
-
-(* {1 The classes of the reader} *)
 
 let parse_error_sits_at_each_error_and_at_a_file_that_is_not_text () =
   check
@@ -97,9 +91,6 @@ let typo_tag_names_the_nearest_word () =
        a tag word of sinter | fix: @plan";
     ]
 
-(* "reck" is two edits from "ack" and from "req", and from no word
-   nearer. The vocabulary lists "req" first; byte order puts "ack"
-   first. *)
 let typo_tag_takes_the_first_word_in_byte_order_of_two_equally_near () =
   check Finding_class.Typo_tag
     [ ("docs/a.md", "# A\n\n@reck x\n") ]
@@ -158,8 +149,6 @@ let misplaced_plan_sits_outside_the_first_block_of_a_plan_file () =
       "docs/a.md:3:1-3:8 | finding:misplaced-plan:tag:docs/a.md@L3C1 | a @plan \
        tag stands only in a file under .plans/";
     ]
-
-(* {1 The classes of the facts} *)
 
 let duplicate_sits_at_each_later_member_of_a_group () =
   check Finding_class.Duplicate
@@ -294,8 +283,6 @@ let disendorsed_of_a_status_pastes_the_ack_of_its_block () =
        decision:old is deprecated | fix: @ack disendorsed old 393d3530";
     ]
 
-(* Records where new, at v3, supersedes gone; and z supersedes y, which
-   supersedes x. *)
 let superseded =
   ( "docs/a.md",
     "# A\n\n\
@@ -403,8 +390,6 @@ let uncovered_names_what_is_missing () =
       ("docs/b.md", "# B\n\nText.\n\n- @verifies a v1\n");
     ]
     [ "docs/a.md:3:1-3:7 | finding:uncovered:req:a | nothing satisfies it" ]
-
-(* {1 The classes of plans} *)
 
 let plan steps =
   ( ".plans/p.md",
@@ -534,8 +519,6 @@ let promise_out_of_scope_names_the_residue_outside () =
        cites:req:a->a at docs/a.md:4 is outside the scope of the step";
     ]
 
-(* {1 The rule of acks} *)
-
 let a_live_ack_discharges_its_finding () =
   let files ack =
     [
@@ -603,8 +586,6 @@ let an_ack_discharges_only_the_findings_of_its_block () =
        decision:old is deprecated | fix: @ack disendorsed old ba974016";
     ]
 
-(* Each finding of [files] of the class disendorsed, as {!show} gives
-   it, with whether it is ackable. *)
 let disendorsed_ackable files =
   List.filter_map
     (fun (finding : Finding.t) ->
@@ -632,8 +613,6 @@ let an_ack_does_not_discharge_the_finding_of_a_superseded_item () =
         ]
         (disendorsed_ackable (files superseded ack)))
     ("" :: acks);
-  (* The hash of each ack is the block hash: each discharges the finding
-     when a status tag retires gone. *)
   List.iter
     (fun ack ->
       Alcotest.(check (list (pair string bool)))
@@ -670,9 +649,6 @@ let an_ack_still_discharges_the_finding_of_an_item_that_a_status_retires () =
     ]
     (disendorsed_ackable (files "@ack disendorsed 0fda7530\n"))
 
-(* {1 Text that holds control characters} *)
-
-(* Every finding of [files], each as {!show} gives it. *)
 let all ?extra files = List.map show (findings ?extra files)
 
 let a_lone_carriage_return_stays_in_one_line () =
@@ -757,13 +733,7 @@ let a_ref_with_no_namespace_or_no_id_says_so () =
        manifest declares no ref namespace zz";
     ]
 
-(* {1 The components of cycles} *)
-
 let cycle_finds_each_component_once () =
-  (* The declarations come in this order: a, b, c, d, e, f, g, h. a and
-     b make a cycle that is done before c is reached; c reaches a, d,
-     and back to c; e, f, and g make a cycle with a branch from f back
-     to e; h refines a member of a cycle and is in none. *)
   check Finding_class.Cycle
     [
       ( "docs/a.md",
@@ -815,8 +785,6 @@ let cycle_takes_its_subject_by_id_not_by_place () =
          @refines z v1\n" );
     ]
     [ "docs/a.md:13:1-13:7 | finding:cycle:req:b | with req:m, req:z" ]
-
-(* {1 The global rules} *)
 
 let a_historical_path_gives_no_finding () =
   check ~extra:"[check]\nhistorical = [\"notes/**\"]\n" Finding_class.Typo_tag

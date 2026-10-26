@@ -51,7 +51,6 @@ let makes_the_slug_of_a_heading =
       ("A1_b2", "a1-b2");
     ]
 
-(* Letters, digits, and other bytes that collide often. *)
 let heading =
   Gen.map (String.concat "")
     (Gen.list_size (Gen.int_range 0 10)

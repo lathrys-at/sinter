@@ -4,9 +4,6 @@
 open Sinter_core
 module Gen = QCheck2.Gen
 
-(* Each verdict is that of "git check-ref-format refs/heads/<name>",
-   from git 2.54.0, except the last entry: git accepts it, and the rule
-   that a branch name does not start with "refs/" refuses it. *)
 let verdicts =
   [
     ("main", true);
@@ -109,8 +106,6 @@ let each_rule_gives_its_error () =
   check_error "x.lock/b" (Branch_name.Component_ends_with_lock 1);
   check_error "a." (Branch_name.Ends_with_dot 1)
 
-(* git reads the characters of a component before the component as a
-   whole, and the components from the start. *)
 let the_error_is_the_first_that_git_meets () =
   check_error ".a~" (Branch_name.Bad_character { offset = 2; character = '~' });
   check_error ".." (Branch_name.Two_dots 0);
@@ -161,8 +156,6 @@ let each_error_has_its_message () =
     "no part of a branch name between two '/' can end with '.lock'";
   message "a." "a branch name cannot end with '.'"
 
-(* A second reading of the rules, in another form, to compare with the
-   module on generated names. *)
 let contains text part =
   let n = String.length part in
   let rec from i =

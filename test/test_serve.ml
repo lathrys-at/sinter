@@ -4,8 +4,6 @@
 open Sinter_core
 module Gen = QCheck2.Gen
 
-(* Dune runs the test in the build copy of test/, so the paths below
-   are relative to that directory. *)
 let grammar = "fixtures/tree-sitter-json/tree-sitter-json.wasm"
 let sample = "fixtures/sample.json"
 let query = "fixtures/sample.scm"
@@ -21,8 +19,6 @@ let request ?(rid = `String "r1") ?query ?(tree = false) ?(grammar = grammar)
     @ (if tree then [ ("tree", `Bool true) ] else [])
     @ [ ("files", `List (List.map (fun file -> `String file) files)) ])
 
-(* One state for every test that only reads the fixtures. The state
-   holds one engine, so the grammar loads once for all of them. *)
 let shared = lazy (Serve.create ())
 
 let answer line =
@@ -36,8 +32,6 @@ let field name record = List.assoc_opt name record
 let last records =
   match List.rev records with [] -> None | record :: _ -> Some record
 
-(* Every record of a canonical line, in the order the writer sorts
-   them, read back with yojson. *)
 let sorted record =
   match Yojson.Safe.from_string (Jsonl.to_string record) with
   | `Assoc fields ->
@@ -45,9 +39,6 @@ let sorted record =
       List.equal String.equal names (List.sort Jsonl.compare_keys names)
   | _ | (exception Yojson.Json_error _) -> false
 
-(* Generators. *)
-
-(* One request id, as the request writes it and as the answer carries it. *)
 let request_id : (Yojson.Safe.t * Jsonl.value) Gen.t =
   Gen.oneof
     [
@@ -59,8 +50,6 @@ let request_id : (Yojson.Safe.t * Jsonl.value) Gen.t =
         (Gen.int_range (-1000) 1000);
     ]
 
-(* A request that the loop can read. Some of these run to their end and
-   some fail, and the shape of the answer is the same either way. *)
 let well_formed =
   let open Gen in
   let* rid, expected = request_id in
@@ -80,8 +69,6 @@ let well_formed =
   in
   return (expected, shape rid)
 
-(* A line that is not a request: random bytes, or a request with one
-   byte cut, changed, or added. *)
 let ill_formed =
   let open Gen in
   let* _, line = well_formed in
@@ -97,8 +84,6 @@ let ill_formed =
           Bytes.to_string bytes)
         (int_range 0 length) char;
     ]
-
-(* Property tests. *)
 
 let answers_a_well_formed_request =
   QCheck2.Test.make ~count:200
@@ -131,8 +116,6 @@ let answers_a_line_that_is_not_a_request =
               && field "code" record = Some (Jsonl.int 2)
               && sorted record
           | _ -> false))
-
-(* Tests of one fact each. *)
 
 let a_query_request_ends_with_a_done_line () =
   let records = Serve.lines (answer (request ~query [ sample ])) in
@@ -228,9 +211,6 @@ let a_number_tag_comes_back_as_a_number () =
        (fun record -> field "rid" record = Some (Jsonl.int 7))
        records)
 
-(* The grammar cache. Each test below owns a copy of the grammar file,
-   so that it can change the file without touching another test. *)
-
 let read_file path =
   let channel = open_in_bin path in
   Fun.protect
@@ -243,8 +223,6 @@ let write_file path text =
     ~finally:(fun () -> close_out_noerr channel)
     (fun () -> output_string channel text)
 
-(* The same bytes as the grammar, with the magic number of a wasm
-   module broken. The size does not change. *)
 let broken text = "\000asX" ^ String.sub text 4 (String.length text - 4)
 let fixed_time = 1000000000.0
 
@@ -272,8 +250,6 @@ let the_loop_reads_a_grammar_once () =
   with_copy (fun state path text ->
       Unix.utimes path fixed_time fixed_time;
       holds "the first request loads the grammar" (ran (ask state path));
-      (* The file is no longer a grammar, and its size and its
-         modification time did not change. *)
       write_file path (broken text);
       Unix.utimes path fixed_time fixed_time;
       holds "the second request uses the grammar it kept" (ran (ask state path)))
@@ -299,17 +275,10 @@ let a_grammar_that_does_not_load_is_not_kept () =
       write_file path (broken text);
       Unix.utimes path fixed_time fixed_time;
       holds "the first request fails" (not (ran (ask state path)));
-      (* The same size and the same modification time as the file that
-         failed, and this time the bytes are a grammar. *)
       write_file path text;
       Unix.utimes path fixed_time fixed_time;
       holds "the second request loads the grammar" (ran (ask state path)))
 
-(* A load that fails takes the grammar the loop kept with it. The file
-   below goes back to the size and the modification time it had when
-   the loop loaded it, and its bytes are no longer a grammar. A loop
-   that had kept the grammar of the first request would find the
-   stamp of the file unchanged and answer with it. *)
 let a_failed_load_drops_the_grammar_the_loop_kept () =
   with_copy (fun state path text ->
       Unix.utimes path fixed_time fixed_time;
@@ -321,9 +290,6 @@ let a_failed_load_drops_the_grammar_the_loop_kept () =
       holds "the third request does not answer with the grammar of the first"
         (not (ran (ask state path))))
 
-(* The message of a failure goes into a record as it stands when it is
-   UTF-8. The file name below holds a code point of two bytes, which
-   an escape would write as two numbers. *)
 let a_message_that_is_utf_8_is_not_escaped () =
   let absent = "no-such-f\xc3\xaele.json" in
   let records = Serve.lines (answer (request ~query [ absent ])) in

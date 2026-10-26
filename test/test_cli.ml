@@ -1,8 +1,6 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* Dune runs the test in the build copy of test/, and the executable
-   sits beside it in the build copy of bin/. *)
 let sinter = "../bin/main.exe"
 let grammar = "fixtures/tree-sitter-json/tree-sitter-json.wasm"
 let sample = "fixtures/sample.json"
@@ -20,8 +18,6 @@ let write path text =
     ~finally:(fun () -> close_out_noerr channel)
     (fun () -> output_string channel text)
 
-(* The exit code of one run, and everything it wrote to its two
-   output channels. *)
 let run arguments =
   let output = Filename.temp_file "sinter-cli" ".out" in
   let command =
@@ -33,17 +29,10 @@ let run arguments =
     ~finally:(fun () -> Sys.remove output)
     (fun () -> (code, contents output))
 
-(* The lines of an output, without the empty piece that follows the
-   last line feed. *)
 let lines text =
   let pieces = String.split_on_char '\n' text in
   match List.rev pieces with "" :: rest -> List.rev rest | _ -> pieces
 
-(* Run [command] with [input] on its standard input, and wait [bound]
-   seconds at most. Standard error goes to the file [errors] when the
-   caller names one, and nowhere otherwise. The result names the
-   outcome: a process that outlives the bound is killed, and the
-   result says so. *)
 let outcome_within ?errors command ~input ~bound =
   let request = Filename.temp_file "sinter-serve" ".in" in
   write request input;
@@ -132,10 +121,6 @@ let the_help_lists_the_five_exit_codes () =
         search 0))
     [ "EXIT STATUS"; "0   on"; "1   when"; "2   when"; "3   when"; "4   when" ]
 
-(* The version of a build that reads a checkout names that checkout.
-   Git_version.describe is the description of the checkout, and it is
-   "unknown" when the build read none. The tool and this test link the
-   same module, so the two agree on the description. *)
 let the_version_names_the_checkout () =
   let status, text = run "--version" in
   code "the exit code is 0" 0 status;
@@ -150,10 +135,6 @@ let the_version_names_the_checkout () =
       "the version holds the description of the checkout" true
       (contains describe text)
 
-(* A development build has no package version, so it takes the release
-   version from the library and the rest from the checkout. Every
-   version of the tool starts with the letter v and the release
-   version. *)
 let the_version_starts_with_the_release_version () =
   let status, text = run "--version" in
   code "the exit code is 0" 0 status;
@@ -169,9 +150,6 @@ let parse_request rid rest =
 let tree_request rid =
   parse_request rid (Printf.sprintf {|"tree":true,"files":["%s"]|} sample)
 
-(* The first line that a serve run writes while its standard input
-   stays open, after it reads [request]; [None] when no whole line
-   arrives within [bound] seconds. The run is killed at the end. *)
 let first_line_while_open request ~bound =
   let request_in, request_out = Unix.pipe ~cloexec:true () in
   let answer_in, answer_out = Unix.pipe ~cloexec:true () in
@@ -200,8 +178,6 @@ let first_line_while_open request ~bound =
       Unix.close request_out;
       Unix.close answer_in)
     (fun () ->
-      (* A run that ended before the write turns the write into an
-         error, and not into a signal that ends the suite. *)
       let previous = Sys.signal Sys.sigpipe Sys.Signal_ignore in
       Fun.protect
         ~finally:(fun () -> Sys.set_signal Sys.sigpipe previous)
@@ -229,9 +205,6 @@ let first_line_while_open request ~bound =
       in
       read ())
 
-(* A client may wait for the answer to one request before it sends the
-   next, so the answer must reach standard output before the run reads
-   on. *)
 let an_answer_arrives_before_the_input_ends () =
   match first_line_while_open "not a request" ~bound:5. with
   | None -> Alcotest.fail "no answer arrived while the input stayed open"
@@ -249,10 +222,6 @@ let a_closed_standard_output_ends_the_run () =
        ~input:(tree_request "1" ^ "\n")
        ~bound:10.)
 
-(* A write to standard output that fails is a fault of the
-   environment, and the run says so before it ends. The test above
-   states the exit code of the same run and not the line, so a run
-   that ended without a word would pass it. *)
 let a_closed_standard_output_names_the_failure () =
   let errors = Filename.temp_file "sinter-serve" ".err" in
   let text =
@@ -271,7 +240,6 @@ let a_closed_standard_output_names_the_failure () =
     [ "sinter: cannot write the output: standard output is closed" ]
     (lines text)
 
-(* The outcome of [command], and what it wrote to standard error. *)
 let outcome_and_errors command ~input =
   let errors = Filename.temp_file "sinter-run" ".err" in
   Fun.protect
@@ -301,8 +269,6 @@ let a_closed_standard_input_reads_as_no_request () =
        (Printf.sprintf "exec %s serve <&-" (Filename.quote sinter))
        ~input:"")
 
-(* A directory as standard input opens, and the first read of it
-   fails. *)
 let a_failed_read_names_the_input () =
   let outcome, text =
     outcome_and_errors
@@ -315,9 +281,6 @@ let a_failed_read_names_the_input () =
     "standard error names the read" true
     (String.starts_with ~prefix:"sinter: cannot read the input: " text)
 
-(* With standard error closed and not reserved, the message of the
-   failure has nowhere to go, and the runtime ends the process with
-   its own code at exit. *)
 let a_closed_standard_error_keeps_the_exit_code () =
   Alcotest.(check string)
     "the run ends with the environment code" "exited 3"
@@ -342,10 +305,6 @@ let the_help_of_serve_names_only_the_codes_it_returns () =
         false (contains line text))
     [ "1   when"; "4   when" ]
 
-(* The help text breaks its lines to a width, and a phrase of it can
-   fall over two lines. This gives the same text with every run of
-   blanks turned into one space, so that a check for a phrase does not
-   depend on where a line ends. *)
 let unwrapped text =
   let buffer = Buffer.create (String.length text) in
   let blank character =
@@ -364,10 +323,6 @@ let unwrapped text =
     text;
   Buffer.contents buffer
 
-(* The help text holds the words "request" and "requests" many times,
-   and each of them holds "req". A search for "req" alone would find
-   one of those, so each check below names the field with the words
-   around it. *)
 let the_help_of_serve_names_the_request_id () =
   let status, text = run "serve --help=plain" in
   code "the exit code is 0" 0 status;
@@ -382,12 +337,6 @@ let the_help_of_serve_names_the_request_id () =
     "the help of serve does not name the old field" false
     (contains "the field req" text)
 
-(* Every Invalid_argument of this library starts its message with the
-   module that raised it, so a message that holds "sinter: Sinter_" is
-   the message of a broken precondition. A broken precondition is a
-   fault of the tool. It must leave the command and reach the argument
-   parser, which reports its own code, and it must not come back to
-   the person who ran the tool as an environment error. *)
 let a_parse_run_that_fails_names_no_module_of_the_library () =
   List.iter
     (fun (what, arguments) ->

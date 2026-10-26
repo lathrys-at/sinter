@@ -119,9 +119,6 @@ let the_id_names_the_class_and_the_subject () =
           (Finding.Line { path = "docs/a.md"; line = 4 })
           ()))
 
-(* The cell of the column A of each row of the table of built-in
-   finding classes in algebra.md, as dune copies it beside the build
-   copy of test/. *)
 let ack_cells () =
   let text =
     In_channel.with_open_bin "../spec/algebra.md" In_channel.input_all
@@ -140,7 +137,6 @@ let ack_cells () =
       else None)
     (String.split_on_char '\n' text)
 
-(* Each class of the table, with the cell of its column A. *)
 let ack_classes () =
   let cells = ack_cells () in
   Alcotest.(check int)
@@ -158,8 +154,6 @@ let ackable_follows_the_column_of_the_specification () =
   List.iter
     (fun (name, finding_class, cell) ->
       let finding = Finding.make finding_class fact () in
-      (* A finding of a class of A* is ackable only when its maker says
-         that the condition of the class holds. *)
       Alcotest.(check bool)
         ("ackable " ^ name) (String.equal cell "A") finding.ackable)
     (ack_classes ())
@@ -178,8 +172,6 @@ let only_a_class_of_a_star_takes_ackable () =
          else [ None; None ])
         [ ackable true; ackable false ])
     (ack_classes ())
-
-(* {1 The order} *)
 
 let subject =
   Gen.oneof

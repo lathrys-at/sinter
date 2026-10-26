@@ -4,8 +4,6 @@
 open Sinter_core
 module B = Sinter_bridge
 
-(* Dune runs the test in the build copy of test/, so the path below is
-   relative to that directory. *)
 let grammar = "fixtures/tree-sitter-json/tree-sitter-json.wasm"
 
 let loaded () =
@@ -13,8 +11,6 @@ let loaded () =
   | Ok language -> language
   | Error error -> Alcotest.fail (Grammar.message ~path:grammar error)
 
-(* One grammar for every test below. The grammar keeps its engine
-   alive. *)
 let language = lazy (loaded ())
 
 let in_a_file content use =

@@ -3,8 +3,6 @@
 
 open Sinter_core
 
-(* Dune runs the test in the build copy of test/, so the paths below are
-   relative to that directory. *)
 let suite = "fixtures/toml-test"
 
 let read path =
@@ -13,7 +11,6 @@ let read path =
 let list name =
   read name |> String.split_on_char '\n' |> List.filter (fun line -> line <> "")
 
-(* The cases of each list. *)
 let toml_1_0 = lazy (list "files-toml-1.0.0")
 
 let only_toml_1_1 =
@@ -26,9 +23,6 @@ let only_toml_1_1 =
 let is_case prefix path =
   String.starts_with ~prefix path && Filename.check_suffix path ".toml"
 
-(* The cases that only TOML 1.1 allows. Each one uses a form that TOML
-   1.0.0 does not have: a time with no seconds, the escape \e or \x, or
-   a line break or a trailing comma in an inline table. *)
 let needs_toml_1_1 =
   [
     "valid/datetime/no-seconds.toml";
@@ -42,8 +36,6 @@ let needs_toml_1_1 =
     "valid/string/escape-esc.toml";
     "valid/string/hex-escape.toml";
   ]
-
-(* The value of a TOML document in the JSON form of toml-test. *)
 
 let typed kind text = `Assoc [ ("type", `String kind); ("value", `String text) ]
 let pad width number = Printf.sprintf "%0*d" width number
@@ -90,8 +82,6 @@ and json_of_table table =
          (key.name, json_of_value (Toml.value node)))
        table)
 
-(* The comparison of toml-test, from its file json.go. *)
-
 let float_of_text text =
   match String.lowercase_ascii text with
   | "inf" | "+inf" -> Some Float.infinity
@@ -114,8 +104,6 @@ let same_float want have =
     | Some want, Some have -> Float.equal want have
     | _ -> false
 
-(* A date and a time as a number: the seconds from the start of year 0
-   in UTC, and the nanoseconds. The days come from the civil calendar. *)
 let days_from_civil year month day =
   let year = if month <= 2 then year - 1 else year in
   let era = (if year >= 0 then year else year - 399) / 400 in
@@ -128,9 +116,6 @@ let days_from_civil year month day =
   in
   (era * 146097) + day_of_era
 
-(* Read a date and time of toml-test, after its replacements of " " by
-   "T", "t" by "T", and "z" by "Z", into the date, the time, and the
-   offset in minutes. *)
 let read_datetime text =
   let text =
     String.map (function ' ' | 't' -> 'T' | 'z' -> 'Z' | char -> char) text
@@ -249,9 +234,6 @@ and same_value want have =
       | _, `String want, `String have -> String.equal want have
       | _ -> false)
   | _ -> false
-
-(* The checks of the three tests. Each returns the description of a
-   failure, or None. *)
 
 let decodes_to_its_json path =
   match Toml.parse (read path) with

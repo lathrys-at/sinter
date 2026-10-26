@@ -10,11 +10,7 @@ let sorts_keys () =
     (Jsonl.to_string
        [ ("c", Jsonl.int 3); ("a", Jsonl.int 1); ("b", Jsonl.int 2) ])
 
-(* UTF-16 order and UTF-8 byte order disagree for this pair. A code
-   point at U+10000 or above starts with a high surrogate, and a high
-   surrogate is below U+E000. *)
 let sorts_keys_by_utf16_code_units () =
-  (* "\xf0\x90\x80\x80" is U+10000; "\xee\x80\x80" is U+E000. *)
   let astral = "\xf0\x90\x80\x80" in
   let private_use = "\xee\x80\x80" in
   Alcotest.(check bool)
@@ -28,21 +24,6 @@ let sorts_a_whole_record_by_utf16_code_units () =
     ("{\"" ^ astral ^ "\":1,\"" ^ private_use ^ "\":2}")
     (Jsonl.to_string [ (private_use, Jsonl.int 2); (astral, Jsonl.int 1) ])
 
-(* A code point at U+10000 or above becomes two UTF-16 code units. Take
-   the point less 0x10000; its ten upper bits make the high unit, which
-   is that number and 0xD800; its ten lower bits make the low unit,
-   which is that number and 0xDC00. So U+1F600 becomes 0xD83D and
-   0xDE00.
-
-   The two tests below each hold a pair of code points that differ in
-   one of the two units only. A pair of that shape tells the two units
-   apart; a pair of independent points does not. *)
-
-(* "\xf0\x9f\x98\x80" is U+1F600 and "\xf0\x9f\x98\x81" is U+1F601.
-   They share the high unit 0xD83D, and their low units are 0xDE00 and
-   0xDE01. "\xf0\x90\x80\x80" is U+10000 and "\xf0\x90\x80\x81" is
-   U+10001, with the high unit 0xD800 and the low units 0xDC00 and
-   0xDC01. *)
 let orders_two_astral_keys_by_their_low_unit () =
   Alcotest.(check bool)
     "U+1F600 sorts before U+1F601" true
@@ -51,9 +32,6 @@ let orders_two_astral_keys_by_their_low_unit () =
     "U+10000 sorts before U+10001" true
     (Jsonl.compare_keys "\xf0\x90\x80\x80" "\xf0\x90\x80\x81" < 0)
 
-(* "\xf0\x9f\x88\x80" is U+1F200 and "\xf0\x9f\x98\x80" is U+1F600.
-   They share the low unit 0xDE00, and their high units are 0xD83C and
-   0xD83D. *)
 let orders_two_astral_keys_by_their_high_unit () =
   Alcotest.(check bool)
     "U+1F200 sorts before U+1F600" true
@@ -77,8 +55,6 @@ let escapes_as_rfc_8785_requires () =
     {|{"s":"\"\\\b\f\n\r\t\u0000\u001f"}|}
     (Jsonl.to_string [ ("s", Jsonl.string "\"\\\b\012\n\r\t\000\031") ])
 
-(* RFC 8785 escapes no code point at U+0020 or above, except the
-   quotation mark and the reverse solidus. *)
 let keeps_text_above_the_ascii_range () =
   let text = "\xc3\xa9 \xe2\x82\xac \xf0\x9f\x94\xa5 / \x7f" in
   line "text passes through unescaped"
@@ -121,8 +97,6 @@ let writes_one_line_with_lf () =
   Sys.remove file;
   line "the line ends with LF" "{\"a\":1}\n" contents
 
-(* Properties. *)
-
 module Gen = QCheck2.Gen
 
 let property ?(count = 500) ~name ~print generator check =
@@ -149,9 +123,6 @@ let fields_of_line line =
   | `Assoc fields -> Some fields
   | _ -> None
 
-(* The bytes of a string in UTF-16, big-endian. Comparing two of these
-   byte for byte gives the order of the two code unit sequences, so
-   this is a second way to reach the order that compare_keys promises. *)
 let utf_16be text =
   let buffer = Buffer.create (2 * String.length text) in
   let offset = ref 0 in
@@ -164,7 +135,6 @@ let utf_16be text =
 
 let sign n = compare n 0
 
-(* A line is a JSON object with the fields of the record. *)
 let a_line_parses_to_the_same_fields_and_values =
   property ~name:"a line parses to an object with the same fields and values"
     ~print:Generators.print_record Generators.record (fun record ->
@@ -188,9 +158,6 @@ let a_line_holds_its_keys_in_compare_keys_order =
           let names = List.map fst fields in
           List.equal String.equal names (List.sort Jsonl.compare_keys names))
 
-(* Whitespace between the tokens is insignificant, and a canonical
-   line holds none of it. Whitespace inside a string is part of the
-   value. *)
 let a_line_holds_no_whitespace_outside_a_string =
   property ~name:"a line holds no whitespace outside a string"
     ~print:Generators.print_record Generators.record (fun record ->
@@ -211,8 +178,6 @@ let a_line_holds_no_whitespace_outside_a_string =
       in
       scan 0 ~inside:false ~escaped:false)
 
-(* RFC 8785 escapes the quotation mark, the reverse solidus, and every
-   code point below U+0020, and nothing else. *)
 let a_line_holds_no_byte_below_u_0020 =
   property ~name:"a line holds no byte below U+0020"
     ~print:Generators.print_record Generators.record (fun record ->
@@ -275,8 +240,6 @@ let to_string_rejects_a_string_that_is_not_utf_8 =
     Generators.record_with_a_string_that_is_not_utf_8 (fun record ->
       raises_invalid_argument (fun () -> Jsonl.to_string record))
 
-(* compare_keys takes any string, so the order properties below run
-   over strings that are not UTF-8 as well. *)
 let name =
   Gen.oneof
     [ Generators.key; Generators.utf_8_string; Generators.not_utf_8_string ]
@@ -310,8 +273,6 @@ let compare_keys_is_transitive =
       else if ab >= 0 && bc >= 0 then Jsonl.compare_keys a c >= 0
       else true)
 
-(* Two strings of valid UTF-8 that differ hold different code points,
-   so their code unit sequences differ as well. *)
 let compare_keys_separates_two_names_that_differ =
   property
     ~name:"compare_keys gives 0 for two names of UTF-8 only when they are equal"
@@ -331,8 +292,6 @@ let a_line_is_valid_utf_8 =
       in
       walk 0)
 
-(* The writer sorts the fields, so the order in which a caller gives
-   them does not reach the line. *)
 let to_string_ignores_the_order_of_the_fields =
   property ~name:"to_string gives one line for a record in any order"
     ~print:(fun (record, _) -> Generators.print_record record)
@@ -382,9 +341,6 @@ let properties =
     output_writes_the_line_and_one_lf;
   ]
 
-(* The runtime refuses a write to a closed channel in the call. The
-   message of that failure comes from the C library, so the test reads
-   the class of the exception and not its words. *)
 let reports_a_channel_that_cannot_be_written () =
   let file = Filename.temp_file "sinter-jsonl" ".jsonl" in
   let channel = open_out_bin file in

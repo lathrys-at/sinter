@@ -24,15 +24,10 @@ let decoded what = Alcotest.(check (result what string))
 let is_error = function Ok _ -> false | Error _ -> true
 let refused name result = Alcotest.(check bool) name true (is_error result)
 
-(* [fails_with message result] checks that [result] is the error
-   [message]. A test of the message tells two errors apart that a test
-   of the kind alone cannot. *)
 let fails_with message result =
   Alcotest.(check (option string))
     "the error" (Some message)
     (match result with Ok _ -> None | Error text -> Some text)
-
-(* Hunk headers. *)
 
 let a_header_gives_both_ranges () =
   decoded header "the four numbers"
@@ -115,8 +110,6 @@ let hunk_header_is_total =
     (fun text ->
       match Git.Decode.hunk_header text with Ok _ | Error _ -> true)
 
-(* Refs. *)
-
 let entries =
   Alcotest.testable
     (fun formatter value ->
@@ -174,8 +167,6 @@ let refs_is_total =
     ~print:(fun text -> Printf.sprintf "%S" text)
     Generators.damaged_refs_output
     (fun output -> match Git.Decode.refs output with Ok _ | Error _ -> true)
-
-(* Diff output. *)
 
 let lines texts = String.concat "" (List.map (fun line -> line ^ "\n") texts)
 let section path rest = ("diff --git a/" ^ path ^ " b/" ^ path) :: rest
@@ -409,10 +400,6 @@ let diff_is_total =
     Generators.damaged_diff_output
     (fun output -> match Git.Decode.diff output with Ok _ | Error _ -> true)
 
-(* Repositories. *)
-
-(* The shared repository, opened once. A [Git.t] holds no resource, so
-   the tests share it. *)
 let shared =
   lazy
     (let repo = Git_fixture.shared () in
@@ -430,8 +417,6 @@ let open_with env =
   | Ok t -> t
   | Error _ -> Alcotest.fail "the shared repository does not open"
 
-(* The commit of each ref that a test of the target branch or of the
-   merge base expects, read with one process. *)
 let refs =
   [
     "refs/remotes/origin/main";
@@ -466,8 +451,6 @@ let error =
         | Git.File_error s -> "File_error " ^ s))
     ( = )
 
-(* The target branch. *)
-
 let target =
   Alcotest.testable
     (fun formatter (target : Git.target) ->
@@ -500,12 +483,9 @@ let a_local_branch_comes_before_origin =
 let a_branch_of_origin_alone_is_found =
   resolves "orig" Git.Origin_branch "refs/remotes/origin/orig"
 
-(* The upstream of [gone] does not exist, and [origin] has no branch
-   [gone]. *)
 let a_local_branch_alone_is_found =
   resolves "gone" Git.Local_branch "refs/heads/gone"
 
-(* The upstream of [loc] is the local branch [both]. *)
 let an_upstream_that_is_a_local_branch_is_found =
   resolves "loc" Git.Upstream "refs/heads/both"
 
@@ -514,8 +494,6 @@ let not_found name () =
   Alcotest.(check (result target error))
     name (Error (Git.Target_not_found name))
     (Git.resolve_target t name)
-
-(* The merge base. *)
 
 let merge_base_gives_the_common_ancestor () =
   let _, t = open_shared () in
@@ -555,8 +533,6 @@ let merge_base_names_a_bad_second_revision () =
     "the second" (Error (Git.Bad_revision "nope"))
     (Git.merge_base t "main" "nope")
 
-(* A revision to a commit. *)
-
 let commit_of_gives_the_commit_of_a_revision () =
   let _, t = open_shared () in
   Alcotest.(check (result string error))
@@ -594,14 +570,8 @@ let commit_of_names_a_revision_that_is_no_commit () =
         (Git.commit_of t rev))
     [ "nope"; "main^{tree}"; ""; "--all"; "-"; "ma\000in" ]
 
-(* The diff. *)
-
 let quoted_name = "caf\xc3\xa9\tdoc one.txt"
 
-(* The environment of the shared repository, with configuration that
-   changes the form of git's diff output and the edges of its hunks.
-   The environment carries it, so that the shared repository stays as
-   it is. *)
 let configured_env repo =
   let settings =
     [
@@ -646,10 +616,6 @@ let configured_env repo =
              ])
            settings))
 
-(* The diff of the shared repository against [HEAD] under that
-   configuration, and the state of the index before and after. Every
-   test of the diff reads this one run, and expects what git gives
-   with no configuration. *)
 let shared_diff =
   lazy
     (let repo = Git_fixture.shared () in

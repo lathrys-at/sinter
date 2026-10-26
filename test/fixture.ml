@@ -24,9 +24,6 @@ type error =
 type mode = Compare | Promote_into of string
 
 let ( let* ) = Result.bind
-
-(* The entries of a case folder. The harness does not read the two
-   reserved entries yet. *)
 let known = [ "args"; "tree"; "base"; "repository"; "stdin"; "expected" ]
 let reserved = [ "ledger.jsonl"; "evidence" ]
 let outputs = [ "stdout"; "stderr"; "exit" ]
@@ -109,12 +106,6 @@ let write_file path text =
   Out_channel.with_open_bin path (fun channel ->
       Out_channel.output_string channel text)
 
-(* [Sys.is_directory] and [read_file] follow a symbolic link, so the
-   copy holds the bytes of a link's target and never a link. In the
-   build copy of a case, which the suite reads, dune has already
-   replaced each link of the source tree with such a file. A file
-   named .gitkeep only keeps an empty folder in git: the copy leaves
-   the file out and keeps its folder. [target] exists and is empty. *)
 let rec copy_folder source target =
   List.iter
     (fun name ->
@@ -127,9 +118,6 @@ let rec copy_folder source target =
         write_file into (read_file from))
     (entries source)
 
-(* Removes [path] and, for a folder, everything in it. A symbolic
-   link is removed, not followed. A file that vanishes between the
-   listing of its folder and its removal counts as removed. *)
 let rec remove path =
   match (Unix.lstat path).Unix.st_kind with
   | Unix.S_DIR ->
@@ -143,17 +131,12 @@ let make_folder parent name =
   Sys.mkdir path 0o755;
   path
 
-(* Calls [f] with the real path of a new, empty folder under the
-   temporary folder, and removes the folder when [f] returns or
-   raises. *)
 let with_temporary_folder f =
   let made = Filename.temp_dir "sinter-case" "" in
   Fun.protect
     ~finally:(fun () -> remove made)
     (fun () -> f (Unix.realpath made))
 
-(* Turns a failure of the file system or of a process into an error
-   value. *)
 let guarded f =
   try f () with
   | Sys_error reason -> Error (System reason)
@@ -163,32 +146,8 @@ let guarded f =
            (Printf.sprintf "%s %s: %s" call argument (Unix.error_message code)))
   | Fun.Finally_raised failure -> Error (System (Printexc.to_string failure))
 
-(* bisect_ppx, which measures coverage, writes the counts of a process
-   into a file in the folder where the process starts, unless
-   BISECT_FILE names another place. A run starts in a temporary folder
-   that the harness removes, so a run whose suite names no place
-   writes its counts beside the suite's own, where the report reads
-   them. *)
 let coverage_prefix = Filename.concat (Sys.getcwd ()) "bisect"
 
-(* Every git command, and the run itself, gets the environment of
-   the suite with the variables below taken out and set anew. Git
-   reads its configuration, its ignore rules, and its identity from
-   them and from files under HOME and XDG_CONFIG_HOME, so the fixed
-   values give the same commit id and the same output of git on every
-   machine. After a commit, git starts its background maintenance,
-   which writes and removes lock files in the repository while the
-   harness removes the repository; the configuration in the
-   environment turns that off. Cmdliner colors its own errors when
-   TERM names a terminal,
-   and NO_COLOR stops that. PWD names [root], the folder where each
-   of them starts. GIT_CEILING_DIRECTORIES names the folder above
-   [root], so that git looks for a repository in [root] and in no
-   folder above it. PATH starts with the folder of the programs of git
-   that [git] names, so that the run starts git itself: the program
-   git of macOS finds git first, and with a new HOME each start takes
-   about 30 ms. The other variables of the suite stay: the mutation
-   runner switches a mutant on in the run through one of them. *)
 let environment ~home ~root ~git =
   let replaced binding =
     List.exists
@@ -230,7 +189,6 @@ let environment ~home ~root ~git =
       "GIT_COMMITTER_DATE=1767225600 +0000";
     |]
 
-(* Waits [bound] seconds at most for [pid] to end, and kills it after. *)
 let wait pid ~bound =
   let deadline = Unix.gettimeofday () +. bound in
   let rec loop () =
@@ -248,12 +206,6 @@ let wait pid ~bound =
   in
   loop ()
 
-(* Starts [program] with [arguments] in the folder [folder], with
-   standard input from the file [input], and standard output and
-   standard error to the files [output] and [errors]. A new process
-   starts in the working folder of this process, so the start changes
-   into [folder] and back. No other thread or domain may run
-   meanwhile. *)
 let execute ~environment ~folder ~input ~output ~errors ~bound program arguments
     =
   let command = Array.of_list (program :: arguments) in
@@ -284,17 +236,8 @@ let execute ~environment ~folder ~input ~output ~errors ~bound program arguments
       in
       wait pid ~bound)
 
-(* The folders of one run, all in one temporary folder: the working
-   folder where the run starts, a home folder, and room for the
-   captured output. The home folder and the captured output sit beside
-   the working folder, so that the working folder holds only the files
-   of the case. *)
 type workspace = { root : string; environment : string array; scratch : string }
 
-(* One folder for the cache of compiled modules of wasmtime, shared by
-   every run of this process, so that the runs compile each grammar
-   once and not once each. It sits under the temporary folder of the
-   first run, and the process removes it when it exits. *)
 let wasmtime_cache =
   lazy
     (let folder = Unix.realpath (Filename.temp_dir "sinter-wasmtime" "") in
@@ -302,7 +245,6 @@ let wasmtime_cache =
          try remove folder with Sys_error _ | Unix.Unix_error _ -> ());
      folder)
 
-(* [text] as a TOML basic string. *)
 let toml_string text =
   let buffer = Buffer.create (String.length text + 2) in
   Buffer.add_char buffer '"';
@@ -320,17 +262,12 @@ let toml_string text =
   Buffer.add_char buffer '"';
   Buffer.contents buffer
 
-(* The folders under HOME where wasmtime reads its configuration: on
-   macOS, and on Linux when XDG_CONFIG_HOME is not set. The run's
-   environment leaves XDG_CONFIG_HOME out. *)
 let wasmtime_configurations =
   [
     [ "Library"; "Application Support"; "BytecodeAlliance.wasmtime" ];
     [ ".config"; "wasmtime" ];
   ]
 
-(* Writes into [home] the configuration of wasmtime that names the
-   shared cache folder. *)
 let configure_wasmtime home =
   let text =
     Printf.sprintf "[cache]\ndirectory = %s\n"
@@ -342,9 +279,6 @@ let configure_wasmtime home =
       write_file (Filename.concat folder "config.toml") text)
     wasmtime_configurations
 
-(* The git program in the folder that git --exec-path names, or "git"
-   when the lookup fails. The lookup runs once for the process, in the
-   suite's own environment. *)
 let program =
   lazy
     (try
@@ -391,8 +325,6 @@ let git repository arguments =
     Error
       (Git_failed { arguments; output = read_file output ^ read_file errors })
 
-(* A new repository on the branch main in [workspace.root], which
-   exists and is empty. *)
 let initialize workspace =
   let repository = { workspace; program = Lazy.force program } in
   let* _ =
@@ -401,7 +333,6 @@ let initialize workspace =
   in
   Ok repository
 
-(* Commits every file of the working tree, with the message [message]. *)
 let commit_all repository ~message =
   let* _ = git repository [ "add"; "--all" ] in
   let* _ =
@@ -410,7 +341,6 @@ let commit_all repository ~message =
   in
   Ok ()
 
-(* [workspace.root] exists and is empty. *)
 let build workspace ~base ~tree =
   let* repository = initialize workspace in
   copy_folder base workspace.root;
@@ -423,7 +353,6 @@ let build workspace ~base ~tree =
   copy_folder tree workspace.root;
   Ok repository
 
-(* [workspace.root] exists and is empty. *)
 let build_committed workspace ~tree =
   let* repository = initialize workspace in
   copy_folder tree workspace.root;
@@ -446,7 +375,6 @@ type layout = {
   expected : string;
 }
 
-(* The path of [entry] in [case] when it exists. *)
 let find case entry ~folder =
   let path = Filename.concat case entry in
   if not (Sys.file_exists path) then Ok None
@@ -492,8 +420,6 @@ let read_layout mode case =
           first_unknown ~prefix:"expected/" outputs (entries folder)
     in
     let* () =
-      (* A promotion writes a missing expected file; a comparison needs
-         all three. *)
       List.fold_left
         (fun checked file ->
           let* () = checked in
@@ -514,18 +440,12 @@ let read_layout mode case =
         expected = Filename.concat case "expected";
       }
 
-(* Each line is one argument. The line feed that ends the file ends
-   the last argument, so an empty file holds no argument and a file
-   that holds one line feed holds one empty argument. *)
 let arguments text =
   if String.equal text "" then []
   else
     let pieces = String.split_on_char '\n' text in
     match List.rev pieces with "" :: rest -> List.rev rest | _ -> pieces
 
-(* The lines of [text], each with its line feed. The last line has no
-   line feed when [text] does not end with one. The lines joined give
-   [text] back. *)
 let lines text =
   let length = String.length text in
   let rec split start found =
@@ -551,7 +471,6 @@ let first_difference ~file expected actual =
   if String.equal expected actual then None
   else find 1 (lines expected) (lines actual)
 
-(* Every occurrence of [pattern] in [text], replaced with [by]. *)
 let replace_all ~pattern ~by text =
   let length = String.length text and size = String.length pattern in
   let buffer = Buffer.create length in
@@ -575,8 +494,6 @@ let replace_all ~pattern ~by text =
     scan 0;
     Buffer.contents buffer)
 
-(* The index of the first occurrence of [pattern] in [text] at or after
-   [start]. *)
 let find_from text ~pattern start =
   let length = String.length text and size = String.length pattern in
   let rec scan index =
@@ -586,10 +503,6 @@ let find_from text ~pattern start =
   in
   scan start
 
-(* [line] with the value of its field tool replaced with <tool>, when
-   [line] is an index record: it holds the field kind with the value
-   index. The value ends at the first quotation mark that no backslash
-   escapes. *)
 let mask_line line =
   let key = "\"tool\":\"" in
   match
@@ -666,11 +579,6 @@ let run ?(bound = 10.) ~binary mode case =
               ~input:(Option.value layout.stdin ~default:"/dev/null")
               ~output ~errors ~bound binary arguments
           in
-          (* The run starts in the real path of its working folder, so
-             an absolute path that the run prints holds that real path.
-             The comparison replaces that path with <root>, and the
-             value of the field tool of an index record with <tool>,
-             and changes nothing else in the output. *)
           let rooted path =
             replace_all ~pattern:workspace.root ~by:"<root>" (read_file path)
           in

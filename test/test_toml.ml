@@ -20,7 +20,6 @@ let parse_error text =
   | Ok _ -> Alcotest.fail "the text was accepted"
   | Error error -> error
 
-(* The node at a path of names. *)
 let rec find table = function
   | [] -> invalid_arg "find: an empty path"
   | [ name ] -> (
@@ -55,8 +54,6 @@ let span =
 let at line column = { Toml.line; column }
 let from (l1, c1) (l2, c2) = { Toml.start = at l1 c1; stop = at l2 c2 }
 
-(* The byte offset of a place in [text]. A byte order mark at the start
-   is not a column. *)
 let offset_of text (place : Toml.position) =
   let line_start =
     ref (if String.starts_with ~prefix:"\xEF\xBB\xBF" text then 3 else 0)
@@ -76,8 +73,6 @@ let slice text first last =
   String.sub text first (last - first)
 
 let text_of text (s : Toml.span) = slice text s.start s.stop
-
-(* Positions *)
 
 let gives_the_span_of_a_key_and_of_its_value () =
   let table = parse_ok "a = 1\n" in
@@ -108,8 +103,6 @@ let a_byte_order_mark_is_not_a_column () =
     (from (2, 1) (2, 2))
     (key_of table "b").at
 
-(* A line of many two-byte characters puts later places past many
-   counts of 64 bytes, with and without a byte order mark. *)
 let a_column_far_into_a_long_line () =
   let line =
     "a = {s = \""
@@ -130,8 +123,6 @@ let a_column_far_into_a_long_line () =
           .at)
     [ ""; "\xEF\xBB\xBF" ]
 
-(* A text of 64 or 128 bytes with no line break at its end: the value
-   stops one past the last byte of the text. *)
 let a_value_stops_at_the_end_of_a_text_of_64_bytes () =
   List.iter
     (fun (inside, stop) ->
@@ -147,8 +138,6 @@ let a_value_stops_at_the_end_of_a_text_of_64_bytes () =
       (String.make 122 'x', 129);
     ]
 
-(* Each place costs the same however long its line is, so a document
-   on one line reads in time proportional to its length. *)
 let a_long_line_reads_quickly () =
   let count = 20_000 in
   let text =
@@ -240,8 +229,6 @@ let keys_come_in_the_order_of_their_spans () =
     "the header [a] comes last" [ "c"; "a" ]
     (names (parse_ok "[a.b]\n[c]\n[a]\n"))
 
-(* The start of a dotted key *)
-
 let key_start_of text path = Toml.key_start (find (parse_ok text) path)
 
 let key_start_is_the_first_part_of_a_dotted_key () =
@@ -277,8 +264,6 @@ let key_start_of_a_table_or_a_member_is_its_span () =
   | Toml.Array [ _; second ] ->
       Alcotest.check position "the member 2" (at 1 11) (Toml.key_start second)
   | _ -> Alcotest.fail "no array of two members"
-
-(* Strings *)
 
 let string_node text = find (parse_ok ("s = " ^ text ^ "\n")) [ "s" ]
 
@@ -339,8 +324,6 @@ let string_position_refuses_an_offset_outside_the_string () =
       ignore (Toml.string_position node (-1)));
   Alcotest.check_raises "past the end" refused (fun () ->
       ignore (Toml.string_position node 4))
-
-(* Values *)
 
 let reads_every_kind_of_value () =
   let table =
@@ -439,8 +422,6 @@ let every_kind_has_a_name () =
        (fun name ->
          Toml.Kind.name (Toml.Kind.of_value (Toml.value (find table [ name ]))))
        [ "s"; "i"; "f"; "b"; "d"; "a"; "t"; "r" ])
-
-(* Errors *)
 
 let check_error ~name text expected_position expected_message =
   let error = parse_error text in
@@ -707,8 +688,6 @@ let error_message_of_a_cause_out_of_range_with_no_construct () =
             cause = Some Toml.Out_of_range;
           }))
 
-(* render_path *)
-
 let render_path_quotes_only_what_it_must () =
   Alcotest.(check string)
     "the path"
@@ -769,12 +748,6 @@ let a_name_with_a_control_character_stays_on_one_line () =
      'a.\"b\\u0085\"', which a table header made; write 'ct' under the header \
      [a.\"b\\u0085\"]"
 
-(* Properties *)
-
-(* A document of the generator: a table of entries with distinct names.
-   A sub-table is written with a table header or with dotted keys; a
-   table written with dotted keys holds only values and tables written
-   with dotted keys, and at least one entry. *)
 type style = Basic | Literal | Multiline_basic | Multiline_literal
 
 type gvalue =
@@ -973,8 +946,6 @@ let gtable =
   in
   header 2
 
-(* The text of a document, with blanks drawn around each "=" and each
-   "." of a dotted key. *)
 let render table =
   let open QCheck2.Gen in
   let blank = oneof_list [ ""; " "; "\t"; " \t" ] in
@@ -1061,8 +1032,6 @@ let without_blanks_and_dots text =
   |> String.split_on_char ' ' |> String.concat "" |> String.split_on_char '\t'
   |> String.concat ""
 
-(* [prefix] is the parts of the dotted key that the line writes before
-   the entries of [table]. *)
 let rec same_table text ~prefix (g : gtable) table =
   List.length g = List.length table
   && List.for_all
@@ -1112,8 +1081,6 @@ let line_lengths text =
         line;
       !count)
 
-(* The place of an error is inside the text, or one past the end of a
-   line. *)
 let place_is_inside text (place : Toml.position) =
   let lengths = Array.of_list (line_lengths text) in
   place.line >= 1
@@ -1172,8 +1139,6 @@ let damaged_document =
   in
   apply edits text
 
-(* A message holds no control character of C0 or C1, and no U+007F, so
-   it stays on one line. *)
 let one_line message =
   let rec from offset =
     offset >= String.length message

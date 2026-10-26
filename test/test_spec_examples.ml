@@ -3,12 +3,8 @@
 
 open Sinter_core
 
-(* The specifications, as dune copies them beside the build copy of
-   test/. *)
 let spec_folder = "../spec"
 
-(* Each line of each fenced block that opens with ```json, with the
-   name of its file. *)
 let examples () =
   Sys.readdir spec_folder |> Array.to_list
   |> List.filter (fun name -> Filename.check_suffix name ".md")

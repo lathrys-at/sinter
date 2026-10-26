@@ -15,8 +15,6 @@ let unsigned value =
   done;
   Buffer.contents buffer
 
-(* The last byte is the one whose bit 6 already holds the sign of the
-   rest of the value. *)
 let signed value =
   let buffer = Buffer.create 10 in
   let rec write value =
@@ -60,8 +58,6 @@ let i64_extend_i32_u = "\xad"
 let i64_shl = "\x86"
 let i64_or = "\x84"
 let memory_grow = "\x40\x00"
-
-(* loop (empty block type), br 0, end *)
 let loop_forever = "\x03\x40\x0c\x00\x0b"
 
 type import = Import_func of int | Import_memory of int
@@ -120,7 +116,6 @@ let encode_export (field, export) =
   | Export_memory -> "\x02\x00"
   | Export_global index -> "\x03" ^ unsigned index
 
-(* A body declares no local of its own. *)
 let encode_code (_, body) = name ("\x00" ^ expression body)
 
 let encode_data (address, bytes) =
@@ -194,8 +189,6 @@ let pair address length =
     (Int64.shift_left (Int64.of_int address) 32)
     (Int64.logand (Int64.of_int length) 0xFFFFFFFFL)
 
-(* The address and the length of a pair of i32 locals, as the result
-   of a call function. *)
 let echo address length =
   [
     local_get address;
@@ -207,8 +200,6 @@ let echo address length =
     i64_or;
   ]
 
-(* The body of a call function. [at] is the address of the data
-   segment that holds a [Respond] text. *)
 let call_body ~at = function
   | Respond text -> [ i64_const (pair at (String.length text)) ]
   | Echo_request -> echo 0 1
@@ -221,7 +212,6 @@ let call_body ~at = function
 
 let response = function Respond text -> text | _ -> ""
 
-(* A body that gives a zero of each result type. *)
 let zeros (_, results) =
   List.map
     (function I32 -> i32_const 0 | I64 -> i64_const 0L)
@@ -253,8 +243,6 @@ let adapter_module spec =
       ("sinter_bind", call_type, call_body ~at:bind_at spec.bind);
     ]
   in
-  (* A function of a wrong type takes the type and a body that fits
-     it. *)
   let functions =
     List.map
       (fun (field, kind, body) ->
@@ -273,7 +261,6 @@ let adapter_module spec =
     in
     find 0 types
   in
-  (* An imported function takes the type of the first function. *)
   let first_type =
     match types with first :: _ -> first | [] -> interface_type
   in

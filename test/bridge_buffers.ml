@@ -17,9 +17,6 @@ let kind_captures = 6
 let kind_report = 7
 let kind_response = 8
 
-(* A buffer under construction. [runs] records each string that must be
-   UTF-8, and [bytes] each string that need not be, as the offset of
-   its length field and the length it holds. *)
 type writer = {
   buffer : Buffer.t;
   mutable runs : (int * int) list;
