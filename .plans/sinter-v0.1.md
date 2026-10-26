@@ -119,6 +119,19 @@ security advisories of wasmtime 29. Keep the refusal of an adapter
 with a 64-bit memory. Test that a query that names a supertype with a
 subtype runs.
 
+## Limit comments and pull request descriptions
+@scope lib/**, bin/**, bridge/**, test/**, .github/workflows/**, dune-project, sinter.toml, REUSE.toml, docs/decisions/**, CONTRIBUTING.md
+@decision code-comments
+@decision pull-request-descriptions
+Permit a comment only when Sinter reads it, as a tag block and its
+prose, or when it is an API comment, a license header, or other text
+that the community of the language expects. Such a comment states
+what the code does, not why. Remove every other comment, in every
+language of the repository. Limit a pull request description to the
+plan step or the issue that the change carries out, and the records
+or the rules that it adds. Change the rules in `CONTRIBUTING.md` to
+match.
+
 ## Measure and improve the performance of scan and check
 @scope lib/**, bin/**, bridge/**, test/**, docs/**
 Add a benchmark that measures the time and the peak memory of
