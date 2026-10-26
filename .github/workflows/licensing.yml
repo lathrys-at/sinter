@@ -11,9 +11,9 @@ on:
 jobs:
   dco:
     name: DCO sign-off
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Check every commit for a Signed-off-by line
@@ -37,17 +37,17 @@ jobs:
 
   reuse:
     name: REUSE lint
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Run reuse lint
         run: pipx run reuse lint
 
   third-party-manifest:
     name: Third-party manifest
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Check that THIRD_PARTY.md exists and is well-formed
         run: |
           set -eu
@@ -61,9 +61,9 @@ jobs:
 
   forbidden-licenses:
     name: No forbidden licenses
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Check the dependency list for forbidden licenses
         run: |
           set -eu
@@ -84,9 +84,8 @@ jobs:
             }
             END { exit bad }
           ' THIRD_PARTY.md
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
-          rustflags: ""
           cache: false
           toolchain: 1.99.1
       - name: Check the Rust dependencies for forbidden licenses

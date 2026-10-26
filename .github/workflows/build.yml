@@ -21,12 +21,12 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            image: ubuntu-24.04
+            image: ubuntu-26.04
           - os: macos-latest
             image: macos-26
     runs-on: ${{ matrix.image }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Name the runner image
         id: image
         run: |
@@ -40,11 +40,9 @@ jobs:
           key: opam-v3-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
             opam-v3-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
-          rustflags: ""
           cache: false
-          override: true
           toolchain: 1.99.1
           components: rustfmt, clippy
       - name: Cache the cargo state
@@ -93,9 +91,9 @@ jobs:
 
   format:
     name: Check formatting
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Name the runner image
         id: image
         run: |
@@ -132,9 +130,9 @@ jobs:
   plugin:
     name: Check the plugin manifests
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Check that the two manifests carry one version
         run: |
           set -eu
@@ -147,19 +145,17 @@ jobs:
 
   rust:
     name: Check the bridge crate
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Name the runner image
         id: image
         run: |
           test -n "$ImageOS"
           echo "os=$ImageOS" >>"$GITHUB_OUTPUT"
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
-          rustflags: ""
           cache: false
-          override: true
           toolchain: 1.99.1
           components: rustfmt, clippy
       - name: Cache the cargo state
@@ -194,13 +190,13 @@ jobs:
 
   coverage:
     name: Measure coverage
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       # @cites instrumented-tooling
       BISECT_PPX_COMMIT: "7061d643ff492b0045796357ee6917ded21fb1f0"
       COVERAGE_MINIMUM: "94"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Name the runner image
         id: image
         run: |
@@ -214,11 +210,9 @@ jobs:
           key: opam-coverage-v3-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.BISECT_PPX_COMMIT }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
             opam-coverage-v3-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.BISECT_PPX_COMMIT }}-
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
-          rustflags: ""
           cache: false
-          override: true
           toolchain: 1.99.1
       - name: Cache the cargo state
         uses: actions/cache@v6
@@ -278,7 +272,7 @@ jobs:
 
   mutation:
     name: Measure the mutation score
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # @cites mutation-job-scope
     env:
       # @cites mutation-testing
@@ -286,7 +280,7 @@ jobs:
       # @cites mutation-gate
       MUTATION_MINIMUM: "95"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # @cites mutation-job-scope
@@ -335,12 +329,10 @@ jobs:
           key: opam-mutation-v2-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.MUTAML_COMMIT }}-${{ hashFiles('sinter.opam.locked') }}
           restore-keys: |
             opam-mutation-v2-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.MUTAML_COMMIT }}-
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
         if: steps.scope.outputs.mode != 'none'
         with:
-          rustflags: ""
           cache: false
-          override: true
           toolchain: 1.99.1
       - name: Cache the cargo state
         if: steps.scope.outputs.mode != 'none'
