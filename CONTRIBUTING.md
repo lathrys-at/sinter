@@ -497,7 +497,10 @@ sign off code that you did not review.
 - Decisions that shape the project live in `docs/decisions/`, one file
   per decision, with a `@decision` tag. Read the record before you
   re-argue a choice. To record a new decision, use the
-  `/sinter:decision` skill or follow its format. A pull request that
+  `/sinter:decision` skill or follow its format. A record that still
+  decides the same question is revised in place, with a higher
+  revision; a different choice gets a new record that supersedes the
+  old one (`docs/decisions/revise-or-supersede.md`). A pull request that
   supersedes a record moves the citations of the old record to the
   new one, with the revision bumps that the move owes, and adds no
   `@ack` for those citations. The journals of plans record the past,
