@@ -149,7 +149,6 @@ let name = function
   | Ledger_broken -> "ledger-broken"
   | Pack_drift -> "pack-drift"
 
-(* The tiers at the gates turn, merge, and target. *)
 let tiers = function
   | Parse_error -> (Some Warn, Some Block, Some Block)
   | Typo_tag -> (Some Warn, Some Warn, Some Warn)

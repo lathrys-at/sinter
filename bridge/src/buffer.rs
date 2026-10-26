@@ -38,12 +38,8 @@ pub(crate) fn put_u64(buffer: &mut Vec<u8>, value: u64) {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct TooLong;
 
-/// The 32-bit length prefix for a string of `len` bytes.
-///
-/// The buffer format holds every length in 32 bits. A length that
-/// does not fit is an error, not a truncation: a truncated prefix
-/// would leave the reader in the middle of a string with no way to
-/// tell.
+/// The 32-bit length prefix for a string of `len` bytes, or `TooLong`
+/// when `len` does not fit 32 bits.
 pub(crate) fn length_prefix(len: usize) -> Result<u32, TooLong> {
     u32::try_from(len).map_err(|_| TooLong)
 }

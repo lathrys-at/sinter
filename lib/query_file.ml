@@ -23,8 +23,6 @@ let compile language ~path =
       (fun e -> Not_compiled e)
       (Bridge.Query.compile language text)
 
-(* Parse the source file at [path], run [use] on its text and its tree,
-   and free the tree. *)
 let with_tree language ~path use =
   let* source = read path in
   let* tree =

@@ -10,7 +10,6 @@ let property ?(count = 200) ~name ~print generator check =
 let check_hex ~name data expected () =
   Alcotest.(check string) name expected (Sha256.hex data)
 
-(* The test values that NIST publishes for SHA-256. *)
 let nist =
   [
     ( "the empty string",
@@ -30,7 +29,6 @@ let nist =
       "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0" );
   ]
 
-(* The values below come from "shasum -a 256". *)
 let with_nul_bytes =
   [
     ( "one NUL byte",
@@ -44,8 +42,6 @@ let with_nul_bytes =
       "709e80c88487a2411e1ee4dfb9f22a861492d20c4765150c0c794abd70f8147c" );
   ]
 
-(* More than 16 MiB, and a length that is not a multiple of the 64-byte
-   block of SHA-256. *)
 let large =
   String.init ((1 lsl 24) + 3) (fun index -> Char.chr (index land 0xFF))
 
@@ -86,8 +82,6 @@ let hex_writes_the_digest =
            (List.init 32 (fun index ->
                 Printf.sprintf "%02x" (Char.code digest.[index])))))
 
-(* The copy is a string of its own, so a digest that depends on
-   anything but the bytes shows here. *)
 let equal_inputs_give_equal_digests =
   property ~name:"equal inputs give equal digests" ~print:QCheck2.Print.string
     any_bytes (fun data ->

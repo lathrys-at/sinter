@@ -19,8 +19,8 @@ val key : string QCheck2.Gen.t
     order and UTF-8 byte order disagree. *)
 
 val not_utf_8_string : string QCheck2.Gen.t
-(** A string that is not valid UTF-8. The construction gives this, so the
-    generator never yields a valid string. *)
+(** A string that is not valid UTF-8. The generator never yields a valid string.
+*)
 
 val not_utf_8_string_at : (int * string) QCheck2.Gen.t
 (** A string that is not valid UTF-8, and the byte offset of its first sequence
@@ -178,8 +178,7 @@ val any_utf_8_text : string QCheck2.Gen.t
 val any_text : string QCheck2.Gen.t
 (** Text of any bytes, valid UTF-8 or not, of at most forty pieces. The
     punctuation of JSON comes up often, so the text is often a document that
-    almost parses. A capture of this text can hold bytes that are not UTF-8, so
-    only a parse tree comes back for all of it. *)
+    almost parses. *)
 
 (** {1 WebAssembly modules} *)
 
@@ -222,9 +221,7 @@ val grammar_export_name : string QCheck2.Gen.t
 
 val wasm_module_with_a_name : (string * string) QCheck2.Gen.t
 (** A grammar name, and a WebAssembly module that exports it. The shape of the
-    module is drawn from the five shapes in which the reader finds a name, so a
-    property over this generator meets a section whose size needs two bytes, a
-    list of three exports, and an index of five bytes. *)
+    module is drawn from the five shapes in which the reader finds a name. *)
 
 val wasm_module_whose_name_holds_a_nul : string QCheck2.Gen.t
 (** A WebAssembly module, of a drawn shape, whose export names the grammar with

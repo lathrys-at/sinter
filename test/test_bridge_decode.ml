@@ -11,8 +11,6 @@ let raises_error f =
     false
   with Sinter_bridge.Error _ -> true
 
-(* Every input gives a value or an Error, so anything else that comes
-   out of the decoder reaches QCheck as an error of the test. *)
 let gives_a_value_or_an_error f =
   match f () with _ -> true | exception Sinter_bridge.Error _ -> true
 
@@ -66,7 +64,6 @@ let decode_tree_is_total =
     ~print:Generators.print_buffer Generators.buffer_bytes (fun buffer ->
       gives_a_value_or_an_error (fun () -> Sinter_bridge.Decode.tree buffer))
 
-(* The bytes of a counterexample, as the property printed them. *)
 let of_hex text =
   String.init
     (String.length text / 2)
@@ -79,16 +76,12 @@ let error_message f =
     "no failure"
   with Sinter_bridge.Error message -> message
 
-(* The counterexample of "decode_tree raises Error on a damaged parse
-   tree buffer": one record whose text is the one byte 0xFF. *)
 let rejects_a_parse_tree_that_is_not_utf_8 () =
   let buffer = of_hex "5342523101000000010000000000000001000000ff" in
   Alcotest.(check string)
     "the message names the parse tree" "the parse tree is not UTF-8 text"
     (error_message (fun () -> Sinter_bridge.Decode.tree buffer))
 
-(* A digest buffer with two records is the header and 64 bytes. The
-   decoder names the count it found. *)
 let names_the_count_of_a_digest_buffer_with_two_records () =
   let one = Generators.encode_digest (String.make 32 '\001') in
   let buffer = Bytes.of_string (one ^ String.make 32 '\002') in
@@ -100,8 +93,6 @@ let names_the_count_of_a_digest_buffer_with_two_records () =
     (error_message (fun () ->
          Sinter_bridge.Decode.digest (Bytes.to_string buffer)))
 
-(* A digest buffer with 31 bytes after its header is one byte short,
-   and the decoder names where the record should end. *)
 let names_the_end_of_a_digest_that_is_one_byte_short () =
   let whole = Generators.encode_digest (String.make 32 '\001') in
   let buffer = String.sub whole 0 (String.length whole - 1) in
@@ -111,9 +102,6 @@ let names_the_end_of_a_digest_that_is_one_byte_short () =
      the buffer holds 47 bytes"
     (error_message (fun () -> Sinter_bridge.Decode.digest buffer))
 
-(* The header is sixteen bytes. A buffer of fifteen is short by one,
-   and the decoder says so rather than read a field that is not
-   there. *)
 let rejects_a_buffer_one_byte_shorter_than_the_header () =
   let whole = Bridge_buffers.encode_captures [] in
   let buffer = String.sub whole 0 (String.length whole - 1) in
@@ -124,9 +112,6 @@ let rejects_a_buffer_one_byte_shorter_than_the_header () =
      header"
     (error_message (fun () -> Sinter_bridge.Decode.captures buffer))
 
-(* The message of a buffer that does not end where its records end
-   names two numbers, and the second is the length of the buffer
-   itself. *)
 let names_the_length_of_a_buffer_with_bytes_after_its_records () =
   let buffer = Bridge_buffers.encode_captures [] ^ "\000" in
   Alcotest.(check string)

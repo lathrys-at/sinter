@@ -5,7 +5,6 @@ open Sinter_core
 
 let manifest = "[scan]\npacks.markdown.files = [\"**/*.md\"]\n"
 
-(* A repository with one commit on main that holds [files]. *)
 let repository files =
   let repo = Git_fixture.init () in
   List.iter (fun (path, content) -> Git_fixture.write repo path content) files;
@@ -46,10 +45,6 @@ let ledger =
    as open; fetch it with git fetch origin \
    refs/sinter/ledger:refs/sinter/ledger"
 
-(* One repository for the tests that only read the outcome of its scan,
-   with a flag that says whether the file [caf\xe9.md] exists. Its working
-   tree differs from its commit: [lib/gone.ml] is deleted, [lib/mode.sh]
-   changed its mode alone, and [caf\xe9.md] and [binary.md] are new. *)
 let shared =
   lazy
     (let repo =
@@ -70,7 +65,6 @@ let shared =
      in
      Sys.remove (Filename.concat (Git_fixture.root repo) "lib/gone.ml");
      Git_fixture.make_executable repo "lib/mode.sh";
-     (* The file system of macOS holds no name that is not UTF-8. *)
      let odd_name =
        match Git_fixture.write repo "caf\xe9.md" "# C\n\n@req cafe\n" with
        | () -> true
@@ -123,8 +117,6 @@ let a_file_that_is_not_utf_8_text_gives_no_fact () =
     "the declaration of docs/a.md alone" [ "req:a" ]
     (List.filter (fun id -> String.starts_with ~prefix:"req:" id) (ids records))
 
-(* The tree. *)
-
 let load ?base repo =
   match
     Scan.load ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
@@ -135,7 +127,6 @@ let load ?base repo =
       Alcotest.failf "the load fails: %s"
         (String.concat "; " (Scan.messages error))
 
-(* The tree of the shared repository, with no base. *)
 let shared_tree =
   lazy
     (let repo, _, _ = Lazy.force shared in
@@ -193,9 +184,6 @@ let a_deleted_file_changes_the_tree_and_a_new_mode_does_not () =
        (fun id -> Option.map (fun value -> value = Jsonl.bool true) (done_ id))
        [ "step:p/gone"; "step:p/mode" ])
 
-(* A repository of two commits, scanned from the first, with a manifest
-   outside the repository: the path of the manifest, the first commit,
-   and the outcome. *)
 let outside =
   lazy
     (let repo = repository [ ("a.md", "# A\n") ] in
@@ -262,8 +250,6 @@ let a_file_that_does_not_read_is_an_error () =
           Alcotest.(check string) "the file" "a.md" file
       | Ok _ | Error _ -> Alcotest.fail "the scan does not fail on the file")
 
-(* Paths. *)
-
 let a_byte_outside_utf_8_shows_as_hex () =
   Alcotest.(check (list string))
     "the shown paths"
@@ -297,18 +283,8 @@ let a_plan_file_needs_the_pack_markdown_when_it_names_none () =
      \".plans/\" to its files"
     (failure (scan ~manifest:path repo))
 
-(* The command. *)
-
-(* Dune runs the suite in the build copy of test/, and the executable
-   sits beside it in the build copy of bin/. *)
 let sinter = Filename.concat (Sys.getcwd ()) "../bin/main.exe"
 
-(* A run of the command [command] in the shared repository whose
-   standard output is a pipe that nobody reads, with SIGPIPE ignored, so
-   that the first write fails: the exit status and what the run wrote to
-   standard error. The run gets the environment of the repository with
-   the HOME of the suite, where wasmtime keeps its cache of compiled
-   grammars. *)
 let into_a_closed_pipe command =
   let repo, _, _ = Lazy.force shared in
   let environment =
@@ -380,8 +356,6 @@ let a_check_that_cannot_write_its_output_says_so () =
         @ [ "cannot write the output: Broken pipe" ]) )
     ( status,
       List.filter (fun line -> line <> "") (String.split_on_char '\n' errors) )
-
-(* Messages. *)
 
 let each_error_says_what_is_wrong () =
   let manifest_error =

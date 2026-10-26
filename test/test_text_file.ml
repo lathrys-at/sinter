@@ -7,8 +7,6 @@ let property ?(count = 500) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count ~name ~print generator check)
 
-(* Put [content] in a file of its own, and run [use] on the path of
-   that file. The file is gone when [use] returns. *)
 let in_a_file content use =
   let path = Filename.temp_file "sinter-text-file" ".txt" in
   Fun.protect

@@ -1,14 +1,6 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* The name of the grammar in a wasm module. The bridge needs the name,
-   and the module carries it: a grammar exports one function whose
-   name is "tree_sitter_" and the name of the grammar.
-
-   The reader below walks the section list of the module and reads the
-   export section. Every count and every length in that format is an
-   unsigned LEB128 integer. A module that the reader cannot follow
-   gives None; the loader then reports what is wrong with it. *)
 let of_wasm wasm =
   let length = String.length wasm in
   let prefix = "tree_sitter_" in
@@ -46,17 +38,12 @@ let of_wasm wasm =
       match name offset with
       | None -> None
       | Some (found, offset) -> (
-          if
-            (* One byte for the kind of the export, then its index. *)
-            offset >= stop
-          then None
+          if offset >= stop then None
           else if String.starts_with ~prefix found then
             let name =
               String.sub found (String.length prefix)
                 (String.length found - String.length prefix)
             in
-            (* The bridge takes the name as a C string, and a module
-               can export a name that holds a NUL byte. *)
             if String.contains name '\000' then None else Some name
           else
             match
@@ -101,8 +88,6 @@ let of_wasm wasm =
   then None
   else
     match section 8 with
-    (* The bridge loads a grammar under a C string, so a name that
-       holds a NUL byte is no name at all. *)
     | Some name when String.contains name '\000' -> None
     | found -> found
 

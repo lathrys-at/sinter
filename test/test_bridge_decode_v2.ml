@@ -18,8 +18,6 @@ let error_message f =
 
 let malformed reason = "the bridge returned a malformed buffer: " ^ reason
 
-(* The five family decoders of a failure, each as a function that
-   gives back a failure of the test's own type. *)
 let families =
   [
     ("language", fun b -> Bridge_buffers.Language (Decode.language_error b));
@@ -53,8 +51,6 @@ let a_response_comes_back =
     Bridge_buffers.response
     (fun (bytes, buffer) -> String.equal (Decode.response buffer) bytes)
 
-(* The decoder of the family of a failure gives it back, and the
-   decoder of every other family raises Error. *)
 let a_failure_comes_back_from_its_own_family =
   property ~name:"a failure comes back from the decoder of its family only"
     ~print:Bridge_buffers.print_failure Bridge_buffers.failure
@@ -101,8 +97,6 @@ let every_decoder_is_total =
              gives_a_value_or_an_error (fun () -> decode buffer))
            families)
 
-(* A header of [kind] for one record, and then the 32-bit words of
-   [words]. *)
 let buffer ~kind words =
   let b = Buffer.create 64 in
   Buffer.add_string b "SBR1";
@@ -234,8 +228,6 @@ let refuses_a_missing_export_with_two_names () =
     (malformed "an adapter error of cause 2 holds 2 names")
     (error_message (fun () -> Decode.adapter_error b))
 
-(* A size of 2^63 or more reads as a negative int64, and a size above
-   max_int does not fit an int. *)
 let refuses_a_size_that_does_not_fit_an_int () =
   let with_size size =
     let b = Bytes.of_string (buffer ~kind:5 [ 11; 0; 0 ]) in

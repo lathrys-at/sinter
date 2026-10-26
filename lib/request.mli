@@ -4,8 +4,7 @@
 (* @cites json-handling *)
 
 (** One request of the serve mode. A request is one line of JSON. This module
-    reads such a line and gives a value that the rest of the library can use. It
-    is the only module that reads JSON. *)
+    reads such a line and gives a value that the rest of the library can use. *)
 
 type rid =
   | Text of string

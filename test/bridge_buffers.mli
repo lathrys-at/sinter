@@ -8,11 +8,9 @@
 (** The content of a buffer of a failure. *)
 type failure =
   | Internal of string  (** an internal fault, with its message *)
-  | Language of Sinter_bridge.Language.error
-      (** never [Name_not_utf_8], which the bridge does not write *)
+  | Language of Sinter_bridge.Language.error  (** never [Name_not_utf_8] *)
   | Tree of Sinter_bridge.Tree.error
-  | Query of Sinter_bridge.Query.error
-      (** never [Not_utf_8], which the bridge does not write *)
+  | Query of Sinter_bridge.Query.error  (** never [Not_utf_8] *)
   | Run of Sinter_bridge.Query.run_error
   | Adapter of Sinter_bridge.Adapter.error
 

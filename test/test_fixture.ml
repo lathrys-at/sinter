@@ -11,8 +11,6 @@ let error =
 
 let outcome = Alcotest.(result (list string) error)
 
-(* Writes each file of [files] under [root], with its folders. A path
-   that ends with a slash names an empty folder. *)
 let write_files root files =
   let rec make_folder path =
     if not (Sys.file_exists path) then (
@@ -30,12 +28,8 @@ let write_files root files =
     files
 
 let read path = In_channel.with_open_bin path In_channel.input_all
-
-(* The args of a run of sh that runs [script], which is one line. *)
 let script text = "-c\n" ^ text ^ "\n"
 
-(* The entries of a case that runs [script] in an empty tree and
-   expects [stdout], [stderr], and [exit]. *)
 let case_files ?(stdout = "") ?(stderr = "") ?(exit = "0\n") text =
   [
     ("args", script text);
@@ -45,8 +39,6 @@ let case_files ?(stdout = "") ?(stderr = "") ?(exit = "0\n") text =
     ("expected/exit", exit);
   ]
 
-(* Calls [f] with the path of a case folder named "case" that holds
-   [files]. *)
 let with_case files f =
   Fixture.with_temporary_folder (fun folder ->
       let case = Filename.concat folder "case" in
@@ -58,8 +50,6 @@ let run ?bound ?(mode = Fixture.Compare) case =
 
 let check_run name expected files =
   with_case files (fun case -> Alcotest.check outcome name expected (run case))
-
-(* Runs. *)
 
 let a_case_whose_output_matches_passes () =
   check_run "the case passes" (Ok [])
@@ -248,8 +238,6 @@ let a_run_removes_its_temporary_folder () =
       let temporary = Filename.concat folder "tmp" in
       let case = Filename.concat folder "case" in
       write_files case (case_files "echo x > f");
-      (* The first run of the process makes the shared cache folder,
-         which outlives the run. *)
       Alcotest.check outcome "a first run passes" (Ok []) (run case);
       Sys.mkdir temporary 0o755;
       let previous = Filename.get_temp_dir_name () in
@@ -261,8 +249,6 @@ let a_run_removes_its_temporary_folder () =
       Alcotest.(check (array string))
         "the temporary folder is empty" [||] (Sys.readdir temporary))
 
-(* The value of the key directory in the configuration of wasmtime at
-   [place] under HOME, in a shell script. *)
 let cache_directory place =
   Printf.sprintf "sed -n 's/^directory = \"\\(.*\\)\"$/\\1/p' \"$HOME/%s\""
     place
@@ -295,8 +281,6 @@ let every_run_shares_the_cache_folder_of_wasmtime () =
           "d=$(%s); test -f \"$d/mark\" && rm \"$d/mark\" && echo found"
           directory))
 
-(* Dune runs the suite in the build copy of test/, and the executable
-   sits beside it in the build copy of bin/. *)
 let sinter = Filename.concat (Sys.getcwd ()) "../bin/main.exe"
 
 let json_grammar =
@@ -336,10 +320,6 @@ let a_run_that_a_signal_ends_fails_the_case () =
   check_run "a signal ended the run"
     (Error (Fixture.Ended_by_signal Sys.sigkill)) (case_files "kill -9 $$")
 
-(* Entries. *)
-
-(* The commit id covers the files, the author, the committer, the
-   dates, and the message, and nothing of the machine. *)
 let a_case_with_repository_runs_in_a_commit_of_the_tree () =
   check_run "the run starts in a clean repository on main, at a fixed commit"
     (Ok [])
@@ -445,8 +425,6 @@ let a_case_that_is_not_a_folder_fails () =
       Alcotest.check outcome "the case is not a folder"
         (Error Fixture.Not_a_folder) (run case))
 
-(* Promotion. *)
-
 let promoted = script "echo out; echo err >&2; exit 4"
 
 let promotion_writes_the_output_into_the_expected_files () =
@@ -542,8 +520,6 @@ let promotion_needs_the_variable_set_to_1 () =
   | Ok _ -> Alcotest.fail "1 without a source tree is not an error"
   | Error _ -> ()
 
-(* Discovery. *)
-
 let each_entry_of_the_folder_of_cases_is_one_test () =
   Fixture.with_temporary_folder (fun folder ->
       write_files folder [ ("b-case/", ""); ("a-case/", ""); ("stray", "") ];
@@ -577,15 +553,12 @@ let a_failed_git_command_shows_its_arguments_and_output () =
        (Fixture.Git_failed
           { arguments = [ "log"; "--oneline" ]; output = "fatal: no commit\n" }))
 
-(* Diff cases. *)
-
 let base =
   [ ("base/gone", "gone\n"); ("base/kept", "old\n"); ("base/same", "same\n") ]
 
 let tree =
   [ ("tree/kept", "new\n"); ("tree/same", "same\n"); ("tree/added", "added\n") ]
 
-(* Calls [f] with a repository built from [base] and [tree]. *)
 let with_diff_repository f =
   Fixture.with_temporary_folder (fun folder ->
       write_files folder (base @ tree);
@@ -633,9 +606,6 @@ let a_diff_case_commits_base_and_leaves_tree_uncommitted () =
             "a failed git command gives its arguments" [ "no-such-command" ]
             arguments
       | _ -> Alcotest.fail "a failed git command gave no Git_failed");
-      (* The id covers the files, the parents, the author, the
-         committer, the dates, and the message, and nothing of the
-         machine. *)
       Alcotest.(check string)
         "the commit has a fixed id" "b56f0ae3aaed63f1debb346e4a8955635c4d2aa4\n"
         (git repository [ "rev-parse"; "HEAD" ]))

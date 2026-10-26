@@ -18,9 +18,6 @@ let is_bad = function
       true
   | _ -> false
 
-(* [component name start] checks the component of [name] that starts
-   at [start], and gives the offset of the '/' or of the end of
-   [name] that closes it. *)
 let component name start =
   let length = String.length name in
   let rec scan i last =

@@ -8,7 +8,6 @@ let citation_words =
 
 let promise_words = declaration_words @ citation_words
 
-(* The kinds of declaration that a status word applies to. *)
 let status_kinds = function
   | "deprecated" -> declaration_words
   | "rejected" | "deferred" -> [ "decision" ]
@@ -27,7 +26,6 @@ let trim text =
   let rec first index =
     if index < length && is_blank text.[index] then first (index + 1) else index
   in
-  (* [text.[start]] is not blank, so the search back stops there. *)
   let rec last index =
     if is_blank text.[index] then last (index - 1) else index
   in
@@ -35,10 +33,6 @@ let trim text =
   if start = length then ""
   else String.sub text start (last (length - 1) - start + 1)
 
-(* The tag target and the hash of the text after an [@ack] word: the
-   hash is its last token, and the tag target is everything before it,
-   without the spaces and tabs at its ends. A token is a run of
-   characters that are neither a space nor a tab. *)
 let ack_parts rest =
   let text = trim rest in
   let blank =
@@ -47,7 +41,6 @@ let ack_parts rest =
     | (Some _ as one), None | None, (Some _ as one) -> one
     | None, None -> None
   in
-  (* [text.[0]] is not blank, so the search back stops after it. *)
   let rec target_end index =
     if is_blank text.[index - 1] then target_end (index - 1) else index
   in
@@ -57,15 +50,11 @@ let ack_parts rest =
         String.sub text (blank + 1) (String.length text - blank - 1) ))
     blank
 
-(* The globs of the text after a [@scope] word: the parts between
-   commas, without the spaces and tabs at their ends, empty parts left
-   out. *)
 let globs rest =
   List.filter
     (fun glob -> not (String.equal glob ""))
     (List.map trim (String.split_on_char ',' rest))
 
-(* The path set of the valid members of [globs]. *)
 let path_set globs =
   let members = List.sort_uniq String.compare globs in
   match Path_set.of_strings members with
@@ -85,8 +74,6 @@ let path_set globs =
       | Ok set -> set
       | Error _ -> Path_set.empty)
 
-(* {1 The facts} *)
-
 type declaration = {
   kind : string;
   slug : string;
@@ -102,9 +89,8 @@ type declaration = {
 let declaration_id (declaration : declaration) =
   declaration.kind ^ ":" ^ declaration.slug
 
-(* What the tag target of an edge resolves to. *)
 type target =
-  | Declaration of int  (** the index in [declarations] *)
+  | Declaration of int
   | Ref of { ns : string; id : string }
   | Unresolved of { dangling : bool }
 
@@ -113,7 +99,7 @@ type edge = {
   path : string;
   span : Markdown.span;
   src : string;
-  source : int option;  (** the index of the source in [declarations] *)
+  source : int option;
   target_text : string;
   rev : int option;
   desc : string;
@@ -161,18 +147,14 @@ type plan = {
 type t = {
   manifest : Manifest.t;
   declarations : declaration array;
-  inforce : bool array;  (** whether each declaration is in force *)
+  inforce : bool array;
   retirers : int list array;
-      (** the sources of the live supersedes edges that point at each
-          declaration *)
   edges : edge list;
-  targets : target list;  (** the target of each edge, in the same order *)
+  targets : target list;
   sites : site list;
   acks : ack list;
   plans : plan list;
 }
-
-(* {1 Files that are not plan files} *)
 
 let site_id path (section : Markdown.section) =
   match section.heading with
@@ -182,16 +164,10 @@ let site_id path (section : Markdown.section) =
 let is_citation (tag : Markdown.tag) =
   List.mem tag.word citation_words && Option.is_some tag.target
 
-(* The facts of one file that is not a plan file. A declaration of the
-   kind [rule] is in the result too, so that the edges in its extent
-   have a source, but it gives no record. [base] is the number of the
-   declarations of the files before this one. *)
 let ordinary_file ~base ~path (document : Markdown.t) =
   let tags = document.tags in
   let count = Array.length tags in
   let indices = List.init count Fun.id in
-  (* Each declaration, by the index of its tag, with its index in the
-     declarations of the whole tree. *)
   let numbers =
     List.mapi
       (fun n index -> (index, base + n))
@@ -205,8 +181,6 @@ let ordinary_file ~base ~path (document : Markdown.t) =
     let tag = tags.(index) in
     tag.word ^ ":" ^ Option.value tag.target ~default:""
   in
-  (* [site.(index)] is the span of the first citation of the section
-     [index] outside every extent, when the section has one. *)
   let site = Array.make (Array.length document.sections) None in
   Array.iter
     (fun (tag : Markdown.tag) ->
@@ -216,8 +190,6 @@ let ordinary_file ~base ~path (document : Markdown.t) =
         && Option.is_none site.(tag.section)
       then site.(tag.section) <- Some tag.span)
     tags;
-  (* The status of each declaration: the first status tag of its block
-     whose extent is its own and whose word applies to its kind. *)
   let status = Array.make count None in
   Array.iter
     (fun (tag : Markdown.tag) ->
@@ -229,8 +201,6 @@ let ordinary_file ~base ~path (document : Markdown.t) =
           status.(index) <- Some tag.word
       | Some _ | None -> ())
     tags;
-  (* The last declaration of the block [block], which takes its
-     trailing prose. *)
   let last block =
     List.fold_left
       (fun found index -> if List.mem index declared then Some index else found)
@@ -304,9 +274,6 @@ let ordinary_file ~base ~path (document : Markdown.t) =
         Option.map
           (fun citation ->
             let section = document.sections.(index) in
-            (* A section that holds a citation outside every extent
-               keeps the line of the citation in its extent, so the
-               extent is never [None] here. *)
             let span =
               match (section.first_paragraph, section.extent) with
               | Some span, _ | None, Some span -> span
@@ -356,10 +323,6 @@ let ordinary_file ~base ~path (document : Markdown.t) =
   in
   (declarations, edges, sites, acks)
 
-(* {1 Plan files} *)
-
-(* The index of the tag of the word [plan] in the first block of
-   [document], when [path] is under [.plans/]. *)
 let plan_tag ~path (document : Markdown.t) =
   if
     String.starts_with ~prefix:".plans/" path
@@ -370,7 +333,6 @@ let plan_tag ~path (document : Markdown.t) =
       document.blocks.(0).tags
   else None
 
-(* The globs of the first [@scope] tag of [indices]. *)
 let first_scope (document : Markdown.t) indices =
   List.find_map
     (fun index ->
@@ -378,16 +340,12 @@ let first_scope (document : Markdown.t) indices =
       if String.equal tag.word "scope" then Some (globs tag.rest) else None)
     indices
 
-(* The index of the section of level 2 that holds the section [index],
-   or that is that section. A section of level 0 or 1 has no such
-   section above it. *)
 let rec step_section (document : Markdown.t) index =
   let section = document.sections.(index) in
   match section.level with
   | 2 -> Some index
   | _ -> Option.bind section.parent (step_section document)
 
-(* The promises of the tags [indices], each word and target once. *)
 let promises_of (document : Markdown.t) indices =
   List.rev
     (List.fold_left
@@ -456,9 +414,6 @@ let plan_file ~path (document : Markdown.t) plan_index =
         }
   | Some _ | None -> None
 
-(* {1 Resolution} *)
-
-(* The order of the records of declarations. *)
 let compare_declarations (a : declaration) (b : declaration) =
   compare
     (a.kind, a.path, a.span.start.line, a.span.start.column)
@@ -467,8 +422,6 @@ let compare_declarations (a : declaration) (b : declaration) =
 module Slugs = Map.Make (String)
 
 let resolve manifest (declarations : declaration array) edges =
-  (* The first declaration of each citable slug, in the order of the
-     records. *)
   let by_slug =
     List.fold_left
       (fun map index ->
@@ -501,23 +454,15 @@ let resolve manifest (declarations : declaration array) edges =
           | None -> Unresolved { dangling = Slug.is_valid text }))
     edges
 
-(* {1 In force} *)
-
-(* Whether the declaration [index] is approved: its kind needs no
-   approval. *)
 let approved manifest (declarations : declaration array) index =
   match manifest_kind declarations.(index).kind with
   | Some kind -> not (List.mem kind (Manifest.approval_required manifest))
   | None -> true
 
-(* Whether a supersedes edge whose source is the declaration [index] is
-   live: the source has no status and is approved. *)
 let live_source manifest (declarations : declaration array) index =
   Option.is_none declarations.(index).status
   && approved manifest declarations index
 
-(* The sources of the live supersedes edges that point at each
-   declaration. *)
 let retirers manifest (declarations : declaration array) edges targets =
   let found = Array.make (Array.length declarations) [] in
   List.iter2
@@ -530,9 +475,6 @@ let retirers manifest (declarations : declaration array) edges targets =
     edges targets;
   found
 
-(* Whether each declaration is in force: it has no status, and either
-   no live supersedes edge points at it or it is on a cycle of
-   supersedes edges. [retirers] is as {!retirers} gives it. *)
 let in_force ~retirers (declarations : declaration array) edges targets =
   let count = Array.length declarations in
   let superseded = Array.make count [] in
@@ -543,8 +485,6 @@ let in_force ~retirers (declarations : declaration array) edges targets =
           superseded.(source) <- target :: superseded.(source)
       | _ -> ())
     edges targets;
-  (* A declaration is on a cycle when it reaches itself along the
-     edges. *)
   let on_cycle node =
     let rec search seen = function
       | [] -> false
@@ -602,10 +542,6 @@ let needs_changes facts =
       List.exists (fun (step : step) -> step.promises = []) plan.steps)
     facts.plans
 
-(* {1 Records} *)
-
-(* A located record and its key of order: the kind, the path, the line,
-   the column, and the id. *)
 type fact = {
   key : string * string * int * int * string;
   record : Jsonl.record;
@@ -634,11 +570,8 @@ let optional name = function None -> [] | Some value -> [ (name, value) ]
 let text_unless_empty name text =
   if String.equal text "" then [] else [ (name, Jsonl.string text) ]
 
-(* The canonical JSON text of an array of strings. *)
 let json_strings strings =
   let wrapped = Jsonl.to_string [ ("a", Jsonl.strings strings) ] in
-  (* A record of the one key [a] is written as {"a": and the array and
-     the closing brace. *)
   String.sub wrapped 5 (String.length wrapped - 6)
 
 let canonical globs = List.sort_uniq String.compare globs
@@ -741,7 +674,6 @@ let edge_records facts =
         else []))
     facts.edges facts.targets
 
-(* The records of the refs that the edges resolve to, sorted by id. *)
 let ref_records facts =
   List.map
     (fun (id, (ns, ref_id)) ->
@@ -786,11 +718,6 @@ let ack_records facts =
         ])
     facts.acks
 
-(* The facts that would discharge [promise], each with its id and its
-   path, in the order of their paths and places. A declaration counts
-   when its kind is the word of the promise. An edge counts when its tag
-   target resolves and it is not suspect. A [verifies] edge in markdown
-   is at the rung orphan, which discharges no promise. *)
 type residue = { id : string; path : string; span : Markdown.span }
 
 let residue facts (promise : promise) =
@@ -951,10 +878,6 @@ module Indices = Set.Make (Int)
 
 let successors facts index =
   let declarations = facts.declarations in
-  (* [walk reached nodes] is [reached] and the declarations that the
-     walk reaches from [nodes]. The walk goes from a declaration to the
-     sources of the live supersedes edges that point at it, and stops at
-     a declaration in force. *)
   let rec walk reached = function
     | [] -> reached
     | node :: rest ->
@@ -976,7 +899,6 @@ let successors facts index =
         declarations.(b).path,
         declarations.(b).span.start.line )
   in
-  (* Of the declarations that share an id, the first in this order. *)
   List.rev
     (List.fold_left
        (fun found node ->

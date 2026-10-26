@@ -94,7 +94,6 @@ let case_always_matters () =
 let every_other_character_matches_itself () =
   check_match "a-b_c+d!e" "a-b_c+d!e" true;
   check_match "a-b_c+d!e" "a-b_c+d!f" false;
-  (* "\xc3\xa9" is U+00E9. *)
   check_match "*\xc3\xa9" "caf\xc3\xa9" true
 
 let to_string_gives_the_text_back () =
@@ -223,8 +222,6 @@ let each_error_has_its_message () =
         (Glob.message (Glob.Double_star_in_segment { offset = 0; segment })))
     [ "**"; "*"; ""; "a*b" ]
 
-(* A second reading of the rules, written for the test, to compare
-   with the module on generated globs and paths. *)
 let rec star_match pattern i name j =
   if i = String.length pattern then j = String.length name
   else if pattern.[i] = '*' then
@@ -312,9 +309,6 @@ let matches_agrees_with_a_second_reading =
     Gen.(pair valid_glob path)
     (fun (text, path) -> matches text path = reference_matches text path)
 
-(* The errors of a string by the rules, each with its offset. On one
-   offset, an error of the whole segment comes before an error of one
-   character. *)
 let reference_error text =
   if text = "" then Some Glob.Empty
   else if text.[0] = '/' then Some Glob.Leading_slash
@@ -403,8 +397,6 @@ let matches_answers_any_path =
     ~print:QCheck2.Print.(pair string string)
     Gen.(pair valid_glob (string_size (0 -- 12)))
     (fun (text, path) -> matches text path || true)
-
-(* Path sets. *)
 
 let path_set members =
   match Path_set.of_strings members with

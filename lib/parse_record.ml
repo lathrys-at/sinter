@@ -4,10 +4,6 @@
 type field = Capture_name | Node_type | Node_text
 type error = Path_not_utf_8 | Not_utf_8 of field
 
-(* A record holds an end line that is inclusive and an end column that
-   is exclusive. tree-sitter gives an end point where both are
-   exclusive, so a node that ends at the start of a row ends, for a
-   record, at the end of the row before it. *)
 let end_of_range source (range : Sinter_bridge.range) =
   if range.end_column = 0 && range.end_row > range.start_row then
     let line_start =
@@ -21,8 +17,8 @@ let end_of_range source (range : Sinter_bridge.range) =
   else (range.end_row + 1, range.end_column + 1)
 
 (* @cites json-handling *)
-(* Every string of a record is UTF-8. The path comes first, so that the
-   message of a failure names a file the reader can read. *)
+(* Every string of a record is UTF-8. The function checks the path first,
+   then the capture name, the node type, and the text. *)
 let first_not_utf_8 ~path (capture : Sinter_bridge.Query.capture) =
   let valid = Sinter_bridge.Utf_8.is_valid in
   if not (valid path) then Some Path_not_utf_8
@@ -33,14 +29,7 @@ let first_not_utf_8 ~path (capture : Sinter_bridge.Query.capture) =
 
 (* @cites json-handling *)
 (* @cites exit-codes-by-gate *)
-(* The text of a capture is not normalized to Unicode NFC.
-
-   This function fails in two ways, and the two are of different
-   kinds. A byte range outside the source can only be a fault of the
-   tool, because the same string is the source of the parse and the
-   source of the record; so it breaks a precondition and ends the
-   command. A string that is not UTF-8 can be a fault of the data the
-   tool was given; so it is an error of the run. *)
+(* The text of a capture is not normalized to Unicode NFC. *)
 let of_capture ~path ~source (capture : Sinter_bridge.Query.capture) =
   let range = capture.range in
   if

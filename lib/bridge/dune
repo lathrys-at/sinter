@@ -11,20 +11,12 @@
  (foreign_archives sinter_bridge)
  (c_library_flags
   (:include link_flags.sexp))
- ; The crate builds a static library and no shared library, so this
- ; library has no bytecode mode, and so has every library and
- ; executable that depends on it.
  (modes native)
  (instrumentation
   (backend bisect_ppx))
  (instrumentation
   (backend mutaml)))
 
-; This rule runs cargo and copies the static library of the crate
-; here, where (foreign_archives) finds it. The same cargo run reports
-; the system libraries that the static link needs, and build.sh writes
-; them to link_flags.sexp.
-;
 ; @cites rust-bridge
 ; Cargo's build output stays outside _build, in a directory of its own
 ; for each checkout. build.sh chooses it; the second argument below is

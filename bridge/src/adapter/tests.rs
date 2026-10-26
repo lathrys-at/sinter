@@ -6,7 +6,6 @@
 use super::*;
 use crate::failure::CAUSE_NOT_A_MODULE;
 
-/// An unsigned LEB128 number.
 fn leb(mut value: u64) -> Vec<u8> {
     let mut bytes = Vec::new();
     loop {
@@ -20,7 +19,6 @@ fn leb(mut value: u64) -> Vec<u8> {
     }
 }
 
-/// A signed LEB128 number.
 fn sleb(mut value: i64) -> Vec<u8> {
     let mut bytes = Vec::new();
     loop {
@@ -35,7 +33,6 @@ fn sleb(mut value: i64) -> Vec<u8> {
     }
 }
 
-/// A count, and then the items.
 fn list(items: &[Vec<u8>]) -> Vec<u8> {
     let mut bytes = leb(items.len() as u64);
     for item in items {
@@ -48,13 +45,11 @@ fn name(text: &str) -> Vec<u8> {
     [leb(text.len() as u64), text.as_bytes().to_vec()].concat()
 }
 
-/// A section with its identifier, its size, and the list of items.
 fn section(identifier: u8, items: &[Vec<u8>]) -> Vec<u8> {
     let body = list(items);
     [vec![identifier], leb(body.len() as u64), body].concat()
 }
 
-/// The limits of a memory or a table.
 fn limits(minimum: u32, maximum: Option<u32>) -> Vec<u8> {
     match maximum {
         None => [vec![0x00], leb(minimum.into())].concat(),
@@ -74,14 +69,10 @@ fn i64_const(value: i64) -> Vec<u8> {
     [vec![0x42], sleb(value)].concat()
 }
 
-/// The constant that a function returns to give the response at
-/// `address` with `length` bytes.
 fn response(address: u32, length: u32) -> Vec<u8> {
     i64_const(((u64::from(address) << 32) | u64::from(length)) as i64)
 }
 
-/// A function of a module, with its type and its body, without the
-/// final `end`.
 #[derive(Clone)]
 struct ModuleFunction {
     export: Option<&'static str>,
@@ -109,14 +100,11 @@ pub(crate) struct Wasm {
     memories: Vec<(u32, Option<u32>)>,
     tables: Vec<u32>,
     globals: Vec<Vec<u8>>,
-    /// The exports other than the functions: a name, a kind, an index.
     exports: Vec<(&'static str, u8, u32)>,
     data: Vec<(i32, Vec<u8>)>,
 }
 
-/// The index of the function `sinter_alloc` in `Wasm::good`.
 const ALLOC: usize = 1;
-/// The index of the function `sinter_recognise` in `Wasm::good`.
 const RECOGNISE: usize = 2;
 /// The index of the function `sinter_bind` in `Wasm::good`.
 pub(crate) const BIND: usize = 3;
@@ -124,8 +112,6 @@ pub(crate) const BIND: usize = 3;
 /// The response of `sinter_recognise` in `Wasm::good`, at byte 16.
 pub(crate) const RECOGNISED: &[u8] = b"{\"recognised\":true}";
 
-/// Echo the report: its address and its length are the third and the
-/// fourth parameter.
 fn echo_report() -> Vec<u8> {
     [
         vec![0x20, 2, 0xad],
@@ -136,9 +122,6 @@ fn echo_report() -> Vec<u8> {
 }
 
 impl Wasm {
-    /// A valid adapter. `sinter_alloc` hands out memory from a global
-    /// that starts at `next`; `sinter_recognise` gives the bytes of
-    /// `RECOGNISED`; `sinter_bind` gives the report back.
     fn with_next(next: i32) -> Wasm {
         let alloc = [vec![0x23, 0, 0x23, 0, 0x20, 0, 0x6a, 0x24, 0]].concat();
         Wasm {
@@ -251,12 +234,10 @@ impl Wasm {
     }
 }
 
-/// A length, and then the bytes.
 fn name_bytes(content: &[u8]) -> Vec<u8> {
     [leb(content.len() as u64), content.to_vec()].concat()
 }
 
-/// A runtime that counts fuel, as the bridge makes for adapters.
 fn engine() -> Engine {
     let mut config = wasmtime::Config::new();
     config.consume_fuel(true);
@@ -271,7 +252,6 @@ fn load_wasm(wasm: &Wasm) -> Result<Adapter, Failure> {
     load(&engine(), &wasm.bytes(), FUEL, MEMORY)
 }
 
-/// One call of `function` of the module with the limits.
 fn call_with(
     wasm: &Wasm,
     function: Function,
@@ -305,8 +285,6 @@ fn invalid_with(cause: u32, detail: &str) -> Result<Adapter, Failure> {
     })
 }
 
-/// Compare a load with an expected failure: an `Adapter` has no
-/// `PartialEq`.
 fn assert_load_fails(wasm: &Wasm, expected: Result<Adapter, Failure>) {
     match (load_wasm(wasm), expected) {
         (Err(found), Err(expected)) => assert_eq!(found, expected),
@@ -339,8 +317,6 @@ fn bind_gets_the_report_as_written() {
 
 #[test]
 fn bind_gets_the_request_as_written() {
-    // Give the request back: its address and length are the first two
-    // parameters.
     let echo_request = [
         vec![0x20, 0, 0xad],
         i64_const(32),
@@ -362,8 +338,6 @@ fn an_empty_report_is_written_and_given_back() {
 
 #[test]
 fn each_call_runs_in_a_new_instance() {
-    // Copy the byte at 16 to byte 1000, write 'A' at 16, and give byte
-    // 1000. In one instance, the second call would give 'A'.
     let body = [
         i32_const(1000),
         i32_const(16),
@@ -399,8 +373,6 @@ fn bytes_that_are_not_a_module_are_not_valid() {
 #[test]
 fn a_module_that_imports_is_not_valid() {
     let mut wasm = Wasm::good();
-    // Two imports of a table, which shift no index that the module
-    // uses.
     wasm.imports = vec![
         [name("env"), name("g"), vec![0x01, 0x70], limits(0, None)].concat(),
         [name("env"), name("h"), vec![0x01, 0x70], limits(0, None)].concat(),
@@ -451,12 +423,10 @@ fn an_export_of_the_wrong_type_is_not_valid() {
     wasm.functions[BIND].body = response(16, 1);
     assert_load_fails(&wasm, invalid_with(CAUSE_EXPORT_TYPE, "sinter_bind"));
 
-    // The memory exported under another name, and a global as "memory".
     let mut wasm = Wasm::good();
     wasm.exports = vec![("mem", 0x02, 0), ("memory", 0x03, 0)];
     assert_load_fails(&wasm, invalid_with(CAUSE_EXPORT_TYPE, "memory"));
 
-    // A function as "memory".
     let mut wasm = Wasm::good();
     wasm.exports = vec![("memory", 0x00, 0)];
     assert_load_fails(&wasm, invalid_with(CAUSE_EXPORT_TYPE, "memory"));
@@ -482,7 +452,6 @@ fn a_loop_in_the_interface_runs_out_of_fuel_while_the_adapter_loads() {
     assert_load_fails(&wasm, Err(Failure::AdapterOutOfFuel));
 }
 
-/// The least fuel with which `recognise` of the module succeeds.
 fn least_fuel(wasm: &Wasm) -> u64 {
     let adapter = load_wasm(wasm).unwrap();
     let succeeds = |fuel| call(&adapter, Function::Recognise, b"q", b"r", fuel, MEMORY).is_ok();
@@ -502,7 +471,6 @@ fn least_fuel(wasm: &Wasm) -> u64 {
 #[test]
 fn one_limit_of_fuel_covers_both_allocations_and_the_call() {
     let plain = Wasm::good();
-    // Five more pairs of i32.const and drop: each pair costs one unit.
     let mut alloc = plain.functions[ALLOC].body.clone();
     for _ in 0..5 {
         alloc.extend(i32_const(0));
@@ -543,7 +511,6 @@ fn a_growth_past_the_limit_fails_with_the_size_refused() {
         call_with(&wasm, Function::Bind, b"r", FUEL, 2 * PAGE),
         Err(Failure::AdapterMemoryLimit(101 * PAGE))
     );
-    // Under a limit that holds the growth, the call succeeds.
     assert_eq!(
         call_with(&wasm, Function::Bind, b"r", FUEL, 101 * PAGE).unwrap(),
         b"r"
@@ -600,7 +567,6 @@ fn an_allocation_at_address_0_fails() {
 
 #[test]
 fn an_allocation_outside_memory_fails() {
-    // The request takes the last 15 bytes, so the report finds no room.
     let wasm = Wasm::with_next(PAGE as i32 - 15);
     assert_eq!(
         bind(&wasm, b"rr"),
@@ -611,7 +577,6 @@ fn an_allocation_outside_memory_fails() {
             memory_size: PAGE,
         })
     );
-    // An address with the high bit set is read as unsigned.
     let wasm = Wasm::good().body(ALLOC, i32_const(-16));
     assert_eq!(
         bind(&wasm, b"r"),
@@ -626,8 +591,6 @@ fn an_allocation_outside_memory_fails() {
 
 #[test]
 fn an_allocation_that_ends_at_the_end_of_memory_succeeds() {
-    // The request takes the last 15 bytes, and the empty report sits at
-    // the end of memory.
     let wasm = Wasm::with_next(PAGE as i32 - 15);
     assert_eq!(bind(&wasm, b"").unwrap(), b"");
 }
@@ -643,8 +606,6 @@ fn a_response_outside_memory_fails() {
             memory_size: PAGE,
         })
     );
-    // An address and a length with the high bit set are read as
-    // unsigned.
     assert_eq!(
         recognise(&at(0xffff_0000, 0x8000_0000)),
         Err(Failure::AdapterResponse {
@@ -653,7 +614,6 @@ fn a_response_outside_memory_fails() {
             memory_size: PAGE,
         })
     );
-    // A response that ends at the end of memory is inside it.
     assert_eq!(recognise(&at(PAGE as u32 - 1, 1)).unwrap(), vec![0]);
 }
 
@@ -673,7 +633,6 @@ fn a_table_at_the_bound_loads_and_a_larger_one_does_not() {
 fn a_table_growth_past_the_bound_fails_in_the_module_and_not_in_the_call() {
     let mut wasm = Wasm::good();
     wasm.tables = vec![0];
-    // ref.null func; i32.const; table.grow 0; drop.
     let grow = [
         vec![0xd0, 0x70],
         i32_const(TABLE_ELEMENTS_MAX as i32 + 1),

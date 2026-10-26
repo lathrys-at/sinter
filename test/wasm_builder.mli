@@ -2,8 +2,7 @@
 (* Copyright 2026 The Sinter Authors *)
 
 (** A builder of WebAssembly modules in the binary format. The tests build
-    runner adapters with it, the valid ones and the ones that break a rule, so
-    that they need no WebAssembly toolchain. *)
+    runner adapters with it, the valid ones and the ones that break a rule. *)
 
 (** {1 The encoding} *)
 

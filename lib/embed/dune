@@ -1,8 +1,5 @@
 ; SPDX-License-Identifier: Apache-2.0
 ; Copyright 2026 The Sinter Authors
 
-; A build tool of the library: it writes the module that embeds the
-; files of the pack markdown. It is not part of the library.
-
 (executable
  (name embed))

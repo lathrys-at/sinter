@@ -16,8 +16,6 @@ type datetime = {
   offset : offset option;
 }
 
-(* [verbatim] is the place of the first character inside the quotes,
-   when the text writes the string as it is on one line. *)
 type node = {
   value : value;
   span : span;
@@ -73,9 +71,6 @@ module Kind = struct
     | Array_of_tables -> "an array of tables"
 end
 
-(* The number of code points in [text] from [first] to [last],
-   exclusive. A byte that is not a continuation byte starts a code
-   point. *)
 let code_points text first last =
   let count = ref 0 in
   for index = first to last - 1 do
@@ -94,11 +89,6 @@ let string_position node i =
         node.verbatim
   | _ -> None
 
-(* The start of each line of a text, as byte offsets. A byte order
-   mark at the start is no part of the first line. [marks.(k)] is the
-   number of code points before the byte [k * mark_every], so that the
-   column of a place costs at most [mark_every] steps, however long its
-   line is. *)
 type lines = { text : string; starts : int array; marks : int array }
 
 let byte_order_mark = "\xEF\xBB\xBF"
@@ -136,17 +126,12 @@ let lines_of text =
     marks = Array.of_list (List.rev !marks);
   }
 
-(* The number of code points before the byte at [offset]. *)
 let code_points_before lines offset =
   let mark = offset / mark_every in
   lines.marks.(mark) + code_points lines.text (mark * mark_every) offset
 
-(* The place of the byte at [offset]. The line is the last line that
-   starts at or before [offset]. *)
 let position lines offset =
   let rec search low high =
-    (* The line [low] starts at or before [offset], and the line [high]
-       starts after it, or does not exist. *)
     if high - low <= 1 then low
     else
       let middle = (low + high) / 2 in
@@ -179,23 +164,17 @@ let is_bare_key_char = function
   | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '_' | '-' -> true
   | _ -> false
 
-(* The character before [at], or a line feed at the start of the text. *)
 let char_before text at = if at > 0 then text.[at - 1] else '\n'
 
-(* The offset of the first of the blanks that end just before [at]. *)
 let rec back_over_blanks text at =
   if is_blank (char_before text at) then back_over_blanks text (at - 1) else at
 
-(* The number of backslashes that end just before [at]. *)
 let backslashes_before text at =
   let rec count at found =
     if char_before text at = '\\' then count (at - 1) (found + 1) else found
   in
   count at 0
 
-(* The start of the key part that ends just before [stop]. A double
-   quote that an odd number of backslashes precede is inside a basic
-   string; the first one that an even number precede opens it. *)
 let part_start text stop =
   match char_before text stop with
   | '"' ->
@@ -216,16 +195,12 @@ let part_start text stop =
       in
       bare stop
 
-(* The start of the dotted key whose part starts at [at]. *)
 let rec dotted_key_start text at =
   let before = back_over_blanks text at in
   if char_before text before = '.' then
     dotted_key_start text (part_start text (back_over_blanks text (before - 1)))
   else at
 
-(* The place of the first character inside the quotes of the string
-   at [start_byte] to [end_byte], when the text between the quotes is
-   [decoded] and holds no line break. *)
 let verbatim lines ~start_byte ~end_byte decoded =
   let raw = String.sub lines.text start_byte (end_byte - start_byte) in
   let quotes =
@@ -256,8 +231,6 @@ let datetime_of (raw : Raw.datetime) =
         raw.offset;
   }
 
-(* [key_byte] is the start of the key that writes the item, or None
-   for a member of an array. *)
 let rec node_of lines ~key_byte (item : Raw.item) =
   let { Raw.start_byte; end_byte; _ } = item in
   let span = span_of lines ~start_byte ~end_byte in
@@ -297,8 +270,6 @@ and table_of lines entries =
           at = span_of lines ~start_byte:entry.key_start ~end_byte:entry.key_end;
         },
         node_of lines ~key_byte:(Some entry.key_start) entry.item ))
-
-(* Errors *)
 
 type construct =
   | A_value
@@ -426,7 +397,6 @@ let between ~prefix ~suffix text =
   then Some (String.sub text (String.length prefix) inside)
   else None
 
-(* The offset of the first [marker] in [text], or None. *)
 let find_marker marker text =
   let last = String.length text - String.length marker in
   let rec find at =
@@ -444,7 +414,6 @@ let duplicate_key text =
       match between ~prefix:"duplicate key `" ~suffix:"`" text with
       | None -> None
       | Some inside -> (
-          (* "duplicate key `K` in table `T`" *)
           match find_marker "` in table `" inside with
           | Some at -> Some (String.sub inside 0 at)
           | None -> Some inside))
@@ -494,8 +463,6 @@ let construct_of line =
     List.assoc_opt (String.sub line 8 (String.length line - 8)) constructs
   else None
 
-(* Read a message of the reader into its parts, or None when a part is
-   not a known form. *)
 let read_message message =
   let lines = String.split_on_char '\n' message in
   let construct, lines =
@@ -519,13 +486,8 @@ let read_message message =
   | Some expected, Some cause -> Some (construct, expected, cause)
   | _ -> None
 
-(* A control character is a code point of the Unicode category Cc:
-   below U+0020, U+007F, and U+0080 to U+009F. *)
 let is_control code = code < 0x20 || (code >= 0x7F && code <= 0x9F)
 
-(* [fold_code_points f text init] folds [f] over the pieces of [text]:
-   [Ok (code, piece)] for each valid UTF-8 sequence, [Error byte] for
-   each byte outside one. *)
 let fold_code_points f text init =
   let length = String.length text in
   let rec walk offset acc =
@@ -607,7 +569,6 @@ let expected_name = function
   | Digit -> "a digit"
   | Leading_digit -> "a digit at the start of the number"
 
-(* "a", "a or b", "a, b, or c" *)
 let one_of words =
   match List.rev words with
   | [] -> ""
@@ -657,8 +618,6 @@ let error_message = function
       | None, None, "" -> "the text is not valid TOML here"
       | None, None, _ -> "expected " ^ expected)
 
-(* The offset of the first byte of [text] that does not start a valid
-   UTF-8 sequence, or None when the whole text is valid. *)
 let first_invalid_byte text =
   let length = String.length text in
   let rec walk offset =

@@ -51,15 +51,12 @@ let value_of_rid = function
   | Number number -> Jsonl.int number
 
 (* @cites json-handling *)
-(* The canonical form allows an integer in this range only, so a request id
-   outside it could not be written back. *)
+(* The range of a request id: the range of an integer in the canonical form. *)
 let max_number = 9007199254740991
 let min_number = -9007199254740991
 let ( let* ) = Result.bind
 let untagged cause = Error { rid = None; cause }
 let bad rid cause = Error { rid = Some rid; cause }
-
-(* Every name that a parse request may hold. *)
 let parse_fields = [ "rid"; "op"; "grammar"; "query"; "tree"; "files" ]
 
 let read_rid fields =
@@ -72,10 +69,6 @@ let read_rid fields =
       Ok (Number number)
   | _ -> untagged Bad_rid
 
-(* A name that two pairs share. yojson keeps both pairs, and a record
-   that holds one field twice is not a record. A line holds as many
-   fields as its writer put in it, so the search sorts the names
-   instead of comparing every pair of them. *)
 let repeated fields =
   let rec adjacent = function
     | first :: (second :: _ as rest) ->
@@ -154,8 +147,6 @@ let read_op rid fields =
   | Some _ -> bad rid Bad_op
 
 let of_line line =
-  (* A line of any depth reaches this reader, and yojson reads a nested
-     value with a recursion. *)
   match Yojson.Safe.from_string line with
   | exception Yojson.Json_error _ -> untagged Not_json
   | exception Stack_overflow -> untagged Not_json

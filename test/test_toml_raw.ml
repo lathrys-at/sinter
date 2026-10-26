@@ -7,10 +7,6 @@ let property ?(count = 300) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count ~name ~print generator check)
 
-(* The layout that the bridge writes, for the tests. Each writer
-   records the offset of each length field of a string, and the length
-   it holds, so that a damaged buffer can aim at one. *)
-
 let add_u32 buffer value = Buffer.add_int32_le buffer (Int32.of_int value)
 
 let add_string buffer runs text =
@@ -107,8 +103,6 @@ let error_bytes (error : Raw.error) =
       add_u32 buffer (List.length rest);
       List.iter (add_string buffer runs) rest);
   (Buffer.contents buffer, List.rev !runs)
-
-(* Generators. Every span lies inside a text of [length] bytes. *)
 
 let length = 64
 
@@ -209,7 +203,6 @@ let raw_error =
        Raw.Header_table { start_byte; end_byte; key; table; array; rest });
     ]
 
-(* Floats compare by their bits, so that two NaN are equal. *)
 let rec same_value (a : Raw.value) (b : Raw.value) =
   match (a, b) with
   | Raw.Float a, Raw.Float b ->
@@ -300,7 +293,6 @@ let decode_is_total =
       | _ -> true
       | exception Sinter_bridge.Error _ -> true)
 
-(* One whole buffer, with one field written over. *)
 let with_u32 buffer offset value =
   let bytes = Bytes.of_string buffer in
   Bytes.set_int32_le bytes offset (Int32.of_int value);
@@ -316,9 +308,6 @@ let one_string_entry =
     };
   ]
 
-(* The header is 16 bytes, and the count of the table 4 more. The entry
-   starts with the key "a" (4 + 1 bytes) and its span (8 bytes), so the
-   tag of its value sits at byte 33, and the span of the value at 37. *)
 let names_a_span_that_runs_past_the_text () =
   let buffer = fst (document_bytes one_string_entry) in
   Alcotest.(check string)
@@ -389,8 +378,6 @@ let datetime_buffer (datetime : Raw.datetime) =
 
 let a_date = { Raw.date = Some (1979, 5, 27); time = None; offset = None }
 
-(* The parts of the date sit at byte 45, and the kind of the offset at
-   77. *)
 let names_the_parts_of_a_datetime_it_does_not_know () =
   List.iter
     (fun parts ->
@@ -423,8 +410,6 @@ let reads_a_negative_offset () =
       Alcotest.(check bool) "the offset is -1 minute" true (decoded = datetime)
   | _ -> Alcotest.fail "the date and time did not decode"
 
-(* The least offset that 32 bits hold is -2^31 minutes, and the
-   greatest is 2^31 - 1. *)
 let reads_the_corners_of_a_32_bit_offset () =
   List.iter
     (fun minutes ->
@@ -466,8 +451,6 @@ let names_an_array_flag_that_is_not_0_or_1 () =
               rest = [];
             }))
   in
-  (* form, span, the key (4 + 1), and the count of the table: the flag
-     sits at byte 16 + 12 + 5 + 4. *)
   Alcotest.(check string)
     "the message names the flag"
     "the bridge returned a malformed buffer: the array flag is 3, not 0 or 1"
@@ -495,8 +478,6 @@ let names_a_buffer_shorter_than_the_header () =
       "SBR1\002\000\000\000\001\000\000\000\000\000\000";
     ]
 
-(* A header of 16 bytes is no buffer short of its header: the table that
-   it promises is what is missing. *)
 let names_the_missing_table_of_a_bare_header () =
   Alcotest.(check string)
     "the message names the record"
@@ -512,8 +493,6 @@ let names_a_document_buffer_with_two_records () =
     "the bridge returned a malformed buffer: a TOML buffer holds 2 records, \
      and 1 was expected"
     (error_message (fun () -> decode (with_u32 buffer 8 2)))
-
-(* Through the bridge. *)
 
 let parse_gives_the_keys_and_their_byte_spans () =
   match Raw.parse "a = \"x\"\n[t]\nb.c = 1\n" with

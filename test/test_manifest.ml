@@ -22,8 +22,6 @@ let lines text =
 let reports name text expected =
   Alcotest.(check (list string)) name expected (lines text)
 
-(* The examples of the specification. *)
-
 let the_smallest_manifest_takes_every_default () =
   let manifest = read markdown in
   Alcotest.(check (option string))
@@ -396,8 +394,6 @@ let every_form_of_toml_means_the_same () =
         text [ "markdown a -" ]
         (List.map pack_summary (Manifest.packs manifest)))
     forms
-
-(* Errors, as the lines that report them. *)
 
 let a_syntax_error_reports_the_toml_reader () =
   reports "a key with no value" "a =\n"
@@ -813,8 +809,6 @@ let errors_come_in_the_order_of_their_places () =
        member is an integer";
     ]
 
-(* The informative example messages of the specification, through the
-   reader. *)
 let the_example_messages_of_the_specification () =
   let message text =
     match lines text with
@@ -844,8 +838,6 @@ let the_example_messages_of_the_specification () =
     "'.' is not in the id pattern language; put it in a class, for example [.]";
   check (markdown ^ "refs.gh = \"[0-9]*\"\n") "the pattern matches an empty id"
 
-(* Runners and runner settings. *)
-
 let rec value_text node =
   match Toml.value node with
   | Toml.String text -> Toml.basic_string text
@@ -865,8 +857,6 @@ let rec value_text node =
 let place (position : Toml.position) =
   Printf.sprintf "%d:%d" position.line position.column
 
-(* A runner as its name, the span of its member, and each setting with
-   the place of its key and its value. *)
 let runner_summary (runner : Manifest.runner) =
   String.concat " "
     (runner.name
@@ -1119,8 +1109,6 @@ let runner_errors () =
        runner";
     ]
 
-(* Messages that the reader cannot give today, and the corners of the
-   message function. *)
 let message problem =
   Manifest.message (Manifest.At ({ Toml.line = 1; column = 1 }, problem))
 
@@ -1222,7 +1210,6 @@ let render_names_the_path_and_the_place () =
        (Manifest.At
           ({ Toml.line = 3; column = 14 }, Manifest.No_tier_at_any_gate)))
 
-(* The column "since" of the table of keys of the specification. *)
 let rows () =
   let text =
     In_channel.with_open_bin "../spec/manifest.md" In_channel.input_all
@@ -1302,8 +1289,6 @@ let the_implemented_version_is_1_0 () =
     "specification" "1.0"
     (Major_minor.to_string Manifest.specification)
 
-(* Reading a file. *)
-
 let with_file text f =
   let path = Filename.temp_file "sinter-manifest" ".toml" in
   Fun.protect
@@ -1353,8 +1338,6 @@ let load_of_a_path_under_a_file_is_missing () =
       | Error Manifest.Missing -> ()
       | _ -> Alcotest.fail "a path under a file is not Missing")
 
-(* A process that runs as root reads the file all the same, so the test
-   holds only for another user. *)
 let load_of_a_file_it_cannot_open_is_unreadable () =
   with_file markdown (fun path ->
       Unix.chmod path 0;
@@ -1364,14 +1347,10 @@ let load_of_a_file_it_cannot_open_is_unreadable () =
       | Ok _ when Unix.geteuid () = 0 -> ()
       | _ -> Alcotest.fail "a file with no read permission is not Unreadable")
 
-(* Properties. *)
-
 let property ?(count = 200) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count ~name ~print generator check)
 
-(* Lines that a manifest can hold, valid or not, so that a text of a few
-   of them reaches every step of the reader. *)
 let line =
   Gen.oneof_list
     [
@@ -1423,7 +1402,6 @@ let line =
 
 let text = Gen.(map (String.concat "\n") (list_size (0 -- 8) line))
 
-(* A text with one byte written over, cut short, or doubled. *)
 let damaged =
   Gen.(
     text >>= fun text ->
@@ -1473,8 +1451,6 @@ let of_string_answers_any_text =
                  && not (String.contains message '\r'))
                errors)
 
-(* A manifest as a list of settings, each a key path and the TOML text of
-   its value. *)
 let settings =
   let some_of choices =
     Gen.(map (List.sort_uniq compare) (list_size (0 -- 3) (oneof_list choices)))
@@ -1533,13 +1509,6 @@ let settings =
     in
     flatten_list pairs >|= List.concat)
 
-(* Forms of one manifest. [render_dotted] writes each key path as one
-   dotted key at the top level. [render_by ~depth] writes a header for
-   each table that holds a value, cut to its first [depth] names, and
-   the rest of the key path under it as a dotted key. The headers come
-   in byte order, or in the reverse order with [~reverse:true].
-   [render_inline] writes each table of the top level as one inline
-   table. *)
 let render_dotted settings =
   String.concat ""
     (List.map
@@ -1572,8 +1541,6 @@ let render_by ?(reverse = false) ~depth settings =
 
 type tree = Leaf of string | Node of (string * tree) list
 
-(* [nodes] with the value at [path] added. The names of a node keep the
-   order in which the settings first name them. *)
 let rec add_setting nodes path value =
   match path with
   | [] -> nodes
@@ -1660,10 +1627,6 @@ let every_form_and_order_reads_the_same =
           render_inline (shuffle 4 settings);
         ])
 
-(* A manifest with runners: the pack markdown, and one to three fetched
-   packs. Each runner of the pool belongs to one fetched pack or to
-   none, and each runner holds up to three settings. *)
-
 let runner_pool =
   [
     "vitest";
@@ -1696,10 +1659,8 @@ let setting_values =
 
 type runners_model = {
   packs : (string * string list) list;
-      (* each fetched pack, with its runners in the order of the array *)
-  empty : bool; (* a pack with no runner writes [runners = []] *)
+  empty : bool;
   runner_settings : (string list * string) list;
-      (* each runner setting: its key path and the TOML text of its value *)
 }
 
 let take n list = List.filteri (fun i _ -> i < n) list
@@ -1740,8 +1701,6 @@ let runners_model =
     bool >|= fun empty ->
     { packs; empty; runner_settings = List.concat settings })
 
-(* The settings of a manifest whose fetched packs write [members], the
-   TOML texts of the members of [runners], or no key for [None]. *)
 let manifest_settings members runner_settings =
   ([ "scan"; "packs"; "markdown"; "files" ], "[\"**/*.md\"]")
   :: List.concat_map
@@ -1770,7 +1729,6 @@ let valid_members model =
         else Some (List.map Toml.basic_string runners) ))
     model.packs
 
-(* The settings in a random order, and their text in one of the forms. *)
 let rendered settings =
   Gen.(
     pair (shuffle_list settings)
@@ -1785,8 +1743,6 @@ let rendered settings =
          ])
     >|= fun (settings, render) -> (settings, render settings))
 
-(* The byte offset of [position] in [text], and the place of [offset]. A
-   column counts code points. *)
 let offset_of text (position : Toml.position) =
   let length = String.length text in
   let rec skip i =
@@ -1860,11 +1816,6 @@ let runners_read_as_written =
                   pack.runners)
            packs)
 
-(* The place of an error in a text. [Only text] is the one place that
-   holds [text]. [Last text] is the last place that holds [text].
-   [Before (word, text)] is the last place that holds [word] in front of
-   the one place that holds [text]. A letter, a digit, '_', or '-' at an
-   end of [word] or [text] does not run on into the text beside it. *)
 type locate = Only of string | Last of string | Before of string * string
 
 let is_word_char = function
@@ -1934,8 +1885,6 @@ let bad_runner_names =
     "runners";
   ]
 
-(* Names of tables that no pack of a model holds, and that occur in its
-   text only where a fault puts them. *)
 let stray_names runners =
   let in_use =
     pack_pool @ runner_pool @ setting_keys
@@ -1951,8 +1900,6 @@ let stray_names runners =
   |> List.filter (fun name ->
       String.length name >= 3 && not (List.mem name in_use))
 
-(* One fault in the runners of a valid model: the members of each pack,
-   the runner settings, the problem that the fault makes, and its place. *)
 let faults model =
   let members = valid_members model in
   let settings = model.runner_settings in

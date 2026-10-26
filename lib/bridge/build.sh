@@ -2,24 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Sinter Authors
 
-# Build the Rust bridge crate as a static library, and report the
-# system libraries that a static link of that crate needs.
-#
-# With --target-dir as the first argument, the script prints the build
-# directory that it chooses for the crate in the second argument, and
-# does nothing else.
-#
-# The arguments of a build, in order:
-#   1. the directory that holds the crate's Cargo.toml
-#   2. the directory for cargo's build output, when neither
-#      CARGO_TARGET_DIR nor a home directory says where to put it
-#   3. the path to write the static library to
-#   4. the path to write the dune flags file to
-#
-# The flags file holds one s-expression: the linker flags that
-# "cargo rustc --print native-static-libs" reports. The list differs
-# between macOS and Linux.
-
 set -eu
 
 if [ "${1:-}" = "--target-dir" ]; then
@@ -33,9 +15,8 @@ else
 fi
 
 # @cites rust-bridge
-# Cargo's build output must live outside _build, and each checkout
-# must build in a directory of its own. "dune clean" does not remove
-# that directory; remove it by hand to build the crate from nothing.
+# Cargo's build output lives outside _build, in a directory of its own
+# for each checkout. "dune clean" does not remove that directory.
 if [ -n "${CARGO_TARGET_DIR:-}" ]; then
   base=$CARGO_TARGET_DIR
 elif [ -n "${XDG_CACHE_HOME:-}" ]; then
@@ -76,15 +57,9 @@ fi
 log=$target/native-static-libs.log
 mkdir -p "$target"
 
-# The name of the directory is a hash, so write the checkout it
-# belongs to inside it. A person who cleans the cache reads this file
-# and removes the directory when the checkout is gone; CONTRIBUTING.md
-# gives the loop.
 checkout=$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$root")
 printf '%s\n' "$checkout" >"$target/checkout"
 
-# CARGO_TERM_COLOR=always wraps the note in escape codes, so ask for
-# plain output and strip any code that is left.
 if ! cargo rustc --release --quiet --color never \
     --manifest-path "$crate/Cargo.toml" \
     --target-dir "$target" -- --print native-static-libs 2>"$log"; then
@@ -94,8 +69,6 @@ fi
 
 cp "$target/release/libsinter_bridge.a" "$archive"
 
-# The note names the system libraries that a static link of the crate
-# needs. Print it, so that every build log holds it.
 note=$(sed 's/\x1b\[[0-9;]*m//g' "$log" |
   sed -n 's/^note: native-static-libs: *//p' | tail -n 1)
 if [ -z "$note" ]; then
@@ -105,8 +78,6 @@ if [ -z "$note" ]; then
 fi
 echo "note: native-static-libs: $note" >&2
 
-# The C compiler driver links the C library itself, and naming it a
-# second time makes the linker warn.
 libraries=$(printf '%s' "$note" |
   tr ' ' '\n' | grep -v -e '^-lSystem$' -e '^-lc$' -e '^$' | tr '\n' ' ')
 printf '(%s)\n' "$libraries" >"$flags"

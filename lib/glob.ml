@@ -1,8 +1,6 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* [Name pattern] holds the characters of one segment, in which ['*']
-   matches any sequence of bytes. *)
 type segment = Any_names | Name of string
 type t = { text : string; segments : segment list }
 
@@ -35,8 +33,6 @@ let first_forbidden ~offset segment =
   in
   from 0
 
-(* [check ~offset segment] is the error of one segment that is not the
-   empty last segment, which a final '/' makes. *)
 let check ~offset segment =
   if segment = "" then Some (Empty_segment offset)
   else if segment = "." || segment = ".." then
@@ -63,17 +59,11 @@ let of_string text =
 
 let to_string glob = glob.text
 
-(* The first offset at or after [from] where [part] occurs in [name]
-   and ends at or before [limit]. *)
 let rec find name part ~from ~limit =
   if from + String.length part > limit then None
   else if String.sub name from (String.length part) = part then Some from
   else find name part ~from:(from + 1) ~limit
 
-(* The match of one name against one segment. The segment is pieces
-   between the '*' of it: the name starts with the first piece, ends
-   with the last, and holds the pieces between them in order, each at
-   its first place after the one before. *)
 let name_matches pattern name =
   match String.split_on_char '*' pattern with
   | [] | [ _ ] -> String.equal pattern name
@@ -93,8 +83,6 @@ let name_matches pattern name =
       && String.ends_with ~suffix:last name
       && inside (String.length first) middle
 
-(* [reachable.(j)] is [true] when the segments read so far match the
-   first [j] names. *)
 let matches glob path =
   let names = Array.of_list (String.split_on_char '/' path) in
   let count = Array.length names in
@@ -132,8 +120,6 @@ let error_offset = function
   | Forbidden_character { offset; _ } ->
       offset
 
-(* The segment [**rest], where [rest] holds no '*' at its start and no
-   "**", meant every file at any depth whose name ends with [rest]. *)
 let suggestion segment =
   let length = String.length segment in
   if length > 2 && String.sub segment 0 2 = "**" && segment.[2] <> '*' then

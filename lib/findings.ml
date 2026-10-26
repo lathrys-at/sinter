@@ -13,14 +13,11 @@ let vocabulary =
 let start_of (span : Markdown.span) = span.start
 let place path span = { Finding.path; span }
 
-(* Each tag line of each document, with the path of its file. *)
 let tags documents =
   List.concat_map
     (fun (path, (document : Markdown.t)) ->
       List.map (fun tag -> (path, tag)) (Array.to_list document.tags))
     documents
-
-(* {1 The classes of the reader} *)
 
 let parse_errors documents ~not_text =
   List.map
@@ -73,8 +70,6 @@ let unread_tags documents =
         document.unread)
     documents
 
-(* Why the tag target [target] of a tag of the word [word] fails its
-   pattern, or [None] when it does not. *)
 let target_problem manifest ~word target =
   let slug () =
     if Slug.is_valid target then None
@@ -136,8 +131,6 @@ let misplaced_plans documents =
         detail)
     (tags documents)
 
-(* {1 The classes of the facts} *)
-
 let declaration_subject (declaration : Facts.declaration) =
   Finding.Fact
     { id = Facts.declaration_id declaration; ack_name = declaration.slug }
@@ -145,14 +138,10 @@ let declaration_subject (declaration : Facts.declaration) =
 let edge_subject (edge : Facts.edge) =
   Finding.Fact { id = Facts.edge_id edge; ack_name = edge.target_text }
 
-(* The text of a citation of the word [word] and the tag target
-   [target], with the revision [rev] when it has one. *)
 let citation ~word ~target rev =
   Printf.sprintf "@%s %s%s" word target
     (Option.fold ~none:"" ~some:(Printf.sprintf " v%d") rev)
 
-(* The members of [items] that share their key, after the first, by
-   the order of [order]: each with the first member of its group. *)
 module Keys = Map.Make (String)
 
 let later_of_groups ~key ~order items =
@@ -247,8 +236,6 @@ let unpinned facts =
     (Facts.edges facts)
 
 let dangling facts =
-  (* Each declared slug in lower case, with the first slug in byte order
-     that gives it. *)
   let spellings =
     List.fold_left
       (fun spellings slug ->
@@ -309,20 +296,9 @@ let suspect facts =
       | _ -> None)
     (Facts.edges facts)
 
-(* A node that the search of [components] has reached: the number of
-   its arrival, the lowest number that it reaches, and whether it is on
-   the stack of the search. *)
 type visit = { number : int; mutable low : int; mutable on_stack : bool }
-
-(* A call of the search: the nodes that the search still starts from,
-   or a node, its visit, and the successors that it has yet to visit.
-   The caller of a call is the call after it. *)
 type call = Start of int list | Visit of int * visit * int list
 
-(* The strongly connected components of the graph whose node [n] has
-   the successors [successors.(n)], by Tarjan's algorithm with a stack
-   of calls held in a list: each component once, in no fixed order. The
-   time is linear in the number of nodes and edges. *)
 let components successors =
   let visits = Array.make (Array.length successors) None in
   let next =
@@ -341,8 +317,6 @@ let components successors =
     stack := (node, visit) :: !stack;
     visit
   in
-  (* The component whose root is [root], taken off the stack, which
-     holds [root]. *)
   let rec pop root members =
     match !stack with
     | [] -> members
@@ -400,8 +374,6 @@ let cycles facts =
         declarations.(b).path,
         declarations.(b).span.start.line )
   in
-  (* A component is a cycle when it holds two members or more, or one
-     member with an edge to itself. *)
   List.filter_map
     (fun component ->
       match List.sort order component with
@@ -428,7 +400,6 @@ let cycles facts =
                ?detail ()))
     (components successors)
 
-(* The block hash of the block [index] of the document at [path]. *)
 let block_hash documents path index =
   let document : Markdown.t = List.assoc path documents in
   document.blocks.(index).hash
@@ -446,8 +417,6 @@ let disendorsed facts documents =
             Finding.make Finding_class.Disendorsed (edge_subject edge)
               ~place:(place edge.path edge.span)
           in
-          (* A declaration that is not in force and carries no status has
-             a live supersedes edge into it, and so a successor. *)
           Some
             ( edge,
               match
@@ -540,25 +509,11 @@ let uncovered facts =
          else None)
        (Facts.declarations facts))
 
-(* {1 The classes of plans} *)
-
-(* The plain globs of a scope: the members that do not start with a
-   [!]. *)
 let plain scope =
   List.filter (fun glob -> not (String.starts_with ~prefix:"!" glob)) scope
 
-(* [glob] with [**] after a [/] at its end, which means the same. *)
 let full glob = if String.ends_with ~suffix:"/" glob then glob ^ "**" else glob
 
-(* Whether the glob [inner] is contained in the glob [outer] by the
-   rule of glob containment, where a glob that ends with [/] reads as
-   the same glob with [**] added, and [**] holds every valid glob.
-   [inner] is contained when it equals [outer]; when it is a literal
-   path that [outer] matches; when it is a literal path prefix [<p>/]
-   and [outer] is [<g>/**] and matches [<p>/x], so that [<g>] matches
-   [<p>] or a leading part of it; or when [outer] is [<g>/**] and
-   [inner] is [<g>/] and more segments. A glob that is not valid is
-   contained only in itself. *)
 let contained inner outer =
   let inner_full = full inner and outer_full = full outer in
   let folder =
@@ -609,8 +564,6 @@ let bad_scopes facts =
         plan.steps)
     (Facts.plans facts)
 
-(* Whether two scopes intersect: a plain glob of one contains a plain
-   glob of the other, or is contained in it. *)
 let intersect a b =
   List.exists
     (fun glob_a ->
@@ -716,11 +669,6 @@ let promises_out_of_scope facts =
         plan.steps)
     (Facts.plans facts)
 
-(* {1 The global rules} *)
-
-(* The class and the subject that the tag target of an ack names: the
-   first token, and the rest without the spaces and tabs at its
-   ends. *)
 let ack_target target =
   let blank = function ' ' | '\t' -> true | _ -> false in
   let length = String.length target in
@@ -744,10 +692,6 @@ let ack_target target =
     if start = length then None
     else Some (String.sub target start (length - start)) )
 
-(* Whether a live ack of the block of [edge] discharges its disendorsed
-   finding: the hash of the ack is eight or more of the first digits of
-   the block hash, and its tag target is the class and, when it gives
-   one, the tag target of the edge. *)
 let acked facts documents (edge : Facts.edge) =
   let hash = block_hash documents edge.path edge.block_index in
   List.exists

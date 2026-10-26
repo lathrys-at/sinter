@@ -39,8 +39,6 @@ let id record =
   | Some (Jsonl.Scalar (Jsonl.String id)) -> id
   | _ -> ""
 
-(* The first record whose id is [wanted]. Two edges of one source and
-   one tag target share an id. *)
 let find wanted records =
   match
     List.find_opt (fun record -> String.equal (id record) wanted) records
@@ -52,7 +50,6 @@ let show = function
   | None -> "(absent)"
   | Some value -> Jsonl.to_string [ ("value", value) ]
 
-(* Checks the field [name] of the record [wanted] of [records]. *)
 let check_field ?(message = "") records wanted name expected =
   Alcotest.(check string)
     (Printf.sprintf "%s %s %s" wanted name message)
@@ -73,8 +70,6 @@ let lockout =
    Body text.\n\n\
    ## Policy\n\n\
    @decision policy\n"
-
-(* Declarations. *)
 
 let a_declaration_gives_its_record () =
   let xh =
@@ -202,8 +197,6 @@ let a_rule_or_a_bad_slug_gives_no_declaration () =
     "no record" []
     (ids
        (records [ ("a.md", "# H\n\n@rule r v1\n\n## B\n\n@req a/b\n@req\n") ]))
-
-(* Edges. *)
 
 let a_citation_takes_its_declaration_as_source () =
   Alcotest.(check string)
@@ -350,8 +343,6 @@ let an_inline_description_loses_its_blanks () =
   check_field records "cites:site:a.md#a->x" "desc" (str "text  here");
   check_field records "cites:site:a.md#a->y" "desc" None
 
-(* Supersession. *)
-
 let supersedes =
   "# A\n\n@decision new v1\n@supersedes old v1\n\n# B\n\n@decision old\n"
 
@@ -369,8 +360,6 @@ let a_source_that_is_not_approved_retires_nothing () =
   check_field records "supersedes:decision:new->old" "live" (bool false);
   check_field records "decision:old" "inforce" (bool true)
 
-(* A chain of three: c supersedes b, and b supersedes a. [kind] is the
-   kind of b, and [middle] the tag lines of b after its declaration. *)
 let chain ?(kind = "decision") ?(middle = "") () =
   [
     ( "a.md",
@@ -395,7 +384,6 @@ let a_status_tag_on_the_middle_of_a_chain_brings_back_the_first () =
 
 let a_middle_that_is_not_approved_retires_nothing () =
   let records =
-    (* Only b needs approval: it is the only design. *)
     records ~extra:"[ledger]\napproval-required = [\"design\"]\n"
       (chain ~kind:"design" ())
   in
@@ -491,8 +479,6 @@ let a_supersedes_edge_from_a_site_is_not_live () =
   check_field records "supersedes:site:a.md#a->old" "live" (bool false);
   check_field records "decision:old" "inforce" (bool true)
 
-(* Acks. *)
-
 let an_ack_names_the_fact_of_its_block () =
   let records =
     records
@@ -538,8 +524,6 @@ let an_ack_with_no_fact_or_no_hash_gives_no_record () =
                  "# A\n\n@ack stale 0123abcd\n\n# B\n\n@req b\n@ack 0123abcd\n"
                );
              ])))
-
-(* Plans. *)
 
 let auth_plan =
   "# Auth lockout\n\n\
@@ -808,8 +792,6 @@ let a_plan_tag_outside_plans_gives_no_plan () =
             (".plans/q.md", "# Q\n\n@plan Bad/Slug\n\n## S\n\n@req r\n");
           ]))
 
-(* The header. *)
-
 let the_index_names_the_tree_and_the_base () =
   Alcotest.(check string)
     "the index record"
@@ -817,8 +799,6 @@ let the_index_names_the_tree_and_the_base () =
     (Jsonl.to_string
        (Facts.index ~tree:"t" ~base:"b" ~target_branch:"main"
           ~manifest:"sinter.toml" ~tool:"v1"))
-
-(* Properties. *)
 
 module Gen = QCheck2.Gen
 
@@ -898,7 +878,6 @@ let number name record =
   | Some (Jsonl.Scalar (Jsonl.Int number)) -> Some number
   | _ -> None
 
-(* The key that orders a record: located records first. *)
 let key record =
   match text "path" record with
   | Some path ->
@@ -940,8 +919,6 @@ let every_record_is_canonical =
       List.for_all
         (fun record -> String.length (Jsonl.to_string record) > 0)
         (records files))
-
-(* {1 The facts as values} *)
 
 let span_text (span : Markdown.span) =
   Printf.sprintf "%d:%d-%d:%d" span.start.line span.start.column span.stop.line
@@ -1003,8 +980,6 @@ let is_in_force_reads_status_and_supersession () =
       | exception Invalid_argument _ -> ())
     [ -1; 3 ]
 
-(* The successors of the declaration [id] of [facts], each as its id
-   and its path. *)
 let successors facts id =
   let declarations = Array.of_list (Facts.declarations facts) in
   let place index =
@@ -1114,10 +1089,6 @@ let successors_refuse_an_index_out_of_range () =
       | exception Invalid_argument _ -> ())
     [ -1; 3 ]
 
-(* A graph of supersedes edges and status tags: each declaration, as
-   its kind, its status tag or [""], and the numbers of the declarations
-   that it supersedes. A number past the last declaration names no
-   declaration. A design needs approval and lacks it. *)
 let graph =
   Gen.(
     list_size (int_range 1 6)

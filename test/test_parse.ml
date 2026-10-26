@@ -3,8 +3,6 @@
 
 open Sinter_core
 
-(* Dune runs the test in the build copy of test/, so the paths below
-   are relative to that directory. *)
 let grammar = "fixtures/tree-sitter-json/tree-sitter-json.wasm"
 let sample = "fixtures/sample.json"
 let query = "fixtures/sample.scm"
@@ -17,7 +15,6 @@ let contains needle haystack =
   in
   search 0
 
-(* Everything that one run writes to its channel. *)
 let output ~query ~paths =
   let file = Filename.temp_file "sinter-parse" ".out" in
   let channel = open_out_bin file in
@@ -33,10 +30,6 @@ let output ~query ~paths =
         ~finally:(fun () -> close_in_noerr channel)
         (fun () -> really_input_string channel (in_channel_length channel)))
 
-(* Pattern 0 of the query captures the key and the value of a pair
-   whose value is a string. Pattern 1 captures a number. Two pairs of
-   the sample match pattern 0: the value of one other pair is an
-   array, and the value of the last is a keyword. *)
 let expected_captures =
   String.concat ""
     (List.map
@@ -71,9 +64,6 @@ let handles_every_file_in_order () =
     (expected_captures ^ expected_captures)
     both
 
-(* The name of a source file that holds [text], and the message of the
-   failure that the file causes. The message is "no failure" when the
-   run gives none. *)
 let source_failure text =
   let file = Filename.temp_file "sinter-parse" ".json" in
   let channel = open_out_bin file in
@@ -91,10 +81,6 @@ let source_failure text =
   in
   (file, message)
 
-(* The bridge refuses text that is not UTF-8 as well, and its message
-   ends in the same words. Only the check of this library names the
-   byte that starts no code point, so the three tests below state the
-   whole message. *)
 let reports_a_file_that_is_not_utf_8 () =
   let file, message = source_failure "{\"a\": \"\xff\"}" in
   Alcotest.(check string)
@@ -109,8 +95,6 @@ let reports_a_file_whose_first_byte_is_not_utf_8 () =
     (file ^ ": the file is not UTF-8 text, at byte 0")
     message
 
-(* The check walks the source to its last byte. A check that stopped
-   one byte sooner would pass this file. *)
 let reports_a_file_whose_last_byte_is_not_utf_8 () =
   let file, message = source_failure "{}\xff" in
   Alcotest.(check string)
@@ -147,8 +131,6 @@ let names_the_query_file_when_the_query_fails () =
     "the message names the query file, not the source file" true
     (String.starts_with ~prefix:file message)
 
-(* A query file that holds nothing runs no pattern, so the tool
-   refuses it before it loads the query. *)
 let reports_an_empty_query_file () =
   let file = Filename.temp_file "sinter-parse" ".scm" in
   close_out (open_out_bin file);
@@ -166,9 +148,6 @@ let reports_an_empty_query_file () =
     (file ^ ": the query file is empty")
     message
 
-(* A semicolon starts a comment in the query language, so a query file
-   of that one character holds no pattern. It is still not the empty
-   query file: the run gives no failure. *)
 let a_query_file_of_one_character_is_not_empty () =
   let file = Filename.temp_file "sinter-parse" ".scm" in
   let channel = open_out_bin file in
@@ -185,9 +164,6 @@ let a_query_file_of_one_character_is_not_empty () =
   Alcotest.(check string)
     "the run writes no line and gives no failure" "" written
 
-(* A record ends on the line that holds its last byte. The document
-   node of this file ends after the last line feed, and tree-sitter
-   puts that end point on a fourth row that the file does not have. *)
 let ends_a_span_on_the_line_of_its_last_byte () =
   let source = Filename.temp_file "sinter-parse" ".json" in
   let channel = open_out_bin source in
@@ -225,8 +201,6 @@ let reports_a_channel_that_cannot_be_written () =
     "the message says the output cannot be written" true
     (contains "cannot write the output" message)
 
-(* The message gives the name as bytes, because a name that is not
-   UTF-8 text cannot go into a record. *)
 let name_failure path =
   try
     ignore (output ~query:(Some query) ~paths:[ path ]);
@@ -245,8 +219,6 @@ let rejects_a_file_name_whose_first_byte_is_not_utf_8 () =
     "the file name is not UTF-8 text: \\255name.json"
     (name_failure "\xffname.json")
 
-(* The name that the bridge needs comes from the module, so a file
-   that a user renamed still loads. *)
 let loads_a_grammar_file_under_another_name () =
   let renamed = Filename.temp_file "grammar" ".wasm" in
   let wasm = In_channel.with_open_bin grammar In_channel.input_all in
@@ -283,16 +255,10 @@ let names_a_source_that_cannot_be_read () =
       "no failure"
     with Parse.Error message -> message
   in
-  (* An open of a directory fails as well, and its message also names
-     the directory. Only the guard of this library gives these words,
-     so the test states the whole message. *)
   Alcotest.(check string)
     "the message names the directory and says what is wrong" ".: is a directory"
     message
 
-(* tree-sitter writes an S-expression by recursion in C, and a tree
-   that nests deeply exhausts the stack of the thread. The bridge
-   writes its own, so this file must give a tree and not a signal. *)
 let writes_a_tree_that_nests_deeply () =
   let depth = 40000 in
   let file = Filename.temp_file "sinter-parse" ".json" in
@@ -314,15 +280,10 @@ let writes_a_tree_that_nests_deeply () =
     "the tree of a file that nests 40000 deep is written" true
     (String.starts_with ~prefix:"(document" tree && String.length tree > depth)
 
-(* The properties below check the pure functions of Parse against a
-   reference that reads the source text and nothing else. *)
-
 let property ?(count = 500) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count ~name ~print generator check)
 
-(* The line that holds the byte at [offset], from 1, and the column of
-   that byte in its line, from 1. *)
 let position source offset =
   ( Generators.rows_before source offset + 1,
     offset - Generators.start_of_line source offset + 1 )
@@ -337,17 +298,12 @@ let string_field record name =
   | Some (Jsonl.Scalar (Jsonl.String found)) -> found
   | _ -> Alcotest.failf "the record holds no string field %s" name
 
-(* One engine and one grammar for the property below. The language
-   keeps its engine alive, and alcotest runs one test at a time. *)
 let language =
   lazy
     (match Grammar.load (Sinter_bridge.create ()) ~path:grammar with
     | Ok language -> language
     | Error error -> Alcotest.fail (Grammar.message ~path:grammar error))
 
-(* The document node ends after the last line feed of the file, so a
-   query that captures it tests the end of a span that no byte of the
-   last line holds. *)
 let spanning_query =
   "(document) @d\n\
    (object) @o\n\
@@ -357,8 +313,6 @@ let spanning_query =
    (string_content) @c\n\
    (number) @n\n"
 
-(* Put [source] in a file of its own, and run [use] on the path of
-   that file. The file is gone when [use] returns. *)
 let in_a_file source use =
   let path = Filename.temp_file "sinter-parse" ".json" in
   Fun.protect
@@ -370,7 +324,6 @@ let in_a_file source use =
         (fun () -> output_string channel source);
       use path)
 
-(* The items that one fold over the one file at [path] gives. *)
 let items_of ~query path =
   let seen = ref [] in
   Parse.fold (Lazy.force language) ~query ~paths:[ path ] ~f:(fun item ->
@@ -386,8 +339,6 @@ let records_of source =
                 | Parse.Capture record -> Some record | Parse.Tree _ -> None)
               (items_of ~query:(Some query) path) )))
 
-(* A fold with no query reads the file and gives what the bridge gives
-   for its text. *)
 let the_tree_of_a_file_is_the_tree_of_its_text document =
   let source = document ^ "\n" in
   let expected =
@@ -400,8 +351,6 @@ let the_tree_of_a_file_is_the_tree_of_its_text document =
   | _ -> false
 
 let the_records_of_a_file_agree_with_the_source document =
-  (* A file ends with a line feed, and the end of the document node
-     then falls on a row that the file does not hold. *)
   let source = document ^ "\n" in
   let path, records = records_of source in
   List.for_all
@@ -425,12 +374,6 @@ let the_records_of_a_file_agree_with_the_source document =
       && String.equal (string_field record "path") path)
     records
 
-(* The module below exports "tree_sitter_a\000b". Before the reader
-   refused such a name, "sinter parse" gave the person who ran it the
-   message of the bridge, which names a function of the library. The
-   property "a name from a wasm module can name a grammar" found it.
-   The reader now gives None, the caller falls back to the file name,
-   and the failure is one that names the file. *)
 let refuses_a_module_that_names_itself_with_a_nul_byte () =
   let wasm = Generators.wasm_module Generators.One_export ~name:"a\000b" in
   Alcotest.(check (option string))
@@ -464,8 +407,6 @@ let properties =
       the_tree_of_a_file_is_the_tree_of_its_text;
   ]
 
-(* An engine that the caller owns, with the grammar of the fixture
-   loaded into it. This is the way the serve mode uses Parse. *)
 let with_language f =
   let engine = Sinter_bridge.create () in
   Fun.protect
@@ -512,8 +453,6 @@ let folds_the_captures_of_the_query () =
       | Parse.Tree _ -> Alcotest.fail "a fold with a query gave a tree")
     items
 
-(* The good file comes first, so a fold that read it before it checked
-   the second name would hand [f] items of it. *)
 let fold_checks_every_file_name_first () =
   let outcome query =
     with_language (fun language ->
@@ -534,14 +473,10 @@ let fold_checks_every_file_name_first () =
   Alcotest.check outcome_t "no capture of the good file, then the name fails"
     failure (outcome (Some query))
 
-(* The lines of an output, without the empty piece that follows the
-   last line feed. *)
 let output_lines text =
   let pieces = String.split_on_char '\n' text in
   match List.rev pieces with "" :: rest -> List.rev rest | _ -> pieces
 
-(* The lines that one run of the one-shot command wrote, and its
-   outcome. A run that fails keeps the lines it wrote first. *)
 let command_output ~query ~paths =
   let file = Filename.temp_file "sinter-parse" ".out" in
   let channel = open_out_bin file in
@@ -562,9 +497,6 @@ let command_output ~query ~paths =
       in
       (output_lines text, outcome))
 
-(* One state for the whole property. It holds the engine and the
-   grammar, so the property also exercises the cache. The collector
-   frees the engine when the test binary ends. *)
 let state = lazy (Serve.create ())
 
 let request ~query ~paths ~tag =
@@ -577,8 +509,6 @@ let request ~query ~paths ~tag =
   Printf.sprintf {|{"rid":%s,"op":"parse","grammar":%S,%s,"files":[%s]}|} tag
     grammar selection files
 
-(* The value that the rid field of every answer line must hold. The
-   tag is the JSON text of the rid of the request. *)
 let value_of_tag tag =
   if String.length tag > 0 && tag.[0] = '"' then
     Jsonl.string (String.sub tag 1 (String.length tag - 2))
@@ -604,10 +534,6 @@ let print_arguments (paths, with_query, tag) =
     (if with_query then "a query" else "a tree")
     tag
 
-(* One answer line of the op against one line of the command. In the
-   query case the two records are the same, apart from the tag. In the
-   tree case the command writes the S-expression alone and the op
-   writes it in a field beside the path of the file. *)
 let same_capture ~tag record line =
   List.assoc_opt "rid" record = Some (value_of_tag tag)
   && String.equal (Jsonl.to_string (List.remove_assoc "rid" record)) line
@@ -618,8 +544,6 @@ let same_tree ~tag ~path record line =
   && List.assoc_opt "path" record = Some (Jsonl.string path)
   && List.assoc_opt "tree" record = Some (Jsonl.string line)
 
-(* The op writes one tree for each file, in the order of the files, so
-   a tree answer is a prefix of the files. *)
 let rec same_trees ~tag records lines paths =
   match (records, lines, paths) with
   | [], [], _ -> true
@@ -654,9 +578,6 @@ let the_op_answers_with_the_lines_of_the_command =
       in
       same_control && same_items)
 
-(* [run] loads the grammar before it looks at any file, so when the
-   grammar does not read and a file name is not UTF-8 text, the
-   message names the grammar. *)
 let names_the_grammar_before_a_bad_file_name () =
   let file = Filename.temp_file "sinter-parse" ".out" in
   let channel = open_out_bin file in

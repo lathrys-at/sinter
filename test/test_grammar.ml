@@ -3,8 +3,6 @@
 
 open Sinter_core
 
-(* Dune runs the test in the build copy of test/, so the path below is
-   relative to that directory. *)
 let grammar = "fixtures/tree-sitter-json/tree-sitter-json.wasm"
 
 let with_engine use =
@@ -34,8 +32,6 @@ let loads_the_fixture_grammar () =
           | Error _ -> Alcotest.fail "the grammar gave no tree")
       | Error error -> Alcotest.fail (Grammar.message ~path:grammar error))
 
-(* A file named for another grammar loads under the name that its
-   module exports. *)
 let takes_the_name_from_the_module () =
   let wasm = In_channel.with_open_bin grammar In_channel.input_all in
   with_engine (fun engine ->
@@ -54,8 +50,6 @@ let reports_a_file_that_does_not_read () =
             (Grammar.message ~path:"no-such-grammar.wasm" error)
       | _ -> Alcotest.fail "a file that does not exist gave a grammar")
 
-(* A module that the reader of names cannot follow falls back to the
-   file name, and the bridge then refuses the bytes. *)
 let reports_a_grammar_that_does_not_load () =
   with_engine (fun engine ->
       in_a_file "not a module" (fun path ->

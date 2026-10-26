@@ -5,9 +5,9 @@
 
     Every repository lives in a new directory under the temporary directory, and
     the process removes that directory when it exits. Every git child gets the
-    environment {!env}, so that no test depends on the git configuration of the
-    machine. A function that runs git raises [Failure] with git's standard error
-    when git does not exit with the status 0. *)
+    environment {!env}, which reads no git configuration of the machine. A
+    function that runs git raises [Failure] with git's standard error when git
+    does not exit with the status 0. *)
 
 type t
 (** A repository with a working tree. *)
@@ -30,17 +30,15 @@ val env : t -> string array
     is the environment of the test process without each variable whose name
     starts with [GIT_], without [HOME], and without [XDG_CONFIG_HOME], with:
 
-    - [PATH] with the directory of the programs of git in front, so that the
-      tests start git itself and not a program that finds git first
-    - [GIT_CEILING_DIRECTORIES], the temporary directory of [repo], so that git
-      looks for a repository in no directory above it
+    - [PATH] with the directory of the programs of git in front
+    - [GIT_CEILING_DIRECTORIES], the temporary directory of [repo]: git looks
+      for a repository in no directory above it
     - [GIT_CONFIG_GLOBAL=/dev/null] and [GIT_CONFIG_NOSYSTEM=1]
     - [HOME], a directory beside the working tree
     - fixed names, e-mail addresses, and dates of the author and the committer
-    - the settings [init.defaultBranch=main]; [fastimport.unpackLimit=0], so
-      that [git fast-import] keeps its objects in one pack; and
-      [core.logAllRefUpdates=false], so that git keeps no log of references. The
-      last two make a repository of fewer files, which {!copy} copies faster. *)
+    - the settings [init.defaultBranch=main]; [fastimport.unpackLimit=0]:
+      [git fast-import] keeps its objects in one pack; and
+      [core.logAllRefUpdates=false]: git keeps no log of references. *)
 
 val git : t -> string list -> string
 (** [git repo args] runs git with [args] in the root of [repo], and gives its
@@ -141,9 +139,8 @@ val fake_git : string -> string array * string
     the script again. *)
 
 val break : t -> unit
-(** [break repo] removes the [.git] directory of [repo], so that each git
-    command in the working tree fails with the exit status 128. Break only a
-    {!copy}. *)
+(** [break repo] removes the [.git] directory of [repo]. Each git command in the
+    working tree then fails with the exit status 128. Break only a {!copy}. *)
 
 (** {1 The shared repository} *)
 

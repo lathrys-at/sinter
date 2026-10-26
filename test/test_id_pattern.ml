@@ -354,9 +354,6 @@ let each_error_has_its_message () =
   message "a{3,2}" "in the quantifier {n,m}, n is not greater than m";
   message "a*" "the pattern matches an empty id"
 
-(* Patterns built as trees, printed, and matched by a second reading
-   of the rules that backtracks. The trees are small, so the
-   backtracking ends soon. *)
 type tree =
   | Literal of char
   | Class of string list

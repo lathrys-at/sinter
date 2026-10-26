@@ -1,12 +1,7 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* Dune runs the test in the build copy of test/, so the path below is
-   relative to that directory. *)
 let grammar = "fixtures/tree-sitter-json/tree-sitter-json.wasm"
-
-(* One pattern with one capture. The query gives one capture per match,
-   so the captures come in the order of the nodes. *)
 let one_capture_query = "(string_content) @s"
 
 let two_pattern_query =
@@ -17,14 +12,11 @@ let property ?(count = 500) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count ~name ~print generator check)
 
-(* The digest needs no engine. *)
 let sha256_gives_the_32_bytes_of_the_digest () =
   Alcotest.(check string)
     "the digest of the empty string"
     "\xe3\xb0\xc4\x42\x98\xfc\x1c\x14\x9a\xfb\xf4\xc8\x99\x6f\xb9\x24\x27\xae\x41\xe4\x64\x9b\x93\x4c\xa4\x95\x99\x1b\x78\x52\xb8\x55"
     (Sinter_bridge.sha256 "")
-
-(* The handles of bridge version 2. *)
 
 module B = Sinter_bridge
 
@@ -35,8 +27,6 @@ let loaded engine =
   | Ok language -> language
   | Error error -> Alcotest.fail (B.Language.message error)
 
-(* One engine and one grammar for the properties below. The grammar
-   keeps its engine alive. *)
 let language = lazy (loaded (B.create ()))
 
 let parsed ?(language = language) text =
@@ -85,8 +75,6 @@ let a_capture_holds_the_bytes_of_its_range source =
               (capture.range.end_byte - capture.range.start_byte)))
     (run_over source)
 
-(* The first match is number 0, and each capture has the number of the
-   capture before it or the next number. *)
 let match_numbers_have_no_gap source =
   let rec walk expected = function
     | [] -> true
@@ -98,8 +86,6 @@ let match_numbers_have_no_gap source =
   | [] -> true
   | first :: rest -> first.match_number = 0 && walk 0 rest
 
-(* The captures of one match come from one pattern, and the capture
-   names belong to that pattern. *)
 let the_captures_of_a_match_share_a_pattern source =
   let rec walk = function
     | (a : B.Query.capture) :: (b :: _ as rest) ->
@@ -125,10 +111,6 @@ let report_of source =
 let a_document_has_no_parse_failure source =
   report_of source = { B.Tree.has_error = false; errors = []; lowest = None }
 
-(* The error nodes come in the order of the text, no node holds the
-   node after it, and each lies inside the text. The lowest node is
-   there exactly when the flag is set, and the flag is set when an
-   error node shows. *)
 let a_report_agrees_with_its_text source =
   let report = report_of source in
   let rec ordered = function
@@ -391,8 +373,6 @@ let gives_a_message_for_each_error () =
   check "the query and the parse tree come from different grammars"
     (B.Query.run_message B.Query.Language_mismatch)
 
-(* Each handle owns what it needs: a tree and a query outlive their
-   grammar and their engine. *)
 let a_tree_and_a_query_outlive_their_grammar () =
   let engine = B.create () in
   let language = loaded engine in
@@ -431,14 +411,11 @@ let every_handle_refuses_a_call_after_close () =
   B.Language.close language;
   Alcotest.check_raises "compile with a closed grammar" (closed "language")
     (fun () -> ignore (B.Query.compile language "(number) @n"));
-  (* A second close of each handle does nothing. *)
   B.Tree.close tree;
   B.Query.close query;
   B.Language.close language;
   B.close engine
 
-(* The collector frees each handle that no value refers to, and a
-   handle that was closed is not freed again. *)
 let the_collector_frees_every_handle () =
   for index = 1 to 6 do
     let engine = B.create () in

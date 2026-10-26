@@ -16,11 +16,6 @@
 
 #![warn(unsafe_op_in_unsafe_fn)]
 
-// Every C function of the bridge catches a panic with `guard` and
-// turns it into a failure the caller can read. That works only while
-// the crate unwinds panics. A build that aborts on panic would make
-// every guard dead and end the process with no message, so the crate
-// refuses to build that way.
 #[cfg(panic = "abort")]
 compile_error!("the bridge needs unwinding panics; do not build it with panic = \"abort\"");
 
@@ -38,29 +33,19 @@ use sha2::{Digest, Sha256};
 use toml_edit::ImDocument;
 use tree_sitter::{wasmtime, Language, Parser, Query, Tree, WasmStore};
 
-/// Record a failure that the caller cannot act on.
 fn set_error(message: impl Into<String>) {
     set_failure(Failure::Internal(message.into()));
 }
 
-/// The failure of a call that got a null pointer it needs.
 fn null_argument() -> Failure {
     Failure::Internal("a required argument is null".to_owned())
 }
 
 /// An engine holds the WebAssembly runtime for grammars and a parser.
 pub struct SinterBridgeEngine {
-    /// Holds the WebAssembly store between calls. Parsing with a
-    /// grammar that runs in WebAssembly needs the store.
     parser: Parser,
-    /// The runtime that compiled every grammar of this engine.
     grammar_engine: wasmtime::Engine,
-    /// The settings of `grammar_engine`.
     config: wasmtime::Config,
-    /// The runtime of adapters, made on the first load of an adapter.
-    /// It counts fuel, and a runtime that counts fuel cannot run a
-    /// grammar, so it is a second runtime. It is made from a copy of
-    /// `config`, which shares the cache of compiled modules.
     adapter_engine: Option<wasmtime::Engine>,
 }
 
@@ -68,8 +53,6 @@ pub struct SinterBridgeEngine {
 /// language, so it stays valid after its engine is freed.
 pub struct SinterBridgeLanguage {
     language: Language,
-    /// The runtime that compiled the grammar. Only a parser of the same
-    /// runtime can use it.
     engine: wasmtime::Engine,
 }
 
@@ -91,10 +74,7 @@ pub struct SinterBridgeQuery {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct SinterBridgeLimits {
-    /// The units of fuel for everything that the instance runs.
     fuel: u64,
-    /// The most bytes that all linear memories of the instance may hold
-    /// together.
     memory: u64,
 }
 
@@ -106,7 +86,6 @@ pub struct SinterBridgeAdapter {
 }
 
 impl SinterBridgeEngine {
-    /// The runtime of adapters, made on the first call.
     fn adapter_engine(&mut self) -> Result<wasmtime::Engine, Failure> {
         if let Some(engine) = &self.adapter_engine {
             return Ok(engine.clone());
@@ -132,9 +111,6 @@ pub struct SinterBridgeResult {
     capacity: usize,
 }
 
-/// Make a slice from a C pointer and a length. A null pointer gives an
-/// empty slice.
-///
 /// # Safety
 ///
 /// When `len` is not 0, `data` must point to `len` readable bytes.
@@ -146,7 +122,6 @@ unsafe fn slice_of(data: *const u8, len: usize) -> &'static [u8] {
     }
 }
 
-/// Move a buffer into a result that the caller frees.
 fn into_result(buffer: Vec<u8>) -> *mut SinterBridgeResult {
     let mut buffer = buffer;
     let result = SinterBridgeResult {
@@ -158,7 +133,6 @@ fn into_result(buffer: Vec<u8>) -> *mut SinterBridgeResult {
     Box::into_raw(Box::new(result))
 }
 
-/// A buffer as a result, or null and the failure recorded.
 fn result_of(written: Result<Vec<u8>, Failure>) -> *mut SinterBridgeResult {
     match written {
         Ok(buffer) => into_result(buffer),
@@ -169,8 +143,6 @@ fn result_of(written: Result<Vec<u8>, Failure>) -> *mut SinterBridgeResult {
     }
 }
 
-/// A value as a handle that the caller frees, or null and the failure
-/// recorded.
 fn handle_of<T>(made: Result<T, Failure>) -> *mut T {
     match made {
         Ok(value) => Box::into_raw(Box::new(value)),
@@ -181,8 +153,6 @@ fn handle_of<T>(made: Result<T, Failure>) -> *mut T {
     }
 }
 
-/// Drop a handle.
-///
 /// # Safety
 ///
 /// `handle` must be null, or a pointer that `handle_of` returned and
@@ -193,17 +163,6 @@ unsafe fn drop_handle<T>(handle: *mut T) {
     }
 }
 
-/// Turn off every Rust backtrace in the process, once.
-///
-/// A backtrace that Rust captures inside the `sinter` process stops the
-/// process with SIGTRAP on macOS on arm64: the walk goes up through the
-/// frames of the OCaml runtime. An error of wasmtime captures one when
-/// `RUST_BACKTRACE` or `RUST_LIB_BACKTRACE` asks for it, and many shells
-/// of Rust developers set `RUST_BACKTRACE`. So the bridge sets
-/// `RUST_LIB_BACKTRACE` to `0`, which turns off the capture for errors,
-/// before it makes any error. It also replaces the default panic hook,
-/// which prints a backtrace, with one that prints the message alone;
-/// `guard` turns the panic into a failure.
 fn keep_backtraces_off() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
@@ -214,16 +173,6 @@ fn keep_backtraces_off() {
     });
 }
 
-/// Run `body`. Turn a panic into `failure`, so that no panic reaches
-/// the C caller.
-///
-/// Rust aborts the process when a panic tries to leave an
-/// `extern "C"` function, and an aborted process gives the caller no
-/// message and no exit code of its own.
-///
-/// The guard works only while the crate unwinds a panic. A release
-/// profile that sets `panic = "abort"` makes every guard in the crate
-/// dead, and the process aborts again.
 fn guard<T>(failure: T, body: impl FnOnce() -> T) -> T {
     keep_backtraces_off();
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
@@ -249,8 +198,6 @@ pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
         if let Ok(cache) = wasmtime::Cache::from_file(None) {
             config.cache(Some(cache));
         }
-        // A module with a 64-bit memory does not compile, in this engine
-        // and in the engine of adapters, which copies `config`.
         config.wasm_memory64(false);
         let grammar_engine = match wasmtime::Engine::new(&config) {
             Ok(engine) => engine,
@@ -288,8 +235,6 @@ pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
 /// `sinter_bridge_engine_new` returned and that was not freed before.
 #[no_mangle]
 pub unsafe extern "C" fn sinter_bridge_engine_free(engine: *mut SinterBridgeEngine) {
-    // Safety: the caller passes a pointer from sinter_bridge_engine_new
-    // and does not use it again.
     guard((), move || unsafe { drop_handle(engine) })
 }
 
@@ -312,8 +257,6 @@ pub unsafe extern "C" fn sinter_bridge_language_load(
             set_error("a required argument is null");
             return std::ptr::null_mut();
         }
-        // Safety: the caller gives an engine from sinter_bridge_engine_new,
-        // a NUL-terminated name, and wasm_len readable bytes at wasm.
         let engine = unsafe { &mut *engine };
         let name = match unsafe { CStr::from_ptr(name) }.to_str() {
             Ok(name) => name.to_owned(),
@@ -361,8 +304,6 @@ pub unsafe extern "C" fn sinter_bridge_language_load(
 /// before.
 #[no_mangle]
 pub unsafe extern "C" fn sinter_bridge_language_free(language: *mut SinterBridgeLanguage) {
-    // Safety: the caller passes a pointer from sinter_bridge_language_load
-    // and does not use it again.
     guard((), move || unsafe { drop_handle(language) })
 }
 
@@ -385,13 +326,9 @@ pub unsafe extern "C" fn sinter_bridge_parse(
         if engine.is_null() || language.is_null() || (source.is_null() && source_len != 0) {
             return handle_of(Err(null_argument()));
         }
-        // The check on the length runs before any byte of the source is
-        // read: the buffer format holds every offset in 32 bits.
         if length_prefix(source_len).is_err() {
             return handle_of(Err(Failure::SourceTooLong));
         }
-        // Safety: the caller gives an engine and a language from this
-        // bridge, and source_len readable bytes at source.
         let engine = unsafe { &mut *engine };
         let language = unsafe { &*language };
         let source = unsafe { slice_of(source, source_len) };
@@ -426,13 +363,9 @@ pub unsafe extern "C" fn sinter_bridge_parse(
 /// returned and that was not freed before.
 #[no_mangle]
 pub unsafe extern "C" fn sinter_bridge_tree_free(tree: *mut SinterBridgeTree) {
-    // Safety: the caller passes a pointer from sinter_bridge_parse and
-    // does not use it again.
     guard((), move || unsafe { drop_handle(tree) })
 }
 
-/// The bytes a node of a tree holds outside the tree's text, for the
-/// estimate of `sinter_bridge_tree_memory`.
 const BYTES_PER_NODE: usize = 64;
 
 /// An estimate of the memory that a tree holds: its text, and an
@@ -447,7 +380,6 @@ pub unsafe extern "C" fn sinter_bridge_tree_memory(tree: *const SinterBridgeTree
         if tree.is_null() {
             return 0;
         }
-        // Safety: the caller gives a live tree.
         let tree = unsafe { &*tree };
         let nodes = tree.tree.root_node().descendant_count();
         tree.source
@@ -470,7 +402,6 @@ pub unsafe extern "C" fn sinter_bridge_tree_sexp(
         if tree.is_null() {
             return result_of(Err(null_argument()));
         }
-        // Safety: the caller gives a live tree.
         result_of(syntax::sexp_buffer(&unsafe { &*tree }.tree))
     })
 }
@@ -489,7 +420,6 @@ pub unsafe extern "C" fn sinter_bridge_tree_errors(
         if tree.is_null() {
             return result_of(Err(null_argument()));
         }
-        // Safety: the caller gives a live tree.
         result_of(syntax::error_report_buffer(&unsafe { &*tree }.tree))
     })
 }
@@ -511,8 +441,6 @@ pub unsafe extern "C" fn sinter_bridge_query_new(
         if language.is_null() || (text.is_null() && len != 0) {
             return handle_of(Err(null_argument()));
         }
-        // Safety: the caller gives a live language, and len readable
-        // bytes at text.
         let language = unsafe { &*language };
         let text = unsafe { slice_of(text, len) };
         handle_of(
@@ -532,8 +460,6 @@ pub unsafe extern "C" fn sinter_bridge_query_new(
 /// returned and that was not freed before.
 #[no_mangle]
 pub unsafe extern "C" fn sinter_bridge_query_free(query: *mut SinterBridgeQuery) {
-    // Safety: the caller passes a pointer from sinter_bridge_query_new
-    // and does not use it again.
     guard((), move || unsafe { drop_handle(query) })
 }
 
@@ -553,12 +479,8 @@ pub unsafe extern "C" fn sinter_bridge_query_run(
         if query.is_null() || tree.is_null() {
             return result_of(Err(null_argument()));
         }
-        // Safety: the caller gives a live query and a live tree.
         let query = unsafe { &*query };
         let tree = unsafe { &*tree };
-        // Both handles hold a counted reference to their language, so
-        // the two pointers are live, and they are equal only for one
-        // language. tree-sitter does not check this itself.
         if *tree.tree.language() != query.language {
             return result_of(Err(Failure::LanguageMismatch));
         }
@@ -590,8 +512,6 @@ pub unsafe extern "C" fn sinter_bridge_adapter_load(
         if engine.is_null() || (wasm.is_null() && wasm_len != 0) {
             return handle_of(Err(null_argument()));
         }
-        // Safety: the caller gives a live engine, and wasm_len readable
-        // bytes at wasm.
         let engine = unsafe { &mut *engine };
         let bytes = unsafe { slice_of(wasm, wasm_len) };
         handle_of(
@@ -619,7 +539,6 @@ pub unsafe extern "C" fn sinter_bridge_adapter_interface(
         if adapter.is_null() {
             return 0;
         }
-        // Safety: the caller gives a live adapter.
         unsafe { &*adapter }.adapter.interface
     })
 }
@@ -632,8 +551,6 @@ pub unsafe extern "C" fn sinter_bridge_adapter_interface(
 /// `sinter_bridge_adapter_load` returned and that was not freed before.
 #[no_mangle]
 pub unsafe extern "C" fn sinter_bridge_adapter_free(adapter: *mut SinterBridgeAdapter) {
-    // Safety: the caller passes a pointer from sinter_bridge_adapter_load
-    // and does not use it again.
     guard((), move || unsafe { drop_handle(adapter) })
 }
 
@@ -669,8 +586,6 @@ pub unsafe extern "C" fn sinter_bridge_adapter_call(
                 "the adapter has no function {function}"
             ))));
         };
-        // Safety: the caller gives a live adapter, and the readable
-        // bytes of the request and of the report.
         let adapter = unsafe { &*adapter };
         let request = unsafe { slice_of(request, request_len) };
         let report = unsafe { slice_of(report, report_len) };
@@ -712,7 +627,6 @@ pub unsafe extern "C" fn sinter_bridge_sha256(
             set_error("a required argument is null");
             return std::ptr::null_mut();
         }
-        // Safety: the caller gives len readable bytes at data.
         let bytes = unsafe { slice_of(data, len) };
         let mut buffer = Vec::with_capacity(16 + 32);
         put_header(&mut buffer, KIND_DIGEST);
@@ -748,7 +662,6 @@ pub unsafe extern "C" fn sinter_bridge_toml_parse(
             );
             return std::ptr::null_mut();
         }
-        // Safety: the caller gives len readable bytes at text.
         let bytes = unsafe { slice_of(text, len) };
         let Ok(text) = std::str::from_utf8(bytes) else {
             set_error("the TOML text is not UTF-8");
@@ -785,8 +698,6 @@ pub unsafe extern "C" fn sinter_bridge_result_free(result: *mut SinterBridgeResu
         if result.is_null() {
             return;
         }
-        // Safety: the caller passes a pointer that a function of this
-        // bridge returned, and does not use it again.
         let result = unsafe { Box::from_raw(result) };
         drop(unsafe { Vec::from_raw_parts(result.data, result.len, result.capacity) });
     })

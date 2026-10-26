@@ -40,9 +40,6 @@ let error = function
 
 let strings = Alcotest.(list string)
 let pairs = Alcotest.(list (pair string string))
-
-(* Generators. *)
-
 let hex_digit = Gen.oneof_list (String.to_seq "0123456789abcdef" |> List.of_seq)
 
 let object_id =
@@ -51,8 +48,6 @@ let object_id =
       (oneof_list [ 40; 64 ])
       (fun length -> string_size ~gen:hex_digit (return length)))
 
-(* A path of one to twelve bytes, none of them NUL. Tabs, spaces, and
-   line feeds come up often, because the decoders split on them. *)
 let path =
   let byte =
     Gen.(
@@ -115,8 +110,6 @@ let encode_batch_header = function
       Printf.sprintf "%s %s %d" id (kind_name kind) size
   | Git.Decode.Missing name -> name ^ " missing"
 
-(* [damaged text] is [text] with one change: a byte replaced, a byte
-   removed, a byte added, or the end cut off. *)
 let damaged text =
   let open Gen in
   let length = String.length text in
@@ -153,8 +146,6 @@ let gives_a_value_or_an_error decode input =
   match decode input with Ok _ | Error _ -> true
 
 let print_pair (label, text) = Printf.sprintf "%s %S" label text
-
-(* Properties of the decoders. *)
 
 let nul_list_gives_back_the_records =
   property ~name:"nul_list gives back the records that were joined"
@@ -294,8 +285,6 @@ let decoders_are_total_on_any_bytes =
       && gives_a_value_or_an_error Git.Decode.ls_tree output
       && gives_a_value_or_an_error Git.Decode.batch_header output)
 
-(* Examples of the decoders. *)
-
 let id = String.make 40 'a'
 let refuses name decode input () = holds name (Result.is_error (decode input))
 
@@ -351,8 +340,6 @@ let splits_at_the_first_tab () =
     (Git.Decode.ls_files_stage ("100644 " ^ id ^ " 2\ta\tb\000")
     = Ok [ { Git.Decode.mode = 0o100644; id; stage = 2; path = "a\tb" } ])
 
-(* The shared repository: {!Git_fixture.shared} lists what it holds. *)
-
 let shared = lazy (Repo.shared ())
 let hello_id = "ce013625030ba8dba906f756967f9e9ca394464a"
 
@@ -363,8 +350,6 @@ let opened =
           ~env:(Repo.env (Lazy.force shared))
           (Repo.root (Lazy.force shared))))
 
-(* The file set of the shared repository, and the state of its index
-   before and after the call. *)
 let file_set =
   lazy
     (let repo = Lazy.force shared in
@@ -376,8 +361,6 @@ let file_set =
 let files () =
   let files, _, _ = Lazy.force file_set in
   files
-
-(* Fake gits. *)
 
 let path_of env =
   Array.to_list env
@@ -396,8 +379,6 @@ let without_path env =
 let lines_of path =
   String.split_on_char '\n' (In_channel.with_open_bin path In_channel.input_all)
 
-(* A fake git that writes its arguments and its environment beside its
-   script, and prints what [open_repo] reads. *)
 let recording_script =
   "dir=${0%/*}\n\
    printf '%s\\n' \"$@\" >| \"$dir/args\"\n\
@@ -428,11 +409,6 @@ let recorded =
        lines_of (Filename.concat dir "args"),
        lines_of (Filename.concat dir "env") ))
 
-(* A fake git for the decoders of [fold_blobs] and [files]. The id that
-   [fold_blobs] asks for chooses the output of [cat-file]. For the id of
-   eights, 300000 bytes follow the header [missing], and for the id of
-   [a]s, they follow one blob: more than a pipe and the buffer of a
-   channel hold, so git waits until the reader takes them. *)
 let id_of digit = String.make 40 digit
 
 let faking_script =
@@ -460,8 +436,6 @@ let faked =
   lazy
     (let env, script = Repo.fake_git faking_script in
      ok (Git.open_repo ~env script))
-
-(* Repositories. *)
 
 let open_repo_finds_the_root () =
   let t = Lazy.force opened in
@@ -571,9 +545,6 @@ let child_environment_keeps_the_other_variables () =
   let _, _, _, env = Lazy.force recorded in
   holds "SINTER_TEST_KEPT is set" (List.mem "SINTER_TEST_KEPT=yes" env)
 
-(* The directories of PATH, in order: one that does not exist, an empty
-   entry, one whose git is not executable, one whose git is a directory,
-   the fake git, and a git that always fails. *)
 let open_repo_takes_the_first_executable_git_on_path () =
   let env, script = Repo.fake_git "printf 'sha1\\n%s\\n' \"$0\"\n" in
   let not_executable = Repo.temp_dir () in
@@ -608,8 +579,6 @@ let open_repo_gives_what_git_wrote_when_it_fails () =
       Alcotest.(check string) "the directory" script dir;
       Alcotest.(check string) "the detail" "no repository\n" detail
   | other -> Alcotest.fail (print_error other)
-
-(* Files. *)
 
 let files_holds path () =
   holds (path ^ " is in the set") (List.mem path (files ()))
@@ -654,8 +623,6 @@ let files_ignores_the_variables_of_the_caller_that_redirect_git () =
   in
   Alcotest.check strings "the file set" expected_files (ok (Git.files t))
 
-(* A copy of the shared repository whose index holds three stages of
-   one path, as a merge with a conflict leaves them. *)
 let conflicted =
   lazy
     (let repo = Repo.copy (Lazy.force shared) in
@@ -698,8 +665,6 @@ let files_reports_output_it_cannot_read () =
       holds "the arguments name ls-files" (List.mem "ls-files" args)
   | other -> Alcotest.fail (print_error other)
 
-(* The base tree and blobs. *)
-
 let base = lazy (ok (Git.base_tree (Lazy.force opened) "main"))
 
 let contents_of_main =
@@ -738,8 +703,6 @@ let base_tree_refuses rev () =
   | Bad_revision named -> Alcotest.(check string) "the revision" rev named
   | other -> Alcotest.fail (print_error other)
 
-(* The ids and the contents that [fold_blobs] gave for the files of
-   [main], in the order it gave them. *)
 let blobs =
   lazy
     (let t = Lazy.force opened in
@@ -825,11 +788,6 @@ let fold_blobs_reports_a_failed_git () =
       holds "the status is 2" (status = Unix.WEXITED 2)
   | other -> Alcotest.fail (print_error other)
 
-(* The tree key. *)
-
-(* [in_temp_dir f] calls [f] while the temporary directory of the
-   process is a new empty one, and gives what [f] gave and the names in
-   that directory after [f]. *)
 let in_temp_dir f =
   let dir = Repo.temp_dir () in
   let previous = Filename.get_temp_dir_name () in
@@ -839,8 +797,6 @@ let in_temp_dir f =
   in
   (value, Array.to_list (Sys.readdir dir))
 
-(* The tree key of the shared repository, the state of its index before
-   and after, and the names left in the temporary directory. *)
 let key_run =
   lazy
     (let repo = Lazy.force shared in
@@ -848,8 +804,6 @@ let key_run =
      let key, left = in_temp_dir (fun () -> Lazy.force key) in
      (key, before, Repo.index_state repo, left))
 
-(* A copy of the shared repository, after a real [git add -A] in it, and
-   the tree that [git write-tree] then writes. *)
 let added =
   lazy
     (let repo = Repo.copy (Lazy.force shared) in
@@ -871,10 +825,6 @@ let tree_key_leaves_no_temporary_file () =
 
 let copy = lazy (Repo.copy (Lazy.force shared))
 
-(* The opened [copy], and its tree keys: with a new ignored file, then
-   also with a new untracked file. Last, the result of [tree_key] when git
-   cannot read the untracked file, and the names left in the temporary
-   directory after that call. *)
 let copy_run =
   lazy
     (let repo = Lazy.force copy in
@@ -892,11 +842,6 @@ let copy_run =
      in
      (t, with_ignored, with_untracked, failed, left))
 
-(* An edit that keeps the size of a file, where the file and the index
-   keep the time of the old content. git sees the edit only because the
-   entry is not older than the index, so the copy of the index must keep
-   that check. The repository does not trust ctime, so that the test does
-   not depend on the second in which it runs. *)
 let tree_key_sees_an_edit_that_keeps_size_and_time () =
   let repo = Repo.copy (Lazy.force shared) in
   ignore (Repo.git repo [ "config"; "core.trustctime"; "false" ]);
@@ -940,8 +885,6 @@ let tree_key_removes_its_files_when_git_fails () =
   let _, _, _, _, left = Lazy.force copy_run in
   Alcotest.check strings "the temporary directory" [] left
 
-(* A broken repository: the copy of [copy_run], whose .git directory went
-   away after [copy_run] opened it. *)
 let broken =
   lazy
     (let t, _, _, _, _ = Lazy.force copy_run in
@@ -959,8 +902,6 @@ let reports_a_failed_git call () =
       holds "git said why" (stderr <> "")
   | other -> Alcotest.fail (print_error other)
 
-(* A SHA-256 repository with one commit, no index, and no file in its
-   working tree. *)
 let sha256 =
   lazy
     (let repo = Repo.init ~object_format:"sha256" () in
@@ -971,8 +912,6 @@ let sha256 =
        ];
      (repo, ok (Git.open_repo ~env:(Repo.env repo) (Repo.root repo))))
 
-(* The tree key of the SHA-256 repository, and the state of its index
-   before and after. *)
 let sha256_key =
   lazy
     (let repo, t = Lazy.force sha256 in
@@ -1014,12 +953,8 @@ let fold_blobs_refuses_a_sha1_id_in_a_sha256_repository () =
   | Bad_revision named -> Alcotest.(check string) "the id" hello_id named
   | other -> Alcotest.fail (print_error other)
 
-(* Resources. *)
-
 let open_descriptors () = Array.length (Sys.readdir "/dev/fd")
 
-(* [no_child_left ()] is [true] when the process has no child that it has
-   not waited for. *)
 let no_child_left () =
   match Unix.waitpid [ Unix.WNOHANG ] (-1) with
   | exception Unix.Unix_error (Unix.ECHILD, _, _) -> true
@@ -1027,11 +962,6 @@ let no_child_left () =
 
 let too_long = String.make 2_000_000 'a'
 
-(* Calls that end early: [fold_blobs] whose output ends too early,
-   [base_tree] whose git does not start, and [fold_blobs] whose [f]
-   raises. The result says whether the exception came through, and gives
-   the names left in the temporary directory, the number of open
-   descriptors before and after, and whether a child is left. *)
 let raising_run =
   lazy
     (let t = Lazy.force opened in
@@ -1074,8 +1004,6 @@ let base_tree_reports_a_git_that_does_not_start () =
   | Git_not_found _ -> ()
   | other -> Alcotest.fail (print_error other)
 
-(* When [f] raises, git still has output to write, and it must end when
-   the reader closes the pipe. A hang here is the failure. *)
 let fold_blobs_ends_git_when_f_raises () =
   Alcotest.check_raises "the exception of f" Exit (fun () ->
       ignore
@@ -1131,9 +1059,6 @@ let tree_key_reports_an_index_it_cannot_read () =
         (String.starts_with ~prefix:index detail)
   | other -> Alcotest.fail (print_error other)
 
-(* A fake git closes its output and then lives on for 10 ms, so that
-   [open_repo] waits for it. A timer sends a signal every 2 ms while
-   [open_repo] runs, so that some signal comes during that wait. *)
 let open_repo_waits_again_after_a_signal () =
   let env, script =
     Repo.fake_git

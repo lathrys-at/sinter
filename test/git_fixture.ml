@@ -6,8 +6,6 @@ type t = { root : string; home : string; env : string array }
 let root repo = repo.root
 let env repo = repo.env
 
-(* [remove_tree path] removes the file, link, or directory tree at
-   [path]. It follows no symbolic link. *)
 let rec remove_tree path =
   match Unix.lstat path with
   | { Unix.st_kind = Unix.S_DIR; _ } ->
@@ -29,8 +27,6 @@ let write_file path text =
   Out_channel.with_open_bin path (fun channel ->
       Out_channel.output_string channel text)
 
-(* [spawn program args ~env ~dir ~input] runs [program] in [dir], and
-   gives its exit status, its standard output, and its standard error. *)
 let spawn program args ~env ~dir ~input =
   let scratch = Filename.temp_dir "sinter-git-run" "" in
   Fun.protect
@@ -60,8 +56,6 @@ let spawn program args ~env ~dir ~input =
 
 let search_path = Option.value (Sys.getenv_opt "PATH") ~default:""
 
-(* The git that the shell would run. On macOS, it can be a small program
-   that finds the real git and starts it, which costs time on each run. *)
 let git_on_path =
   String.split_on_char ':' search_path
   |> List.find_map (fun dir ->
@@ -69,7 +63,6 @@ let git_on_path =
       if dir <> "" && Sys.file_exists git then Some git else None)
   |> Option.value ~default:"git"
 
-(* The directory of the programs of git, which holds git itself. *)
 let exec_path =
   match
     spawn git_on_path [ "--exec-path" ] ~env:(Unix.environment ()) ~dir:"."
@@ -104,11 +97,6 @@ let fixed_variables home =
     "GIT_CONFIG_VALUE_2=false";
   ]
 
-(* [make_env ~home ~ceiling] is the environment of the git children of
-   one test directory. Git looks for a repository in no directory above
-   [ceiling], so that a test directory under the project's own working
-   tree, as the mutation runner makes, never reaches the project's
-   repository. *)
 let make_env ~home ~ceiling =
   let inherited =
     Array.to_list (Unix.environment ())
@@ -159,8 +147,6 @@ let init ?(object_format = "sha1") () =
   ignore (checked args (run_git ~env ~dir:base args));
   { root = Unix.realpath (Filename.concat base "repo"); home; env }
 
-(* The working tree. *)
-
 let rec make_parents path =
   let parent = Filename.dirname path in
   if not (Sys.file_exists parent) then (
@@ -188,8 +174,6 @@ let append_config repo text =
     (Filename.concat repo.root ".git/config") (fun channel ->
       Out_channel.output_string channel text)
 
-(* [copy_tree source target] copies the file, link, or directory tree at
-   [source] to [target], with the permission bits of each file. *)
 let rec copy_tree source target =
   let stat = Unix.lstat source in
   match stat.Unix.st_kind with
@@ -222,8 +206,6 @@ let index_state repo =
         stat.Unix.st_ino stat.Unix.st_size stat.Unix.st_mtime
         (Digest.to_hex (Digest.file index))
   | exception Unix.Unix_error (Unix.ENOENT, _, _) -> "absent"
-
-(* History. *)
 
 type change =
   | File of string * string
@@ -270,8 +252,6 @@ let import repo commands =
 
 let checkout repo = ignore (git repo [ "reset"; "-q"; "--hard" ])
 
-(* Fake executables. *)
-
 let fake_git script =
   let dir = temp_dir () in
   let bin = Filename.concat dir "bin" in
@@ -288,9 +268,6 @@ let fake_git script =
   (Array.of_list (("PATH=" ^ bin) :: env), path)
 
 let break repo = remove repo ".git"
-
-(* The shared repository. *)
-
 let submodule_commit = String.make 40 'c'
 
 let first_files =
@@ -308,7 +285,6 @@ let first_files =
     Submodule ("sub-as-file", submodule_commit);
   ]
 
-(* The files of commit 2 that the working tree changes, for the diff. *)
 let quoted_name = "caf\xc3\xa9\tdoc one.txt"
 
 let second_changes =

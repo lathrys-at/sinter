@@ -6,8 +6,6 @@ module Gen = QCheck2.Gen
 
 let line_of fields = Yojson.Safe.to_string (`Assoc fields)
 
-(* One line for a parse request. Each argument replaces one field, and
-   [?query] and [?tree] add a field that is otherwise absent. *)
 let parse_line ?(rid = `String "r1") ?(op = `String "parse")
     ?(grammar = `String "g.wasm") ?query ?tree ?(files = `List [ `String "a" ])
     () =
@@ -33,8 +31,6 @@ let rid_of line =
 let holds name condition = Alcotest.(check bool) name true condition
 let gives name expected line = holds name (cause_of line = Some expected)
 
-(* Generators. *)
-
 let json_of_rid = function
   | Request.Text text -> `String text
   | Request.Number number -> `Int number
@@ -54,8 +50,6 @@ let fields_of (request : Request.t) ~spell_out =
         | Request.Tree -> [ ("tree", `Bool true) ])
       @ [ ("files", `List (List.map (fun file -> `String file) files)) ]
 
-(* A well-formed request, and one line that says the same thing. The
-   order of the fields in the line is generated too. *)
 let request_and_line =
   let open Gen in
   let text = string_printable in
@@ -81,7 +75,6 @@ let request_and_line =
   let* fields = shuffle_list (fields_of request ~spell_out) in
   return (request, line_of fields)
 
-(* A request line with one byte cut, changed, or added. *)
 let corrupted_line =
   let open Gen in
   let* _, line = request_and_line in
@@ -102,8 +95,6 @@ let corrupted_line =
         (int_range 0 length) char;
     ]
 
-(* Property tests. *)
-
 let reads_any_string =
   QCheck2.Test.make ~count:2000 ~name:"the reader answers for any string"
     ~print:String.escaped Gen.string (fun line ->
@@ -121,8 +112,6 @@ let reads_back_a_well_formed_request =
     ~print:(fun (_, line) -> String.escaped line)
     request_and_line
     (fun (request, line) -> Request.of_line line = Ok request)
-
-(* Tests of one fact each. *)
 
 let a_line_that_is_not_json_is_not_a_request () =
   gives "an open brace alone" Request.Not_json "{"
@@ -148,8 +137,6 @@ let a_rid_above_the_allowed_range_is_an_error () =
   gives "2^53" Request.Bad_rid
     (parse_line ~rid:(`Int 9007199254740992) ~tree:(`Bool true) ())
 
-(* The corners of the range belong to it. A reader that left either
-   corner out would refuse a request id that the canonical form allows. *)
 let a_rid_at_the_bottom_of_the_range_is_read () =
   holds "the rid -(2^53-1) comes back as that number"
     (rid_of (parse_line ~rid:(`Int (-9007199254740991)) ~tree:(`Bool true) ())
@@ -272,10 +259,6 @@ let a_query_beside_a_false_tree_asks_for_captures () =
               };
         })
 
-(* A line that holds many fields must not cost more than the fields
-   are worth: the reader sorts the names and does not compare every
-   pair of them. This line takes about a second with a search over
-   pairs, and no time at all without one. *)
 let a_line_of_many_fields_is_read_at_once () =
   let count = 50000 in
   let fields =

@@ -16,9 +16,6 @@ let position =
 
 let at line column = { Line_index.line; column }
 
-(* A text of pieces that each hold one character or one line ending:
-   ASCII, characters of two, three, and four bytes, blanks, and the
-   three line endings. Some texts start with a byte order mark. *)
 let text =
   Gen.map2
     (fun mark pieces ->
@@ -42,7 +39,6 @@ let text =
 let mark_length text =
   if String.starts_with ~prefix:"\xEF\xBB\xBF" text then 3 else 0
 
-(* The number of characters in the bytes from [start] to [stop]. *)
 let characters text start stop =
   let total = ref 0 in
   for offset = start to stop - 1 do
@@ -101,7 +97,6 @@ let byte_order_mark_alone_makes_an_empty_line () =
   Alcotest.(check int) "its line" 1 (Line_index.line_of index 2)
 
 let columns_count_characters () =
-  (* "é" has two bytes and "😀" four. *)
   let index = Line_index.make "\xC3\xA9\xF0\x9F\x98\x80x\n" in
   Alcotest.check position "the x" (at 1 3) (Line_index.position index 6);
   Alcotest.check position "a byte inside the emoji" (at 1 2)
@@ -157,7 +152,6 @@ let text_gives_the_text =
   property ~name:"text gives the text that make took" ~print:String.escaped text
     (fun text -> Line_index.text (Line_index.make text) == text)
 
-(* The mark, then each line and its line ending, give the text back. *)
 let lines_rebuild_the_text =
   property ~name:"the lines and their endings rebuild the text"
     ~print:String.escaped text (fun text ->
@@ -192,8 +186,6 @@ let no_content_holds_a_line_ending =
                && text.[stop] = '\n'))
         (List.init (Line_index.count index) (fun offset -> offset + 1)))
 
-(* A naive count: the line of a byte is one more than the number of line
-   feeds before it. *)
 let line_of_counts_the_line_feeds_before =
   property ~name:"line_of is one more than the line feeds before the byte"
     ~print:String.escaped text (fun text ->

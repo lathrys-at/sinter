@@ -1,8 +1,6 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* Each number is its decimal digits, with no leading zero, so that a
-   number of any size compares by its length and then by its bytes. *)
 type t = { major : string; minor : string }
 
 let make major minor =

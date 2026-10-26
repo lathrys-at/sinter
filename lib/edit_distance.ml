@@ -1,8 +1,6 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* A character is a code point, or one byte outside a valid UTF-8
-   sequence. *)
 type character = Code_point of Uchar.t | Stray of char
 
 let characters text =
@@ -24,11 +22,6 @@ module Rows = Map.Make (struct
   let compare = compare
 end)
 
-(* The algorithm of Lowrance and Wagner. [d.(i).(j)] is the distance
-   between the first [i] characters of [a] and the first [j] of [b].
-   [last_row] maps a character to the last row of [a] that holds it;
-   [last_column] is the last column of [b], in the row [i], that holds
-   the character [a.(i-1)]. *)
 let distance a b =
   let a = characters a and b = characters b in
   let rows = Array.length a and columns = Array.length b in
@@ -64,9 +57,6 @@ let distance a b =
   done;
   d.(rows).(columns)
 
-(* The distance is at least the difference of the two lengths, so a
-   candidate whose length differs by more than [most] is not within
-   [most] edits. *)
 let nearest name candidates =
   let most = 2 in
   let length text = Array.length (characters text) in

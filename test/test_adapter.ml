@@ -7,9 +7,6 @@ module W = Wasm_builder
 let page = 65536
 let fuel = 1_000_000
 let memory = 4 * page
-
-(* One engine for every test below. The collector frees it when the
-   test binary ends. *)
 let engine = lazy (Sinter_bridge.create ())
 
 let property ?(count = 100) ~name ~print generator check =
@@ -125,8 +122,6 @@ let refuses_an_export_of_the_wrong_type () =
     (invalid (A.Wrong_export_type "memory"))
     (load_error { W.adapter with memory_as_global = true })
 
-(* The runtime of adapters does not read the threads or the memory64
-   proposals, so it refuses both memories as it compiles the module. *)
 let refuses_a_shared_memory_and_a_64_bit_memory () =
   List.iter
     (fun (feature, change) ->
@@ -165,8 +160,6 @@ let stops_a_call_that_runs_out_of_fuel () =
   Alcotest.check error_t "a loop" A.Out_of_fuel
     (call_error { W.adapter with bind = W.Loop })
 
-(* The two calls of sinter_alloc cost more than five units, and the
-   function alone costs fewer. *)
 let counts_the_allocations_in_the_fuel () =
   let spec = { W.adapter with bind = W.Respond "{}" } in
   Alcotest.check error_t "five units" A.Out_of_fuel (call_error ~fuel:5 spec);
@@ -199,8 +192,6 @@ let reports_an_allocation_outside_memory () =
          memory_size = page;
        })
     (call_error ~request:"{}" { W.adapter with alloc = W.Address 0xFFFFFFF0 });
-  (* The bump allocator does not grow the memory, so a report longer
-     than the memory gets an address whose bytes run past it. *)
   match call_error ~report:(String.make (page + 1) 'x') W.adapter with
   | A.Alloc { input = A.Report; length; _ } ->
       Alcotest.(check int) "the length of the report" (page + 1) length
@@ -230,9 +221,6 @@ let writes_an_empty_report () =
     "an empty report" (Ok "")
     (call ~report:"" W.adapter)
 
-(* The response is the first bytes of the memory, as many as the
-   allocation pointer says, so a call that saw the pointer of an earlier
-   call would give a longer response. *)
 let makes_each_call_in_a_new_instance () =
   let spec =
     { W.adapter with bind = W.Custom [ W.global_get 0; W.i64_extend_i32_u ] }
@@ -258,8 +246,6 @@ let refuses_a_limit_below_zero () =
     (Invalid_argument "Sinter_bridge.Adapter: the memory limit is below 0")
     (fun () -> ignore (load ~memory:(-1) W.adapter))
 
-(* A limit of 0 is a limit, not a fault of the caller: the module runs
-   out of fuel at once, and its one page of memory is past the limit. *)
 let takes_a_limit_of_zero () =
   Alcotest.check error_t "a load with no fuel" A.Out_of_fuel
     (load_error ~fuel:0 W.adapter);

@@ -95,10 +95,9 @@ void sinter_bridge_language_free(sinter_bridge_language *language);
    bytes; it may be NULL when "source_len" is 0. The bridge parses the
    bytes as they are, and the tree keeps a copy of them.
 
-   The encoding holds every offset in 32 bits, so a source of 2^32
-   bytes or more fails before the bridge reads it. The call also fails
-   when the parser gives no tree. The caller owns the returned handle
-   and frees it with sinter_bridge_tree_free. */
+   A source of 2^32 bytes or more fails before the bridge reads it.
+   The call also fails when the parser gives no tree. The caller owns
+   the returned handle and frees it with sinter_bridge_tree_free. */
 sinter_bridge_tree *sinter_bridge_parse(sinter_bridge_engine *engine,
                                         const sinter_bridge_language *language,
                                         const uint8_t *source,
@@ -221,7 +220,7 @@ sinter_bridge_result *sinter_bridge_sha256(const uint8_t *data, size_t len);
    a TOML document, in the encoding that README.md beside this crate
    defines. It is valid until sinter_bridge_result_free frees it. The
    call fails when the text is not UTF-8, and when it is 2^32 bytes or
-   more: the encoding holds every offset in 32 bits. */
+   more. */
 sinter_bridge_result *sinter_bridge_toml_parse(const uint8_t *text,
                                                size_t len);
 
@@ -239,4 +238,4 @@ sinter_bridge_result *sinter_bridge_last_failure(void);
 }
 #endif
 
-#endif /* SINTER_BRIDGE_H */
+#endif

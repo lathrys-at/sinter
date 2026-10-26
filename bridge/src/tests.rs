@@ -16,21 +16,17 @@ fn repository() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()
 }
 
-/// The bytes of the fixture grammar.
 fn fixture_wasm() -> Vec<u8> {
     std::fs::read(repository().join("test/fixtures/tree-sitter-json/tree-sitter-json.wasm"))
         .unwrap()
 }
 
-/// A reader of a result buffer.
 struct Reader<'a> {
     bytes: &'a [u8],
     at: usize,
 }
 
 impl<'a> Reader<'a> {
-    /// A reader past the header of `bytes`, which must have the kind
-    /// `kind`. Gives the reader and the count of the header.
     fn new(bytes: &'a [u8], kind: u32) -> (Self, u32) {
         let mut reader = Reader { bytes, at: 0 };
         assert_eq!(reader.u32(), MAGIC);
@@ -58,8 +54,6 @@ impl<'a> Reader<'a> {
     }
 }
 
-/// The bytes of a result, which is then freed. Gives the failure of
-/// the call when the result is null.
 fn take(result: *mut SinterBridgeResult) -> Result<Vec<u8>, Failure> {
     if result.is_null() {
         return Err(last_failure());
@@ -69,7 +63,6 @@ fn take(result: *mut SinterBridgeResult) -> Result<Vec<u8>, Failure> {
     Ok(bytes)
 }
 
-/// A handle, or the failure of the call when it is null.
 fn made<T>(handle: *mut T) -> Result<*mut T, Failure> {
     if handle.is_null() {
         Err(last_failure())
@@ -105,7 +98,6 @@ fn compile(
     made(unsafe { sinter_bridge_query_new(language, text.as_ptr(), text.len()) })
 }
 
-/// An engine and the fixture grammar, freed together.
 struct Json {
     engine: *mut SinterBridgeEngine,
     language: *mut SinterBridgeLanguage,
@@ -126,7 +118,6 @@ impl Json {
         compile(self.language, text)
     }
 
-    /// The S-expression of the tree of `source`.
     fn sexp(&self, source: &str) -> String {
         let tree = self.parse(source);
         let sexp = sexp_of(tree);
@@ -134,7 +125,6 @@ impl Json {
         sexp
     }
 
-    /// The captures of `query` over `source`.
     fn captures(&self, query: &str, source: &str) -> Vec<Capture> {
         let query = self.compile(query).unwrap();
         let tree = self.parse(source);
@@ -144,7 +134,6 @@ impl Json {
         found
     }
 
-    /// The error report of the tree of `source`.
     fn report(&self, source: &str) -> Report {
         let tree = self.parse(source);
         let report = report_of(tree);
@@ -169,7 +158,6 @@ fn sexp_of(tree: *const SinterBridgeTree) -> String {
     sexp
 }
 
-/// One capture record of a buffer of kind 6.
 #[derive(Debug, PartialEq, Eq)]
 struct Capture {
     number: u32,
@@ -180,7 +168,6 @@ struct Capture {
     text: String,
 }
 
-/// The captures of a query over a tree.
 fn run(
     query: *const SinterBridgeQuery,
     tree: *const SinterBridgeTree,
@@ -208,12 +195,8 @@ fn run(
     Ok(found)
 }
 
-/// A node of the error report: its byte range, its rows and columns,
-/// and its type.
 type Place = ([u32; 6], String);
 
-/// The error report of a buffer of kind 7: the root flag, the forms
-/// and places of the error nodes, and the lowest error node.
 type Report = (bool, Vec<(u32, Place)>, Option<Place>);
 
 fn place(reader: &mut Reader) -> Place {
@@ -248,13 +231,10 @@ fn report_of(tree: *const SinterBridgeTree) -> Report {
     (flag, nodes, lowest)
 }
 
-/// A place on one row: the byte range from `start` to `end`, which is
-/// also the column range on row `row`.
 fn on_row(row: u32, start: u32, end: u32, node_type: &str) -> Place {
     ([start, end, row, start, row, end], node_type.to_owned())
 }
 
-/// The failure that compiling `query` with the fixture grammar gives.
 fn query_failure(query: &str) -> Failure {
     Json::new().compile(query).unwrap_err()
 }
@@ -356,7 +336,6 @@ fn a_language_outlives_its_engine() {
 #[test]
 fn a_query_over_a_tree_of_another_language_fails() {
     let json = Json::new();
-    // A second load of the same bytes gives a second language.
     let other = load(json.engine, &fixture_wasm()).unwrap();
     let query = compile(other, "(number) @n").unwrap();
     let tree = json.parse("[1]");
@@ -382,15 +361,12 @@ fn a_parse_with_a_language_of_another_engine_fails() {
 #[test]
 fn the_tree_holds_the_source_as_given() {
     let json = Json::new();
-    // The root node covers the text up to its end, a line feed or not.
     let with = json.captures("(document) @d", "[1]\n");
     let without = json.captures("(document) @d", "[1]");
     assert_eq!(with[0].text, "[1]\n");
     assert_eq!(without[0].text, "[1]");
 }
 
-/// The check on the length runs before any byte of the source is read,
-/// so the pointer below is never dereferenced.
 #[test]
 #[cfg(target_pointer_width = "64")]
 fn a_source_of_four_gib_or_more_fails_before_it_is_read() {
@@ -447,7 +423,6 @@ fn the_memory_of_a_tree_counts_its_text_and_its_nodes() {
     let small = json.parse("[1]");
     let large = json.parse("[1, 2, 3, 4]");
     let memory = |tree| unsafe { sinter_bridge_tree_memory(tree) };
-    // "[1]" has the nodes document, array, "[", number, and "]".
     assert_eq!(memory(small), 3 + 5 * BYTES_PER_NODE);
     assert!(memory(large) > memory(small));
     unsafe { sinter_bridge_tree_free(small) };
@@ -633,8 +608,6 @@ fn a_missing_node_is_its_own_lowest_error_node() {
 
 #[test]
 fn an_error_node_inside_an_error_node_is_not_reported() {
-    // The tree is (document (ERROR (UNEXPECTED '@'))): the inner node
-    // is an ERROR leaf, and it is the lowest error node.
     assert_eq!(
         Json::new().report("@"),
         (
@@ -647,7 +620,6 @@ fn an_error_node_inside_an_error_node_is_not_reported() {
 
 #[test]
 fn an_error_node_whose_children_hold_no_error_is_the_lowest() {
-    // The tree is (document (array (ERROR (number)) (number))).
     assert_eq!(
         Json::new().report("[1 2]"),
         (
@@ -660,8 +632,6 @@ fn an_error_node_whose_children_hold_no_error_is_the_lowest() {
 
 #[test]
 fn the_error_nodes_come_in_the_order_of_the_text() {
-    // The tree is (document (array (ERROR (UNEXPECTED '@')) (array
-    // (number)) (MISSING "]"))).
     assert_eq!(
         Json::new().report("[@ [1]"),
         (
@@ -706,7 +676,6 @@ fn the_report_of_a_tree_that_nests_deeply_does_not_crash() {
     );
 }
 
-/// A parser that holds the fixture grammar.
 fn fixture_parser() -> Parser {
     let wasm_engine = wasmtime::Engine::new(&wasmtime::Config::new()).unwrap();
     let mut store = WasmStore::new(&wasm_engine).unwrap();
@@ -779,7 +748,6 @@ fn load_adapter(
     made(unsafe { sinter_bridge_adapter_load(engine, wasm.as_ptr(), wasm.len(), LIMITS) })
 }
 
-/// The response of a call of `function` of an adapter.
 fn call_adapter(
     adapter: *const SinterBridgeAdapter,
     function: u32,
@@ -872,7 +840,6 @@ fn an_adapter_call_with_a_bad_argument_fails() {
     unsafe { sinter_bridge_engine_free(engine) };
 }
 
-/// The digest of `data` through the C function, as lowercase hex.
 fn sha256_hex(data: &[u8]) -> String {
     let bytes = take(unsafe { sinter_bridge_sha256(data.as_ptr(), data.len()) }).unwrap();
     let (reader, count) = Reader::new(&bytes, KIND_DIGEST);
@@ -884,7 +851,6 @@ fn sha256_hex(data: &[u8]) -> String {
         .collect()
 }
 
-/// The test values that NIST publishes for SHA-256.
 #[test]
 fn the_digest_matches_the_published_test_values() {
     assert_eq!(
@@ -922,7 +888,6 @@ fn a_null_pointer_with_a_length_fails_with_a_message() {
     );
 }
 
-/// The kind and the bytes of the result of `sinter_bridge_toml_parse`.
 fn toml_result(text: &[u8]) -> Result<(u32, Vec<u8>), Failure> {
     let bytes = take(unsafe { sinter_bridge_toml_parse(text.as_ptr(), text.len()) })?;
     let kind = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
@@ -957,8 +922,6 @@ fn a_null_toml_text_with_a_length_fails_with_a_message() {
     );
 }
 
-/// The check on the length runs before any byte of the text is read,
-/// so the pointer below is never dereferenced.
 #[test]
 #[cfg(target_pointer_width = "64")]
 fn a_toml_text_of_four_gib_or_more_fails_with_a_message() {

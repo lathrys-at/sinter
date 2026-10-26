@@ -20,7 +20,6 @@ type error =
 
 let ( let* ) = Result.bind
 
-(* The first line of [text]. *)
 let first_line text =
   match String.index_opt text '\n' with
   | Some stop -> String.sub text 0 stop
@@ -125,12 +124,10 @@ let ledger_warning =
    as open; fetch it with git fetch origin \
    refs/sinter/ledger:refs/sinter/ledger"
 
-(* A path that the glob [.plans/**/*.md] matches. *)
 let is_plan_path path =
   String.starts_with ~prefix:".plans/" path
   && String.ends_with ~suffix:".md" path
 
-(* The manifest at [path], shown to the person as [shown]. *)
 let load_manifest ~path ~shown ~missing =
   match Manifest.load path with
   | Ok manifest -> Ok manifest
@@ -140,8 +137,6 @@ let load_manifest ~path ~shown ~missing =
   | Error (Manifest.Invalid errors) ->
       Error (Invalid_manifest { path = shown; errors })
 
-(* The path of the manifest for the index record: relative to [root]
-   when the manifest is under it, otherwise absolute. *)
 let manifest_location ~root path =
   match (Unix.realpath root, Unix.realpath path) with
   | root, path ->
@@ -153,7 +148,6 @@ let manifest_location ~root path =
       else Ok path
   | exception Unix.Unix_error (code, _, _) -> Error (Unix.error_message code)
 
-(* The first file of [files] that two packs read. *)
 let two_packs packs files =
   List.find_map
     (fun file ->
@@ -206,8 +200,6 @@ let find_base repo manifest base =
           | Error (Git.No_merge_base _) -> Error (No_merge_base name)
           | Error error -> Error (Repository error)))
 
-(* The documents of [files], read from [root] with a new engine, and
-   the files that are not UTF-8 text, each list in the order of [files]. *)
 let documents ~root files =
   let engine = Sinter_bridge.create () in
   Fun.protect

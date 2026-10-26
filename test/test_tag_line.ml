@@ -117,7 +117,6 @@ let drops_the_revision_and_the_blanks_before_it =
       (" x v0", " x v0");
     ]
 
-(* A text of tokens that collide often with the forms of a tag. *)
 let rest =
   Gen.map (String.concat "")
     (Gen.list_size (Gen.int_range 0 8)
@@ -144,8 +143,6 @@ let parts_rebuild_the_rest =
                 rest
               && not (String.equal (Tag_line.without_revision rest) rest)))
 
-(* Between the target and the description, only the revision token and
-   the blanks before it go. *)
 let without_revision_keeps_the_target_and_the_description =
   property ~name:"without_revision leaves the target and the description"
     ~print:String.escaped rest (fun rest ->

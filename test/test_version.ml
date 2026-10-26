@@ -16,22 +16,11 @@ let base_is_semver () =
   in
   Alcotest.(check bool) "base is MAJOR.MINOR.PATCH" true ok
 
-(* A checkout gives its own description; a release archive with no
-   git gives "unknown". Either way the value names the build. *)
 let describe_names_the_build () =
   Alcotest.(check bool)
     "the description is not empty" true
     (String.length Git_version.describe > 0)
 
-(* The five roads of Version.render, and the corner where the package
-   is the empty string. Each test states the whole answer, because a
-   test that stated a prefix of it would leave three of the mutants of
-   that function alive.
-
-   The three tests of the package road pass a description that no road
-   of the description turns into any of the answers below, so that a
-   road which fell through to the description cannot give the right
-   answer by accident. *)
 let not_read = "not-read"
 let renders = Alcotest.(check string)
 
@@ -43,14 +32,10 @@ let a_package_version_that_has_the_letter_v_keeps_it () =
   renders "the package version v2.3.4 prints as it stands" "v2.3.4"
     (Version.render ~package:(Some "v2.3.4") ~describe:not_read)
 
-(* There is no first letter to read, so the value comes back as it
-   stands. A reader of the first letter of this string would raise
-   Invalid_argument. *)
 let a_package_version_of_no_characters_prints_as_nothing () =
   renders "the empty package version prints as the empty string" ""
     (Version.render ~package:(Some "") ~describe:not_read)
 
-(* A description that holds a full stop is the name of a tag. *)
 let a_description_that_names_a_tag_prints_as_it_stands () =
   renders "the description v2.3.4 prints as v2.3.4" "v2.3.4"
     (Version.render ~package:None ~describe:"v2.3.4")
@@ -65,10 +50,6 @@ let a_description_that_is_a_bare_hash_goes_after_the_release () =
     ("v" ^ Version.base ^ "-dev+44992d4")
     (Version.render ~package:None ~describe:"44992d4")
 
-(* The properties that lib/version.mli states about the answer. The
-   generator draws the descriptions that mean something to the
-   function beside descriptions that mean nothing to it, and any
-   bytes as well. *)
 let describe =
   Gen.oneof
     [
@@ -97,14 +78,11 @@ let property ~name generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count:1000 ~name ~print:print_pair generator check)
 
-(* "The function raises nothing." Anything that comes out of render
-   other than a string reaches QCheck as an error of the test. *)
 let render_answers_every_pair =
   property ~name:"render answers every pair and raises nothing" pair
     (fun (package, describe) ->
       match Version.render ~package ~describe with _ -> true)
 
-(* "It returns the empty string for [Some ""] alone." *)
 let the_empty_answer_belongs_to_the_empty_package =
   property ~name:"the empty string comes back for the empty package alone" pair
     (fun (package, describe) ->

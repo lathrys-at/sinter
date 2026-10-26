@@ -4,12 +4,8 @@
 module Utf_8 = Utf_8
 
 exception Error of string
-
-(* A failed call of the bridge raises this exception, with a buffer of
-   the typed error. It never leaves this module. *)
 exception Failed of string
 
-(* The C stubs raise these exceptions. *)
 let () = Callback.register_exception "Sinter_bridge.Error" (Error "")
 let () = Callback.register_exception "Sinter_bridge.Failed" (Failed "")
 
@@ -84,17 +80,10 @@ let check buffer offset count =
     || offset + count > String.length buffer
   then malformed "a record runs past the end of the buffer"
 
-(* The mask gives the unsigned value of the four bytes. It needs an
-   int of more than 32 bits, so Sinter runs on 64-bit machines only. *)
 let read_int buffer offset =
   check buffer offset 4;
   Int32.to_int (String.get_int32_le buffer offset) land 0xFFFFFFFF
 
-(* Give the string and the offset of the byte after it. Every string
-   of the buffer is UTF-8, so a caller of this module never sees other
-   bytes. [what] names the string in the message of a failure: the
-   buffer is well formed when a string of it is not UTF-8, and the
-   caller must be told which string. *)
 let read_string buffer offset ~what =
   let length = read_int buffer offset in
   check buffer (offset + 4) length;
@@ -138,8 +127,6 @@ let decode_digest buffer =
   check_whole buffer (header_length + digest_length);
   String.sub buffer header_length digest_length
 
-(* [read_list buffer offset read] reads a count and then that many
-   elements with [read]. *)
 let read_list buffer offset read =
   let count = read_int buffer offset in
   let rec loop index offset acc =
@@ -156,14 +143,11 @@ let read_flag buffer offset ~what =
   | 1 -> true
   | other -> malformed (Printf.sprintf "%s is %d, not 0 or 1" what other)
 
-(* Bytes that need not be UTF-8, after their length. *)
 let read_bytes buffer offset =
   let length = read_int buffer offset in
   check buffer (offset + 4) length;
   (String.sub buffer (offset + 4) length, offset + 4 + length)
 
-(* An unsigned 64-bit integer. No size that the bridge writes comes
-   near max_int, the largest value that an int holds. *)
 let read_size buffer offset =
   check buffer offset 8;
   let value = String.get_int64_le buffer offset in
@@ -172,8 +156,6 @@ let read_size buffer offset =
   then malformed "a size does not fit an integer";
   Int64.to_int value
 
-(* Read the one record of a buffer of [kind] with [read], and check
-   that the record ends the buffer. *)
 let read_one buffer ~kind ~what read =
   let count = read_header buffer kind in
   if count <> 1 then
@@ -375,7 +357,6 @@ module Adapter_types = struct
           address length memory_size
 end
 
-(* The typed error of a failed call, as a buffer of kind 5 holds it. *)
 type failure =
   | Language_failure of Language_types.error
   | Tree_failure of Tree_types.error
@@ -548,8 +529,6 @@ let read_failure buffer offset =
         offset + 16 )
   | other -> malformed (Printf.sprintf "a failure has the code %d" other)
 
-(* The failure that [buffer] holds, when [select] takes it. A failure
-   of another family is a fault of the bridge. *)
 let decode_failure buffer select =
   let failure =
     read_one buffer ~kind:kind_failure ~what:"a failure" read_failure
@@ -596,7 +575,6 @@ module Decode = struct
     decode_failure buffer (function Adapter_failure e -> Some e | _ -> None)
 end
 
-(* A failure of the wrong family, or an internal fault, raises Error. *)
 let fault buffer = decode_failure buffer (fun _ -> None)
 
 let create () =
@@ -614,8 +592,6 @@ let sha256 data =
 module Language = struct
   include Language_types
 
-  (* The engine parses with the grammar, so the record keeps the engine
-     alive for as long as the grammar is in use. *)
   type t = { engine : engine; handle : handle }
 
   let load engine ~name ~wasm =
@@ -742,7 +718,6 @@ module Toml_raw = struct
   let kind_document = 3
   let kind_error = 4
 
-  (* A span of the text, which is [length] bytes long. *)
   let read_span buffer offset ~length =
     let start_byte = read_int buffer offset in
     let end_byte = read_int buffer (offset + 4) in
@@ -750,7 +725,6 @@ module Toml_raw = struct
     if end_byte > length then malformed "a span runs past the end of the text";
     (start_byte, end_byte, offset + 8)
 
-  (* The two's complement of a 32-bit value. *)
   let signed_32 value =
     if value >= 0x80000000 then value - 0x100000000 else value
 

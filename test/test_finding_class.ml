@@ -3,9 +3,6 @@
 
 open Sinter_core
 
-(* The rows of the table of built-in finding classes in algebra.md, as
-   dune copies it beside the build copy of test/: each class name with
-   the text of its last cell. *)
 let rows () =
   let text =
     In_channel.with_open_bin "../spec/algebra.md" In_channel.input_all

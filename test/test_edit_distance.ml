@@ -17,13 +17,10 @@ let each_insertion_is_one_edit () =
 let one_swap_of_neighbours_is_one_edit () =
   distance "tiers to teirs" 1 (Edit_distance.distance "tiers" "teirs")
 
-(* The restricted distance of optimal string alignment gives 3 here,
-   because it cannot insert between the two characters it swapped. *)
 let a_swap_and_an_insertion_between_are_two_edits () =
   distance "ca to abc" 2 (Edit_distance.distance "ca" "abc")
 
 let a_code_point_of_two_bytes_is_one_character () =
-  (* "\xc3\xa9" is U+00E9. *)
   distance "e to U+00E9" 1 (Edit_distance.distance "e" "\xc3\xa9");
   distance "U+00E9 to the empty string" 1 (Edit_distance.distance "\xc3\xa9" "")
 
@@ -33,7 +30,6 @@ let a_byte_outside_utf_8_is_one_character () =
   distance "a stray byte to the code point of its value" 1
     (Edit_distance.distance "\xe9" "\xc3\xa9")
 
-(* Every string of at most [n] characters over [alphabet]. *)
 let strings alphabet n =
   let rec grow length =
     if length = 0 then [ "" ]
@@ -49,9 +45,6 @@ let strings alphabet n =
   in
   List.sort_uniq compare (grow n)
 
-(* The smallest number of edits from each string of at most three
-   characters of the alphabet, found by a breadth-first search over
-   every string of at most four. *)
 let edits_by_search alphabet =
   let neighbours s =
     let n = String.length s in
@@ -165,8 +158,6 @@ let nearest_prefers_the_smaller_distance () =
 let nearest_of_no_candidates_is_none () =
   nearest "an empty list" None (Edit_distance.nearest "turn" [])
 
-(* Names over a small alphabet, with a code point of two bytes, so
-   that two names are often near each other. *)
 let name =
   Gen.(
     string_size ~gen:(oneof_list [ 'a'; 'b'; 'c' ]) (0 -- 5)
@@ -215,8 +206,6 @@ let distance_lies_between_the_lengths =
       let d = Edit_distance.distance a b in
       abs (la - lb) <= d && d <= max la lb)
 
-(* The nearest name, found by sorting the candidates by distance and
-   then by byte order. *)
 let nearest_by_sorting name candidates =
   List.map (fun c -> (Edit_distance.distance name c, c)) candidates
   |> List.filter (fun (d, _) -> d <= 2)

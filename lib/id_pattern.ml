@@ -1,8 +1,6 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(* [Class] holds ranges; a single member [c] is [(c, c)].
-   [Repeat (body, n, None)] has no upper count. *)
 type node =
   | Literal of char
   | Class of (char * char) list
@@ -61,8 +59,6 @@ let character_at text offset =
 
 exception Stop of error
 
-(* A recursive descent over [text]. [at] is the offset of the next
-   byte to read. *)
 let parse text =
   let length = String.length text in
   let at = ref 0 in
@@ -217,14 +213,6 @@ let to_string pattern = pattern.text
 
 module Places = Set.Make (Int)
 
-(* A set of places in the id, from 0 to its length, is a list sorted
-   upward with no place twice. [ends node from] is the set of places
-   where a match of [node] can end when it starts at a place of [from].
-   The end places of a set are the union of the end places of its
-   members. So after the rounds that a quantifier needs, a round goes
-   on only from the places that no earlier round reached: a place that
-   a later round reaches again has fewer rounds left, and it can reach
-   no place that its first round did not. *)
 let matches pattern id =
   let length = String.length id in
   let shift accepts from =

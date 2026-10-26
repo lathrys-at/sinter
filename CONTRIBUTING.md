@@ -37,25 +37,30 @@ quoted standards. That text stays exactly as it is in the source.
 
 ### Code comments
 
-A comment states something that the code cannot show: an ownership
-rule, a lifetime, a precondition, a unit, an invariant, a contract.
-Write nothing else in a comment.
+A comment is permitted only in these cases
+(`docs/decisions/code-comments.md`):
 
-- Do not restate what the code shows.
-- Do not explain background that the reader does not need for the
-  code in front of them.
-- Do not explain why a line or a file exists.
-- Do not reference the design notes or a specification, by name or
-  by section. A choice that needs a reference rests on a decision
-  record in `docs/decisions/`, and the comment block cites it with a
-  tag line: `(* @cites <slug> *)` in OCaml, `// @cites <slug>` in
-  Rust, `/* @cites <slug> */` in C.
+- Sinter reads it: a tag block, with the prose that follows the tags
+  as their description. A choice that rests on a decision record cites
+  it with a tag line: `(* @cites <slug> *)` in OCaml, `// @cites <slug>`
+  in Rust, `/* @cites <slug> */` in C, `# @cites <slug>` in shell,
+  YAML, and TOML.
+- The community of the language expects it: the API comment on an
+  exported value (`(** *)` in an `.mli` file, `///` and `//!` in Rust,
+  with the `# Safety` section of an `unsafe` function, a comment on a
+  declaration in a C header), and the license header of a file.
 
-A comment on an interface — a header file, an `.mli` file, a public
-function — addresses the caller. It states what the function takes,
-what it returns, who owns the result, and when the result stops being
-valid. It does not narrate the implementation, and it does not list
-what the interface does not offer.
+A permitted comment states what the code takes, what it gives, what
+it guarantees, who owns the result, when the result stops being
+valid, and what can go wrong. It never states why the code is as it
+is, what it replaced, or what else was possible. Reasons go in
+decision records, in the specifications, and in commit messages. The
+reason of a `[@mutaml.skip "reason"]` attribute is written in the
+same form.
+
+The rule applies to every file of code: OCaml, Rust, C, shell, the CI
+workflows, the build files, the TOML files, and the tests. Write no
+other comment.
 
 ### Messages that the tool prints
 
@@ -72,9 +77,8 @@ projects depend on. The rules:
 - Every module has an `.mli` file. The interface exports the smallest
   set of types and functions that its callers need. A type whose
   values a caller must not build by hand is abstract.
-- A comment on every exported value addresses the caller, as the
-  "Code comments" section describes: what the value takes, what it
-  returns, who owns the result, and what can go wrong.
+- Every exported value has an API comment, as the "Code comments"
+  section describes.
 - A function's type says what can go wrong. A failure that a caller
   handles is a value of a `result` type with a variant error type. An
   exception is for a failure that ends the whole operation. The `.mli`
@@ -523,19 +527,17 @@ sign off code that you did not review.
 Every change reaches `main` through a pull request. The maintainer
 reviews and merges; merges are squash merges.
 
-A pull request description is documentation for the people who review
-the change and for the people who read it later. It says what the
-change adds, what it does not do, measurements when there are any,
-and where to look first. It follows the writing rules above. It does
-not describe the process that produced the change.
+A pull request description names the plan step, with its plan file,
+or the issue that the change carries out, and each decision record or
+rule that the change adds, with what it decides in a few words. It
+holds nothing else (`docs/decisions/pull-request-descriptions.md`).
 
 Before you open a pull request that touches `lib/` or `bin/`, run the
 mutation pass on your branch with `--changed-since origin/main`, as
 "Mutation testing" above says, and read every survivor. The `mutation`
 job makes the same pass on the pull request, and its result does not
 hold the merge, so the pass on your machine is the one that catches a
-gap before a reviewer sees it. Put the score and the survivors in the
-pull request description when the pass found any.
+gap before a reviewer sees it.
 
 A review comment names an example of a defect, not its only instance.
 When you address a comment, find and fix every instance of the same

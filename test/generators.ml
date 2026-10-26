@@ -4,8 +4,6 @@
 open Sinter_core
 module Gen = QCheck2.Gen
 
-(* Strings. *)
-
 let string_of_code_points points =
   let buffer = Buffer.create (4 * List.length points) in
   List.iter
@@ -29,9 +27,6 @@ let ascii_string =
   Gen.map string_of_code_points
     (Gen.list_size (Gen.int_range 0 4) (Gen.int_range 0x20 0x7E))
 
-(* U+E000 is a three-byte code point, and U+10000 is a four-byte one.
-   In UTF-8 byte order U+E000 comes first; in UTF-16 code unit order
-   U+10000 comes first, because its high surrogate is below U+E000. *)
 let key =
   Gen.map string_of_code_points
     (Gen.list_size (Gen.int_range 0 3)
@@ -49,10 +44,6 @@ let key =
             0x10FFFF;
           ]))
 
-(* Each run below is invalid UTF-8 wherever it stands: an unused byte,
-   a truncated sequence, an overlong sequence, a surrogate, a code
-   point above U+10FFFF, or a continuation byte with no lead byte. A
-   valid prefix and a printable ASCII suffix cannot repair one. *)
 let bad_run =
   Gen.oneof_list
     [
@@ -72,9 +63,6 @@ let not_utf_8_string_at =
     utf_8_string bad_run ascii_string
 
 let not_utf_8_string = Gen.map snd not_utf_8_string_at
-
-(* Records. *)
-
 let max_value = 9007199254740991
 
 let jsonl_int =
@@ -112,8 +100,6 @@ let value =
 
 let record_key = Gen.oneof [ key; utf_8_string ]
 
-(* Keep the first pair of each name, so that the record holds no name
-   twice. *)
 let with_distinct_names pairs =
   let rec keep seen = function
     | [] -> []
@@ -127,7 +113,6 @@ let record =
   Gen.map with_distinct_names
     (Gen.list_size (Gen.int_range 0 6) (Gen.pair record_key value))
 
-(* Put [pair] into [record] at position [index]. *)
 let insert record index pair =
   let index = if record = [] then 0 else index mod (List.length record + 1) in
   let rec place at = function
@@ -198,14 +183,10 @@ let print_record fields =
          fields)
   ^ "]"
 
-(* The result buffer of the bridge. *)
-
 let kind_tree = 1
 let kind_digest = 2
 let add_u32 buffer value = Buffer.add_int32_le buffer (Int32.of_int value)
 
-(* Record the offset of each length field, and the length it holds, so
-   that a damaged buffer can aim at one. *)
 let add_run buffer runs s =
   runs := (Buffer.length buffer, String.length s) :: !runs;
   add_u32 buffer (String.length s);
@@ -341,8 +322,6 @@ let print_capture (c : Sinter_bridge.Query.capture) =
     c.match_number c.pattern c.name c.node_type r.start_byte r.end_byte
     r.start_row r.start_column r.end_row r.end_column c.text
 
-(* Splice [piece] into [text] at [at], over the bytes that stand
-   there. *)
 let splice text at piece =
   let at = min at (String.length text) in
   let after = min (String.length text) (at + String.length piece) in
@@ -364,8 +343,6 @@ let buffer_bytes =
       whole;
       map (fun (_, buffer) -> buffer) digest_buffer;
     ]
-
-(* Source text, and a capture inside it. *)
 
 let rows_before text offset =
   let rows = ref 0 in
@@ -395,8 +372,6 @@ let source_text =
             (1, "\t");
           ]))
 
-(* Every offset where a code point starts, and then the length of the
-   text. A capture of the bridge starts and ends at one of these. *)
 let code_point_offsets text =
   let length = String.length text in
   let rec walk offset acc =
@@ -436,10 +411,6 @@ let capture_in source =
     text = String.sub source start_byte (end_byte - start_byte);
   }
 
-(* A capture whose byte range is not inside the source: the end runs
-   past the source, or the end is before the start, or the start is
-   below 0. The end row is one past the row of the end byte, so that
-   the reader of the span reaches the branch that steps back a line. *)
 let capture_outside source =
   let open Gen in
   let length = String.length source in
@@ -491,8 +462,6 @@ let source_and_capture_outside =
 
 let print_source_and_capture (source, capture) =
   Printf.sprintf "source=%S capture=%s" source (print_capture capture)
-
-(* Text for the bridge. *)
 
 let json_source =
   let open Gen in
@@ -572,27 +541,16 @@ let any_text =
             (2, map (String.make 1) (char_range '\000' '\255'));
           ]))
 
-(* WebAssembly modules. *)
-
 let leb128 = Wasm_builder.unsigned
 let wasm_header = Wasm_builder.header
 let wasm_section = Wasm_builder.section
 
-(* One export: the length of the name, the name, the kind of the
-   export, and its index. The index is a LEB128 number, and the format
-   allows an encoding longer than the value needs, so the caller gives
-   the bytes of the index and not the value. *)
 let wasm_export ~index name =
   leb128 (String.length name) ^ name ^ "\000" ^ index
 
-(* The export section. [declared] is the count the section states,
-   which the caller can set against the number of exports that follow
-   it. *)
 let wasm_export_section ~declared exports =
   wasm_section 7 (leb128 declared ^ String.concat "" exports)
 
-(* A custom section. Its body is the name of the section and then
-   [content]. *)
 let wasm_custom_section content = wasm_section 0 (leb128 4 ^ "name" ^ content)
 
 type wasm_shape =
@@ -605,14 +563,6 @@ type wasm_shape =
   | Too_many_exports_declared
   | Cut_in_a_section
 
-(* A custom section whose body is 128 bytes, so that the size of the
-   section needs two LEB128 bytes. Five of those bytes are the name of
-   the section, and the rest is padding.
-
-   The padding is 0xFF, and not 0. A reader that loses its place
-   inside the section then meets a number that never ends, and it
-   stops. Through a run of zeros it would walk on, two bytes at a
-   time, and it could come out at the export section by luck. *)
 let long_custom_section =
   let name = leb128 4 ^ "name" in
   wasm_custom_section (String.make (128 - String.length name) '\255')
@@ -623,7 +573,6 @@ let wasm_module shape ~name =
   let one_export =
     wasm_export_section ~declared:1 [ wasm_export ~index grammar ]
   in
-  (* Three exports, and the one of the grammar last. *)
   let three =
     [
       wasm_export ~index "a"; wasm_export ~index "b"; wasm_export ~index grammar;
@@ -645,17 +594,12 @@ let wasm_module shape ~name =
   | Too_few_exports_declared ->
       wasm_header ^ wasm_export_section ~declared:2 three
   | Too_many_exports_declared ->
-      (* The bytes of the export of the grammar follow the section,
-         and the size of the section does not cover them. A reader
-         that trusts the count over the size walks into them. *)
       wasm_header
       ^ wasm_export_section ~declared:3
           [ wasm_export ~index "a"; wasm_export ~index "b" ]
       ^ wasm_export ~index grammar
   | Cut_in_a_section ->
       let whole = wasm_header ^ one_export in
-      (* The kind and the index of the one export go, and the size of
-         the section still counts them. *)
       String.sub whole 0 (String.length whole - 2)
 
 let wasm_shapes_that_hold_a_name =
@@ -678,9 +622,6 @@ let wasm_module_with_a_name =
   let+ name = grammar_export_name in
   (name, wasm_module shape ~name)
 
-(* A module whose export names the grammar with a NUL byte in the
-   name. The bridge loads a grammar under a C string, so it can load
-   no grammar under such a name. *)
 let wasm_module_whose_name_holds_a_nul =
   let open Gen in
   let* shape = oneof_list wasm_shapes_that_hold_a_name in
@@ -727,8 +668,6 @@ let grammar_file_path =
             (1, " ");
           ]))
 
-(* The output of git diff. *)
-
 let must_quote c = c < ' ' || c = '"' || c = '\\' || c >= '\x7f'
 
 let quote_path path =
@@ -774,8 +713,6 @@ let diff_path =
             (1, "\xff");
           ]))
 
-(* [header_range ~start ~count] is one side of a hunk header. Git
-   leaves out a count of 1; the generator writes it out at times. *)
 let header_range ~sign ~start ~count =
   let open Gen in
   let+ write_one = bool in
@@ -818,8 +755,6 @@ let damaged_hunk_header =
       string_size (int_range 0 24);
     ]
 
-(* The lines of a run of changed lines, as git -U0 writes them, and the
-   marker that git writes after a last line with no line feed. *)
 let changed_lines sign count =
   let open Gen in
   let* lines =
@@ -836,7 +771,6 @@ let changed_lines sign count =
   in
   if count > 0 then lines @ marker else lines
 
-(* One hunk of git -U0: its text, and the hunk that the reader gives. *)
 let u0_hunk =
   let open Gen in
   let* added, removed =
@@ -856,7 +790,6 @@ let u0_hunk =
   ( (Printf.sprintf "@@ %s %s @@%s" old_side new_side tail :: minus) @ plus,
     Git.{ line; eline; added; removed } )
 
-(* The header lines of a section, in front of its hunks. *)
 let section_headers path ~binary =
   let open Gen in
   let named = quote_path ("a/" ^ path) and other = quote_path ("b/" ^ path) in
@@ -882,8 +815,6 @@ let section_headers path ~binary =
     @ [ index; Printf.sprintf "Binary files %s and %s differ" named other ]
   else (first :: modes) @ (index :: names)
 
-(* One section: its lines, its path, whether it is binary, and its
-   hunks. A binary section holds no hunk. *)
 let section path =
   let open Gen in
   let* binary = oneof_weighted [ (4, pure false); (1, pure true) ] in
@@ -894,8 +825,6 @@ let section path =
 let diff_output =
   let open Gen in
   let* paths = list_size (int_bound 5) diff_path in
-  (* A path drawn twice stands for a file whose type changed: git then
-     writes two sections for it. *)
   let* sections = flatten_list (List.map section paths) in
   let lines = List.concat_map (fun (lines, _, _, _) -> lines) sections in
   let output = String.concat "" (List.map (fun line -> line ^ "\n") lines) in
@@ -913,9 +842,6 @@ let diff_output =
   in
   pure (output, expected)
 
-(* One hunk that holds context lines between its runs of changed lines,
-   as git writes it when its configuration asks for context: its text,
-   and the runs that the reader gives. *)
 let diff_output_with_context =
   let open Gen in
   let run =
@@ -1015,8 +941,6 @@ let print_changes changes =
            Printf.sprintf "%S %s" path (print_change change))
          changes)
   ^ "]"
-
-(* The output of git for-each-ref. *)
 
 let kind_name = function
   | Git.Decode.Blob -> "blob"

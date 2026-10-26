@@ -3,8 +3,6 @@
 
 let specification = Major_minor.make 1 0
 
-(* Each setting, by its key path, with the version that added it. A
-   name in angle brackets varies. *)
 let settings =
   List.map
     (fun (path, major, minor) ->
@@ -30,9 +28,6 @@ let settings =
 
 let varies name = String.starts_with ~prefix:"<" name
 
-(* Each fixed name of the layout, with the key path of the table that
-   holds it, its names that vary written as in [settings]. Each fixed
-   name occurs at one place. *)
 let fixed_places =
   List.concat_map
     (fun (pattern, _) ->
@@ -43,8 +38,6 @@ let fixed_places =
   |> List.filter (fun (name, _) -> not (varies name))
   |> List.sort_uniq compare
 
-(* A name that varies matches any name except a fixed name of its
-   table. [table] is the part of the pattern in front of [pattern]. *)
 let rec path_matches ~table pattern path =
   match (pattern, path) with
   | [], [] -> true
@@ -59,7 +52,6 @@ let since path =
       if path_matches ~table:[] pattern path then Some version else None)
     settings
 
-(* A name that a setting's key path holds before its last name. *)
 let is_table_name name =
   List.exists
     (fun (pattern, _) ->
@@ -140,8 +132,6 @@ type problem =
 
 type error = At of Toml.position * problem | No_pack
 
-(* Messages. *)
-
 let last key = match List.rev key with name :: _ -> name | [] -> ""
 
 let table_name path =
@@ -156,7 +146,6 @@ let in_table = function
   | [] -> "at the top level"
   | path -> "in " ^ table_name path
 
-(* "a", "a or b", "a, b, or c" *)
 let choice words =
   match List.rev words with
   | [] -> ""
@@ -178,7 +167,6 @@ let expected_text = function
 let name_rule ~examples =
   "lower-case letters and digits, in words joined by '-', such as " ^ examples
 
-(* The fixed names of a pack, which no runner takes. *)
 let pack_keys = [ "files"; "version"; "runners" ]
 
 let problem_message = function
@@ -340,8 +328,6 @@ let render ~path = function
         (problem_message problem)
   | No_pack -> Printf.sprintf "%s names no pack; %s" path no_pack_advice
 
-(* The manifest. *)
-
 type runner = {
   name : string;
   at : Toml.span;
@@ -371,8 +357,6 @@ type t = {
   coverage_attribution : coverage_attribution;
 }
 
-(* The state of one reading. [names_errors] are the errors of the step
-   of names and types; [value_errors] those of the step of values. *)
 type reading = {
   mutable names_errors : (Toml.position * problem) list;
   mutable value_errors : (Toml.position * problem) list;
@@ -395,14 +379,6 @@ type reading = {
   mutable coverage_attribution : coverage_attribution;
 }
 
-(* A place of the layout. [Fixed] is a table of fixed names. [Fixed_by]
-   is a table of fixed names that the function gives from the whole
-   table, before the walk of its keys. [Varying] is a table of names
-   that vary: the function checks the key of one name, and gives the
-   place of its value. [Refused] is a fixed name that this table does
-   not take. [Kept] is a table that the function takes as it stands,
-   with no check of its keys or values. The three leaves take the value
-   of their type. *)
 type place =
   | Fixed of (string * place) list
   | Fixed_by of (Toml.table -> (string * place) list)
@@ -421,8 +397,6 @@ let value_error reading position problem =
 
 let start node = (Toml.span node).start
 
-(* The place of byte [offset] of the string of [node], or the start of
-   the node when the text does not write the string as it is. *)
 let inside node offset =
   match Toml.string_position node offset with
   | Some position -> position
@@ -430,7 +404,6 @@ let inside node offset =
 
 let is_name_char c = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
 
-(* [a-z][a-z0-9]*(-[a-z0-9]+)* *)
 let is_layout_name name =
   name <> ""
   && name.[0] >= 'a'
@@ -439,7 +412,6 @@ let is_layout_name name =
        (fun word -> word <> "" && String.for_all is_name_char word)
        (String.split_on_char '-' name)
 
-(* [A-Za-z_][A-Za-z0-9_]* *)
 let is_variable_name name =
   let letter c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' in
   name <> ""
@@ -462,7 +434,6 @@ let first_repeated texts =
   in
   go Names.empty texts
 
-(* The members whose text no earlier member holds, in their order. *)
 let distinct texts =
   List.fold_left
     (fun (seen, kept) (node, text) ->
@@ -495,7 +466,6 @@ let read_path_set reading ~key array members set =
 let path_set reading key set =
   Texts (fun array members -> read_path_set reading ~key array members set)
 
-(* A string that must be one of [choices]. *)
 let word reading ~key choices name_of found =
   Text
     (fun node value ->
@@ -512,8 +482,6 @@ let word reading ~key choices name_of found =
                  nearest = Edit_distance.nearest value names;
                }))
 
-(* An array of strings that must each be one of [choices], with no
-   member twice. *)
 let words reading ~key choices name_of found =
   Texts
     (fun _ members ->
@@ -543,9 +511,6 @@ let words reading ~key choices name_of found =
 
 let is_runner_name name = is_layout_name name && not (List.mem name pack_keys)
 
-(* The strings of the array [runners] of the pack table [table]. A
-   string that is not a runner name is in the list too: its error is at
-   the member. *)
 let runner_names table =
   match
     List.find_opt (fun ((key : Toml.key), _) -> key.name = "runners") table
@@ -611,8 +576,6 @@ let pack_place reading (key : Toml.key) =
               (first_repeated members);
             reading.runners <- (name, members) :: reading.runners) )
     in
-    (* The fixed names come first, so that a member such as files
-       names the fixed key and no runner. *)
     Fixed_by
       (fun table ->
         files :: version :: runners
@@ -802,8 +765,6 @@ let layout reading =
         ] );
   ]
 
-(* The step of names and types, which also runs the checks of values
-   on each value of the right type. [path] is the key path of [node]. *)
 let rec walk reading ~path ~(key : Toml.key) place node =
   let wrong expected =
     names_error reading (start node)
@@ -867,8 +828,6 @@ and walk_varying reading ~path check table =
       | Error problem -> names_error reading key.at.start problem)
     table
 
-(* The errors in the order of their places, by line and then by
-   column, with no error twice. *)
 let sort errors =
   List.sort_uniq
     (fun ((a : Toml.position), p) ((b : Toml.position), q) ->
@@ -876,8 +835,6 @@ let sort errors =
     errors
   |> List.map (fun (position, problem) -> At (position, problem))
 
-(* The step of [spec]: its type, its form, and the three rules of the
-   version. *)
 let check_spec document =
   match
     List.find_opt (fun ((key : Toml.key), _) -> key.name = "spec") document
@@ -944,9 +901,6 @@ let new_reading () =
     coverage_attribution = Optional;
   }
 
-(* An error at each runner that the runners of an earlier pack, in byte
-   order, already hold. A name that is not a runner name has its own
-   error, and a name that occurs twice in one pack counts once. *)
 let check_runners_of_packs reading =
   let owners = ref By_name.empty in
   List.iter
@@ -962,7 +916,6 @@ let check_runners_of_packs reading =
         (distinct members))
     (List.sort (fun (a, _) (b, _) -> String.compare a b) reading.runners)
 
-(* The runners of [pack], each with its settings. *)
 let runners_of reading pack =
   List.assoc_opt pack reading.runners
   |> Option.value ~default:[]
@@ -975,10 +928,6 @@ let runners_of reading pack =
           |> Option.value ~default:[];
       })
 
-(* The packs, each with its files, its version, and its runners, and an
-   error for each of the two that a pack lacks. A value that the manifest
-   writes and that is not valid is [Some None]: its error is already
-   reported. *)
 let packs_of reading =
   let by_name pairs = By_name.of_seq (List.to_seq pairs) in
   let files_by_name = by_name reading.files
