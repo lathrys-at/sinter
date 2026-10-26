@@ -301,6 +301,17 @@ jobs:
           fi
           base=$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)
           echo "base=$base" >>"$GITHUB_OUTPUT"
+          dependencies=$(git diff --name-only "$base" -- \
+            sinter.opam.locked sinter.opam dune-project \
+            .github/workflows/build.yml \
+            bridge/Cargo.lock bridge/Cargo.toml bridge/rust-toolchain.toml \
+            lib/markdown/tree-sitter-markdown.wasm \
+            test/run-mutants.sh | wc -l)
+          if [ "$dependencies" -ne 0 ]; then
+            echo "mode=full" >>"$GITHUB_OUTPUT"
+            echo "Every mutant: the pull request changed $dependencies files of the dependencies."
+            exit 0
+          fi
           changed=$(git diff --name-only "$base" -- lib bin | wc -l)
           if [ "$changed" -eq 0 ]; then
             echo "mode=none" >>"$GITHUB_OUTPUT"

@@ -294,8 +294,10 @@ This is the pass that the `mutation` job makes on `main`.
 lines that the branch changed, and the score is a share of those. When
 no mutant sits on a changed line, `mutaml-report` says that the run has
 no score and exits 0. The `mutation` job makes this pass on a pull
-request, and it skips a pull request that changed no file under `lib/`
-or `bin/` (`docs/decisions/mutation-job-scope.md`).
+request. It makes the full pass on a pull request that changes a
+dependency, and it skips a pull request that changed no dependency and
+no file under `lib/` or `bin/`
+(`docs/decisions/mutation-job-scope.md`).
 
 **What each part does.**
 
