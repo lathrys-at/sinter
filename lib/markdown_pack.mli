@@ -4,7 +4,7 @@
 (** The files of the built-in pack [markdown], embedded in the binary. *)
 
 val grammar : string
-(** The block grammar of tree-sitter-markdown, release v0.5.3: the bytes of its
+(** The block grammar of tree-sitter-markdown, release v0.5.4: the bytes of its
     [.wasm] file. *)
 
 val query : string
