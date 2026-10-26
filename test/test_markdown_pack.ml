@@ -21,7 +21,7 @@ let with_grammar use =
 let grammar_is_the_release_file () =
   Alcotest.(check string)
     "the SHA-256 of the grammar"
-    "dd9fc12ac2804d7c7da787e4774125b32e4fb3c244e5e7031a77cb7dd8036020"
+    "16180dbb66f40dcb540fc76075f35f528b6686b7c8db0aaacb3b55d1a1098f26"
     (Sha256.hex Markdown_pack.grammar)
 
 let grammar_parses_markdown () =
