@@ -17,12 +17,12 @@ We write Sinter in OCaml, and its parser bridge in Rust. To build
 it, install [opam](https://opam.ocaml.org/), the Rust toolchain from
 [rustup](https://rustup.rs), and `cmake`, which a build script of
 wasmtime runs. Create an opam switch with the compiler that
-`sinter.opam.locked` pins, 5.5.0; the install below fails on any other
+`sinter.opam.locked` pins, 5.5.2; the install below fails on any other
 compiler. Then, from the repository root:
 
 ```
-opam switch create 5.5.0
-eval $(opam env --switch=5.5.0)
+opam switch create 5.5.2
+eval $(opam env --switch=5.5.2)
 opam install . --deps-only --with-test --with-dev-setup --locked
 dune build
 dune test
