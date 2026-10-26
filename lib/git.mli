@@ -73,8 +73,8 @@ val open_repo : env:string array -> string -> (t, error) result
 
     - [GIT_DIR], [GIT_WORK_TREE], [GIT_INDEX_FILE], [GIT_DIFF_OPTS], and
       [GIT_EXTERNAL_DIFF] are removed
-    - [GIT_OPTIONAL_LOCKS] is [0], so that a read does not write the index
-    - [GIT_TERMINAL_PROMPT] is [0], so that git asks no question
+    - [GIT_OPTIONAL_LOCKS] is [0]: a read does not write the index
+    - [GIT_TERMINAL_PROMPT] is [0]: git asks no question
 
     Each child runs in the root of the working tree.
 

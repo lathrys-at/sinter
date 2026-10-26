@@ -45,8 +45,8 @@ val text : entry -> string list
     [-:-:-:] for its place. A subject id that holds a space or a tab stands in
     double quotes, with a backslash before each double quote and each backslash
     in it. The path and the subject id then take the form that {!Finding.escape}
-    gives, so that no control character but the tab stands in a line. A second
-    line, [  fix: ] and the fix, follows when the finding has a fix. *)
+    gives, and no control character but the tab stands in a line. A second line,
+    [  fix: ] and the fix, follows when the finding has a fix. *)
 
 val record : entry -> Jsonl.record
 (** [record entry] is the finding record of [entry]. It holds the fields [v],
