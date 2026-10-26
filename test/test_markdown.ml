@@ -247,6 +247,69 @@ let first_block_must_be_a_paragraph =
       "unread 29:1-29:10";
     ]
 
+let fence_after_text_closes_no_code_block =
+  check_structure
+    "# Title\n\n\
+     Text.\n\n\
+     ```\n\
+     // ```\n\
+     @req inside v1\n\
+     ```\n\n\
+     ## Next\n\n\
+     @req next v1\n"
+    [
+      "section 0 level 1 \"Title\" slug title name title at 1:1-1:8 parent - \
+       first 3:1-3:6 extent 1:1-8:4";
+      "section 1 level 2 \"Next\" slug next name next at 10:1-10:8 parent 0 \
+       first 12:1-12:13 extent 10:1-12:13";
+      "tag 0 @req target next rev 1 desc \"\" at 12:1-12:13 block 0 \
+       section-paragraph section 1 owner 0 extent 10-12 ea240614";
+      "block 0 tags 0 prose  hash 01ba4719";
+    ]
+
+let indented_fence_closes_no_code_block =
+  check_structure
+    "# Title\n\n\
+     Text.\n\n\
+     ```\n\
+    \    ```\n\
+     # Fake\n\n\
+     @req fake v1\n\
+     ```\n\n\
+     ## Next\n\n\
+     @req next v1\n"
+    [
+      "section 0 level 1 \"Title\" slug title name title at 1:1-1:8 parent - \
+       first 3:1-3:6 extent 1:1-10:4";
+      "section 1 level 2 \"Next\" slug next name next at 12:1-12:8 parent 0 \
+       first 14:1-14:13 extent 12:1-14:13";
+      "tag 0 @req target next rev 1 desc \"\" at 14:1-14:13 block 0 \
+       section-paragraph section 1 owner 0 extent 12-14 ea240614";
+      "block 0 tags 0 prose  hash 01ba4719";
+    ]
+
+let fence_after_a_container_marker_closes_no_code_block =
+  check_structure
+    "# Title\n\n\
+     Text.\n\n\
+     ```\n\
+     > ```\n\
+     # Quoted\n\n\
+     - ```\n\
+     # Listed\n\
+     ```\n\n\
+     ## Next\n\n\
+     @req next v1\n"
+    [
+      "section 0 level 1 \"Title\" slug title name title at 1:1-1:8 parent - \
+       first 3:1-3:6 extent 1:1-11:4";
+      "section 1 level 2 \"Next\" slug next name next at 13:1-13:8 parent 0 \
+       first 15:1-15:13 extent 13:1-15:13";
+      "tag 0 @req target next rev 1 desc \"\" at 15:1-15:13 block 0 \
+       section-paragraph section 1 owner 0 extent 13-15 ea240614";
+      "block 0 tags 0 prose  hash 01ba4719";
+    ]
+
 let front_matter_is_no_block =
   check_structure "+++\ntitle = \"x\"\n+++\n@req fm v1\nText.\n\n# H\n"
     [
@@ -943,6 +1006,12 @@ let tests =
       containers_open_no_section;
     Alcotest.test_case "the first block must be a paragraph" `Quick
       first_block_must_be_a_paragraph;
+    Alcotest.test_case "a fence after text closes no code block" `Quick
+      fence_after_text_closes_no_code_block;
+    Alcotest.test_case "an indented fence closes no code block" `Quick
+      indented_fence_closes_no_code_block;
+    Alcotest.test_case "a fence after a container marker closes no code block"
+      `Quick fence_after_a_container_marker_closes_no_code_block;
     Alcotest.test_case "front matter is no block" `Quick
       front_matter_is_no_block;
     Alcotest.test_case "YAML front matter is no block" `Quick
