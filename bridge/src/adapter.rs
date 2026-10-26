@@ -14,11 +14,6 @@ use crate::failure::{
 
 /// The most table elements that the instance of an adapter may hold,
 /// in all of its tables together.
-///
-/// wasmtime allocates one pointer in the host for each table element,
-/// and it sets no bound on their number. Without this bound, one
-/// `table.grow` could take all the memory of the process. An adapter
-/// that the Rust compiler builds holds some hundreds.
 pub(crate) const TABLE_ELEMENTS_MAX: usize = 1 << 20;
 
 /// A compiled adapter, and the version of the interface that its
@@ -54,22 +49,12 @@ impl Function {
     }
 }
 
-/// The limits of one instance, and what they refused.
 struct Limits {
-    /// The most bytes that all linear memories may hold together.
     memory_limit: usize,
-    /// The bytes that all linear memories hold together.
     memory_total: usize,
-    /// The bytes of the last growth of a memory that the limits
-    /// allowed.
     memory_growth: usize,
-    /// The elements that all tables hold together.
     table_total: usize,
-    /// The elements of the last growth of a table that the limits
-    /// allowed.
     table_growth: usize,
-    /// The size in bytes of all memories together that the limits
-    /// refused.
     refused: Option<usize>,
 }
 
@@ -80,8 +65,6 @@ impl wasmtime::ResourceLimiter for Limits {
         desired: usize,
         maximum: Option<usize>,
     ) -> wasmtime::Result<bool> {
-        // A growth past the maximum that the module declares fails as
-        // the WebAssembly standard says, with no trap.
         if maximum.is_some_and(|maximum| desired > maximum) {
             return Ok(false);
         }
@@ -128,13 +111,10 @@ impl wasmtime::ResourceLimiter for Limits {
     }
 }
 
-/// The failure of a module that is not a valid adapter.
 fn invalid(cause: u32, details: Vec<String>) -> Failure {
     Failure::AdapterInvalid { cause, details }
 }
 
-/// The failure of a call that wasmtime stopped. The limits of the
-/// store say whether the memory limit stopped it.
 fn stopped(store: &Store<Limits>, error: wasmtime::Error) -> Failure {
     if let Some(size) = store.data().refused {
         return Failure::AdapterMemoryLimit(size as u64);
@@ -146,13 +126,10 @@ fn stopped(store: &Store<Limits>, error: wasmtime::Error) -> Failure {
     }
 }
 
-/// The type of a function: its parameters, then its results.
 type Signature = (&'static [ValType], &'static [ValType]);
 
 const FOUR_I32: &[ValType] = &[ValType::I32, ValType::I32, ValType::I32, ValType::I32];
 
-/// The functions that an adapter exports, with their types, in the
-/// order in which the bridge checks them.
 const FUNCTIONS: [(&str, Signature); 4] = [
     ("sinter_interface", (&[], &[ValType::I32])),
     ("sinter_alloc", (&[ValType::I32], &[ValType::I32])),
@@ -160,8 +137,6 @@ const FUNCTIONS: [(&str, Signature); 4] = [
     ("sinter_bind", (FOUR_I32, &[ValType::I64])),
 ];
 
-/// Whether two lists of value types are the same. `ValType` has no
-/// `PartialEq`.
 fn same_types(found: impl ExactSizeIterator<Item = ValType>, wanted: &[ValType]) -> bool {
     found.len() == wanted.len()
         && found
@@ -169,8 +144,6 @@ fn same_types(found: impl ExactSizeIterator<Item = ValType>, wanted: &[ValType])
             .all(|(found, wanted)| ValType::eq(&found, wanted))
 }
 
-/// Check that a module imports nothing and exports `memory` and the
-/// four functions with their types. Other exports are allowed.
 fn check(module: &Module) -> Result<(), Failure> {
     let imports: Vec<String> = module
         .imports()
@@ -196,9 +169,6 @@ fn check(module: &Module) -> Result<(), Failure> {
     Ok(())
 }
 
-/// A new store with the limits, and a new instance of the module in
-/// it. The fuel covers the instance's start and everything the caller
-/// runs in it.
 fn start(module: &Module, fuel: u64, memory: u64) -> Result<(Store<Limits>, Instance), Failure> {
     let limits = Limits {
         memory_limit: usize::try_from(memory).unwrap_or(usize::MAX),
@@ -219,7 +189,6 @@ fn start(module: &Module, fuel: u64, memory: u64) -> Result<(Store<Limits>, Inst
     }
 }
 
-/// The failure of an export that `check` found and an instance lacks.
 fn lost(error: wasmtime::Error) -> Failure {
     Failure::Internal(format!("an export of the adapter is gone: {error}"))
 }
@@ -249,8 +218,6 @@ pub(crate) fn load(
     })
 }
 
-/// Reserve `bytes.len()` bytes with `sinter_alloc`, and write `bytes`
-/// there. `call` names the input in a failure.
 fn place(
     store: &mut Store<Limits>,
     instance: &Instance,
@@ -263,8 +230,6 @@ fn place(
     let memory = instance
         .get_memory(&mut *store, "memory")
         .ok_or_else(|| lost(wasmtime::Error::msg("memory")))?;
-    // The length fits 32 bits: the caller checked it. The module reads
-    // it as unsigned.
     let length = bytes.len() as u32;
     let address = match alloc.call(&mut *store, length as i32) {
         Ok(address) => address as u32,

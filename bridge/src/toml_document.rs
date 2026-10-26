@@ -26,12 +26,8 @@ const TAG_TABLE: u32 = 6;
 const TAG_ARRAY_OF_TABLES: u32 = 7;
 const TAG_INLINE_TABLE: u32 = 8;
 
-/// The `form` field of an error record: the error as toml_edit
-/// reports it.
 const FORM_CRATE: u32 = 0;
 
-/// The `form` field of an error record: a dotted key that adds a key
-/// to a table that a table header made.
 const FORM_HEADER_TABLE: u32 = 1;
 
 /// Why the writer stopped.
@@ -91,9 +87,6 @@ fn put_datetime(buffer: &mut Vec<u8>, datetime: &Datetime) {
     put_u32(buffer, minutes as u32);
 }
 
-/// Write one value with its span. A value that toml_edit gives no span
-/// of its own, an inline table that a dotted key made, takes `fallback`,
-/// the span of its key.
 fn put_value(
     buffer: &mut Vec<u8>,
     value: &Value,
@@ -106,8 +99,6 @@ fn put_value(
         Value::Boolean(_) => TAG_BOOLEAN,
         Value::Datetime(_) => TAG_DATETIME,
         Value::Array(_) => TAG_ARRAY,
-        // An inline table that a dotted key inside an inline table
-        // made is no piece of the text of its own.
         Value::InlineTable(table) if table.is_dotted() => TAG_TABLE,
         Value::InlineTable(_) => TAG_INLINE_TABLE,
     };
@@ -136,7 +127,6 @@ fn put_value(
     Ok(())
 }
 
-/// Write the entries of a table that a header or a dotted key made.
 fn put_table(buffer: &mut Vec<u8>, table: &Table) -> Result<(), WriteError> {
     put_u32(buffer, length_prefix(table.len())?);
     for (name, _) in table.iter() {
@@ -146,8 +136,6 @@ fn put_table(buffer: &mut Vec<u8>, table: &Table) -> Result<(), WriteError> {
     Ok(())
 }
 
-/// Write one key and its item. A table that is not one piece of text,
-/// and an array of tables, take the span of their key.
 fn put_entry(buffer: &mut Vec<u8>, key: &Key, item: &Item) -> Result<(), WriteError> {
     put_bytes(buffer, key.get().as_bytes())?;
     put_span(buffer, key.span())?;
@@ -205,8 +193,6 @@ fn skip_blanks(bytes: &[u8], mut at: usize) -> usize {
     at
 }
 
-/// The decoded parts of the dotted key that starts at `start`, and the
-/// offset one past its last part. None when no key starts there.
 fn dotted_key_at(text: &str, start: usize) -> Option<(Vec<String>, usize)> {
     let bytes = text.as_bytes();
     let mut at = start;
@@ -258,8 +244,6 @@ fn dotted_key_at(text: &str, start: usize) -> Option<(Vec<String>, usize)> {
     }
 }
 
-/// The table that the last table header of `root` opened, and its
-/// names; the top-level table when no header opened one.
 fn current_table(root: &Table) -> (&Table, Vec<String>) {
     let mut best: (usize, &Table, Vec<String>) = (0, root, Vec::new());
     let mut pending: Vec<(&Table, Vec<String>)> = vec![(root, Vec::new())];
@@ -286,9 +270,7 @@ fn current_table(root: &Table) -> (&Table, Vec<String>) {
 }
 
 /// The error of a dotted key that adds a key to a table that a table
-/// header made, when `error` is that case. toml_edit reports the case
-/// as a duplicate key and names a key that is not one, so the text
-/// before the key is read again to find the table.
+/// header made, when `error` is that case.
 pub(crate) fn header_table_error(text: &str, error: &TomlError) -> Option<HeaderTableError> {
     let start = error.span()?.start;
     let before = ImDocument::parse(text.get(..start)?).ok()?;

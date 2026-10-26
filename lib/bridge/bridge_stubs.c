@@ -1,8 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Copyright 2026 The Sinter Authors */
 
-/* The stubs hold the OCaml runtime lock for the whole call, so a long
-   parse blocks every other thread of the process. */
 
 #include <string.h>
 
@@ -23,9 +21,6 @@ static void raise_bridge_error(const char *message) {
   caml_raise_with_string(*exception, message);
 }
 
-/* Raise Sinter_bridge.Failed with the buffer of the last failure.
-   Without that exception, or without the buffer, raise
-   Sinter_bridge.Error with the fallback message. */
 static void raise_failure(const char *fallback) {
   CAMLparam0();
   CAMLlocal1(buffer);
@@ -42,9 +37,6 @@ static void raise_failure(const char *fallback) {
   CAMLnoreturn;
 }
 
-/* Copy a result into an OCaml string and free it. A NULL result
-   raises the last failure. No OCaml value points into memory that the
-   bridge owns. */
 static value take_result(sinter_bridge_result *result, const char *fallback) {
   CAMLparam0();
   CAMLlocal1(copy);
@@ -56,11 +48,6 @@ static value take_result(sinter_bridge_result *result, const char *fallback) {
   CAMLreturn(copy);
 }
 
-/* A custom block holds one pointer to a handle of the bridge. The
-   pointer is NULL once the handle is freed. Nothing frees a handle
-   twice, and a later call raises Invalid_argument. A finalizer only
-   frees the handle: it allocates nothing on the OCaml heap, raises
-   nothing, and calls no OCaml code. */
 
 #define Handle_val(v) (*((void **)Data_custom_val(v)))
 
@@ -115,7 +102,6 @@ HANDLE_OPERATIONS(adapter, sinter_bridge_adapter_free)
   ((sinter_bridge_adapter *)live_handle(                                       \
       v, "Sinter_bridge: the adapter is closed"))
 
-/* The OCaml side passes limits of 0 or more. */
 static sinter_bridge_limits limits_of(value fuel, value memory) {
   sinter_bridge_limits limits;
   limits.fuel = (uint64_t)Long_val(fuel);
@@ -129,8 +115,6 @@ CAMLprim value sinter_bridge_engine_new_stub(value unit) {
   if (engine == NULL) {
     raise_failure("the bridge could not create an engine");
   }
-  /* The last argument is the memory outside the OCaml heap that an
-     engine holds. */
   CAMLreturn(alloc_handle(&engine_operations, engine, 4 << 20));
 }
 
@@ -138,8 +122,6 @@ CAMLprim value sinter_bridge_language_load_stub(value engine, value name,
                                                 value wasm) {
   CAMLparam3(engine, name, wasm);
   sinter_bridge_engine *pointer = Engine_val(engine);
-  /* String_val gives a whole C string here. The OCaml side rejects a
-     name that holds a NUL byte. */
   sinter_bridge_language *language = sinter_bridge_language_load(
       pointer, String_val(name), (const uint8_t *)String_val(wasm),
       caml_string_length(wasm));
@@ -153,8 +135,6 @@ CAMLprim value sinter_bridge_language_load_stub(value engine, value name,
 CAMLprim value sinter_bridge_parse_stub(value engine, value language,
                                         value source) {
   CAMLparam3(engine, language, source);
-  /* C leaves the order of the arguments of a call open, so each check
-     of a closed handle runs on its own line. */
   sinter_bridge_engine *engine_pointer = Engine_val(engine);
   sinter_bridge_language *language_pointer = Language_val(language);
   sinter_bridge_tree *tree =
@@ -230,7 +210,6 @@ CAMLprim value sinter_bridge_adapter_call_stub(value adapter, value function,
   CAMLreturn(take_result(response, "the bridge could not call the adapter"));
 }
 
-/* The bytecode form of a stub of more than five arguments. */
 CAMLprim value sinter_bridge_adapter_call_byte(value *argv, int argn) {
   (void)argn;
   return sinter_bridge_adapter_call_stub(argv[0], argv[1], argv[2], argv[3],

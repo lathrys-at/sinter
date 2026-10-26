@@ -7,7 +7,10 @@
     to WebAssembly, parses text with them, and runs tree-sitter queries over the
     parse trees. It runs runner adapters, WebAssembly modules that read test
     reports, under limits of fuel and memory. It also computes the SHA-256
-    digest of a string, and reads a TOML document. *)
+    digest of a string, and reads a TOML document.
+
+    A call into the bridge holds the runtime lock of its domain until the bridge
+    returns: no other thread of that domain runs OCaml code meanwhile. *)
 
 module Utf_8 = Utf_8
 

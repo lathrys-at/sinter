@@ -90,8 +90,6 @@ pub(crate) const CALL_REQUEST: u32 = 0;
 /// The `call` of a failed `sinter_alloc` for the report.
 pub(crate) const CALL_REPORT: u32 = 1;
 
-/// Write a string of a failure. A string of 2^32 bytes or more does not
-/// fit the format, so a fixed text takes its place.
 fn put_text(buffer: &mut Vec<u8>, text: &str) {
     if put_bytes(buffer, text.as_bytes()).is_err() {
         let _ = put_bytes(buffer, b"the message is 4 GiB or more");
@@ -213,7 +211,6 @@ pub(crate) fn last_failure() -> Failure {
 mod tests {
     use super::*;
 
-    /// The u32 at byte `at` of `bytes`.
     fn u32_at(bytes: &[u8], at: usize) -> u32 {
         u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
     }

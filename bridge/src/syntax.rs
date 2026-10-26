@@ -31,8 +31,7 @@ pub(crate) fn grammar_load_failure(error: WasmError) -> Failure {
 }
 
 /// Accept the ABI versions that tree-sitter reads, and refuse the
-/// others. tree-sitter checks the version only when a parser takes the
-/// grammar, so a grammar that loads can still be one it cannot use.
+/// others.
 pub(crate) fn check_version(version: usize) -> Result<(), Failure> {
     if (tree_sitter::MIN_COMPATIBLE_LANGUAGE_VERSION..=tree_sitter::LANGUAGE_VERSION)
         .contains(&version)
@@ -45,43 +44,28 @@ pub(crate) fn check_version(version: usize) -> Result<(), Failure> {
     }
 }
 
-/// The failure of a text that is too long for the buffer format.
 fn too_long(what: &str) -> Failure {
     Failure::Internal(format!(
         "{what} is 4 GiB or more, and the result buffer holds no string that large"
     ))
 }
 
-/// Whether tree-sitter gives this node a name of its own, such as
-/// `MISSING "]"` or `UNEXPECTED '@'`, instead of the node's type.
-///
-/// Every such node is a leaf: the parser inserts a missing token, and
-/// it reports an unusable character as an error with no child.
 fn has_its_own_name(node: Node) -> bool {
     node.child_count() == 0 && (node.is_missing() || node.is_error())
 }
 
-/// Write the parse tree under `root` as an S-expression.
-///
-/// tree-sitter's own `to_sexp` walks the tree by recursion, so a file
-/// that nests deeply overflows the stack of the calling thread. The
-/// walk below holds its state in a cursor and in one vector, so the
-/// depth of the tree costs heap and not stack.
+/// Write the parse tree under `root` as an S-expression. The walk
+/// holds its state in a cursor and in one vector, and it does not
+/// recurse, so the depth of the tree costs heap and not stack.
 pub(crate) fn write_sexp(root: Node, out: &mut String) {
     let mut cursor = root.walk();
-    // One entry for each node from the root to the node the cursor is
-    // on. The entry says whether that node opened a parenthesis.
     let mut open: Vec<bool> = Vec::new();
     let mut descending = true;
-    // A space separates one node from the node before it. The first
-    // node written takes none.
     let mut written = false;
     loop {
         if descending {
             let node = cursor.node();
             let visible = node.is_named() || node.is_missing();
-            // A node with a name of its own is written whole, with its
-            // parentheses, so nothing closes it later.
             let opened = visible && !has_its_own_name(node);
             if visible {
                 if written {
@@ -96,8 +80,6 @@ pub(crate) fn write_sexp(root: Node, out: &mut String) {
                     out.push('(');
                     out.push_str(node.kind());
                 } else {
-                    // A leaf costs no recursion, so tree-sitter names
-                    // it.
                     out.push_str(&node.to_sexp());
                 }
             }
@@ -126,15 +108,11 @@ pub(crate) fn sexp_buffer(tree: &Tree) -> Result<Vec<u8>, Failure> {
     put_header(&mut buffer, KIND_TREE);
     let mut sexp = String::new();
     write_sexp(tree.root_node(), &mut sexp);
-    // The tree's text is several times the size of the source, so a
-    // source under the limit can still give a tree over it.
     put_bytes(&mut buffer, sexp.as_bytes()).map_err(|_| too_long("the parse tree"))?;
     set_count(&mut buffer, 1);
     Ok(buffer)
 }
 
-/// Write the byte range and the row and column range of a node. Every
-/// offset fits 32 bits, because the source does.
 fn put_range(buffer: &mut Vec<u8>, node: Node) {
     let start = node.start_position();
     let end = node.end_position();
@@ -150,34 +128,20 @@ fn put_range(buffer: &mut Vec<u8>, node: Node) {
     }
 }
 
-/// Write the ranges and the type of a node.
 fn put_node(buffer: &mut Vec<u8>, node: Node) -> Result<(), TooLong> {
     put_range(buffer, node);
     put_bytes(buffer, node.kind().as_bytes())
 }
 
-/// The `form` of an `ERROR` node in the error report.
 const FORM_ERROR: u32 = 0;
 
-/// The `form` of a `MISSING` node in the error report.
 const FORM_MISSING: u32 = 1;
 
-/// The error nodes of a tree, as the walk of `error_report` finds them.
 struct ErrorReport<'tree> {
-    /// The `ERROR` and `MISSING` nodes that no `ERROR` node holds, in
-    /// the order of the text. The flag is true for a `MISSING` node.
     nodes: Vec<(bool, Node<'tree>)>,
-    /// The first lowest error node in the order of the text.
     lowest: Option<Node<'tree>>,
 }
 
-/// Walk the nodes of `root` whose error flag is set.
-///
-/// A lowest error node is a node whose error flag is set, when no
-/// child that the cursor shows has its flag set. The walk goes down
-/// only into nodes whose flag is set, so a tree with no error costs
-/// one node. It holds its state in a cursor and in one vector, so the
-/// depth of the tree costs heap and not stack.
 fn error_report(root: Node) -> ErrorReport {
     let mut report = ErrorReport {
         nodes: Vec::new(),
@@ -187,14 +151,9 @@ fn error_report(root: Node) -> ErrorReport {
         return report;
     }
     let mut cursor = root.walk();
-    // One entry for each node from the root to the parent of the node
-    // the cursor is on. The entry says whether that node is an `ERROR`
-    // node.
     let mut above: Vec<bool> = Vec::new();
-    // The number of `ERROR` nodes in `above`.
     let mut held = 0usize;
     'visit: loop {
-        // The cursor is on a node whose error flag is set.
         let node = cursor.node();
         if held == 0 && (node.is_error() || node.is_missing()) {
             report.nodes.push((node.is_missing(), node));
@@ -215,8 +174,6 @@ fn error_report(root: Node) -> ErrorReport {
         if report.lowest.is_none() {
             report.lowest = Some(node);
         }
-        // Find the next node whose flag is set: a later sibling of the
-        // node, or of a node above it.
         loop {
             while cursor.goto_next_sibling() {
                 if cursor.node().has_error() {
@@ -267,7 +224,6 @@ pub(crate) fn error_report_buffer(tree: &Tree) -> Result<Vec<u8>, Failure> {
     Ok(buffer)
 }
 
-/// The row and the column, in bytes, of byte `offset` of `text`.
 fn row_and_column(text: &str, offset: usize) -> (u32, u32) {
     let before = &text.as_bytes()[..offset.min(text.len())];
     let row = before.iter().filter(|&&byte| byte == b'\n').count();
@@ -278,7 +234,6 @@ fn row_and_column(text: &str, offset: usize) -> (u32, u32) {
     (row as u32, (before.len() - line_start) as u32)
 }
 
-/// The code of a kind of query error in a buffer of kind 5.
 fn query_error_kind(kind: QueryErrorKind) -> u32 {
     match kind {
         QueryErrorKind::Syntax => 0,
@@ -291,10 +246,6 @@ fn query_error_kind(kind: QueryErrorKind) -> u32 {
     }
 }
 
-/// The first predicate or directive of pattern `index` that the query
-/// cursor does not apply, without its `#`. The query cursor applies
-/// only the text predicates, and tree-sitter puts every other
-/// predicate and every directive in one of three lists.
 fn operator_not_applied(query: &Query, index: usize) -> Option<String> {
     if let Some(predicate) = query.general_predicates(index).first() {
         return Some(predicate.operator.to_string());
@@ -342,9 +293,9 @@ pub(crate) fn compile_query(language: &Language, text: &[u8]) -> Result<Query, F
 /// The captures of `query` over `tree`, whose text is `source`, as a
 /// buffer of kind 6.
 ///
-/// The bridge numbers the matches itself, from 0, in the order in
-/// which the cursor gives them, and counts only a match that holds a
-/// capture. tree-sitter's own match id has gaps.
+/// The matches are numbered from 0, with no gap, in the order in
+/// which the cursor gives them. A match that holds no capture takes no
+/// number.
 pub(crate) fn matches_buffer(
     query: &Query,
     tree: &Tree,
@@ -369,10 +320,6 @@ pub(crate) fn matches_buffer(
             let text = source
                 .get(node.start_byte()..node.end_byte())
                 .unwrap_or(&[]);
-            // Each string is a piece of the source or a name from the
-            // query or the grammar, and the source is under the limit,
-            // so these cannot fail; the check stays so that the format
-            // is never written with a truncated prefix.
             put_range(&mut buffer, node);
             put_bytes(&mut buffer, name.as_bytes())
                 .and_then(|()| put_bytes(&mut buffer, node.kind().as_bytes()))
