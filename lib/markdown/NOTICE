@@ -1,8 +1,8 @@
 The file tree-sitter-markdown.wasm is the prebuilt block grammar of the
 repository https://github.com/tree-sitter-grammars/tree-sitter-markdown,
-from release tag v0.5.3, asset tree-sitter-markdown.wasm. Sinter embeds
+from release tag v0.5.4, asset tree-sitter-markdown.wasm. Sinter embeds
 it in the sinter binary. The license is MIT
 (SPDX-License-Identifier: MIT), with the copyright line
 "Copyright (c) 2021 Matthias Deiml"; the file LICENSE beside this file
 holds the MIT license text with that line. The SHA-256 of the wasm file
-is dd9fc12ac2804d7c7da787e4774125b32e4fb3c244e5e7031a77cb7dd8036020.
+is 16180dbb66f40dcb540fc76075f35f528b6686b7c8db0aaacb3b55d1a1098f26.
