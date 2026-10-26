@@ -278,13 +278,13 @@ type construct =
   | A_multiline_basic_string
   | A_multiline_literal_string
   | An_escape
-  | A_short_unicode_escape
-  | A_long_unicode_escape
   | An_integer
   | A_hexadecimal_integer
   | An_octal_integer
   | A_binary_integer
   | A_float
+  | A_number
+  | A_date
   | A_date_or_time
   | A_time
   | A_time_offset
@@ -292,14 +292,16 @@ type construct =
   | An_inline_table
   | A_key
   | A_table_header
+  | A_comment
 
 type expected =
   | End_of_line
   | Comment
-  | Character of char
-  | Double_bracket
+  | Literal of string
   | Digit
-  | Leading_digit
+  | Hexadecimal_digit
+  | Key
+  | Value
 
 type cause =
   | Duplicate_key of string
@@ -307,8 +309,8 @@ type cause =
   | Inline_table of string
   | Out_of_range
   | Too_deep
-  | Integer_too_large
-  | Integer_too_small
+  | Lone_carriage_return
+  | Misplaced_underscore
 
 type error =
   | Not_utf_8 of { at : position }
@@ -335,46 +337,191 @@ let error_position = function
       at
 
 (* @cites toml-reader *)
-(* The messages of the reader. A message is up to three lines: the
-   construct ("invalid <label>"), what could come next ("expected <list>"),
-   and a cause. The words below are the whole vocabulary of the reader at
-   its pinned version; a message with any other word is unrecognized. *)
+(* The messages of the reader. A message is a description, and then
+   ", expected " and a list of what could come next, or "nothing". The tables
+   below hold the whole vocabulary of the reader at its pinned version; a
+   message with any other word is unrecognized. *)
 
-let constructs =
+type list_rule = Drop | Keep | Replace of expected list
+
+let construct construct = (Some construct, None, Drop)
+let listing construct = (construct, None, Keep)
+let out_of_range construct = (Some construct, Some Out_of_range, Drop)
+let cause cause = (None, Some cause, Drop)
+
+let escapes =
+  List.map
+    (fun text -> Literal text)
+    [ "b"; "t"; "n"; "f"; "r"; "e"; "\""; "\\"; "x"; "u"; "U" ]
+
+let descriptions =
   [
-    ("string", A_value);
-    ("basic string", A_basic_string);
-    ("literal string", A_literal_string);
-    ("multiline basic string", A_multiline_basic_string);
-    ("multiline literal string", A_multiline_literal_string);
-    ("escape sequence", An_escape);
-    ("unicode 4-digit hex code", A_short_unicode_escape);
-    ("unicode 8-digit hex code", A_long_unicode_escape);
-    ("integer", An_integer);
-    ("hexadecimal integer", A_hexadecimal_integer);
-    ("octal integer", An_octal_integer);
-    ("binary integer", A_binary_integer);
-    ("floating-point number", A_float);
-    ("date-time", A_date_or_time);
-    ("time", A_time);
-    ("time offset", A_time_offset);
-    ("array", An_array);
-    ("inline table", An_inline_table);
-    ("key", A_key);
-    ("table header", A_table_header);
+    ("invalid literal string", construct A_literal_string);
+    ("invalid multi-line literal string", construct A_multiline_literal_string);
+    ("invalid basic string", construct A_basic_string);
+    ("invalid multi-line basic string", construct A_multiline_basic_string);
+    ("carriage return must be followed by newline", cause Lone_carriage_return);
+    ("missing escaped value", (Some An_escape, None, Replace escapes));
+    ("too few unicode value digits", listing (Some An_escape));
+    ("invalid value", out_of_range An_escape);
+    ("keys cannot be multi-line literal strings", construct A_key);
+    ("keys cannot be multi-line basic strings", construct A_key);
+    ("unquoted keys cannot be empty", construct A_key);
+    ("invalid unquoted key", construct A_key);
+    ("invalid key", listing (Some A_key));
+    ("invalid key-value pair", listing (Some A_key));
+    ("invalid table", listing (Some A_table_header));
+    ("key with no value", listing None);
+    ("missing value for key", listing None);
+    ("missing value", construct A_value);
+    ("string values must be quoted", construct A_value);
+    ("invalid string", construct A_value);
+    ("invalid boolean", construct A_value);
+    ("missing opening quote", construct A_value);
+    ("invalid float", listing (Some A_float));
+    ("invalid fraction", listing (Some A_float));
+    ("invalid exponent", listing (Some A_float));
+    ("invalid mantissa", listing (Some A_float));
+    ("floating-point number overflowed", out_of_range A_float);
+    ("invalid integer number", listing (Some An_integer));
+    ("invalid hexadecimal number", listing (Some A_hexadecimal_integer));
+    ("invalid octal number", listing (Some An_octal_integer));
+    ("invalid binary number", listing (Some A_binary_integer));
+    ("integers with a radix cannot be signed", construct An_integer);
+    ("radix must be lowercase", listing (Some An_integer));
+    ("redundant integer number prefix", construct An_integer);
+    ("integer number overflowed", out_of_range An_integer);
+    ("redundant numeric sign", construct A_number);
+    ("unexpected leading zero", construct A_number);
+    ("unexpected sign", construct A_number);
+    ("`_` may only go between digits", cause Misplaced_underscore);
+    ("missing comment start", listing None);
+    ("invalid comment character", construct A_comment);
+    ("cannot recurse further; max recursion depth met", cause Too_deep);
+    ("recursion limit", cause Too_deep);
+    ("unclosed array table", listing (Some A_table_header));
+    ("unclosed table", listing (Some A_table_header));
+    ("missing table open", listing (Some A_table_header));
+    ("extra `=`", construct A_value);
+    ("unexpected content", listing None);
+    ("unexpected key or value", listing None);
+    ("unexpected content between comment and newline", listing None);
+    ("missing array opening", listing (Some An_array));
+    ("extra comma in array", listing (Some An_array));
+    ("unexpected `=` in array", listing (Some An_array));
+    ("missing comma between array elements", listing (Some An_array));
+    ("unclosed array", listing (Some An_array));
+    ("missing inline table opening", listing (Some An_inline_table));
+    ("extra comma in inline table", listing (Some An_inline_table));
+    ("extra assignment between key-value pairs", listing (Some An_inline_table));
+    ("missing key for inline table element", listing (Some An_inline_table));
+    ( "missing assignment between key-value pairs",
+      listing (Some An_inline_table) );
+    ("invalid inline table element", listing (Some An_inline_table));
+    ("missing comma between key-value pairs", listing (Some An_inline_table));
+    ("unclosed inline table", listing (Some An_inline_table));
+  ]
+
+let datetime_constructs =
+  [
+    ("invalid date", A_date);
+    ("invalid time", A_time);
+    ("invalid offset", A_time_offset);
+    ("invalid datetime", A_date_or_time);
+    ("invalid date-time", A_date_or_time);
+  ]
+
+let datetime_ranges =
+  [
+    "month between 01 and 12";
+    "day between 01 and 28";
+    "day between 01 and 29";
+    "day between 01 and 30";
+    "day between 01 and 31";
+    "hour between 00 and 23";
+    "minute between 00 and 59";
+    "second between 00 and 60";
+    "nanoseconds overflowed";
+    "hours between 00 and 23";
+    "minutes between 00 and 59";
+  ]
+
+let datetime_forms =
+  [
+    "year or hour";
+    "`-` (YYYY-MM) or `:` (HH:MM)";
+    "month";
+    "`-` (MM-DD)";
+    "day";
+    "a four-digit year (YYYY)";
+    "a two-digit month (MM)";
+    "a two-digit day (DD)";
+    "`T` between date and time";
+    "hour";
+    "`:` (HH:MM)";
+    "minute";
+    "second";
+    "nanosecond";
+    "a two-digit hour (HH)";
+    "a two-digit minute (MM)";
+    "a two-digit second (SS)";
+    "`Z`, +OFFSET, -OFFSET";
+  ]
+
+let literals =
+  [
+    "'";
+    "\"";
+    ",";
+    "-";
+    "=";
+    "[";
+    "]";
+    "]]";
+    "{";
+    "}";
+    "\\";
+    "_";
+    "b";
+    "e";
+    "f";
+    "n";
+    "r";
+    "u";
+    "U";
+    "x";
+    "0x";
+    "0o";
+    "0b";
+    "true";
+    "false";
+    "inf";
+    "nan";
+    "'''";
+    "\"\"\"";
   ]
 
 let expected_words =
   [
-    ("newline", End_of_line);
-    ("`#`", Comment);
-    ("`]]`", Double_bracket);
-    ("digit", Digit);
-    ("leading digit", Leading_digit);
+    ("newline", Some End_of_line);
+    ("`#`", Some Comment);
+    ("digits", Some Digit);
+    ("unicode hexadecimal value", Some Hexadecimal_digit);
+    ("key", Some Key);
+    ("value", Some Value);
+    ("letters", None);
+    ("numbers", None);
+    ("literal string", None);
+    ("basic string", None);
+    ("unquoted string", None);
+    ("multi-line basic string", None);
+    ("non-double-quote visible characters", None);
+    ("non-single-quote characters", None);
+    ("non-single-quote visible characters", None);
+    ("characters", None);
+    ("printable characters", None);
   ]
-  @ List.map
-      (fun char -> (Printf.sprintf "`%c`" char, Character char))
-      [ '.'; '='; ']'; '}'; '"'; '\''; 'b'; 'f'; 'n'; 'r'; 't'; 'u'; 'U'; '\\' ]
+  @ List.map (fun text -> ("`" ^ text ^ "`", Some (Literal text))) literals
 
 let kinds =
   [
@@ -407,84 +554,93 @@ let find_marker marker text =
   in
   find 0
 
-let duplicate_key text =
-  match between ~prefix:"duplicate key `" ~suffix:"` in document root" text with
-  | Some key -> Some key
-  | None -> (
-      match between ~prefix:"duplicate key `" ~suffix:"`" text with
-      | None -> None
-      | Some inside -> (
-          match find_marker "` in table `" inside with
-          | Some at -> Some (String.sub inside 0 at)
-          | None -> Some inside))
+let rec split_list text =
+  match find_marker ", " text with
+  | None -> [ text ]
+  | Some at ->
+      String.sub text 0 at
+      :: split_list (String.sub text (at + 2) (String.length text - at - 2))
 
-let not_a_table text =
-  let marker = "` attempted to extend non-table type (" in
-  match between ~prefix:"dotted key `" ~suffix:")" text with
+let expected_of = function
+  | None | Some "nothing" -> Some []
+  | Some text ->
+      let found =
+        List.map
+          (fun word -> List.assoc_opt word expected_words)
+          (split_list text)
+      in
+      if List.for_all Option.is_some found then
+        Some (List.filter_map Option.join found)
+      else None
+
+let extension ~key description =
+  match
+    between ~prefix:"cannot extend value of type " ~suffix:" with a dotted key"
+      description
+  with
+  | Some "inline table" -> Some (None, Some (Inline_table key), Drop)
+  | Some type_name ->
+      Option.map
+        (fun found -> (None, Some (Not_a_table { key; found }), Drop))
+        (List.assoc_opt type_name kinds)
   | None -> None
-  | Some inside -> (
-      match find_marker marker inside with
-      | None -> None
-      | Some at -> (
-          let key = String.sub inside 0 at in
-          let after = at + String.length marker in
-          let type_name =
-            String.sub inside after (String.length inside - after)
+
+let reading_of ~path description =
+  match (List.assoc_opt description descriptions, path) with
+  | Some reading, _ -> Some reading
+  | None, None -> None
+  | None, Some path -> (
+      match List.rev path with
+      | [] -> None
+      | last :: _ ->
+          if String.equal description "duplicate key" then
+            Some (None, Some (Duplicate_key last), Drop)
+          else extension ~key:(String.concat "." path) description)
+
+let datetime_reading construct = function
+  | None -> Some (Some construct, [], None)
+  | Some text when List.mem text datetime_ranges ->
+      Some (Some construct, [], Some Out_of_range)
+  | Some text when List.mem text datetime_forms ->
+      Some (Some construct, [], None)
+  | Some _ -> None
+
+let read_message ~path message =
+  let marker = ", expected " in
+  let description, rest =
+    match find_marker marker message with
+    | Some at ->
+        let after = at + String.length marker in
+        ( String.sub message 0 at,
+          Some (String.sub message after (String.length message - after)) )
+    | None -> (message, None)
+  in
+  match List.assoc_opt description datetime_constructs with
+  | Some construct -> datetime_reading construct rest
+  | None -> (
+      match (expected_of rest, reading_of ~path description) with
+      | Some expected, Some (construct, cause, rule) ->
+          let expected =
+            match rule with
+            | Drop -> []
+            | Keep -> expected
+            | Replace replacement -> replacement
           in
-          if String.equal type_name "inline table" then Some (Inline_table key)
-          else
-            match List.assoc_opt type_name kinds with
-            | Some found -> Some (Not_a_table { key; found })
-            | None -> None))
+          Some (construct, expected, cause)
+      | _ -> None)
 
-let cause_of text =
-  match text with
-  | "value is out of range" -> Some Out_of_range
-  | "recursion limit exceeded" -> Some Too_deep
-  | "number too large to fit in target type" -> Some Integer_too_large
-  | "number too small to fit in target type" -> Some Integer_too_small
-  | _ -> (
-      match duplicate_key text with
-      | Some key -> Some (Duplicate_key key)
-      | None -> not_a_table text)
+let radix_constructs =
+  [
+    ("0x", A_hexadecimal_integer);
+    ("0o", An_octal_integer);
+    ("0b", A_binary_integer);
+  ]
 
-let expected_of text =
-  let words = String.split_on_char ',' text in
-  let found =
-    List.map
-      (fun word -> List.assoc_opt (String.trim word) expected_words)
-      words
-  in
-  if List.for_all Option.is_some found then Some (List.filter_map Fun.id found)
-  else None
-
-let construct_of line =
-  if String.starts_with ~prefix:"invalid " line then
-    List.assoc_opt (String.sub line 8 (String.length line - 8)) constructs
-  else None
-
-let read_message message =
-  let lines = String.split_on_char '\n' message in
-  let construct, lines =
-    match lines with
-    | first :: rest when Option.is_some (construct_of first) ->
-        (construct_of first, rest)
-    | _ -> (None, lines)
-  in
-  let expected, lines =
-    match lines with
-    | first :: rest when String.starts_with ~prefix:"expected " first ->
-        (expected_of (String.sub first 9 (String.length first - 9)), rest)
-    | _ -> (Some [], lines)
-  in
-  let cause =
-    match String.concat "\n" lines with
-    | "" -> Some None
-    | text -> Option.map Option.some (cause_of text)
-  in
-  match (expected, cause) with
-  | Some expected, Some cause -> Some (construct, expected, cause)
-  | _ -> None
+let without_digits written reading =
+  match (reading, List.assoc_opt written radix_constructs) with
+  | Some (Some An_integer, [], Some Out_of_range), Some construct ->
+      Some (Some construct, [], None)
+  | _ -> reading
 
 let is_control code = code < 0x20 || (code >= 0x7F && code <= 0x9F)
 
@@ -545,13 +701,13 @@ let construct_name = function
   | A_multiline_basic_string -> "multi-line basic string"
   | A_multiline_literal_string -> "multi-line literal string"
   | An_escape -> "escape sequence"
-  | A_short_unicode_escape -> "\\u escape"
-  | A_long_unicode_escape -> "\\U escape"
   | An_integer -> "integer"
   | A_hexadecimal_integer -> "hexadecimal integer"
   | An_octal_integer -> "octal integer"
   | A_binary_integer -> "binary integer"
   | A_float -> "float"
+  | A_number -> "number"
+  | A_date -> "date"
   | A_date_or_time -> "date or time"
   | A_time -> "time"
   | A_time_offset -> "time offset"
@@ -559,15 +715,17 @@ let construct_name = function
   | An_inline_table -> "inline table"
   | A_key -> "key"
   | A_table_header -> "table header"
+  | A_comment -> "comment"
 
 let expected_name = function
   | End_of_line -> "the end of the line"
   | Comment -> "a comment"
-  | Character '\'' -> "\"'\""
-  | Character char -> Printf.sprintf "'%c'" char
-  | Double_bracket -> "']]'"
+  | Literal "'" -> "\"'\""
+  | Literal text -> "'" ^ text ^ "'"
   | Digit -> "a digit"
-  | Leading_digit -> "a digit at the start of the number"
+  | Hexadecimal_digit -> "a hexadecimal digit"
+  | Key -> "a key"
+  | Value -> "a value"
 
 let one_of words =
   match List.rev words with
@@ -590,8 +748,9 @@ let cause_message construct = function
       Printf.sprintf "the %s is out of range"
         (Option.fold ~none:"value" ~some:construct_name construct)
   | Too_deep -> "the keys, arrays, or inline tables nest too deep"
-  | Integer_too_large -> "the integer is larger than 9223372036854775807"
-  | Integer_too_small -> "the integer is smaller than -9223372036854775808"
+  | Lone_carriage_return -> "the carriage return is not followed by a line feed"
+  | Misplaced_underscore ->
+      "an underscore in a number must stand between two digits"
 
 let error_message = function
   | Not_utf_8 _ -> "the text is not UTF-8"
@@ -641,9 +800,10 @@ let parse text =
           Error
             (Header_table
                { at = position lines start_byte; key; table; array; rest })
-      | Error (Raw.Crate_error { start_byte; message; _ }) -> (
+      | Error (Raw.Crate_error { start_byte; end_byte; message; path }) -> (
           let at = position lines start_byte in
-          match read_message message with
+          let written = String.sub text start_byte (end_byte - start_byte) in
+          match without_digits written (read_message ~path message) with
           | Some (construct, expected, cause) ->
               Error (Syntax { at; construct; expected; cause })
           | None -> Error (Unrecognized { at })))

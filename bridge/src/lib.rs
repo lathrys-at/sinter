@@ -30,7 +30,7 @@ mod toml_document;
 use buffer::{KIND_DIGEST, KIND_RESPONSE, length_prefix, put_bytes, put_header, set_count};
 use failure::{Failure, last_failure, set_failure};
 use sha2::{Digest, Sha256};
-use toml_edit::ImDocument;
+use toml_edit::Document;
 use tree_sitter::{Language, Parser, Query, Tree, WasmStore, wasmtime};
 
 fn set_error(message: impl Into<String>) {
@@ -667,7 +667,7 @@ pub unsafe extern "C" fn sinter_bridge_toml_parse(
             set_error("the TOML text is not UTF-8");
             return std::ptr::null_mut();
         };
-        let written = match ImDocument::parse(text) {
+        let written = match Document::parse(text) {
             Ok(document) => toml_document::document_buffer(&document),
             Err(error) => toml_document::error_buffer(text, &error),
         };

@@ -3,7 +3,7 @@
 
 (* @cites toml-reader *)
 
-(** A TOML 1.0.0 document, with the position of every key and value. *)
+(** A TOML 1.1.0 document, with the position of every key and value. *)
 
 type position = { line : int; column : int }
 (** A place in the text. [line] counts from 1. [column] counts from 1, in
@@ -112,13 +112,13 @@ type construct =
   | A_multiline_basic_string
   | A_multiline_literal_string
   | An_escape
-  | A_short_unicode_escape  (** [\u] and four hexadecimal digits *)
-  | A_long_unicode_escape  (** [\U] and eight hexadecimal digits *)
   | An_integer
   | A_hexadecimal_integer
   | An_octal_integer
   | A_binary_integer
   | A_float
+  | A_number  (** an integer or a float *)
+  | A_date
   | A_date_or_time
   | A_time
   | A_time_offset
@@ -126,19 +126,21 @@ type construct =
   | An_inline_table
   | A_key
   | A_table_header
+  | A_comment
 
 (** What the text could hold at the place of the error. *)
 type expected =
   | End_of_line
   | Comment
-  | Character of char  (** one character, for example ['\]'] *)
-  | Double_bracket  (** [\]\]] *)
+  | Literal of string  (** this text, for example ["\]\]"] or ["true"] *)
   | Digit
-  | Leading_digit  (** a digit at the start of a number *)
+  | Hexadecimal_digit
+  | Key
+  | Value
 
 (** What breaks the rules, beyond the place. *)
 type cause =
-  | Duplicate_key of string  (** the key, as the reader names it *)
+  | Duplicate_key of string  (** the name of the key that is defined again *)
   | Not_a_table of { key : string; found : Kind.t }
       (** a dotted key or a table header goes through [key], the dotted path of
           a key that holds a value of the kind [found] *)
@@ -147,10 +149,11 @@ type cause =
           dotted path *)
   | Out_of_range
   | Too_deep  (** keys, arrays, or inline tables nest too deep *)
-  | Integer_too_large
-  | Integer_too_small
+  | Lone_carriage_return  (** a carriage return with no line feed after it *)
+  | Misplaced_underscore
+      (** an underscore in a number that does not stand between two digits *)
 
-(** Why a text is not a TOML 1.0.0 document. *)
+(** Why a text is not a TOML 1.1.0 document. *)
 type error =
   | Not_utf_8 of { at : position }
       (** the text is not UTF-8; [at] is the place of the first byte that is not
@@ -176,12 +179,19 @@ type error =
       (** the reader stopped with a message that this module does not know *)
 
 val read_message :
-  string -> (construct option * expected list * cause option) option
-(** [read_message message] reads a message of the TOML reader that the bridge
-    links into its parts: what the text was in the middle of, what could come
-    next, and the cause. It is [None] when a part of [message] is not a form
-    that this module knows. {!parse} gives [Syntax] for a message that this
-    function reads, and [Unrecognized] for any other. *)
+  path:string list option ->
+  string ->
+  (construct option * expected list * cause option) option
+(** [read_message ~path message] reads a message of the TOML reader that the
+    bridge links into its parts: what the text was in the middle of, what could
+    come next, and the cause. When the text at the place of the error is one
+    key, [path] holds the names of the dotted key that holds it, from its first
+    part to that key. A duplicate key is the last name of [path]; the dotted
+    path of a cause is the names of [path] joined with dots. The result is
+    [None] when a part of [message] is not a form that this module knows, and
+    when [message] names a cause that needs a key and [path] is [None] or empty.
+    {!parse} gives [Syntax] for a message that this function reads, and
+    [Unrecognized] for any other. *)
 
 val error_position : error -> position
 (** [error_position error] is the place of [error] in the text. *)
@@ -190,9 +200,9 @@ val error_message : error -> string
 (** [error_message error] says what is wrong, in one line, without the place. *)
 
 val parse : string -> (table, error) result
-(** [parse text] reads [text] as a TOML 1.0.0 document and gives its top-level
-    table. A form that only TOML 1.1 allows is an error. So is a dotted key that
-    adds a key to a table that a table header made.
+(** [parse text] reads [text] as a TOML 1.1.0 document and gives its top-level
+    table. A dotted key whose path goes into a table that an earlier table
+    header names is an error.
 
     @raise Sinter_bridge.Error
       if [text] is 4 GiB or more, or if the bridge stops on an internal fault.

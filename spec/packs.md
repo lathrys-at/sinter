@@ -133,7 +133,7 @@ fixtures ([jsonl.md](jsonl.md) section 11) of the release before it.
 ### 3.1 The file
 
 The descriptor is the file `pack.toml` at the pack root. It is a TOML
-1.0.0 document. Sinter reads it by the rules of
+1.1.0 document. Sinter reads it by the rules of
 [manifest.md](manifest.md) sections 2.2 and 2.3. A key that this
 section does not define, a value of the wrong type, and a value that
 breaks the rule of its key are errors. A descriptor with an error does

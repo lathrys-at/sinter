@@ -401,6 +401,69 @@ let reads_every_kind_of_value () =
       Alcotest.(check int) "the second table" 0 (List.length second)
   | _ -> Alcotest.fail "no array of two tables"
 
+let reads_the_forms_of_toml_1_1_with_their_values_and_places () =
+  let text =
+    "t = {\n\
+    \  a = 1, # one\n\
+    \  b.c = 'x',\n\
+     }\n\
+     e = \"\\e\\x41\"\n\
+     h = 17:45\n\
+     d = 1987-07-05T17:45Z\n"
+  in
+  let table = parse_ok text in
+  let a = find table [ "t"; "a" ] and c = find table [ "t"; "b"; "c" ] in
+  Alcotest.check span "the inline table over lines"
+    (from (1, 5) (4, 2))
+    (Toml.span (find table [ "t" ]));
+  Alcotest.check span "a key on a later line"
+    (from (2, 3) (2, 4))
+    (key_of
+       (match Toml.value (find table [ "t" ]) with
+       | Toml.Table inner -> inner
+       | _ -> Alcotest.fail "t is not a table")
+       "a")
+      .at;
+  Alcotest.(check bool) "its value" true (Toml.value a = Toml.Integer 1L);
+  Alcotest.check span "the place of its value"
+    (from (2, 7) (2, 8))
+    (Toml.span a);
+  Alcotest.check position "a dotted key after a comment" (at 3 3)
+    (Toml.key_start c);
+  Alcotest.(check bool)
+    "the value of the dotted key" true
+    (Toml.value c = Toml.String "x");
+  Alcotest.(check bool)
+    "the escapes \\e and \\x" true
+    (Toml.value (find table [ "e" ]) = Toml.String "\027A");
+  Alcotest.check span "the string with the escapes"
+    (from (5, 5) (5, 13))
+    (Toml.span (find table [ "e" ]));
+  Alcotest.(check bool)
+    "a time with no seconds" true
+    (Toml.value (find table [ "h" ])
+    = Toml.Datetime
+        {
+          date = None;
+          time = Some { hour = 17; minute = 45; second = 0; nanosecond = 0 };
+          offset = None;
+        });
+  Alcotest.check span "the time"
+    (from (6, 5) (6, 10))
+    (Toml.span (find table [ "h" ]));
+  Alcotest.(check bool)
+    "a date and a time with no seconds" true
+    (Toml.value (find table [ "d" ])
+    = Toml.Datetime
+        {
+          date = Some { year = 1987; month = 7; day = 5 };
+          time = Some { hour = 17; minute = 45; second = 0; nanosecond = 0 };
+          offset = Some Toml.Utc;
+        });
+  Alcotest.check span "the date and the time"
+    (from (7, 5) (7, 22))
+    (Toml.span (find table [ "d" ]))
+
 let every_kind_has_a_name () =
   let table =
     parse_ok
@@ -434,11 +497,34 @@ let gives_the_place_of_the_first_byte_that_is_not_utf_8 () =
   check_error ~name:"not UTF-8" "a = 1\nb = \"\xC3\xA9\xFF\"\n" (at 2 7)
     "the text is not UTF-8"
 
+let reads_a_dotted_key_into_a_table_above_a_header_table () =
+  let table = parse_ok "[a.b.c]\nz = 9\n[a]\nb.ct = 1\nb.x.y = 2\n" in
+  let b =
+    match Toml.value (find table [ "a"; "b" ]) with
+    | Toml.Table inner -> inner
+    | _ -> Alcotest.fail "a.b is not a table"
+  in
+  let ct = find table [ "a"; "b"; "ct" ]
+  and y = find table [ "a"; "b"; "x"; "y" ] in
+  Alcotest.(check (list string))
+    "the keys of a.b" [ "c"; "ct"; "x" ]
+    (List.map (fun ((key : Toml.key), _) -> key.name) b);
+  Alcotest.(check bool) "the value of ct" true (Toml.value ct = Toml.Integer 1L);
+  Alcotest.check span "the key ct" (from (4, 3) (4, 5)) (key_of b "ct").at;
+  Alcotest.check position "the start of the dotted key b.ct" (at 4 1)
+    (Toml.key_start ct);
+  Alcotest.check span "the value of ct" (from (4, 8) (4, 9)) (Toml.span ct);
+  Alcotest.(check bool) "the value of x.y" true (Toml.value y = Toml.Integer 2L);
+  Alcotest.check span "the value of x.y" (from (5, 9) (5, 10)) (Toml.span y);
+  Alcotest.(check bool)
+    "the value of c.z" true
+    (Toml.value (find table [ "a"; "b"; "c"; "z" ]) = Toml.Integer 9L)
+
 let names_a_dotted_key_into_a_table_that_a_header_made () =
   check_error ~name:"the example of the specification"
-    "[a.b.c]\nz = 9\n[a]\nb.ct = 1\n" (at 4 1)
-    "the dotted key 'b.ct' adds a key to the table 'a.b', which a table header \
-     made; write 'ct' under the header [a.b]";
+    "[a.b.c]\nz = 9\n[a]\nb.c.x = 1\n" (at 4 1)
+    "the dotted key 'b.c.x' adds a key to the table 'a.b.c', which a table \
+     header made; write 'x' under the header [a.b.c]";
   check_error ~name:"an array of tables" "[[tab.arr]]\n[tab]\n  arr . val1=1\n"
     (at 3 3)
     "the dotted key 'arr . val1' adds a key to the table 'tab.arr', which a \
@@ -450,22 +536,38 @@ let names_a_dotted_key_into_a_table_that_a_header_made () =
 
 let messages =
   [
-    ("a = 1 b = 2\n", (1, 7), "expected the end of the line or a comment");
-    ("[a\n", (1, 3), "the table header is not valid; expected '.' or ']'");
-    ("[[a]\n", (1, 4), "the table header is not valid; expected '.' or ']]'");
+    ("a = 1 b = 2\n", (1, 9), "expected the end of the line or a comment");
+    ("[a\n", (1, 3), "the table header is not valid; expected ']'");
+    ("[[a]\n", (1, 5), "the table header is not valid; expected ']'");
+    ("[[a\n", (1, 4), "the table header is not valid; expected ']]'");
     ( "a = x\n",
       (1, 5),
       "the value is not valid; write a string in quotes, a number, true, \
        false, a date, a time, an array, or an inline table" );
-    ( "a = \"\\e\"\n",
-      (1, 8),
-      "the escape sequence is not valid; expected 'b', 'f', 'n', 'r', 't', \
-       'u', 'U', '\\', or '\"'" );
+    ( "a = = 1\n",
+      (1, 5),
+      "the value is not valid; write a string in quotes, a number, true, \
+       false, a date, a time, an array, or an inline table" );
+    ( "a = tru\n",
+      (1, 5),
+      "the value is not valid; write a string in quotes, a number, true, \
+       false, a date, a time, an array, or an inline table" );
+    ( "a = \"\\q\"\n",
+      (1, 7),
+      "the escape sequence is not valid; expected 'b', 't', 'n', 'f', 'r', \
+       'e', '\"', '\\', 'x', 'u', or 'U'" );
+    ( "a = \"\\u12\"\n",
+      (1, 10),
+      "the escape sequence is not valid; expected a hexadecimal digit" );
+    ("a = \"\\uD800\"\n", (1, 8), "the escape sequence is out of range");
     ("a = \"abc\n", (1, 9), "the basic string is not valid");
-    ("a = [1 2]\n", (1, 8), "the array is not valid; expected ']'");
+    ("\"\"\"a\"\"\" = 1\n", (1, 1), "the key is not valid");
+    ("a\n", (1, 2), "expected '='");
+    ("a = [1, 2\n", (1, 10), "the array is not valid; expected ']'");
     ("a = { b = 1\n", (1, 12), "the inline table is not valid; expected '}'");
+    ("a = {,}\n", (1, 6), "the inline table is not valid; expected a key");
     ("a = 1\na = 2\n", (2, 1), "the key 'a' is already defined");
-    ("[t]\n[t]\n", (2, 1), "the key 't' is already defined");
+    ("[t]\n[t]\n", (2, 2), "the key 't' is already defined");
     ( "a = 1\na.b = 2\n",
       (2, 1),
       "'a' holds an integer, not a table, so it cannot hold more keys" );
@@ -482,24 +584,40 @@ let messages =
       (2, 1),
       "'a' holds a date or a time, not a table, so it cannot hold more keys" );
     ( "a = []\n[a.b]\n",
-      (2, 1),
+      (2, 2),
       "'a' holds an array, not a table, so it cannot hold more keys" );
     ( "a = {}\na.b = 1\n",
       (2, 1),
       "'a' is an inline table, and no other line can add keys to it" );
-    ("a = 1979-02-30\n", (1, 13), "the date or time is out of range");
-    ("a = \"\\uD800\"\n", (1, 8), "the \\u escape is out of range");
-    ( "a = 9223372036854775808\n",
-      (1, 5),
-      "the integer is larger than 9223372036854775807" );
-    ( "a = -9223372036854775809\n",
-      (1, 5),
-      "the integer is smaller than -9223372036854775808" );
-    ("a = 1__2\n", (1, 7), "the integer is not valid; expected a digit");
+    ("a = 1979-02-30\n", (1, 5), "the date is out of range");
+    ("a = 07:60:00\n", (1, 5), "the time is out of range");
+    ("a = 9223372036854775808\n", (1, 5), "the integer is out of range");
+    ("a = -9223372036854775809\n", (1, 5), "the integer is out of range");
+    ("a = 1e400\n", (1, 5), "the float is out of range");
+    ("a = 1.\n", (1, 7), "the float is not valid; expected a digit");
+    ("a = 0X1F\n", (1, 5), "the integer is not valid; expected '0x'");
+    ("a = 0x\n", (1, 5), "the hexadecimal integer is not valid");
+    ("a = 0o\n", (1, 5), "the octal integer is not valid");
+    ("a = [0b]\n", (1, 6), "the binary integer is not valid");
+    ( "[t]\nx.a = 1\nx . a.b = 2\n",
+      (3, 5),
+      "'x.a' holds an integer, not a table, so it cannot hold more keys" );
+    ( "[x]\ny = 1\n[x.y.z]\n",
+      (3, 4),
+      "'x.y' holds an integer, not a table, so it cannot hold more keys" );
+    ( "t = { a.b = [], a.b.c = 1 }\n",
+      (1, 19),
+      "'a.b' holds an array, not a table, so it cannot hold more keys" );
+    ("a = +-1\n", (1, 6), "the number is not valid");
+    ("a = 01\n", (1, 5), "the number is not valid");
+    ( "a = 1__2\n",
+      (1, 6),
+      "an underscore in a number must stand between two digits" );
     ( "a = _1\n",
       (1, 5),
-      "the integer is not valid; expected a digit at the start of the number" );
-    ("a = 1\r\n\r", (2, 1), "the text is not valid TOML here");
+      "an underscore in a number must stand between two digits" );
+    ("a = 1 # \001\n", (1, 9), "the comment is not valid");
+    ("a = 1\r\n\r", (2, 2), "the carriage return is not followed by a line feed");
   ]
 
 let gives_the_message_and_the_place_of_each_form () =
@@ -523,49 +641,312 @@ let gives_the_message_and_the_place_of_each_form () =
 let a_document_that_nests_too_deep_is_refused () =
   check_error ~name:"deep arrays"
     ("a = " ^ String.make 100 '[')
-    (at 1 84) "the keys, arrays, or inline tables nest too deep"
+    (at 1 85) "the keys, arrays, or inline tables nest too deep"
 
-let all_constructs =
-  Toml.
+let reads description = Toml.read_message ~path:None description
+
+let read_message_reads_each_description_of_the_reader () =
+  List.iter
+    (fun (message, reading) ->
+      Alcotest.(check bool) message true (reads message = Some reading))
+    Toml.
+      [
+        ("invalid literal string", (Some A_literal_string, [], None));
+        ( "invalid multi-line literal string",
+          (Some A_multiline_literal_string, [], None) );
+        ("invalid basic string", (Some A_basic_string, [], None));
+        ( "invalid multi-line basic string",
+          (Some A_multiline_basic_string, [], None) );
+        ( "carriage return must be followed by newline",
+          (None, [], Some Lone_carriage_return) );
+        ( "missing escaped value",
+          ( Some An_escape,
+            [
+              Literal "b";
+              Literal "t";
+              Literal "n";
+              Literal "f";
+              Literal "r";
+              Literal "e";
+              Literal "\"";
+              Literal "\\";
+              Literal "x";
+              Literal "u";
+              Literal "U";
+            ],
+            None ) );
+        ("too few unicode value digits", (Some An_escape, [], None));
+        ("invalid value", (Some An_escape, [], Some Out_of_range));
+        ("keys cannot be multi-line literal strings", (Some A_key, [], None));
+        ("keys cannot be multi-line basic strings", (Some A_key, [], None));
+        ("unquoted keys cannot be empty", (Some A_key, [], None));
+        ("invalid unquoted key", (Some A_key, [], None));
+        ("invalid key", (Some A_key, [], None));
+        ("invalid key-value pair", (Some A_key, [], None));
+        ("invalid table", (Some A_table_header, [], None));
+        ("key with no value", (None, [], None));
+        ("missing value for key", (None, [], None));
+        ("missing value", (Some A_value, [], None));
+        ("string values must be quoted", (Some A_value, [], None));
+        ("invalid string", (Some A_value, [], None));
+        ("invalid boolean", (Some A_value, [], None));
+        ("missing opening quote", (Some A_value, [], None));
+        ("invalid float", (Some A_float, [], None));
+        ("invalid fraction", (Some A_float, [], None));
+        ("invalid exponent", (Some A_float, [], None));
+        ("invalid mantissa", (Some A_float, [], None));
+        ( "floating-point number overflowed",
+          (Some A_float, [], Some Out_of_range) );
+        ("invalid integer number", (Some An_integer, [], None));
+        ("invalid hexadecimal number", (Some A_hexadecimal_integer, [], None));
+        ("invalid octal number", (Some An_octal_integer, [], None));
+        ("invalid binary number", (Some A_binary_integer, [], None));
+        ("integers with a radix cannot be signed", (Some An_integer, [], None));
+        ("radix must be lowercase", (Some An_integer, [], None));
+        ("redundant integer number prefix", (Some An_integer, [], None));
+        ("integer number overflowed", (Some An_integer, [], Some Out_of_range));
+        ("redundant numeric sign", (Some A_number, [], None));
+        ("unexpected leading zero", (Some A_number, [], None));
+        ("unexpected sign", (Some A_number, [], None));
+        ("`_` may only go between digits", (None, [], Some Misplaced_underscore));
+        ("missing comment start", (None, [], None));
+        ("invalid comment character", (Some A_comment, [], None));
+        ( "cannot recurse further; max recursion depth met",
+          (None, [], Some Too_deep) );
+        ("recursion limit", (None, [], Some Too_deep));
+        ("unclosed array table", (Some A_table_header, [], None));
+        ("unclosed table", (Some A_table_header, [], None));
+        ("missing table open", (Some A_table_header, [], None));
+        ("extra `=`", (Some A_value, [], None));
+        ("unexpected content", (None, [], None));
+        ("unexpected key or value", (None, [], None));
+        ("unexpected content between comment and newline", (None, [], None));
+        ("missing array opening", (Some An_array, [], None));
+        ("extra comma in array", (Some An_array, [], None));
+        ("unexpected `=` in array", (Some An_array, [], None));
+        ("missing comma between array elements", (Some An_array, [], None));
+        ("unclosed array", (Some An_array, [], None));
+        ("missing inline table opening", (Some An_inline_table, [], None));
+        ("extra comma in inline table", (Some An_inline_table, [], None));
+        ( "extra assignment between key-value pairs",
+          (Some An_inline_table, [], None) );
+        ( "missing key for inline table element",
+          (Some An_inline_table, [], None) );
+        ( "missing assignment between key-value pairs",
+          (Some An_inline_table, [], None) );
+        ("invalid inline table element", (Some An_inline_table, [], None));
+        ( "missing comma between key-value pairs",
+          (Some An_inline_table, [], None) );
+        ("unclosed inline table", (Some An_inline_table, [], None));
+      ]
+
+let read_message_keeps_the_list_only_where_it_helps () =
+  Alcotest.(check bool)
+    "an array" true
+    (reads "unclosed array, expected `]`"
+    = Some (Some Toml.An_array, [ Toml.Literal "]" ], None));
+  Alcotest.(check bool)
+    "a basic string" true
+    (reads "invalid basic string, expected `\"`"
+    = Some (Some Toml.A_basic_string, [], None))
+
+let read_message_knows_every_expected_word () =
+  Alcotest.(check bool)
+    "every word" true
+    (reads
+       "unclosed array, expected newline, `#`, digits, unicode hexadecimal \
+        value, key, value, letters, numbers, literal string, basic string, \
+        unquoted string, multi-line basic string, non-double-quote visible \
+        characters, non-single-quote characters, non-single-quote visible \
+        characters, characters, printable characters, `'`, `\"`, `,`, `-`, \
+        `=`, `[`, `]`, `]]`, `{`, `}`, `\\`, `_`, `b`, `e`, `f`, `n`, `r`, \
+        `u`, `U`, `x`, `0x`, `0o`, `0b`, `true`, `false`, `inf`, `nan`, `'''`, \
+        `\"\"\"`"
+    = Some
+        ( Some Toml.An_array,
+          Toml.
+            [
+              End_of_line;
+              Comment;
+              Digit;
+              Hexadecimal_digit;
+              Key;
+              Value;
+              Literal "'";
+              Literal "\"";
+              Literal ",";
+              Literal "-";
+              Literal "=";
+              Literal "[";
+              Literal "]";
+              Literal "]]";
+              Literal "{";
+              Literal "}";
+              Literal "\\";
+              Literal "_";
+              Literal "b";
+              Literal "e";
+              Literal "f";
+              Literal "n";
+              Literal "r";
+              Literal "u";
+              Literal "U";
+              Literal "x";
+              Literal "0x";
+              Literal "0o";
+              Literal "0b";
+              Literal "true";
+              Literal "false";
+              Literal "inf";
+              Literal "nan";
+              Literal "'''";
+              Literal "\"\"\"";
+            ],
+          None ))
+
+let read_message_reads_nothing_as_an_empty_list () =
+  Alcotest.(check bool)
+    "nothing" true
+    (reads "unclosed array, expected nothing"
+    = Some (Some Toml.An_array, [], None))
+
+let datetime_ranges =
+  [
+    "month between 01 and 12";
+    "day between 01 and 28";
+    "day between 01 and 29";
+    "day between 01 and 30";
+    "day between 01 and 31";
+    "hour between 00 and 23";
+    "minute between 00 and 59";
+    "second between 00 and 60";
+    "nanoseconds overflowed";
+    "hours between 00 and 23";
+    "minutes between 00 and 59";
+  ]
+
+let datetime_forms =
+  [
+    "year or hour";
+    "`-` (YYYY-MM) or `:` (HH:MM)";
+    "month";
+    "`-` (MM-DD)";
+    "day";
+    "a four-digit year (YYYY)";
+    "a two-digit month (MM)";
+    "a two-digit day (DD)";
+    "`T` between date and time";
+    "hour";
+    "`:` (HH:MM)";
+    "minute";
+    "second";
+    "nanosecond";
+    "a two-digit hour (HH)";
+    "a two-digit minute (MM)";
+    "a two-digit second (SS)";
+    "`Z`, +OFFSET, -OFFSET";
+  ]
+
+let read_message_reads_each_form_of_a_date_or_a_time () =
+  List.iter
+    (fun (description, construct) ->
+      Alcotest.(check bool)
+        description true
+        (reads description = Some (Some construct, [], None));
+      List.iter
+        (fun range ->
+          Alcotest.(check bool)
+            range true
+            (reads (description ^ ", expected " ^ range)
+            = Some (Some construct, [], Some Toml.Out_of_range)))
+        datetime_ranges;
+      List.iter
+        (fun form ->
+          Alcotest.(check bool)
+            form true
+            (reads (description ^ ", expected " ^ form)
+            = Some (Some construct, [], None)))
+        datetime_forms)
+    Toml.
+      [
+        ("invalid date", A_date);
+        ("invalid time", A_time);
+        ("invalid offset", A_time_offset);
+        ("invalid datetime", A_date_or_time);
+        ("invalid date-time", A_date_or_time);
+      ]
+
+let read_message_reads_a_cause_that_names_the_key () =
+  let read ~path message = Toml.read_message ~path:(Some path) message in
+  Alcotest.(check bool)
+    "a duplicate key" true
+    (read ~path:[ "x"; "a b" ] "duplicate key"
+    = Some (None, [], Some (Toml.Duplicate_key "a b")));
+  Alcotest.(check bool)
+    "an inline table" true
+    (read ~path:[ "" ]
+       "cannot extend value of type inline table with a dotted key"
+    = Some (None, [], Some (Toml.Inline_table "")));
+  Alcotest.(check bool)
+    "a dotted path" true
+    (read ~path:[ "x"; "a" ]
+       "cannot extend value of type inline table with a dotted key"
+    = Some (None, [], Some (Toml.Inline_table "x.a")));
+  Alcotest.(check bool)
+    "an empty path" true
+    (read ~path:[] "duplicate key" = None);
+  List.iter
+    (fun (type_name, found) ->
+      Alcotest.(check bool)
+        type_name true
+        (read ~path:[ "k" ]
+           ("cannot extend value of type " ^ type_name ^ " with a dotted key")
+        = Some (None, [], Some (Toml.Not_a_table { key = "k"; found }))))
+    Toml.Kind.
+      [
+        ("string", String);
+        ("integer", Integer);
+        ("float", Float);
+        ("boolean", Boolean);
+        ("datetime", Datetime);
+        ("array", Array);
+      ];
+  Alcotest.(check bool)
+    "the key goes with no other message" true
+    (read ~path:[ "k" ] "unclosed array" = Some (Some Toml.An_array, [], None))
+
+let read_message_needs_the_key_for_a_cause_that_names_it () =
+  List.iter
+    (fun message -> Alcotest.(check bool) message true (reads message = None))
     [
-      ("string", A_value, "value");
-      ("basic string", A_basic_string, "basic string");
-      ("literal string", A_literal_string, "literal string");
-      ( "multiline basic string",
-        A_multiline_basic_string,
-        "multi-line basic string" );
-      ( "multiline literal string",
-        A_multiline_literal_string,
-        "multi-line literal string" );
-      ("escape sequence", An_escape, "escape sequence");
-      ("unicode 4-digit hex code", A_short_unicode_escape, "\\u escape");
-      ("unicode 8-digit hex code", A_long_unicode_escape, "\\U escape");
-      ("integer", An_integer, "integer");
-      ("hexadecimal integer", A_hexadecimal_integer, "hexadecimal integer");
-      ("octal integer", An_octal_integer, "octal integer");
-      ("binary integer", A_binary_integer, "binary integer");
-      ("floating-point number", A_float, "float");
-      ("date-time", A_date_or_time, "date or time");
-      ("time", A_time, "time");
-      ("time offset", A_time_offset, "time offset");
-      ("array", An_array, "array");
-      ("inline table", An_inline_table, "inline table");
-      ("key", A_key, "key");
-      ("table header", A_table_header, "table header");
+      "duplicate key";
+      "cannot extend value of type integer with a dotted key";
+      "cannot extend value of type inline table with a dotted key";
     ]
 
-let read_message_knows_every_construct () =
+let read_message_refuses_an_unknown_form () =
   List.iter
-    (fun (label, construct, _) ->
+    (fun message ->
       Alcotest.(check bool)
-        label true
-        (Toml.read_message ("invalid " ^ label)
-        = Some (Some construct, [], None)))
-    all_constructs
+        message true
+        (Toml.read_message ~path:(Some [ "k" ]) message = None))
+    [
+      "invalid widget";
+      "unclosed array,";
+      "unclosed array, expected `?`";
+      "unclosed array, expected `]`, `?`";
+      "unclosed array, expected `]`, ";
+      "unclosed array, expected etc";
+      "invalid date, expected a fortnight";
+      "invalid date, expected nothing";
+      "cannot extend value of type table with a dotted key";
+      "cannot extend value of type integer";
+      "duplicate key `k`";
+    ]
 
 let error_message_names_every_construct () =
   List.iter
-    (fun (_, construct, name) ->
+    (fun (construct, name) ->
       let at = at 1 1 in
       Alcotest.(check string)
         name
@@ -576,98 +957,78 @@ let error_message_names_every_construct () =
         (Toml.error_message
            (Toml.Syntax
               { at; construct = Some construct; expected = []; cause = None })))
-    all_constructs
+    Toml.
+      [
+        (A_value, "value");
+        (A_basic_string, "basic string");
+        (A_literal_string, "literal string");
+        (A_multiline_basic_string, "multi-line basic string");
+        (A_multiline_literal_string, "multi-line literal string");
+        (An_escape, "escape sequence");
+        (An_integer, "integer");
+        (A_hexadecimal_integer, "hexadecimal integer");
+        (An_octal_integer, "octal integer");
+        (A_binary_integer, "binary integer");
+        (A_float, "float");
+        (A_number, "number");
+        (A_date, "date");
+        (A_date_or_time, "date or time");
+        (A_time, "time");
+        (A_time_offset, "time offset");
+        (An_array, "array");
+        (An_inline_table, "inline table");
+        (A_key, "key");
+        (A_table_header, "table header");
+        (A_comment, "comment");
+      ]
 
-let read_message_knows_every_expected_form () =
-  Alcotest.(check bool)
-    "every form" true
-    (Toml.read_message
-       "expected newline, `#`, `]]`, digit, leading digit, `.`, `=`, `]`, `}`, \
-        `\"`, `'`, `b`, `f`, `n`, `r`, `t`, `u`, `U`, `\\`"
-    = Some
-        ( None,
-          Toml.
-            [
-              End_of_line;
-              Comment;
-              Double_bracket;
-              Digit;
-              Leading_digit;
-              Character '.';
-              Character '=';
-              Character ']';
-              Character '}';
-              Character '"';
-              Character '\'';
-              Character 'b';
-              Character 'f';
-              Character 'n';
-              Character 'r';
-              Character 't';
-              Character 'u';
-              Character 'U';
-              Character '\\';
-            ],
-          None ))
+let error_message_names_every_expected_form () =
+  Alcotest.(check string)
+    "the list"
+    "expected the end of the line, a comment, ']]', \"'\", a digit, a \
+     hexadecimal digit, a key, or a value"
+    (Toml.error_message
+       (Toml.Syntax
+          {
+            at = at 1 1;
+            construct = None;
+            expected =
+              Toml.
+                [
+                  End_of_line;
+                  Comment;
+                  Literal "]]";
+                  Literal "'";
+                  Digit;
+                  Hexadecimal_digit;
+                  Key;
+                  Value;
+                ];
+            cause = None;
+          }))
 
-let read_message_reads_all_three_parts () =
-  Alcotest.(check bool)
-    "a construct, a list, and a cause" true
-    (Toml.read_message
-       "invalid table header\nexpected `.`\nduplicate key `a\nb` in table `x`"
-    = Some
-        ( Some Toml.A_table_header,
-          [ Toml.Character '.' ],
-          Some (Toml.Duplicate_key "a\nb") ))
-
-let read_message_reads_each_duplicate_key () =
+let error_message_of_each_cause_that_names_no_key () =
   List.iter
-    (fun (message, key) ->
-      Alcotest.(check bool)
-        message true
-        (Toml.read_message message
-        = Some (None, [], Some (Toml.Duplicate_key key))))
-    [
-      ("duplicate key `a`", "a");
-      ("duplicate key `a` in document root", "a");
-      ("duplicate key `a` in table `b.c`", "a");
-      ("duplicate key `` in table `b`", "");
-      ("duplicate key `x` in table `y` in table `z`", "x");
-      ("duplicate key ``", "");
-      ("duplicate key `x` in table ``", "x");
-      ("duplicate key `abcdefghijk`", "abcdefghijk");
-      ("duplicate key `abcdefghijkl`", "abcdefghijkl");
-    ]
-
-let read_message_reads_a_dotted_key_with_an_empty_name () =
-  Alcotest.(check bool)
-    "an empty name" true
-    (Toml.read_message
-       "dotted key `` attempted to extend non-table type (boolean)"
-    = Some
-        ( None,
-          [],
-          Some (Toml.Not_a_table { key = ""; found = Toml.Kind.Boolean }) ))
-
-let read_message_refuses_an_unknown_form () =
-  List.iter
-    (fun message ->
-      Alcotest.(check bool) message true (Toml.read_message message = None))
-    [
-      "invalid widget";
-      "expected `?`";
-      "expected newline, `?`";
-      "invalid string\nexpected `\"`, something";
-      "invalid digit found in string";
-      "dotted key `a` attempted to extend non-table type (table)";
-      "dotted key `a` attempted to extend non-table type (integer";
-      "dotted key `a` tried to extend (integer)";
-      "duplicate key";
-      "duplicate key `";
-      "duplicate key `a";
-      "dotted key `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)";
-      "value is out of range\nmore";
-    ]
+    (fun (cause, message) ->
+      Alcotest.(check string)
+        message message
+        (Toml.error_message
+           (Toml.Syntax
+              {
+                at = at 1 1;
+                construct = None;
+                expected = [];
+                cause = Some cause;
+              })))
+    Toml.
+      [
+        (Out_of_range, "the value is out of range");
+        (Too_deep, "the keys, arrays, or inline tables nest too deep");
+        ( Lone_carriage_return,
+          "the carriage return is not followed by a line feed" );
+        ( Misplaced_underscore,
+          "an underscore in a number must stand between two digits" );
+      ]
 
 let error_message_of_an_unrecognized_form () =
   Alcotest.(check string)
@@ -675,18 +1036,6 @@ let error_message_of_an_unrecognized_form () =
     (Toml.error_message (Toml.Unrecognized { at = at 3 4 }));
   Alcotest.check position "the place" (at 3 4)
     (Toml.error_position (Toml.Unrecognized { at = at 3 4 }))
-
-let error_message_of_a_cause_out_of_range_with_no_construct () =
-  Alcotest.(check string)
-    "the message" "the value is out of range"
-    (Toml.error_message
-       (Toml.Syntax
-          {
-            at = at 1 1;
-            construct = None;
-            expected = [];
-            cause = Some Toml.Out_of_range;
-          }))
 
 let render_path_quotes_only_what_it_must () =
   Alcotest.(check string)
@@ -743,10 +1092,10 @@ let a_name_with_a_control_character_stays_on_one_line () =
     "\"a\xC2\x85\" = {}\n\"a\xC2\x85\".c = 1\n" (at 2 1)
     "\"a\\u0085\" is an inline table, and no other line can add keys to it";
   check_error ~name:"a dotted key into a table that a header made"
-    "[a.\"b\xC2\x85\".c]\nz = 9\n[a]\n\"b\xC2\x85\".ct = 1\n" (at 4 1)
-    "the dotted key \"\\\"b\\u0085\\\".ct\" adds a key to the table \
-     'a.\"b\\u0085\"', which a table header made; write 'ct' under the header \
-     [a.\"b\\u0085\"]"
+    "[a.\"b\xC2\x85\".c]\nz = 9\n[a]\n\"b\xC2\x85\".c.t = 1\n" (at 4 1)
+    "the dotted key \"\\\"b\\u0085\\\".c.t\" adds a key to the table \
+     'a.\"b\\u0085\".c', which a table header made; write 't' under the header \
+     [a.\"b\\u0085\".c]"
 
 type style = Basic | Literal | Multiline_basic | Multiline_literal
 
@@ -1269,33 +1618,44 @@ let tests =
       `Quick string_position_refuses_an_offset_outside_the_string;
     Alcotest.test_case "reads every kind of value" `Quick
       reads_every_kind_of_value;
+    Alcotest.test_case
+      "reads the forms of TOML 1.1 with their values and places" `Quick
+      reads_the_forms_of_toml_1_1_with_their_values_and_places;
     Alcotest.test_case "every kind has a name" `Quick every_kind_has_a_name;
     Alcotest.test_case "gives the place of the first byte that is not UTF-8"
       `Quick gives_the_place_of_the_first_byte_that_is_not_utf_8;
+    Alcotest.test_case "reads a dotted key into a table above a header table"
+      `Quick reads_a_dotted_key_into_a_table_above_a_header_table;
     Alcotest.test_case "names a dotted key into a table that a header made"
       `Quick names_a_dotted_key_into_a_table_that_a_header_made;
     Alcotest.test_case "gives the message and the place of each form" `Quick
       gives_the_message_and_the_place_of_each_form;
     Alcotest.test_case "a document that nests too deep is refused" `Quick
       a_document_that_nests_too_deep_is_refused;
-    Alcotest.test_case "read_message knows every construct" `Quick
-      read_message_knows_every_construct;
-    Alcotest.test_case "error_message names every construct" `Quick
-      error_message_names_every_construct;
-    Alcotest.test_case "read_message knows every expected form" `Quick
-      read_message_knows_every_expected_form;
-    Alcotest.test_case "read_message reads all three parts" `Quick
-      read_message_reads_all_three_parts;
-    Alcotest.test_case "read_message reads each duplicate key" `Quick
-      read_message_reads_each_duplicate_key;
-    Alcotest.test_case "read_message reads a dotted key with an empty name"
-      `Quick read_message_reads_a_dotted_key_with_an_empty_name;
+    Alcotest.test_case "read_message reads each description of the reader"
+      `Quick read_message_reads_each_description_of_the_reader;
+    Alcotest.test_case "read_message keeps the list only where it helps" `Quick
+      read_message_keeps_the_list_only_where_it_helps;
+    Alcotest.test_case "read_message knows every expected word" `Quick
+      read_message_knows_every_expected_word;
+    Alcotest.test_case "read_message reads nothing as an empty list" `Quick
+      read_message_reads_nothing_as_an_empty_list;
+    Alcotest.test_case "read_message reads each form of a date or a time" `Quick
+      read_message_reads_each_form_of_a_date_or_a_time;
+    Alcotest.test_case "read_message reads a cause that names the key" `Quick
+      read_message_reads_a_cause_that_names_the_key;
+    Alcotest.test_case "read_message needs the key for a cause that names it"
+      `Quick read_message_needs_the_key_for_a_cause_that_names_it;
     Alcotest.test_case "read_message refuses an unknown form" `Quick
       read_message_refuses_an_unknown_form;
+    Alcotest.test_case "error_message names every construct" `Quick
+      error_message_names_every_construct;
+    Alcotest.test_case "error_message names every expected form" `Quick
+      error_message_names_every_expected_form;
+    Alcotest.test_case "error_message of each cause that names no key" `Quick
+      error_message_of_each_cause_that_names_no_key;
     Alcotest.test_case "error_message of an unrecognized form" `Quick
       error_message_of_an_unrecognized_form;
-    Alcotest.test_case "error_message of a cause out of range with no construct"
-      `Quick error_message_of_a_cause_out_of_range_with_no_construct;
     Alcotest.test_case "render_path quotes only what it must" `Quick
       render_path_quotes_only_what_it_must;
     Alcotest.test_case "basic_string escapes each control character" `Quick

@@ -42,58 +42,61 @@ is.
 
 ### 2.2 TOML
 
-The manifest is a TOML 1.0.0 document (<https://toml.io/en/v1.0.0>),
+The manifest is a TOML 1.1.0 document (<https://toml.io/en/v1.1.0>),
 encoded in UTF-8. These rules also apply:
 
-1. A form that only TOML 1.1 allows is a syntax error. Two examples:
-   an inline table over more than one line, and the escape `\e`.
-2. Every TOML form that gives the same document has the same meaning.
+1. Every TOML form that gives the same document has the same meaning.
    A table header such as `[check.tiers.merge]`, a dotted key such as
    `tiers.merge.dangling` under `[check]`, and an inline table are all
    valid. Basic strings and literal strings are both valid.
-3. A dotted key must not add a key to a table that an earlier table
-   header made (section 2.3).
-4. The tool does not change a string of the manifest. It does not
+2. The path of a dotted key must not go into a table that an earlier
+   table header names (section 2.3).
+3. The tool does not change a string of the manifest. It does not
    normalize Unicode, and it does not change case.
 
 ### 2.3 Dotted keys under a later header
 
-A table header makes the table that it names and each table above
-that table. For example, `[a.b.c]` makes the tables `a`, `a.b`, and
-`a.b.c`.
+A table header names one table, and it also makes each table above
+that table. For example, `[a.b.c]` names the table `a.b.c`, and it
+makes the tables `a` and `a.b`. A header of an array of tables, such as
+`[[a.b]]`, names the table that it adds to the array.
 
 A dotted key names a path of tables and then one key. Under the header
-`[a]`, the dotted key `b.ct` names the path `b`, which ends at the
-table `a.b`, and then the key `ct`. The table at the end of the path
-**receives** the key.
+`[a]`, the dotted key `b.c.x` names the path `b.c`, which ends at the
+table `a.b.c`, and then the key `x`.
 
-When an earlier table header made the table that receives the key, the
-file is an error. This file is an error at line 4, because the header
-on line 1 made the table `a.b`:
+When the path of a dotted key goes into a table that an earlier table
+header names, the file is an error. This file is an error at line 4,
+because the header on line 1 names the table `a.b.c`:
+
+```toml
+[a.b.c]
+z = 9
+[a]
+b.c.x = 1
+```
+
+To write the key, put it under the header that names the table:
+
+```toml
+[a.b.c]
+z = 9
+x = 1
+```
+
+A dotted key can go into a table that a header only made as a table
+above the one that it names. This file is valid. The header on line 1
+made the table `a.b` only as a table above `a.b.c`. So the dotted key
+on line 4 adds the key `ct` to the table `a.b`, and the dotted key on
+line 5 makes the new table `a.b.x`:
 
 ```toml
 [a.b.c]
 z = 9
 [a]
 b.ct = 1
+b.x.y = 1
 ```
-
-TOML 1.0.0 does not state this case directly. Sinter rejects it. To
-write the key, put it under the header of the table that receives it:
-
-```toml
-[a.b.c]
-z = 9
-[a.b]
-ct = 1
-```
-
-A dotted key can pass through a table that a header made only as a
-table above the one it names, when the key goes into a new table
-below it. Under `[a]` in the first file, `b.x.y = 1` is valid: the
-header on line 1 made the table `a.b` only as a table above `a.b.c`,
-and no header made the table `a.b.x`. But `b.c.x = 1` is an error,
-because the header on line 1 names the table `a.b.c` itself.
 
 ### 2.4 Commands that need a manifest
 
@@ -879,7 +882,7 @@ the **base manifest**: the file at the same path, relative to the
 repository root, in the base tree. It reads the base manifest only for
 this comparison, as a TOML document. It does not check the names, the
 types, or the values of the base manifest. When the base tree has no
-such file, or the file is not valid TOML 1.0.0, the base side is the
+such file, or the file is not valid TOML 1.1.0, the base side is the
 side of an empty manifest.
 
 From each side, the adjudicator makes a **comparison set**. Each entry
@@ -928,7 +931,7 @@ finding sits at line 1, column 1 of the working manifest.
   `<key path>: removed <old> (<direction>)`, in every other case.
 
 The detail writes a string in double quotes, and a boolean as `true`
-or `false`. When the base manifest exists and is not valid TOML 1.0.0,
+or `false`. When the base manifest exists and is not valid TOML 1.1.0,
 each detail ends with `; the base manifest is not valid TOML`.
 
 **The direction.** A change **strengthens** the configuration when
@@ -994,7 +997,7 @@ These parts of a rule file are fixed:
    ([vocabulary.md](vocabulary.md) section 8). A rule can cite the
    decision that it rests on with `@cites`.
 7. The tool reads the front matter by the rules of sections 2.2, 2.3,
-   and 4. The front matter is TOML 1.0.0. An unknown key or a value of
+   and 4. The front matter is TOML 1.1.0. An unknown key or a value of
    the wrong type is an error. The message gives the line and the
    column in the rule file, and a suggestion of the nearest key. An
    error stops the command with exit code 3.

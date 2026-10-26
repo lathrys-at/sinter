@@ -91,9 +91,14 @@ let error_bytes (error : Raw.error) =
   let buffer = Buffer.create 256 and runs = ref [] in
   add_header buffer ~kind:4;
   (match error with
-  | Raw.Crate_error { start_byte; end_byte; message } ->
+  | Raw.Crate_error { start_byte; end_byte; message; path = None } ->
       List.iter (add_u32 buffer) [ 0; start_byte; end_byte ];
       add_string buffer runs message
+  | Raw.Crate_error { start_byte; end_byte; message; path = Some path } ->
+      List.iter (add_u32 buffer) [ 2; start_byte; end_byte ];
+      add_string buffer runs message;
+      add_u32 buffer (List.length path);
+      List.iter (add_string buffer runs) path
   | Raw.Header_table { start_byte; end_byte; key; table; array; rest } ->
       List.iter (add_u32 buffer) [ 1; start_byte; end_byte ];
       add_string buffer runs key;
@@ -193,8 +198,9 @@ let raw_error =
   oneof
     [
       (let+ start_byte, end_byte = span
-       and+ message = Generators.utf_8_string in
-       Raw.Crate_error { start_byte; end_byte; message });
+       and+ message = Generators.utf_8_string
+       and+ path = option names in
+       Raw.Crate_error { start_byte; end_byte; message; path });
       (let+ start_byte, end_byte = span
        and+ key = name
        and+ table = names
@@ -430,12 +436,13 @@ let names_an_error_form_it_does_not_know () =
   let buffer =
     fst
       (error_bytes
-         (Raw.Crate_error { start_byte = 0; end_byte = 1; message = "m" }))
+         (Raw.Crate_error
+            { start_byte = 0; end_byte = 1; message = "m"; path = None }))
   in
   Alcotest.(check string)
     "the message names the form"
-    "the bridge returned a malformed buffer: a TOML error has the form 2"
-    (error_message (fun () -> decode (with_u32 buffer 16 2)))
+    "the bridge returned a malformed buffer: a TOML error has the form 3"
+    (error_message (fun () -> decode (with_u32 buffer 16 3)))
 
 let names_an_array_flag_that_is_not_0_or_1 () =
   let buffer =
@@ -550,24 +557,45 @@ let parse_gives_the_keys_and_their_byte_spans () =
 
 let parse_gives_the_error_of_the_reader () =
   match Raw.parse "a = \n" with
-  | Error (Raw.Crate_error { start_byte = 4; end_byte = 5; message }) ->
+  | Error
+      (Raw.Crate_error { start_byte = 4; end_byte = 4; message; path = None })
+    ->
       Alcotest.(check string)
-        "the message of the reader" "invalid string\nexpected `\"`, `'`" message
+        "the message of the reader"
+        "string values must be quoted, expected literal string" message
   | _ -> Alcotest.fail "no error of the reader"
+
+let parse_gives_the_path_of_the_key_at_the_error () =
+  (match Raw.parse "a = 1\n\"b c\" = 2\n'b c' = 3\n" with
+  | Error
+      (Raw.Crate_error
+         { start_byte = 16; end_byte = 21; message; path = Some [ "b c" ] }) ->
+      Alcotest.(check string)
+        "the message of the reader" "duplicate key" message
+  | _ -> Alcotest.fail "no error of the reader at the key");
+  match Raw.parse "x.a = 1\nx . a.b = 2\n" with
+  | Error
+      (Raw.Crate_error
+         { start_byte = 12; end_byte = 13; message; path = Some [ "x"; "a" ] })
+    ->
+      Alcotest.(check string)
+        "the message of the reader"
+        "cannot extend value of type integer with a dotted key" message
+  | _ -> Alcotest.fail "no error of the reader at the dotted key"
 
 let parse_finds_a_dotted_key_into_a_header_table () =
   Alcotest.(check bool)
     "the error names the table" true
-    (Raw.parse "[a.b.c]\nz = 9\n[a]\nb.ct = 1\n"
+    (Raw.parse "[a.b.c]\nz = 9\n[a]\nb.c.t = 1\n"
     = Error
         (Raw.Header_table
            {
              start_byte = 18;
-             end_byte = 22;
-             key = "b.ct";
-             table = [ "a"; "b" ];
+             end_byte = 23;
+             key = "b.c.t";
+             table = [ "a"; "b"; "c" ];
              array = false;
-             rest = [ "ct" ];
+             rest = [ "t" ];
            }))
 
 let parse_refuses_text_that_is_not_utf_8 () =
@@ -611,6 +639,8 @@ let tests =
       parse_gives_the_keys_and_their_byte_spans;
     Alcotest.test_case "parse gives the error of the reader" `Quick
       parse_gives_the_error_of_the_reader;
+    Alcotest.test_case "parse gives the path of the key at the error" `Quick
+      parse_gives_the_path_of_the_key_at_the_error;
     Alcotest.test_case "parse finds a dotted key into a header table" `Quick
       parse_finds_a_dotted_key_into_a_header_table;
     Alcotest.test_case "parse refuses text that is not UTF-8" `Quick

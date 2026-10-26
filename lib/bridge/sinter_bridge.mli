@@ -466,9 +466,16 @@ module Toml_raw : sig
 
   (** Why a text is not a TOML document. *)
   type error =
-    | Crate_error of { start_byte : int; end_byte : int; message : string }
+    | Crate_error of {
+        start_byte : int;
+        end_byte : int;
+        message : string;
+        path : string list option;
+      }
         (** the reader's own error: the byte span where it stopped, and its
-            message, which can hold more than one line *)
+            message. When the text at the span is one key, [path] holds the
+            decoded names of the dotted key that holds it, from its first part
+            to that key; it is [None] when that text is not one key. *)
     | Header_table of {
         start_byte : int;
         end_byte : int;
