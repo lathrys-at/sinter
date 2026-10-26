@@ -247,6 +247,69 @@ let first_block_must_be_a_paragraph =
       "unread 29:1-29:10";
     ]
 
+let fence_after_text_closes_no_code_block =
+  check_structure
+    "# Title\n\n\
+     Text.\n\n\
+     ```\n\
+     // ```\n\
+     @req inside v1\n\
+     ```\n\n\
+     ## Next\n\n\
+     @req next v1\n"
+    [
+      "section 0 level 1 \"Title\" slug title name title at 1:1-1:8 parent - \
+       first 3:1-3:6 extent 1:1-8:4";
+      "section 1 level 2 \"Next\" slug next name next at 10:1-10:8 parent 0 \
+       first 12:1-12:13 extent 10:1-12:13";
+      "tag 0 @req target next rev 1 desc \"\" at 12:1-12:13 block 0 \
+       section-paragraph section 1 owner 0 extent 10-12 ea240614";
+      "block 0 tags 0 prose  hash 01ba4719";
+    ]
+
+let indented_fence_closes_no_code_block =
+  check_structure
+    "# Title\n\n\
+     Text.\n\n\
+     ```\n\
+    \    ```\n\
+     # Fake\n\n\
+     @req fake v1\n\
+     ```\n\n\
+     ## Next\n\n\
+     @req next v1\n"
+    [
+      "section 0 level 1 \"Title\" slug title name title at 1:1-1:8 parent - \
+       first 3:1-3:6 extent 1:1-10:4";
+      "section 1 level 2 \"Next\" slug next name next at 12:1-12:8 parent 0 \
+       first 14:1-14:13 extent 12:1-14:13";
+      "tag 0 @req target next rev 1 desc \"\" at 14:1-14:13 block 0 \
+       section-paragraph section 1 owner 0 extent 12-14 ea240614";
+      "block 0 tags 0 prose  hash 01ba4719";
+    ]
+
+let fence_after_a_container_marker_closes_no_code_block =
+  check_structure
+    "# Title\n\n\
+     Text.\n\n\
+     ```\n\
+     > ```\n\
+     # Quoted\n\n\
+     - ```\n\
+     # Listed\n\
+     ```\n\n\
+     ## Next\n\n\
+     @req next v1\n"
+    [
+      "section 0 level 1 \"Title\" slug title name title at 1:1-1:8 parent - \
+       first 3:1-3:6 extent 1:1-11:4";
+      "section 1 level 2 \"Next\" slug next name next at 13:1-13:8 parent 0 \
+       first 15:1-15:13 extent 13:1-15:13";
+      "tag 0 @req target next rev 1 desc \"\" at 15:1-15:13 block 0 \
+       section-paragraph section 1 owner 0 extent 13-15 ea240614";
+      "block 0 tags 0 prose  hash 01ba4719";
+    ]
+
 let front_matter_is_no_block =
   check_structure "+++\ntitle = \"x\"\n+++\n@req fm v1\nText.\n\n# H\n"
     [
@@ -536,6 +599,49 @@ let declaration_needs_a_slug =
       "tag 3 @req target -bad rev - desc \"\" at 5:1-5:10 block 0 \
        section-paragraph section 0 owner 2 extent -";
       "block 0 tags 0,1,2,3 prose  hash 3a664064";
+    ]
+
+let bound = 5.0
+
+let timed_structure text =
+  let start = Unix.gettimeofday () in
+  let result = structure text in
+  (result, Unix.gettimeofday () -. start)
+
+let check_quick_structure name text expected =
+  let result, seconds = timed_structure text in
+  Alcotest.(check string) (name ^ ": the structure") expected result;
+  Alcotest.(check bool)
+    (Printf.sprintf "%s: read in %.3f s, under %.0f s" name seconds bound)
+    true (seconds < bound)
+
+let long_runs_read_quickly () =
+  List.iter
+    (fun mark ->
+      check_quick_structure
+        (Printf.sprintf "a run of %c" mark)
+        ("# Title\n\nx" ^ String.make 100_000 mark ^ "\n")
+        "section 0 level 1 \"Title\" slug title name title at 1:1-1:8 parent - \
+         first 3:1-3:100002 extent 1:1-3:100002")
+    [ '*'; '_'; '`'; '~' ]
+
+let deep_nesting_reads_quickly () =
+  List.iter
+    (fun (name, marker, expected) ->
+      check_quick_structure name
+        ("# Title\n\n"
+        ^ String.concat "" (List.init 10_000 (fun _ -> marker))
+        ^ "x\n")
+        expected)
+    [
+      ( "10,000 levels of >",
+        ">",
+        "section 0 level 1 \"Title\" slug title name title at 1:1-1:8 parent - \
+         first - extent 1:1-3:10002" );
+      ( "10,000 levels of list items",
+        "- ",
+        "section 0 level 1 \"Title\" slug title name title at 1:1-1:8 parent - \
+         first - extent 1:1-3:20002" );
     ]
 
 let error_node_gives_its_span =
@@ -943,6 +1049,12 @@ let tests =
       containers_open_no_section;
     Alcotest.test_case "the first block must be a paragraph" `Quick
       first_block_must_be_a_paragraph;
+    Alcotest.test_case "a fence after text closes no code block" `Quick
+      fence_after_text_closes_no_code_block;
+    Alcotest.test_case "an indented fence closes no code block" `Quick
+      indented_fence_closes_no_code_block;
+    Alcotest.test_case "a fence after a container marker closes no code block"
+      `Quick fence_after_a_container_marker_closes_no_code_block;
     Alcotest.test_case "front matter is no block" `Quick
       front_matter_is_no_block;
     Alcotest.test_case "YAML front matter is no block" `Quick
@@ -970,6 +1082,10 @@ let tests =
       nested_extent_hashes_skip_the_holes;
     Alcotest.test_case "a declaration needs a slug" `Quick
       declaration_needs_a_slug;
+    Alcotest.test_case "long runs of one mark read quickly" `Quick
+      long_runs_read_quickly;
+    Alcotest.test_case "deep nesting reads quickly" `Quick
+      deep_nesting_reads_quickly;
     Alcotest.test_case "an ERROR node gives its span" `Quick
       error_node_gives_its_span;
     Alcotest.test_case "a MISSING node gives an empty span" `Quick

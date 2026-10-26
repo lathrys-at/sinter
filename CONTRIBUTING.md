@@ -132,15 +132,15 @@ projects depend on. The rules:
 ## Build and check
 
 Install [opam](https://opam.ocaml.org/), and create a switch with the
-compiler that `sinter.opam.locked` pins, 5.5.0, for example with
-`opam switch create 5.5.0`. The install below fails on any other
+compiler that `sinter.opam.locked` pins, 5.5.2, for example with
+`opam switch create 5.5.2`. The install below fails on any other
 compiler. The parser bridge in `bridge/` is a Rust crate, so also
 install the Rust toolchain with [rustup](https://rustup.rs) and
 install `cmake`, which a build script of wasmtime runs. Then, from the
 repository root:
 
 ```
-eval $(opam env --switch=5.5.0)
+eval $(opam env --switch=5.5.2)
 opam install . --deps-only --with-test --with-dev-setup --locked
 dune build
 dune test
@@ -191,7 +191,7 @@ hand, and the next build writes a new one.
 `bisect_ppx` measures how much of `lib/` and `bin/` the tests run. No
 released version of it installs beside the versions in
 `sinter.opam.locked`. The last release, 2.8.3, needs `ppxlib` below
-0.36 and `cmdliner` below 2. The lock file pins the compiler 5.5.0,
+0.36 and `cmdliner` below 2. The lock file pins the compiler 5.5.2,
 which no `ppxlib` below 0.36 supports, and it pins `cmdliner` 2.1.1.
 An open pull request of `bisect_ppx` builds against the newer
 `ppxlib` and the newer `cmdliner`, so a coverage run pins one commit
