@@ -50,6 +50,11 @@
   `Discharges:` trailers of the commits on a branch (record
   `commit-messages`) and check them against the plan and the diff.
   Not designed.
+- **jj repositories without `.git`** — support a jj repository that
+  is not colocated, and a jj workspace that has no `.git`. A small
+  locator asks `jj` for the git folder and for the parent of the
+  working-copy commit, and Sinter then runs git as it does today. Not
+  designed.
 - **`sinter search`**
   - Keyword search over titles, descriptions, and extents.
   - Semantic search: a bundled local model, an external service

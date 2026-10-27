@@ -36,6 +36,23 @@ dune test
 
 `CONTRIBUTING.md` has the full list of checks to run before a commit.
 
+## jj
+
+[jj (Jujutsu)](https://docs.jj-vcs.dev/latest/) is a version control
+system that can keep its data in a git repository. Sinter works in a
+colocated jj repository: a repository with a `.git` folder next to
+the `.jj` folder. Since version 0.34.0, jj makes new repositories
+colocated by default. Sinter reads such a repository through the
+`git` program, as it reads any git repository.
+
+Use jj 0.45.0 or later. Earlier versions can leave a stale cache in
+the git index, and the tree that Sinter computes for the working tree
+is then wrong ([jj-vcs/jj#9711](https://github.com/jj-vcs/jj/issues/9711)).
+
+Sinter does not work yet in a jj repository that is not colocated. It
+also does not work yet in a jj workspace that has no `.git`, such as a
+workspace that `jj workspace add` made before jj 0.46.0.
+
 ## Skills for Claude Code
 
 This repository is also a Claude Code plugin marketplace. The `sinter`
