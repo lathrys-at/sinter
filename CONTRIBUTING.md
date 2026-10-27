@@ -572,7 +572,7 @@ sign off code that you did not review.
   revision; a different choice gets a new record that supersedes the
   old one (`docs/decisions/revise-or-supersede.md`). A pull request that
   supersedes a record moves the citations of the old record to the
-  new one, with the revision bumps that the move owes, and adds no
+  new one, with the revision bumps that the move needs, and adds no
   `@ack` for those citations. The journals of plans record the past,
   so their citations stay as they are. "Alternatives
   considered" lists only the alternatives that someone put forward
