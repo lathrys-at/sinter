@@ -969,6 +969,57 @@ let records facts ~changed =
           ]))
   @ external_records facts
 
+type identity = {
+  kind : string;
+  id : string;
+  place : (string * Markdown.span) option;
+}
+
+let identities facts =
+  let at kind id path span = { kind; id; place = Some (path, span) } in
+  List.filter_map
+    (fun (d : declaration) ->
+      Option.map
+        (fun _ -> at d.kind (declaration_id d) d.path d.span)
+        (manifest_kind d.kind))
+    (Array.to_list facts.declarations)
+  @ List.map
+      (fun (edge : edge) -> at edge.word (edge_id edge) edge.path edge.span)
+      facts.edges
+  @ List.map
+      (fun (site : site) -> at "site" site.id site.path site.span)
+      facts.sites
+  @ List.map
+      (fun (ack : ack) ->
+        at "ack" ("ack:" ^ ack.block ^ ":" ^ ack.target) ack.path ack.span)
+      facts.acks
+  @ List.concat_map
+      (fun plan ->
+        at "plan" ("plan:" ^ plan.slug) plan.path plan.span
+        :: List.concat_map
+             (fun (step : step) ->
+               at "step" (step_id plan step) plan.path step.span
+               :: List.map
+                    (fun (promise : promise) ->
+                      at "promise"
+                        (promise_id plan step promise)
+                        plan.path promise.span)
+                    step.promises)
+             plan.steps)
+      facts.plans
+  @ List.sort_uniq compare
+      (List.filter_map
+         (function
+           | External { ns; id } ->
+               Some
+                 {
+                   kind = "external";
+                   id = "external:" ^ ns ^ "/" ^ id;
+                   place = None;
+                 }
+           | Declaration _ | Unresolved _ -> None)
+         facts.targets)
+
 let manifest facts = facts.manifest
 let files facts = facts.files
 let declarations facts = Array.to_list facts.declarations

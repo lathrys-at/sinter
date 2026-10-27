@@ -31,6 +31,20 @@ val manifest : t -> Manifest.t
 val files : t -> (string * Markdown.t) list
 (** [files facts] is the files that {!make} took, in their order. *)
 
+type identity = private {
+  kind : string;  (** the kind of the fact, as its record names it *)
+  id : string;  (** the id of the fact *)
+  place : (string * Markdown.span) option;
+      (** the path and the span of the record of the fact; [None] for a fact
+          that has no place, an [external] *)
+}
+(** The identity of one fact. *)
+
+val identities : t -> identity list
+(** [identities facts] is the identity of each fact that {!records} gives a
+    record for: each declaration, edge, site, ack, plan, step, promise, and
+    external id. An external id that several edges name comes once. *)
+
 val needs_changes : t -> bool
 (** [needs_changes facts] is [true] when a step of a plan has no promise. Only
     then does {!records} read its argument [changed]. *)

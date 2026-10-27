@@ -109,18 +109,27 @@ let record ~mode { finding; tier } =
 type format = Text | Json
 type report = { messages : string list; lines : string list; code : int }
 
-let base_findings ?phases (tree : Scan.tree) (compared : Scan.compared) findings
-    =
-  let facts =
+let compare_with_base ?phases ~mode (tree : Scan.tree)
+    (compared : Scan.compared) facts findings =
+  let base =
     Allocation.measure phases "base-facts" (fun () ->
         Facts.make tree.manifest compared.base_documents)
   in
-  let base =
-    Allocation.measure phases "base-findings" (fun () ->
-        Findings.of_facts facts ~not_text:compared.base_not_text)
+  let findings =
+    match mode with
+    | Mode.Tree -> findings
+    | Mode.Diff ->
+        let base_findings =
+          Allocation.measure phases "base-findings" (fun () ->
+              Findings.of_facts base ~not_text:compared.base_not_text)
+        in
+        Allocation.measure phases "findings" (fun () ->
+            Baseline.subtract
+              (Baseline.of_diff compared.diff)
+              ~base:base_findings findings)
   in
   Allocation.measure phases "findings" (fun () ->
-      Baseline.subtract (Baseline.of_diff compared.diff) ~base findings)
+      Adjudicator.classes ~base facts findings)
 
 let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool () =
   let* tree, compared =
@@ -145,7 +154,8 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool () =
   let findings =
     match compared with
     | None -> findings
-    | Some compared -> base_findings ?phases tree compared findings
+    | Some compared ->
+        compare_with_base ?phases ~mode tree compared facts findings
   in
   let entries =
     Allocation.measure phases "findings" (fun () ->

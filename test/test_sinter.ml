@@ -59,6 +59,7 @@ let () =
       ("git diff", Test_git_diff.tests);
       ("git view", Test_git_view.tests);
       ("baseline", Test_baseline.tests);
+      ("adjudicator", Test_adjudicator.tests);
       ( "mode",
         [
           Alcotest.test_case "names each mode" `Quick (fun () ->

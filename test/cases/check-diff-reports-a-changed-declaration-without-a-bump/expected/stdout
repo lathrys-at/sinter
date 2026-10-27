@@ -1,0 +1,5 @@
+docs/spec.md:5:1: block unbumped req:a the extent differs from the base, and the revision is not above v1
+  fix: @req a v2
+docs/spec.md:13:1: block unbumped design:c the base declares req:c v1, and a change of kind needs a higher revision
+  fix: @design c v2
+docs/spec.md:13:1: warn untraced design:c nothing satisfies it, and nothing verifies it
