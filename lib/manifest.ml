@@ -12,8 +12,8 @@ let settings =
       ("default-branch", 1, 0);
       ("scan.packs.<name>.files", 1, 0);
       ("scan.packs.<name>.version", 1, 0);
-      ("scan.packs.<name>.runners", 1, 0);
-      ("scan.packs.<name>.<runner>.<key>", 1, 0);
+      ("scan.packs.<name>.runners.<runner>", 1, 0);
+      ("scan.packs.<name>.runners.<runner>.<key>", 1, 0);
       ("scan.namespaces.<ns>", 1, 0);
       ("check.rollout-cap", 1, 0);
       ("check.historical", 1, 0);
@@ -167,8 +167,6 @@ let expected_text = function
 let name_rule ~examples =
   "lower-case letters and digits, in words joined by '-', such as " ^ examples
 
-let pack_keys = [ "files"; "version"; "runners" ]
-
 let problem_message = function
   | Syntax error -> Toml.error_message error
   | Not_a_version { key; text } ->
@@ -256,11 +254,6 @@ let problem_message = function
       "the pack markdown is built into sinter and takes no version"
   | Markdown_runners ->
       "the pack markdown is built into sinter and has no runner"
-  | Bad_runner_name name when List.mem name pack_keys ->
-      Printf.sprintf
-        "%s cannot name a runner; 'files', 'version', and 'runners' are keys \
-         of a pack"
-        (Toml.quote name)
   | Bad_runner_name name ->
       Printf.sprintf "%s is not a runner name; a runner name is %s"
         (Toml.quote name)
@@ -364,8 +357,7 @@ type reading = {
   mutable pack_keys : (string * Toml.position) list;
   mutable files : (string * Path_set.t option) list;
   mutable versions : (string * Major_minor.t option) list;
-  mutable runners : (string * (Toml.node * string) list) list;
-  mutable runner_settings : ((string * string) * Toml.table) list;
+  mutable runners : (string * (Toml.key * Toml.table)) list;
   mutable namespaces : (string * Id_pattern.t) list;
   mutable rollout_cap : bool;
   mutable tiers :
@@ -381,7 +373,6 @@ type reading = {
 
 type place =
   | Fixed of (string * place) list
-  | Fixed_by of (Toml.table -> (string * place) list)
   | Varying of (Toml.key -> (place, problem) result)
   | Refused of problem
   | Kept of (Toml.table -> unit)
@@ -433,14 +424,6 @@ let first_repeated texts =
         else go (Names.add text seen) rest
   in
   go Names.empty texts
-
-let distinct texts =
-  List.fold_left
-    (fun (seen, kept) (node, text) ->
-      if Names.mem text seen then (seen, kept)
-      else (Names.add text seen, (node, text) :: kept))
-    (Names.empty, []) texts
-  |> snd |> List.rev
 
 let read_path_set reading ~key array members set =
   match Path_set.of_strings (List.map snd members) with
@@ -509,24 +492,6 @@ let words reading ~key choices name_of found =
         (first_repeated members);
       found read)
 
-let is_runner_name name = is_layout_name name && not (List.mem name pack_keys)
-
-let runner_names table =
-  match
-    List.find_opt (fun ((key : Toml.key), _) -> key.name = "runners") table
-  with
-  | Some (_, node) -> (
-      match Toml.value node with
-      | Toml.Array members ->
-          List.filter_map
-            (fun member ->
-              match Toml.value member with
-              | Toml.String name -> Some name
-              | _ -> None)
-            members
-      | _ -> [])
-  | None -> []
-
 let pack_place reading (key : Toml.key) =
   let name = key.name in
   let files_key = [ "scan"; "packs"; name; "files" ] in
@@ -561,32 +526,17 @@ let pack_place reading (key : Toml.key) =
       )
     and runners =
       ( "runners",
-        Texts
-          (fun _ members ->
-            List.iter
-              (fun (node, runner) ->
-                if not (is_runner_name runner) then
-                  value_error reading (start node) (Bad_runner_name runner))
-              members;
-            List.iter
-              (fun (node, member) ->
-                value_error reading (start node)
-                  (Repeated_member
-                     { key = [ "scan"; "packs"; name; "runners" ]; member }))
-              (first_repeated members);
-            reading.runners <- (name, members) :: reading.runners) )
-    in
-    Fixed_by
-      (fun table ->
-        files :: version :: runners
-        :: List.map
-             (fun runner ->
-               ( runner,
-                 Kept
+        Varying
+          (fun key ->
+            if is_layout_name key.name then
+              Ok
+                (Kept
                    (fun settings ->
-                     reading.runner_settings <-
-                       ((name, runner), settings) :: reading.runner_settings) ))
-             (runner_names table))
+                     reading.runners <-
+                       (name, (key, settings)) :: reading.runners))
+            else Error (Bad_runner_name key.name)) )
+    in
+    Fixed [ files; version; runners ]
 
 let tier_place reading gate =
   Varying
@@ -774,11 +724,9 @@ let rec walk reading ~path ~(key : Toml.key) place node =
   in
   match (place, Toml.value node) with
   | Fixed fields, Toml.Table table -> walk_fixed reading ~path fields table
-  | Fixed_by fields, Toml.Table table ->
-      walk_fixed reading ~path (fields table) table
   | Varying check, Toml.Table table -> walk_varying reading ~path check table
   | Kept found, Toml.Table table -> found table
-  | (Fixed _ | Fixed_by _ | Varying _ | Kept _), _ -> wrong A_table
+  | (Fixed _ | Varying _ | Kept _), _ -> wrong A_table
   | Refused problem, _ -> names_error reading key.at.start problem
   | Text found, Toml.String value -> found node value
   | Text _, _ -> wrong A_string
@@ -889,7 +837,6 @@ let new_reading () =
     files = [];
     versions = [];
     runners = [];
-    runner_settings = [];
     namespaces = [];
     rollout_cap = false;
     tiers = [];
@@ -905,29 +852,22 @@ let new_reading () =
 let check_runners_of_packs reading =
   let owners = ref By_name.empty in
   List.iter
-    (fun (pack, members) ->
-      List.iter
-        (fun (node, runner) ->
-          if is_runner_name runner then
-            match By_name.find_opt runner !owners with
-            | None -> owners := By_name.add runner pack !owners
-            | Some other ->
-                value_error reading (start node)
-                  (Runner_in_two_packs { runner; pack; other }))
-        (distinct members))
-    (List.sort (fun (a, _) (b, _) -> String.compare a b) reading.runners)
+    (fun (pack, ((key : Toml.key), _)) ->
+      match By_name.find_opt key.name !owners with
+      | None -> owners := By_name.add key.name pack !owners
+      | Some other ->
+          value_error reading key.at.start
+            (Runner_in_two_packs { runner = key.name; pack; other }))
+    (List.stable_sort
+       (fun (a, _) (b, _) -> String.compare a b)
+       (List.rev reading.runners))
 
 let runners_of reading pack =
-  List.assoc_opt pack reading.runners
-  |> Option.value ~default:[]
-  |> List.map (fun (node, name) : runner ->
-      {
-        name;
-        at = Toml.span node;
-        settings =
-          List.assoc_opt (pack, name) reading.runner_settings
-          |> Option.value ~default:[];
-      })
+  List.rev reading.runners
+  |> List.filter_map (fun (owner, ((key : Toml.key), settings)) ->
+      if String.equal owner pack then
+        Some ({ name = key.name; at = key.at; settings } : runner)
+      else None)
 
 let packs_of reading =
   let by_name pairs = By_name.of_seq (List.to_seq pairs) in

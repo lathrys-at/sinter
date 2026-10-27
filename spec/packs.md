@@ -201,8 +201,7 @@ use of the sigils.
 A **test runner** is a program that runs tests and writes a report of
 the results, for example vitest or cargo-nextest. The table
 `runner.<runner>` describes the test runner `<runner>`. The name of a
-runner matches the pattern of a pack's name, and it is not `files`,
-`version`, or `runners`.
+runner matches the pattern of a pack's name.
 
 | key | type | meaning |
 |---|---|---|
@@ -215,12 +214,12 @@ A runner has exactly one of `adapter` and `match`.
 
 A **runner setting** is a key that a repository can set for a runner
 in its manifest, with the manifest key
-`scan.packs.<name>.<runner>.<key>` ([manifest.md](manifest.md) section
-8.1). Each key of the table `settings` names one runner setting, and
-its value is the default value of the setting. The type of the default
-value is the type of the setting: a string, a boolean, or an array of
-strings. The value of a runner setting is the value that the manifest
-gives, or else its default value.
+`scan.packs.<name>.runners.<runner>.<key>` ([manifest.md](manifest.md)
+section 8.1). Each key of the table `settings` names one runner
+setting, and its value is the default value of the setting. The type
+of the default value is the type of the setting: a string, a boolean,
+or an array of strings. The value of a runner setting is the value
+that the manifest gives, or else its default value.
 
 Sinter gives the value of every runner setting to the adapter of the
 runner (section 10.3). For a runner that uses the default adapter,
@@ -684,9 +683,9 @@ XML file. A **result** is the outcome of one test, or of one group, in
 a report. A result has a status: `pass`, `fail`, `error`, or `skip`. A
 result can also give a file and a line.
 
-The manifest key `scan.packs.<name>.runners` names the runners of the
-pack `<name>` ([manifest.md](manifest.md) section 8.1). A runner name
-stands in the `runners` of one pack at most.
+The tables under the manifest key `scan.packs.<name>.runners` name the
+runners of the pack `<name>` ([manifest.md](manifest.md) section 8.1).
+A runner name stands in the `runners` of one pack at most.
 
 `sinter evidence import` reads the reports that its command line
 names. For each report:

@@ -174,8 +174,8 @@ the key (section 5).
 | `default-branch` | string | `"main"` | the base of a diff | 6 | 1.0 |
 | `scan.packs.<name>.files` | path set | none: required for each pack | the scanner: the files of pack `<name>` | 8.1 | 1.0 |
 | `scan.packs.<name>.version` | string | none: required for each fetched pack; an error on `markdown` | the scanner: the release of pack `<name>` | 8.1 | 1.0 |
-| `scan.packs.<name>.runners` | array of strings: runner names | empty: the pack has no runner; an error on `markdown` | test evidence: the runners whose reports bind to the tests of pack `<name>` | 8.1 | 1.0 |
-| `scan.packs.<name>.<runner>.<key>` | the type that the descriptor of pack `<name>` gives the runner setting `<key>` | the default that the descriptor gives | test evidence: the runner setting `<key>` of the runner `<runner>` | 8.1 | 1.0 |
+| `scan.packs.<name>.runners.<runner>` | table: the runner settings of the runner `<runner>` | absent: the runner is off; an error on `markdown` | test evidence: the runner `<runner>`, whose reports bind to the tests of pack `<name>` | 8.1 | 1.0 |
+| `scan.packs.<name>.runners.<runner>.<key>` | the type that the descriptor of pack `<name>` gives the runner setting `<key>` | the default that the descriptor gives | test evidence: the runner setting `<key>` of the runner `<runner>` | 8.1 | 1.0 |
 | `scan.namespaces.<ns>` | string: an id pattern | absent: the namespace `<ns>` does not exist | the scanner and findings: which external ids resolve | 8.3 | 1.0 |
 | `check.rollout-cap` | boolean | `false` | findings: tiers | 9.3 | 1.0 |
 | `check.historical` | path set | empty, with one built-in member | findings: which facts can make findings | 9.4 | 1.0 |
@@ -198,6 +198,9 @@ A tool that writes a manifest, such as `sinter init`, writes the
 3. Under each header, each key is a dotted key that holds the whole
    key path below the table. Example: `tiers.review.dangling = "block"`
    under `[check]`.
+4. A runner with no runner setting is a dotted key that ends at the
+   table of the runner, with an empty inline table as its value.
+   Example: `packs.typescript.runners.vitest = {}` under `[scan]`.
 
 ## 4. Reading the manifest
 
@@ -270,7 +273,7 @@ sinter: sinter.toml:8:15: 'rollout-cap' takes true or false, not a string
 sinter: sinter.toml:4:1: the dotted key 'b.ct' adds a key to the table 'a.b', which a table header made; write 'ct' under the header [a.b]
 sinter: sinter.toml:1:8: this manifest needs specification 1.2, and this sinter implements 1.1; install a newer sinter
 sinter: sinter.toml:5:1: the pack markdown is built into sinter and takes no version
-sinter: sinter.toml:7:29: the pack typescript has no runner 'jest'; its runners are vitest
+sinter: sinter.toml:7:26: the pack typescript has no runner 'jest'; its runners are vitest
 sinter: sinter.toml:12:1: 'config-changed' takes no tier; it always reports and never blocks
 sinter: sinter.toml:13:1: 'scope-outside-plan' takes no tier at the gate 'merged'
 sinter: sinter.toml:6:12: '.' is not in the id pattern language; put it in a class, for example [.]
@@ -481,23 +484,23 @@ When a pack that the manifest names is not available to the tool, a
 command that reads the repository stops with exit code 3
 ([packs.md](packs.md) section 12.5).
 
-`scan.packs.<name>.runners` is an array of runner names. A **runner**
-is a test runner whose reports Sinter binds to the tests of the pack
-([packs.md](packs.md) section 9). Each member is a runner that the
-descriptor of the pack lists, and no member occurs twice. One runner
-name stands in the `runners` of one pack at most. A runner name is
-never `files`, `version`, or `runners`. The default is
-empty: Sinter binds no report to the tests of the pack. The pack
-`markdown` has no runner, and the key on it is an error.
+`scan.packs.<name>.runners` is a table of runners. A **runner** is a
+test runner whose reports Sinter binds to the tests of the pack
+([packs.md](packs.md) section 9). Each key of the table is the name of
+a runner that the descriptor of the pack lists, and its value is the
+table of that runner. A runner is on when its table exists, for
+example `runners.vitest = {}` under `[scan.packs.typescript]`. One
+runner name stands in the `runners` of one pack at most. With no
+runner, Sinter binds no report to the tests of the pack. The pack
+`markdown` has no runner, and the key `runners` on it is an error.
 
-`scan.packs.<name>.<runner>.<key>` sets the runner setting `<key>` of
-the runner `<runner>`. A **runner setting** is a key that the
-descriptor of the pack defines for the runner, with its type and its
-default value ([packs.md](packs.md) section 3.5). `<runner>` is a
-member of `scan.packs.<name>.runners`. The tool checks the names, the
-types, and the values of these keys against the descriptor when it
-loads the pack. It reports each error as section 4.2 says, and the
-command stops with exit code 3.
+`scan.packs.<name>.runners.<runner>.<key>` sets the runner setting
+`<key>` of the runner `<runner>`. A **runner setting** is a key that
+the descriptor of the pack defines for the runner, with its type and
+its default value ([packs.md](packs.md) section 3.5). The tool checks
+the names, the types, and the values of these keys against the
+descriptor when it loads the pack. It reports each error as section
+4.2 says, and the command stops with exit code 3.
 
 `sinter evidence import` gives each report to the adapters of the
 runners that the manifest names. When the adapters of two runners
@@ -804,6 +807,10 @@ The manifest yields facts of the kind `setting`, in the category
   fact.
 - An array that the manifest writes yields one setting fact for each
   member.
+- Each runner table yields one setting fact as a member of
+  `scan.packs.<name>.runners`: its value is the name of the runner,
+  and it is located at the key of the runner. Each runner setting in
+  the table yields its own setting fact by the rules above.
 - Each of `default-branch`, `check.rollout-cap`, and
   `evidence.coverage-attribution` yields one setting fact with its
   default value when the manifest does not write it.
@@ -870,6 +877,7 @@ of a gate fact is `gate:<gate>/<class>`.
 |---|---|
 | a setting fact of one value | from the first character of the key, as its line writes it, to the last character of the value |
 | a setting fact of one member | the string of the member, its quotes included |
+| a setting fact of one runner table | the part `<runner>` of the first key of the file that names the table of the runner, its quotes included when the key quotes it |
 | a written gate fact | the whole entry, as for a setting fact of one value |
 
 A comment after a value is not part of a position. Lines and columns
@@ -905,12 +913,13 @@ of the set has an id and a value, by the rules of sections 14.1 and
    for a pair that `check.tiers` writes, the id is `gate:<gate>/<class>`
    and the value is the written tier;
 3. one entry for each member of an array that the side writes, except
-   a member that is also built in.
+   a member that is also built in, and one entry for each runner table
+   that the side writes, as section 14.1 says.
 
 `spec` has no entry. On the base side, only the key paths of section
 3.2 count, and only the values of the type that each key takes. The
-type of a key `scan.packs.<name>.<runner>.<key>` is the type that the
-descriptor of the pack of the working tree gives it.
+type of a key `scan.packs.<name>.runners.<runner>.<key>` is the type
+that the descriptor of the pack of the working tree gives it.
 
 **A change.** An id that is in one comparison set only is a change. An
 id whose two values differ is a change. Comments, blank lines, the
@@ -955,7 +964,7 @@ does not mean "reports more findings".
 | `scan.packs.<name>.files` | a plain glob added; a `!` glob removed | a plain glob removed; a `!` glob added | |
 | `scan.packs.<name>.version` | | | each change |
 | `scan.packs.<name>.runners` | | | each change |
-| `scan.packs.<name>.<runner>.<key>` | | | each change |
+| `scan.packs.<name>.runners.<runner>.<key>` | | | each change |
 | `scan.namespaces.<ns>` | a namespace removed | a namespace added | a pattern changed |
 | `check.rollout-cap` | `true` to `false` | `false` to `true` | |
 | `check.tiers.<gate>.<class>` | the tier that applies rises | the tier that applies falls | the tier that applies stays the same |
@@ -1068,7 +1077,7 @@ spec = "1.0"
 packs.markdown.files = ["**/*.md", "!test/fixtures/"]
 packs.typescript.files = ["**/*.ts", "!**/*.d.ts"]
 packs.typescript.version = "1.0"
-packs.typescript.runners = ["vitest"]
+packs.typescript.runners.vitest = {}
 namespaces.gh = "[1-9][0-9]*"
 namespaces.jira = "[A-Z]+-[1-9][0-9]*"
 

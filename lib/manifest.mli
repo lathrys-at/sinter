@@ -95,9 +95,8 @@ type problem =
   | Markdown_version  (** a version for the built-in pack [markdown] *)
   | Markdown_runners  (** runners for the built-in pack [markdown] *)
   | Bad_runner_name of string
-      (** a member of the runners of a pack that is not a runner name: a name
-          that does not match the pattern of a pack name, or one of [files],
-          [version], or [runners] *)
+      (** a key under the runners of a pack that is not a runner name: a name
+          that does not match the pattern of a pack name *)
   | Runner_in_two_packs of { runner : string; pack : string; other : string }
       (** the runners of [pack] and of [other] both hold [runner]; [other] is
           the first pack in byte order that holds it *)
@@ -156,13 +155,13 @@ val render : path:string -> error -> string
 type runner = {
   name : string;
   at : Toml.span;
-      (** the span of the member of [scan.packs.<name>.runners] that names the
-          runner, its quotes included *)
+      (** the span of the part [<runner>] of the first key of the file that
+          names the table [scan.packs.<name>.runners.<runner>] *)
   settings : (Toml.key * Toml.node) list;
-      (** each runner setting [scan.packs.<name>.<runner>.<key>] that the
-          manifest writes, in the order of the file: the part [<key>] of the key
-          path, with its span, and the value as the text writes it. The reader
-          checks no name, type, or value of a setting. *)
+      (** each runner setting [scan.packs.<name>.runners.<runner>.<key>] that
+          the manifest writes, in the order of the file: the part [<key>] of the
+          key path, with its span, and the value as the text writes it. The
+          reader checks no name, type, or value of a setting. *)
 }
 (** One runner of a pack. *)
 
@@ -172,8 +171,8 @@ type pack = {
   version : Major_minor.t option;
       (** the release of a fetched pack; [None] for [markdown] alone *)
   runners : runner list;
-      (** the runners, in the order of [scan.packs.<name>.runners], with no name
-          twice; [[]] when the manifest gives none *)
+      (** the runners, one for each table under [scan.packs.<name>.runners], in
+          the order of the file; [[]] when the manifest gives none *)
 }
 (** One pack that the manifest names. *)
 
