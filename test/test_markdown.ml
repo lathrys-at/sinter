@@ -158,6 +158,96 @@ let headings_give_text_slug_and_name =
        11:4-11:18 parent 9 first - extent 11:1-11:18";
     ]
 
+let a_heading_loses_its_section_number =
+  check_structure
+    "## 2.1 The file\n\
+     ## 3. Storage\n\
+     ## 2026 targets\n\
+     ## v2.1 notes\n\
+     ##   2.1\t\tX ##\n\
+     ## 1. ##\n\
+     ## 1.\n"
+    [
+      "section 0 level 2 \"The file\" slug the-file name the-file at 1:1-1:16 \
+       parent - first - extent 1:1-1:16";
+      "section 1 level 2 \"Storage\" slug storage name storage at 2:1-2:14 \
+       parent - first - extent 2:1-2:14";
+      "section 2 level 2 \"2026 targets\" slug 2026-targets name 2026-targets \
+       at 3:1-3:16 parent - first - extent 3:1-3:16";
+      "section 3 level 2 \"v2.1 notes\" slug v2-1-notes name v2-1-notes at \
+       4:1-4:14 parent - first - extent 4:1-4:14";
+      "section 4 level 2 \"X\" slug x name x at 5:1-5:15 parent - first - \
+       extent 5:1-5:15";
+      "section 5 level 2 \"1.\" slug 1 name 1 at 6:1-6:9 parent - first - \
+       extent 6:1-6:9";
+      "section 6 level 2 \"1.\" slug 1 name 1-1 at 7:1-7:6 parent - first - \
+       extent 7:1-7:6";
+    ]
+
+let a_section_number_leaves_the_extent_hash () =
+  let hash text =
+    match (file text).tags.(0).extent with
+    | Some extent -> extent.hash
+    | None -> Alcotest.fail "the tag has no extent"
+  in
+  let plain = hash "# Top\n@req a v1 Text.\n\n## Inner\nProse.\n" in
+  Alcotest.(check string)
+    "the hash leaves the number out"
+    (hex "# Top\nText.\n\n## Inner\nProse.\n")
+    plain;
+  Alcotest.(check string)
+    "renumbered headings give the same hash" plain
+    (hash "# 1. Top\n@req a v1 Text.\n\n## 1.2 \t Inner\nProse.\n");
+  Alcotest.(check string)
+    "the closing sequence stays" (hex "# Top #\nText.\n")
+    (hash "# 3. Top #\n@req a v1 Text.\n");
+  Alcotest.(check string)
+    "a number in a list item stays"
+    (hex "# Top\nText.\n- # 1. Item\n")
+    (hash "# Top\n@req a v1 Text.\n- # 1. Item\n");
+  Alcotest.(check string)
+    "a number in a block quote stays"
+    (hex "# Top\nText.\n\n> ## 3. Q\n")
+    (hash "# Top\n@req a v1 Text.\n\n> ## 3. Q\n");
+  Alcotest.(check string)
+    "a number in a fenced code block stays"
+    (hex "# Top\nText.\n\n```\n## 5. C\n```\n")
+    (hash "# Top\n@req a v1 Text.\n\n```\n## 5. C\n```\n");
+  Alcotest.(check string)
+    "a heading text that is only a number keeps it" (hex "# 1.\nText.\n")
+    (hash "# 1.\n@req a v1 Text.\n")
+
+let a_section_number_leaves_hash_and_slug_alike =
+  property ~name:"a section number changes no heading text and no extent hash"
+    ~print:(fun (number, title) -> Printf.sprintf "%S %S" number title)
+    Gen.(
+      pair
+        (let* digits = list_size (int_range 1 3) (int_range 0 99) in
+         let* final = bool in
+         let* blanks =
+           string_size ~gen:(oneof_list [ ' '; '\t' ]) (int_range 1 3)
+         in
+         let joined = String.concat "." (List.map string_of_int digits) in
+         pure
+           ((if List.length digits = 1 || final then joined ^ "." else joined)
+           ^ blanks))
+        (oneof_list [ "Intro"; "The file"; "A **b**"; "x-y z" ]))
+    (fun (number, title) ->
+      let numbered = file ("## " ^ number ^ title ^ "\n@req a v1 T.\n")
+      and plain = file ("## " ^ title ^ "\n@req a v1 T.\n") in
+      let text (f : Markdown.t) =
+        Option.map
+          (fun (heading : Markdown.heading) -> (heading.text, heading.slug))
+          f.sections.(0).heading
+      in
+      text numbered = text plain
+      && Option.map
+           (fun (e : Markdown.extent) -> e.hash)
+           numbered.tags.(0).extent
+         = Option.map
+             (fun (e : Markdown.extent) -> e.hash)
+             plain.tags.(0).extent)
+
 let only_atx_headings_open_sections =
   check_structure "#NoSpace\n####### Seven\n    # Code\n\nText\n===\n"
     [ "section 0 level 0 parent - first 1:1-3:11 extent 1:1-6:4" ]
@@ -1040,6 +1130,11 @@ let tests =
       text_that_is_not_utf_8_gives_its_offset;
     Alcotest.test_case "headings give text, slug, and name" `Quick
       headings_give_text_slug_and_name;
+    Alcotest.test_case "a heading loses its section number" `Quick
+      a_heading_loses_its_section_number;
+    Alcotest.test_case "a section number leaves the extent hash" `Quick
+      a_section_number_leaves_the_extent_hash;
+    a_section_number_leaves_hash_and_slug_alike;
     Alcotest.test_case "only ATX headings open sections" `Quick
       only_atx_headings_open_sections;
     Alcotest.test_case

@@ -188,6 +188,7 @@ let heading_text content =
   in
   let marks = skip is_blank_byte 0 in
   let after = skip (fun byte -> byte = '#') marks in
+  let offset = skip is_blank_byte after in
   let text = strip (String.sub content after (length - after)) in
   let rec run offset =
     if offset > 0 && text.[offset - 1] = '#' then run (offset - 1) else offset
@@ -202,7 +203,7 @@ let heading_text content =
       let stop = blanks run in
       if stop < run then String.sub text 0 stop else text
   in
-  (marks, after - marks, heading)
+  (marks, after - marks, heading, offset)
 
 module Names = Map.Make (String)
 
@@ -235,6 +236,7 @@ type walk = {
   sections : (section * int) Dynarray.t;
   paragraphs : paragraph Dynarray.t;
   unread : span Dynarray.t;
+  numbers : (int * int * int) Dynarray.t;
   number : string -> string;
 }
 
@@ -294,7 +296,11 @@ and walk_section walk ~parent ~holder section =
           String.sub (Line_index.text lines) node.start
             (Line_index.content_end lines line - node.start)
         in
-        let marks, level, text = heading_text content in
+        let marks, level, text, offset = heading_text content in
+        let cut = Section_number.length text in
+        if cut > 0 then
+          Dynarray.add_last walk.numbers (line, node.start + offset, cut);
+        let text = String.sub text cut (String.length text - cut) in
         let slug = Slug.of_heading text in
         ( level,
           Some
@@ -446,7 +452,7 @@ let extent_lines lines ~holes first last =
   in
   List.rev (drop_blank (List.rev all))
 
-let hash_lines lines ~at ~own included =
+let hash_lines lines ~at ~numbered ~own included =
   let normal line =
     match at line with
     | Some (_, pending) when pending.tag_line.word = "ack" -> None
@@ -459,7 +465,17 @@ let hash_lines lines ~at ~own included =
         in
         Some
           (strip_end (prefix ^ Tag_line.without_revision pending.tag_line.rest))
-    | _ -> Some (strip_end (Line_index.content lines line))
+    | _ -> (
+        let content = Line_index.content lines line in
+        match numbered line with
+        | Some (offset, cut) ->
+            let start = offset - Line_index.first lines line in
+            Some
+              (strip_end
+                 (String.sub content 0 start
+                 ^ String.sub content (start + cut)
+                     (String.length content - start - cut)))
+        | None -> Some (strip_end content))
   in
   Sha256.hex (String.concat "\n" (List.filter_map normal included) ^ "\n")
 
@@ -490,6 +506,7 @@ let structure lines captures =
       sections = Dynarray.create ();
       paragraphs = Dynarray.create ();
       unread = Dynarray.create ();
+      numbers = Dynarray.create ();
       number = numberer ();
     }
   in
@@ -550,6 +567,11 @@ let assemble lines walk errors =
   let at_line = Array.make (count + 1) None in
   Array.iteri (fun index tag -> at_line.(tag.line) <- Some (index, tag)) pending;
   let at line = at_line.(line) in
+  let number_at = Array.make (count + 1) None in
+  Dynarray.iter
+    (fun (line, offset, cut) -> number_at.(line) <- Some (offset, cut))
+    walk.numbers;
+  let numbered line = number_at.(line) in
   let owners = Array.make (count + 1) None in
   let extents = Array.make (Array.length pending) None in
   let claim declarations =
@@ -569,7 +591,9 @@ let assemble lines walk errors =
           (match range_of included with
           | Some (first, last) ->
               let hash =
-                hash_lines lines ~at ~own:(fun other -> other = index) included
+                hash_lines lines ~at ~numbered
+                  ~own:(fun other -> other = index)
+                  included
               in
               extents.(index) <- Some { first; last; hash }
           | None -> ());
@@ -592,7 +616,7 @@ let assemble lines walk errors =
           tags = block.members;
           prose = List.map (Line_index.content lines) block.prose_lines;
           hash =
-            hash_lines lines ~at ~own
+            hash_lines lines ~at ~numbered ~own
               (List.init
                  (block.last_block_line - block.first_block_line + 1)
                  (fun offset -> block.first_block_line + offset));
