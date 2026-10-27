@@ -641,9 +641,23 @@ with the `gh` command that it already has. That read is deferred with
 
 ## 6. Plans
 
-### 6.1 The Plan File
+### 6.1 The plan file
 
-A markdown file under `.plans/`, e.g. `.plans/auth-lockout.md`, **committed on the branch and never deleted: a plan is *live* until the ledger says otherwise.** Death is a `completed` or `abandoned` entry (§6.3), and a dead plan is inert record — no findings, no claim, no scope, readable beside its journal forever. A file is a plan iff it lives under `.plans/` and its first tag block carries `@plan` — which is also what flips every tag in the file into promissory mood; a `@plan` anywhere else is a block-tier `misplaced-plan` finding, so plan discovery and death bookkeeping need only look there. Branch-committed because a gitignored plan doesn't travel across worktrees and is invisible to CI, leaving the anti-invention gate with no authoritative tier.
+A plan is a markdown file under `.plans/`, for example
+`.plans/auth-lockout.md`, committed on its branch. A file that git
+ignores would not travel between worktrees, and CI could not see it, so
+the check for unplanned work would have no authority. A plan is **open**
+until the ledger records that it closed (section 6.3), and a closed plan
+stays as a record beside its journal. `spec/vocabulary.md` section 10
+gives the rules of plan files.
+
+Two records change parts of sections 6.1, 6.3, and 6.7, and the
+specifications do not carry them yet. Record `plans-span-branches`
+says three things. A plan reaches the default branch in a pull request
+of its own. That merge is its approval. Later branches each deliver
+some of its steps. Record `plan-ids` gives each plan an id from its
+creation, written as in `@plan upkeep@3f2a9c`, and a closed plan frees
+its slug.
 
 ```markdown
 # Account lockout after failed logins
@@ -668,94 +682,302 @@ A markdown file under `.plans/`, e.g. `.plans/auth-lockout.md`, **committed on t
 @scope src/auth/session.rs
 ```
 
-**A plan is a set of promised facts.** Same tags, one semantic rule: inside a plan, tags are read in *promissory mood* — `@req auth-lockout` means this step will declare it; `@verifies auth-lockout` means this step will produce a passing, connected test carrying that citation. Every `##` heading carrying at least one plan tag — `@scope` or a promise — is a step (a bare section is prose: context, notes, nothing derived); a step's slug is the heading text lowercased, non-alphanumerics collapsed to single hyphens, trimmed (`## Verify against the reqs` → `verify-against-the-reqs`); two steps slugifying identically is a `duplicate` finding. Steps are unordered facts; document order is advice.
+**A plan is a set of promised facts.** A plan uses the same tags as
+the rest of the repository, but inside a plan, Sinter reads each tag
+as a **promise**. `@req auth-lockout` means that the step will declare
+`auth-lockout`. `@verifies auth-lockout` means that the step will
+produce a passing, connected test that carries that citation. Each
+`##` heading with a `@scope` or a promise is a **step**; a section
+without one is prose, from which Sinter derives nothing. Steps have no
+order; their order in the file is advice.
 
-**What meets a promise.** A promised declaration (`@req`, `@design`, `@decision`) is met iff a declaration with that slug exists, located within the step's scope. A promised `@satisfies`/`@refines`/`@cites`/`@supersedes` is met iff at least one such edge exists within the step's scope that is neither dangling nor suspect. A promised `@verifies` is met iff such an edge exists within scope at rung `passing` — or at rung `unmeasured`, when the manifest sets `evidence.require_attribution = false` (the default until a repo opts in). A fact that would meet a promise but sits *outside* the step's scope is a warn-tier finding (`promise-out-of-scope`), and it does not meet the promise: the scope is part of the agreement.
+A promise is met only by a fact inside the step's scope, or inside the
+default location of its kind that the manifest names. A fact outside
+both is reported as `promise-out-of-scope`, because the scope is part of
+the agreement. A promised `@verifies` needs a passing test, so a plan
+cannot be done on a test that never ran or that failed (section 4).
 
-**Scope globs** are gitignore-style patterns relative to the repo root, comma-separated on the `@scope` line: `*` within a segment, `**` across segments, `!` negation, a trailing `/` meaning "directory and everything under it." A step with no `@scope` inherits the plan's. A step's effective scope is what out-of-scope surfacing measures against and where a promise is met.
+**The active plan.** When exactly one plan is open on the branch, it
+is active. With several, `sinter declare` names one; until then, the
+brief (section 8.1) and the check of scope have no plan to anchor on,
+and `sinter status` says why.
 
-**Active plan.** If exactly one *in-force* plan exists on the branch it is active by default — dead plans, however many, are not candidates; with several live ones, `sinter declare <plan>` is required before the brief and out-of-scope surfacing have a plan to anchor on (until then `status` says why).
+- **The state of a step is derived, never ticked.** A step is done
+  when its promises are met and its evidence passes. Only when every
+  step is done can the work merge.
+- **The active step is the one statement of the agent that Sinter
+  accepts.** It is safe, because it can only narrow what the brief
+  covers and what the check of scope measures against. A wrong step
+  makes the reports noisier, never quieter. It lives in
+  `.sinter/session.json`, which git ignores, and it is the state of a
+  session, never truth. Where the **harness**, the program that runs the
+  agent, gives a session id, Sinter keeps the step per session (section
+  11.18), so parallel sessions in one worktree do not collide.
+- **A step with a scope and no promises is a refactor step.** It is
+  done when a change touched its scope and the evidence still passes.
+  That is a weaker condition, and visibly so.
+- **Plans are exempt from revision discipline.** Sinter judges a plan by
+  its commitments, never by its text (section 6.2). The count of its
+  approved amendments serves as its revision.
 
-- **Step status is derived, never ticked.** A step is done iff its promises are met, with evidence. The plan is done iff all steps are and all existing evidence is still green. Only then may the branch merge.
-- **Forward references resolve within the plan.** Promises float and are checked against the revision current when they are met.
-- **The active step is a declared claim — the rare claim safe to accept, because it is purely self-limiting:** it only narrows what the brief compiles for and what out-of-scope surfacing measures against; misdeclaring makes the reports noisier, never quieter. The claim lives in `.sinter/session.json`, beside the index cache and the evidence directory, all gitignored — session state, never truth — keyed by the harness's session id where one exists (§11.18), so parallel sessions in one worktree fight over nothing. Absent a step declaration, scope attribution falls back to plan-level scope.
-- **A step with scope and no promises is a refactor:** done when its scope was touched and existing evidence stays green. Weaker, and visibly so.
-- **Plan files are exempt from rev discipline** — they are judged by commitment-set diff, never text (§6.2). The plan's revision is the count of approved amendments.
+A **hunk** is one part of a diff that changed: a run of removed and
+added lines. The check of scope reports each hunk that no step covers
+(`unplanned-change`). The plan file, the manifest, and the lock file
+are outside that check, because other machinery governs them: a change
+to a plan is an amendment (section 6.2), and each change of a setting
+is reported (section 5.1). Exempt paths are outside it too. A hunk in
+`Cargo.lock` maps to no step and never will, and without exempt paths
+the first dependency that a step adds would flag its own lock file
+(`spec/manifest.md` section 10.2).
 
-**Three carve-outs from scope attribution**, each governed by other machinery: the plan file itself (routes to amendment adjudication); the manifest and lockfile (every touch is already loud); and exempt paths (a `Cargo.lock` hunk maps to no step and never will — without this, the first dependency added under a legitimate step flags its own lockfile).
+### 6.2 Amendment: the monotone rule
 
-### 6.2 Amendment: The Monotone Rule
+A plan must be easy to change in its structure during the work, and
+harder to loosen than code. Otherwise an agent can make invented work
+look approved: it amends the plan first and then does the work. What a
+person approved is the **commitment set**: the promises and the scope
+of each step. The rule is monotone: a change that only narrows the
+agreement is free, and a change that widens it or changes its promises
+needs a new approval. To rename, reorder, or split steps is free. To
+add a promise needs approval, because it would make invented work look
+approved; to remove one needs approval too, because it would break the
+agreement. `spec/ledger.md` section 11 gives the comparison.
 
-Plans must be refactorable on the fly *and* harder to loosen than code — otherwise the agent legitimizes invented work by amending the plan first. "What was approved" is the **commitment set** — the canonical facts for promises and scope per step — and the adjudicator diffs sets, never text:
+Sinter compares sets, never text, so the ledger stores the approved
+set itself: a hash cannot show that one set lies inside another. The
+main reason for the rule is **approval fatigue, the real adversary**.
+A person who approves by reflex gives approvals that are worth
+nothing. Many free changes keep the approvals that remain meaningful.
 
-- **Free:** narrowing scope; renaming and reordering steps; splitting a step; merging steps whose effective scopes are equal — all so long as the commitment multiset is preserved. Merging steps with *different* scopes widens where each merged promise may be met and is approved; §13.7 states the comparison exactly.
-- **Needs a new approval:** widening scope; promise-set changes in *both* directions — additions launder invented work, removals welch on the agreement.
+**To cut work early is the amendment rule at work.** To merge part of
+a plan is to approve a smaller set of promises. The half-done hunks of
+a cut step then map to no step, so `unplanned-change` reports them
+until someone reverts them or covers them honestly. Any part of the
+work that reached a declared fact stays visible as debt, in
+`untraced`. `sinter compile residual-plan` prints the unmet rest as a
+plan for a later branch.
 
-"Still approved" is a set comparison, not a path reconstruction, which is why the ledger stores the approved set itself (a hash cannot be diffed against). The rationale is defensive both ways: **approval fatigue is the real adversary.** Reflexively-granted approvals are worth nothing; maximizing the free region is what keeps the gated region meaningful.
+### 6.3 How a plan closes
 
-**Cutting work early is the amendment machinery working.** Merging partway is an approved promise-set shrink. The shrunk plan must then be complete against the tree it ships — half-done hunks from a cut step map to no remaining step, so anti-invention fires until they are reverted or honestly covered. Anything that reached a declared fact survives as visible debt in `untraced()`. `compile residual-plan` emits the unmet remainder as a plan skeleton for a later branch.
+A plan closes by a ledger entry, never by a change to a file, so no
+deletion needs to be arranged and no merge commit needs an edit. It
+closes as `completed` or as `abandoned` (section 6.7).
 
-### 6.3 Death Mechanics
+**The completion gate.** A plan can complete only when everything that
+it promised is a static fact. The review gate enforces this, where
+evidence exists, with `sinter status --done`. CI on the default branch
+writes the entry: on each push, it checks each open plan that has
+merged against the **completion condition**, and appends `completed`
+for each plan that passes (`spec/ledger.md` section 8). The writer is
+CI and not a person, so that the closing rests on the tree and the
+approvals, not on anyone's report. A second run writes nothing new, so
+a lost CI run costs a retry and loses no fact.
 
-Death is a **ledger fact, never a file event.** A plan dies `completed` or `abandoned` (§6.7); the file stays where it is. There is no deletion to orchestrate, no merge commit to edit, no host-specific machinery — this used to be the hardest section in the document and is now bookkeeping.
+An open plan on the default branch that fails the condition is the
+blocking finding `merged-incomplete`: someone merged half a plan.
+(Under record `plans-span-branches`, an open plan on the default branch
+is normal while its work goes on.) The honest ways out are an approved
+smaller plan (section 6.2) or a revert of the merge.
 
-The **death gate** is unchanged in substance: a plan may only be completed when everything it promised has become static fact. Enforcement sits at the review gate — `status --done`, run where evidence exists (PR CI, the merge queue, or whoever merges). What *writes* the entry is main CI: on every push to the default branch it finds in-force plans now on main — merged, in other words — checks each against the **completion condition** — every promise is met: declarations present, edges present and neither dangling nor suspect, `@verifies` edges at `passing` (or allowed `unmeasured`) when main's job measures, at any rung when it does not (§12.8; rung enforcement already happened at the review gate) — and appends its `completed` entry, recording the merge commit and the hash of the report compiled at completion. An in-force plan on main that *fails* the condition is the `merged-incomplete` finding, blocking: someone merged half a plan, and the honest exits are an approved shrink (§6.2) or reverting the merge. The writer is idempotent bookkeeping — the plan's approvals and the tree are the evidence — so a lost CI run costs a retry, not truth. (The job needs push rights to `refs/sinter/ledger`.)
+A closed plan makes no findings, holds no claim, and adds no scope. Plan
+slugs are permanent, like the slugs of decisions, so
+`compile residual-plan` prints its plan under a new slug. (Record
+`plan-ids` frees the slug of a closed plan; see section 6.1.) Without
+the ledger ref, every plan reads as open, and `sinter status` says so.
+This result on the default branch is intended. The plan and its journal
+stay beside the facts that they produced, and the ledger says who
+approved the plan, what it promised, and when it stopped being an
+agreement.
 
-A plan **not in force** — dead — is exempt from everything: its facts generate no findings (§12.8), it holds no claim, contributes no scope, and is skipped by the active-plan rule. Plan slugs are permanent, like decision slugs — reuse is a `duplicate` — so `compile residual-plan` emits its skeleton under a successor slug. Liveness is a ledger read: without the ledger ref every plan reads live, which `status` flags loudly (fetch the ledger). What this leaves on main is deliberate: the plan and its journal beside the facts they produced, with the ledger saying who approved it, what it promised, and when it stopped being an agreement.
+### 6.4 Compiled specifications and the approval ledger
 
-### 6.4 Cash-Out: Specifications & the Approval Ledger
+A **compiled specification** is a named view of the graph, such as
+all the requirements under a path. Sinter compiles the **delta**, the
+changes to the items since their last approval, into a document that a
+person can read and approve. The approval attaches to the slug, the
+revision, and the extent hash of each item, never to the document. The
+document is only the way to read the items.
 
-A **specification** is a named projection of the graph — all reqs under a path, a plan, a tag. The tool compiles the *delta since last approval* into a readable document; the human reviews and approves the batch. Approval attaches to `(slug, rev, extent-hash)` triples, never to the document — the document is the interface. This is the dynamic→static conversion in its purest form.
+**The ledger** is the record of approvals and other judgments. It is a
+file on a git ref of its own, `refs/sinter/ledger`, and entries are
+only ever added (`spec/ledger.md`). CI can fetch the ref and every
+worktree shares it, but it is outside every path that an editor or a
+file tool touches. Only the low-level commands of git, its plumbing,
+reach it, so to write it is a deliberate act. A kind needs approval
+only when the manifest lists it in `ledger.approval-required`
+(`spec/manifest.md` section 11.1).
 
-**The ledger** covers plans, reqs, and (per manifest) design items and decisions, plus pin endorsements. Append-only, living on a **dedicated git ref** (`refs/sinter/ledger`): fetchable by CI, shared across worktrees, outside every path an editor or file tool touches — reaching it takes git plumbing, a deliberate act. Main CI verifies the ref only fast-forwards and entries only accrete. Plan entries embed their approved commitment set; text-extent kinds keep hash-only entries. Every entry records the `HEAD` and branch it was written from.
+Because the ledger is a shared record with timestamps, it gives five
+more uses, each one a kind of entry or a query, and none a new
+mechanism:
 
-Because it is an append-only, timestamped, shared record, the ledger does more than hold approvals. Five things fall out of it, each one more entry kind or one more query, none a new mechanism:
+- **Declines.** A person who reads a delta and thinks "no, not like
+  that" needs a durable place to say so; otherwise the thought goes into
+  the chat and fades. A `decline` binds the reason to the exact text, by
+  its hash, and `status` and the brief show it until the text changes.
+  `sinter approve` asks before it approves over a live decline. It is an
+  instruction that cannot fall out of the context, because it is
+  attached to an artifact: the mechanism of section 1, used in the other
+  direction.
+- **Revision reservation.** The ledger refuses an approval of
+  `auth-lockout v3` when it already holds `v3` for that slug with a
+  different hash: "v3 is taken; bump to v4". So for approved items, the
+  collision of section 3.5 is prevented, not only detected.
+- **The archive of plans.** The ledger holds every promise of every
+  approved plan, each amendment, and the closing. It answers which plan
+  promised a requirement, who approved it, and when it landed, without
+  a tree.
+- **Signatures.** Ledger commits are git commits. A deployment that
+  signs them makes each approval impossible to deny, and
+  `sinter ledger verify --signers` checks them. This is the hardening
+  path of section 1, with no change to the design. A deployment that
+  wants the server to enforce that no approval comes from an agent's
+  shell puts the ref under `refs/heads/sinter/ledger`, where the push
+  rules of the host apply. The manifest has no setting for signatures
+  yet.
+- **History, release notes, and metrics.** Each entry has a commit and
+  a time, so `sinter compile spec --as-of` rebuilds what was approved
+  at any moment, and the delta between two points of the ledger is the
+  release notes of the requirements. The health signals of section 8
+  gain a time axis: the bumps of each item (a requirement at `v9` is
+  unstable or badly scoped), the amendments of each plan, the time from
+  approval to completion, and the seconds spent on each approval. The
+  last one measures directly the fatigue that this design calls its
+  real adversary.
 
-- **Declines.** A human who reads a delta and thinks "no, not like that" has, in v13, nowhere durable to say so; the thought goes into chat and decays. A `decline` entry — `(subject, xh, reason)` — is the human's voice bound to the exact text it was about. `status` and the brief (§8.1) surface it until the extent's hash changes — void, like an ack — or until a later approval of the subject supersedes it, the human overriding their own refusal (`approve` prompts before approving over a live decline). It is an instruction that cannot fall out of context, because it is attached to an artifact, not a context — the thesis's own mechanism, pointed the other way.
-- **Revision reservation.** Approving `auth-lockout v3` when the ledger already holds a `v3` for that slug with a different hash is a refusal: "v3 is taken; rebase to v4." The §3.5 collision on approved items moves from *detected at PR CI* to *prevented at approve*. The residual exposure on unapproved items remains the price of statelessness.
-- **The plan archive.** The plan's file is now its own record, and the ledger holds the judgment layer over it: every promise every approved plan ever made, each amendment, and the death. Main CI (§6.3) appends the `completed` entry — the one machine writer — recording the merge commit and the report hash at completion. A plan's whole life is closed in the ledger: approved, amended, completed or abandoned. "Which plan promised this requirement, who approved it, when did it land" is answerable from the ledger alone, without reading a tree.
-- **Signing for free.** Ledger commits are git commits. `commit.gpgsign` on the ref makes every approval non-repudiable; `ledger verify --signers` makes that checkable. The §10.1 hardening path attaches with zero design change. Deployments that want the "no approval path from an agent's shell" property enforced *server-side* place the ref under `refs/heads/sinter/ledger`, where hosting platforms' push restrictions apply.
-- **As-of, release notes, and metrics.** With `HEAD` and a timestamp on every entry, `compile spec --as-of <ledger-commit>` reconstructs exactly what was approved at any moment; the delta between two ledger points, rendered with extents, is release notes for the requirements layer, derived rather than written. And the §8 health signals gain a time axis: revision churn per item (a req on `v9` is unstable or mis-scoped), amendments per plan (six means it was underspecified), approval-to-completion time, and approvals per approval session with seconds per approval — a direct measurement of the fatigue this design names as its real adversary.
+The ledger works together with the revisions. An edit of an approved
+item needs a bump, and the item is then not approved until a person
+approves it, as its citations are suspect until someone pins them again.
+A status tag is an edit, so it needs a bump, and a supersession waits
+for the approval of its successor. So the retirement of an approved item
+reaches a person on every path, with no extra rule.
 
-The ledger unifies with revision machinery: editing an approved item bumps its rev, and `auth-lockout v3` is simply unapproved until approved — exactly as its citations are suspect until re-pinned. Retirement composes for free: a status tag is an extent edit (needs a bump, bump un-approves, routes through the approval); supersession routes through the successor's approval. Retirement of contract items reaches the human on every path, with no additional rule.
+**The approval gate.** A `@satisfies` or a `@verifies` of a requirement
+that nobody approved is the finding `unapproved-req`: work against an
+unapproved requirement. It blocks by default, and `unapproved-design`
+only warns. To block on the approval of design is too much ceremony for
+the work of one person, but an unapproved design is also how an agent
+can quietly reinterpret what the person meant.
 
-**The unapproved gate:** `@satisfies`/`@verifies` targeting an unapproved `req vN` is an obligation — "implementing against unapproved spec." Strictness is per type and per gate, expressed the ordinary way: the class splits into `unapproved-req` and `unapproved-design` (§12.8), each with its own tiers, and a kind outside `approve` is never unapproved at all — non-gated kinds count as approved. Requirements block; design defaults to warn, because blocking on design approval is too much ceremony for solo work, but unapproved architecture is also exactly how an agent launders a reinterpretation of intent.
+**Who can approve.** Under the cooperative model, an approval must be
+unmistakable, not undeniable: every bypass must take a deliberate act,
+and a deliberate act is outside the threat model. Two simple layers
+give this:
 
-**Known limit:** delta-based approval assumes deltas sized for review. A step dumping forty reqs leads the user to approve without reading; the report's health signals count the pending batch (the algebra has no arithmetic, so this cannot be a rule), but it is fundamentally the user's discipline.
+1. The commands that write the ledger read the confirmation from the
+   controlling terminal, `/dev/tty`, never from standard input. The
+   shell of an agent has no controlling terminal, so the command
+   refuses, and `yes | sinter approve` cannot work.
+2. An **agent marker** is an environment variable, such as
+   `CLAUDECODE`, that shows that an agent runs the command. When one is
+   set, the command refuses. This closes the gap of a terminal pane
+   that an agent drives (`spec/manifest.md` section 11.2).
 
-### 6.5 The Plan Journal
+Under these layers lies the structure: the ledger is outside every
+checkout, and no path to an approval starts from an agent's shell.
+Tokens issued for each session were considered and not chosen: they
+defend against a deliberate attacker, whom the threat model leaves out,
+and signatures already give that defense.
 
-Session scratch — the agent's running todo — belongs to the agent's own machinery and dies with the context window. Between scratch and the facts in the tree there is a third thing the design should give a home to: what was tried and why it failed. A plan may carry a journal, `.plans/<slug>.log.md`, historical by a built-in glob — no manifest line needed (§3.6): the agent appends, nothing in it generates findings, citations in it resolve and render. It stays beside its plan as part of the record; `compile residual-plan` carries it forward, and `compile report` includes it. Its purpose is to be the place where small decisions accumulate until one earns promotion to a `@decision` record — the promotion heuristic of §7 needs somewhere for the first instance to be written down. Under the collaborative model, most of a project's actual reasoning is small, and without this it is lost.
+**A known limit.** Approval by delta assumes deltas of a size that a
+person can review. A step that adds forty requirements leads a person to
+approve without reading. The report counts the pending batch, but the
+algebra has no arithmetic, so no rule can limit it; in the end it is the
+person's discipline.
 
-### 6.6 Plan Linting and Preview
+### 6.5 The plan journal
 
-Plans are the one dynamic object and, in v13, the one governed file nothing helps you write. Plan files are scanned like everything else, so plan-level findings are ordinary findings:
+The agent's running list of tasks belongs to the agent's own tools,
+and it ends with the agent's context. Between that list and the facts
+in the tree lies a third thing: what the agent tried and why it
+failed. A plan can carry a **journal**, `.plans/<slug>.log.md`. Its
+path is historical by a built-in rule (section 3.6): the agent adds to
+it, nothing in it makes findings, and its citations resolve. It stays
+beside its plan as part of the record, and `compile residual-plan`
+carries it forward.
 
-- `unverified-promise` — a promised `@req` or `@design` with no promised `@verifies` of it anywhere in the plan. The plan is agreeing, up front, to ship an unverified requirement. Warn by default; a repo can make it block.
-- `promise-collision` — a promised declaration of a slug that already existed at the base or is promised by another branch's approved claim (§6.7). The step would produce a `duplicate`. (The current tree is never consulted: a met promise is precisely a slug that now exists in the tree.)
-- `scope-overlap` — two steps in one plan with intersecting scopes *and* intersecting promise sets; document order is advice, but two steps racing for one edge is a plan that has not decided.
+The journal is the place where small decisions collect until one of
+them earns a `@decision` record. The rule of section 7 for when to
+write a rule needs a place where the first case is written down. Most
+of the reasoning of a project is small, and without a journal it is
+lost. Record `plan-journals` says how agents write and revise the
+entries.
 
-**Preview** (`compile plan-preview`) renders the graph *after* the plan as if every promise were met: the declarations that will exist, the edges they will carry, what becomes suspect or retired if a step promises a `@supersedes`, which `untraced` gaps close and which open. The human approves a plan with foresight instead of trust, and the preview is the document the plan approval is taken against.
+### 6.6 Plan checks and preview
 
-### 6.7 Multi-Plan Coordination
+A plan file is the one governed file that changes all the time, and
+people need help to write it. Sinter scans plan files like every other
+file, so the checks of a plan are ordinary findings (`spec/algebra.md`
+section 9):
 
-Plans are branch-scoped, and v13 is silently single-plan. A team lead running several worker agents on several branches needs three things the ledger can already supply.
+- `unverified-promise`: the plan promises a requirement and no test of
+  it, so it agrees in advance to ship a requirement that nothing
+  verifies.
+- `promise-collision`: a step promises a slug that already exists at the
+  base, or that another branch promises, so the step would produce a
+  `duplicate`. The check reads the base and not the current tree,
+  because in the tree a met promise is exactly such a slug.
+- `scope-overlap`: two steps of one plan compete for one edge, which
+  shows a plan that has not decided.
 
-**Scope claims.** Every approved plan's step scopes are in the ledger. `status` reads the last-fetched ledger ref — never the network; `sinter ledger fetch` or `inbox --fetch` refreshes it — and materializes each other branch's approved, still-claimed plan as a `claim` fact, and reports overlap: "plan `session-store` on branch `feat/store`, approved Tuesday, also claims `src/auth/**`." Overlap is a warn-tier `branch-overlap` finding, not a block — two plans may legitimately touch one directory — but it is the earliest possible moment to learn that two agents are about to conflict, days before the merge does. A claim dies three ways: its plan is completed; its plan is **abandoned** — `sinter ledger abandon plan:<slug> --reason …`, a human verb sharing `approve`'s refusal set, for the branch that will never merge; or its branch no longer existed on the remote at the last fetch — deleting a branch releases its claims, and the inbox names claims released that way since the last visit.
+**Preview.** `sinter compile plan-preview` shows the graph as if every
+promise were met: the new declarations and edges, what becomes suspect
+or retired, and which gaps close or open. A person then approves a plan
+with foresight instead of trust, and the approval of a plan is taken
+against its preview.
 
-**Cross-plan promises.** Plan B's `@satisfies auth-lockout` where `auth-lockout` exists nowhere on B's branch is, in v13, a dangling citation until A merges. With claims, the resolver sees that plan A promises to declare `auth-lockout` and reports `waiting-on A/write-the-requirements` instead — an ordering fact, not an error. Meeting B's promise still requires the real declaration (after A merges and B rebases), but B's status is honest in the meantime and its turn report does not misfire.
+### 6.7 Several plans at once
 
-**Merge order.** Cross-plan promises form a dependency graph over claims. `compile merge-order` prints a topological order — or names the cycle — and `status` on any branch says which claims it waits on and which wait on it. This is the team lead's decomposition, derived from what the plans actually promise rather than tracked in a separate list.
+Each plan belongs to a branch. (Record `plans-span-branches` lets a
+plan span several branches, and claims change with it.) A lead that
+runs several agents on several branches needs three things that the
+ledger can already give.
 
-None of this requires a plan to know about other plans. Claims are read-only projections of the ledger; a plan file never names a branch.
+**Claims.** For each approved, open plan of another branch, Sinter reads
+a **claim** from the ledger ref as it was last fetched, never from the
+network. It reports an overlap of scopes as the warning
+`branch-overlap`: "plan `session-store` on branch `feat/store`, approved
+Tuesday, also claims `src/auth/**`." It is a warning and not a block,
+because two plans can rightly touch one folder. But it is the earliest
+moment to learn that two agents will conflict, days before the merge
+shows it. A claim ends when its plan completes, when a person abandons
+the plan with `sinter ledger abandon`, or when its branch is deleted
+(`spec/ledger.md` section 9, `spec/jsonl.md` section 7).
 
-### 6.8 The Inbox
+**Promises across plans.** Plan B has `@satisfies auth-lockout`, and
+`auth-lockout` exists nowhere on B's branch. Without claims, that
+citation would dangle until A merges. With claims, Sinter sees that
+plan A promises to declare `auth-lockout`, and reports `waiting-on`
+instead: a fact about order, not an error. Only the real declaration
+meets B's promise, after A merges. But B's status is honest in the
+meantime, and its turn report does not fire by mistake.
 
-Under the collaborative model the human is the scarce resource. §6.2 *protects* their attention by maximizing the free region; nothing *schedules* it. `sinter inbox` is one place, across every branch and worktree the ledger and the remote know about, listing only things that need a human judgment: pending approvals per branch, with batch sizes; plans whose death is blocked, and on what; declines whose subject has since changed (rework landed — is it right now?); rule acks agents recorded since the last inbox visit, as the spot-check queue; claims that overlap. Each item names the command that resolves it. It is batched, not pushed: the design's position is that the tool should be the one truthful place to ask "what needs me," and should otherwise never ask.
+**The order of merges.** Promises across plans make a graph of
+dependencies between claims. `sinter compile merge-order` prints an
+order that respects the graph, or names its cycle. This is the lead's
+breakdown of the work, derived from what the plans promise instead of
+kept in a separate list.
 
-### 6.9 Out of Scope for Plans
+None of this needs a plan to know about other plans: claims are views
+of the ledger, and a plan file never names a branch.
 
-Plans do not model time, effort, priority, or assignment. Those belong to the tracker the external ids point at.
+### 6.8 The inbox
+
+Under the cooperative model, the attention of the person is the scarce
+resource. Section 6.2 protects it, because free changes need no
+approval, but nothing else schedules it. `sinter inbox` is one place,
+across every branch that the ledger and the remote know, that lists
+only what needs a person's judgment: pending approvals, plans that
+cannot close, declines whose item changed since, rule acks that agents
+wrote, and overlapping claims. Each item names the command that
+resolves it. The inbox speaks only when a person asks: the tool should
+be the one truthful place to ask "what needs me", and otherwise never
+ask anything.
+
+### 6.9 Out of scope for plans
+
+Plans do not model time, effort, priority, or assignment. Those belong
+to the tracker that the external ids point at.
 
 ## 7. Standing Law: Rules & Derived Obligations
 
