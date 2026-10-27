@@ -3,10 +3,10 @@
 
 open Sinter_core
 
-type limits = { peak_kib : int; growth : float }
-type t = { scan : limits; check : limits }
+type limits = { peak_kib : int option; growth : float }
+type t = { scan : limits; check : limits; check_diff : limits option }
 
-let commands = [ "scan"; "check" ]
+let commands = [ "scan"; "check"; "check-diff" ]
 let keys = [ "peak-memory-kib"; "allocation-growth" ]
 
 let unknown ~where names allowed =
@@ -43,8 +43,9 @@ let limits (table : Toml.table) command =
   let* peak_kib =
     match find table "peak-memory-kib" with
     | Some (Toml.Integer value) when Int64.compare value 0L > 0 ->
-        Ok (Int64.to_int value)
+        Ok (Some (Int64.to_int value))
     | Some _ -> Error (key "peak-memory-kib" ^ " is not a positive integer")
+    | None when String.equal command "check-diff" -> Ok None
     | None -> Error (key "peak-memory-kib" ^ " is missing")
   in
   let* growth =
@@ -73,15 +74,21 @@ let of_string text =
       in
       let* scan = limits table "scan" in
       let* check = limits table "check" in
-      Ok { scan; check }
+      let* check_diff =
+        match find table "check-diff" with
+        | None -> Ok None
+        | Some _ -> Result.map Option.some (limits table "check-diff")
+      in
+      Ok { scan; check; check_diff }
 
 let limits_of budgets = function
   | "scan" -> Some budgets.scan
   | "check" -> Some budgets.check
+  | "check-diff" -> budgets.check_diff
   | _ -> None
 
 let peak_kib budgets command =
-  Option.map (fun limits -> limits.peak_kib) (limits_of budgets command)
+  Option.bind (limits_of budgets command) (fun limits -> limits.peak_kib)
 
 let growth budgets command =
   Option.map (fun limits -> limits.growth) (limits_of budgets command)
@@ -102,15 +109,24 @@ let check budgets ~linux ~peak ~words =
   List.concat_map
     (fun (command, limits) ->
       let memory =
-        let limit = float_of_int limits.peak_kib in
-        let verdict =
-          if not linux then Skipped "the memory budget is a Linux number"
-          else
-            match peak ~tree:"n10000" ~command with
-            | Some value -> judge limit value
-            | None -> Skipped "the run did not measure the tree n10000"
-        in
-        { command; budget = "peak-memory-kib"; phase = None; limit; verdict }
+        Option.map
+          (fun kib ->
+            let limit = float_of_int kib in
+            let verdict =
+              if not linux then Skipped "the memory budget is a Linux number"
+              else
+                match peak ~tree:"n10000" ~command with
+                | Some value -> judge limit value
+                | None -> Skipped "the run did not measure the tree n10000"
+            in
+            {
+              command;
+              budget = "peak-memory-kib";
+              phase = None;
+              limit;
+              verdict;
+            })
+          limits.peak_kib
       in
       let growth phase verdict =
         {
@@ -142,5 +158,8 @@ let check budgets ~linux ~peak ~words =
                       Skipped "the tree n1000 counts no word in the phase"))
               large
       in
-      memory :: growths)
-    [ ("scan", budgets.scan); ("check", budgets.check) ]
+      Option.to_list memory @ growths)
+    ([ ("scan", budgets.scan); ("check", budgets.check) ]
+    @ Option.fold ~none:[]
+        ~some:(fun limits -> [ ("check-diff", limits) ])
+        budgets.check_diff)

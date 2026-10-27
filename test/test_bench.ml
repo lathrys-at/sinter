@@ -196,6 +196,27 @@ let budgets_give_each_limit () =
     "another command" None
     (Budgets.growth budgets "serve")
 
+let budgets_of_check_diff_need_no_memory_number () =
+  let only_growth =
+    budgets (budgets_text ^ "\n[check-diff]\nallocation-growth = 12\n")
+  in
+  Alcotest.(check (option int))
+    "no memory budget" None
+    (Budgets.peak_kib only_growth "check-diff");
+  Alcotest.(check (option (float 0.)))
+    "the growth limit" (Some 12.)
+    (Budgets.growth only_growth "check-diff");
+  Alcotest.(check (option int))
+    "a memory budget" (Some 7)
+    (Budgets.peak_kib
+       (budgets
+          (budgets_text
+         ^ "\n[check-diff]\npeak-memory-kib = 7\nallocation-growth = 12\n"))
+       "check-diff");
+  Alcotest.(check (option (float 0.)))
+    "no table" None
+    (Budgets.growth (budgets budgets_text) "check-diff")
+
 let budgets_refuse_a_bad_file () =
   List.iter
     (fun (text, expected) ->
@@ -225,6 +246,10 @@ let budgets_refuse_a_bad_file () =
         "scan.allocation-growth is not a positive number" );
       ( "[scan]\npeak-memory-kib = 1\nallocation-growth = \"2\"\n",
         "scan.allocation-growth is not a positive number" );
+      ( budgets_text ^ "[check-diff]\n",
+        "check-diff.allocation-growth is missing" );
+      ( "check-diff = 1\n" ^ budgets_text,
+        "[check-diff] is an integer, not a table" );
     ]
 
 let verdict (verdict : Budgets.verdict) =
@@ -264,6 +289,25 @@ let check_judges_each_budget () =
            (("n1000", "check"), [ ("findings", 2.); ("parse", 1.) ]);
            (("n10000", "check"), [ ("findings", 23.); ("parse", 11.) ]);
          ])
+
+let check_judges_the_budgets_of_check_diff () =
+  Alcotest.(check (list string))
+    "outcomes of check-diff"
+    [
+      "check-diff allocation-growth facts 12 pass 11";
+      "check-diff allocation-growth base-facts 12 fail 13";
+    ]
+    (List.filter
+       (fun line -> String.starts_with ~prefix:"check-diff" line)
+       (outcomes
+          (budgets (budgets_text ^ "[check-diff]\nallocation-growth = 12\n"))
+          ~linux:true
+          ~peaks:[ (("n10000", "check-diff"), 99999.) ]
+          ~words:
+            [
+              (("n1000", "check-diff"), [ ("facts", 1.); ("base-facts", 1.) ]);
+              (("n10000", "check-diff"), [ ("facts", 11.); ("base-facts", 13.) ]);
+            ]))
 
 let check_skips_what_the_run_did_not_measure () =
   Alcotest.(check (list string))
@@ -583,18 +627,31 @@ let run_skips_every_budget_that_it_cannot_check () =
       Alcotest.(check (list string))
         "the phases"
         Yojson.Basic.Util.(
-          if String.equal "scan" (to_string (member "command" result)) then
-            [ "repository"; "read"; "parse"; "facts"; "records"; "output" ]
-          else
-            [
-              "repository";
-              "base-read";
-              "read";
-              "parse";
-              "facts";
-              "findings";
-              "output";
-            ])
+          match to_string (member "command" result) with
+          | "scan" ->
+              [ "repository"; "read"; "parse"; "facts"; "records"; "output" ]
+          | "check-diff" ->
+              [
+                "repository";
+                "base-read";
+                "read";
+                "parse";
+                "facts";
+                "findings";
+                "base-facts";
+                "base-findings";
+                "output";
+              ]
+          | _ ->
+              [
+                "repository";
+                "base-read";
+                "read";
+                "parse";
+                "facts";
+                "findings";
+                "output";
+              ])
         (List.map
            (fun phase -> Yojson.Basic.Util.(to_string (member "phase" phase)))
            Yojson.Basic.Util.(to_list (member "phase_words" result))))
@@ -882,10 +939,14 @@ let run_measures_the_checkout_as_self () =
       ]
   in
   Alcotest.(check int) ("exit, with: " ^ errors) 0 code;
-  Alcotest.(check (list string))
-    "trees" [ "self"; "self" ]
+  Alcotest.(check (list (pair string string)))
+    "trees and commands"
+    [ ("self", "scan"); ("self", "check"); ("self", "check-diff") ]
     (List.map
-       (fun result -> Yojson.Basic.Util.(to_string (member "tree" result)))
+       (fun result ->
+         Yojson.Basic.Util.
+           ( to_string (member "tree" result),
+             to_string (member "command" result) ))
        Yojson.Basic.Util.(to_list (member "results" (json_of output))))
 
 let run_stops_with_exit_2 () =
@@ -946,6 +1007,10 @@ let run_with_an_unknown_option_is_a_usage_error () =
 
 let tests =
   [
+    case "budgets of check-diff need no memory number"
+      budgets_of_check_diff_need_no_memory_number;
+    case "check judges the budgets of check-diff"
+      check_judges_the_budgets_of_check_diff;
     case "gnu time reads the last line" gnu_time_reads_the_last_line;
     case "gnu time refuses text that is not a number"
       gnu_time_refuses_text_that_is_not_a_number;
