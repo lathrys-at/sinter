@@ -408,7 +408,7 @@ the repository is unlocated.
 | `added` `removed` | int | |
 | `ambient` | bool | *derived* |
 | `shared` | bool | *derived*: the hunk is under a shared path (`plan.shared`, [manifest.md](manifest.md) section 10.3) |
-| `mapped` | array of string | *derived*: ids of the steps or rules whose scope covers the hunk; empty when unmapped |
+| `planned` | array of string | *derived*: ids of the steps or rules whose scope covers the hunk; empty when no step and no rule covers the hunk |
 
 **`tombstone`** — base coordinates.
 
@@ -510,7 +510,7 @@ use the tiers of the `turn` gate.
 | `done` | bool |
 | `steps_done` `steps_total` | int |
 | `block` `warn` | int (finding counts, under the `turn` gate's tiers) |
-| `unmapped` | int (hunks) |
+| `unplanned` | int (hunks) |
 | `obligations` | int (rule obligations) |
 | `evidence_fresh` | bool |
 | `bumps` | int (declarations bumped since the base) |

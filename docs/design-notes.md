@@ -506,7 +506,7 @@ USAGE
          partial n/m   n of m promises met (0/m once a hunk lands in scope)
          untouched     no promise met and no hunk in scope
          refactor      no promises; done iff scope touched and evidence green
-    3. Open obligations: unmapped hunks, unmet-rule items, unapproved targets.
+    3. Open obligations: unplanned hunks, unmet-rule items, unapproved targets.
     3a. Live declines on anything in scope, with their reasons.
     3b. Claims: other branches' approved plans overlapping this scope, and
         promises here that are waiting on promises there (§6.7).
@@ -1742,7 +1742,7 @@ Duplicate promissory tags within one step collapse to a single promise fact.
 |---|---|---|
 | `added` `removed` | int | |
 | `ambient` | bool | *derived* |
-| `mapped` | array of string | *derived*: ids of steps or rules whose scope covers the hunk; empty when unmapped |
+| `planned` | array of string | *derived*: ids of steps or rules whose scope covers the hunk; empty when no step and no rule covers the hunk |
 
 **`tombstone`** (base coordinates)
 
@@ -1893,7 +1893,7 @@ The consequences: renaming steps is free (clause 3 matches by promise, not by st
 | `done` | bool |
 | `steps_done` `steps_total` | int |
 | `block` `warn` | int (finding counts under the turn tier set) |
-| `unmapped` | int (hunks) |
+| `unplanned` | int (hunks) |
 | `obligations` | int (rule obligations) |
 | `evidence_fresh` | bool |
 | `bumps` | int (declarations bumped since base) |
