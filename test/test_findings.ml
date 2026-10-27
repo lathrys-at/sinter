@@ -810,8 +810,33 @@ let the_findings_are_sorted () =
 
 let case name test = Alcotest.test_case name `Quick test
 
+let of_facts_gives_the_findings_of_tree () =
+  let files =
+    List.map
+      (fun (path, text) -> (path, document text))
+      [
+        ("docs/a.md", "# A\n\n@req a v1\n@cites missing v1\n@satisfie a v1\n");
+        ("docs/b.md", "# B\n\n@verifies a v2\n@satisfies a\n");
+        (".plans/p.md", "# P\n\n@plan p\n@scope docs/**\n\n## S\n\n@req z\n");
+      ]
+  in
+  let m = manifest "" in
+  let facts = Facts.make m files in
+  Alcotest.(check bool)
+    "the manifest of the facts" true
+    (Facts.manifest facts == m);
+  Alcotest.(check bool)
+    "the files of the facts" true
+    (Facts.files facts == files);
+  Alcotest.(check (list string))
+    "the findings"
+    (List.map show (Findings.tree m files ~not_text:[ ("docs/c.md", 3) ]))
+    (List.map show (Findings.of_facts facts ~not_text:[ ("docs/c.md", 3) ]))
+
 let tests =
   [
+    case "of_facts gives the findings of tree"
+      of_facts_gives_the_findings_of_tree;
     case "parse-error sits at each error and at a file that is not text"
       parse_error_sits_at_each_error_and_at_a_file_that_is_not_text;
     case "typo-tag names the nearest word" typo_tag_names_the_nearest_word;

@@ -170,6 +170,7 @@ end)
 
 type t = {
   manifest : Manifest.t;
+  files : (string * Markdown.t) list;
   declarations : declaration array;
   inforce : bool array;
   retirers : int list array;
@@ -610,6 +611,7 @@ let make manifest files =
   let acks = List.rev acks in
   {
     manifest;
+    files;
     declarations;
     inforce = in_force ~retirers declarations edges targets;
     retirers;
@@ -967,6 +969,8 @@ let records facts ~changed =
           ]))
   @ external_records facts
 
+let manifest facts = facts.manifest
+let files facts = facts.files
 let declarations facts = Array.to_list facts.declarations
 let is_in_force facts index = facts.inforce.(index)
 

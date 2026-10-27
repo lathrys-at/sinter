@@ -25,6 +25,12 @@ val make : Manifest.t -> (string * Markdown.t) list -> t
     the namespaces, the kinds that need approval, and the default locations of
     the kinds. *)
 
+val manifest : t -> Manifest.t
+(** [manifest facts] is the manifest that {!make} took. *)
+
+val files : t -> (string * Markdown.t) list
+(** [files facts] is the files that {!make} took, in their order. *)
+
 val needs_changes : t -> bool
 (** [needs_changes facts] is [true] when a step of a plan has no promise. Only
     then does {!records} read its argument [changed]. *)
