@@ -46,4 +46,10 @@ val classes : base:Facts.t -> Facts.t -> Finding.t list -> Finding.t list
       revision when the edge has a revision. Each [dangling] finding of
       [findings] about such an edge leaves the result.
 
+    - [promise-collision]: a promise of a declaration of the kind [req],
+      [design], or [decision] whose tag target is the slug of a declaration of
+      the base of one of these kinds, when the base has no promise with the same
+      plan, step, word, and tag target. The ledger is absent, so no claim
+      counts.
+
     No finding of these classes sits under a historical path. *)

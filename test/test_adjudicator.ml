@@ -330,6 +330,30 @@ let a_slug_with_two_tombstones_leaves_the_edge_dangling () =
          ("docs/use.md", "# Use\n\n@cites a v1\n");
        ])
 
+let a_new_promise_of_a_slug_of_the_base_collides () =
+  let plan steps = "# P\n\n@plan p\n@scope docs/**\n\n" ^ steps in
+  Alcotest.check strings "the findings"
+    [
+      ".plans/p.md:12 | finding:promise-collision:promise:step:p/new:req:taken \
+       | the base already declares design:taken";
+    ]
+    (compared
+       [
+         ("docs/a.md", "# A\n\n@design taken v1\n\n## B\n\n@req kept v1\n");
+         (".plans/p.md", plan "## Old\n\n@req kept\n");
+       ]
+       [
+         ("docs/a.md", "# A\n\n@design taken v1\n\n## B\n\n@req kept v1\n");
+         ( ".plans/p.md",
+           plan
+             "## Old\n\n\
+              @req kept\n\n\
+              ## New\n\n\
+              @req taken\n\
+              @verifies taken\n\
+              @req free\n" );
+       ])
+
 let text_gen =
   Gen.(
     let* words =
@@ -378,5 +402,7 @@ let tests =
       two_candidates_leave_the_edge_dangling;
     case "a slug with two tombstones leaves the edge dangling"
       a_slug_with_two_tombstones_leaves_the_edge_dangling;
+    case "a new promise of a slug of the base collides"
+      a_new_promise_of_a_slug_of_the_base_collides;
     a_tree_like_its_base_has_no_finding;
   ]

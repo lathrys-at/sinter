@@ -165,6 +165,39 @@ let renamed ~base facts =
           None)
     (Facts.edges facts)
 
+let promise_collisions ~base facts =
+  let earlier = first_by_slug base in
+  let promised =
+    List.fold_left
+      (fun ids (identity : Facts.identity) ->
+        if String.equal identity.kind "promise" then Ids.add identity.id ids
+        else ids)
+      Ids.empty (Facts.identities base)
+  in
+  List.concat_map
+    (fun (plan : Facts.plan) ->
+      List.concat_map
+        (fun (step : Facts.step) ->
+          List.filter_map
+            (fun (promise : Facts.promise) ->
+              let id = Facts.promise_id plan step promise in
+              match Slugs.find_opt promise.target earlier with
+              | Some (declared : Facts.declaration)
+                when List.mem promise.word declaration_kinds
+                     && not (Ids.mem id promised) ->
+                  Some
+                    (Finding.make Finding_class.Promise_collision
+                       (Finding.Fact { id; ack_name = id })
+                       ~place:{ Finding.path = plan.path; span = promise.span }
+                       ~detail:
+                         (Printf.sprintf "the base already declares %s"
+                            (Facts.declaration_id declared))
+                       ())
+              | Some _ | None -> None)
+            step.promises)
+        plan.steps)
+    (Facts.plans facts)
+
 let historical facts (finding : Finding.t) =
   match finding.place with
   | Some place -> Manifest.is_historical (Facts.manifest facts) place.path
@@ -187,4 +220,4 @@ let classes ~base facts findings =
        findings
     @ List.filter
         (fun finding -> not (historical facts finding))
-        (unbumped ~base facts @ renamed))
+        (unbumped ~base facts @ renamed @ promise_collisions ~base facts))
