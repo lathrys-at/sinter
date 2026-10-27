@@ -13,7 +13,6 @@ let clean = Sinter_core.Exit_code.clean
 let findings = Sinter_core.Exit_code.findings
 let usage_error = Sinter_core.Exit_code.usage_error
 let environment_error = Sinter_core.Exit_code.environment_error
-let refused = Sinter_core.Exit_code.refused
 let clean_exit = Cmd.Exit.info ~doc:"on success, when no finding blocks." clean
 let success_exit = Cmd.Exit.info ~doc:"on success." clean
 
@@ -28,11 +27,7 @@ let environment_exit =
   Cmd.Exit.info ~doc:"when the command cannot run in this environment."
     environment_error
 
-let refused_exit = Cmd.Exit.info ~doc:"when the command refuses to act." refused
-
-let exits =
-  [ clean_exit; findings_exit; usage_exit; environment_exit; refused_exit ]
-
+let exits = [ clean_exit; findings_exit; usage_exit; environment_exit ]
 let parse_exits = [ success_exit; usage_exit; environment_exit ]
 
 let with_phases run =
@@ -50,6 +45,8 @@ let with_phases run =
         Printf.eprintf "sinter: cannot write the words of the phases: %s\n"
           message;
         environment_error)
+
+let plumbing = "PLUMBING COMMANDS"
 
 let parse_cmd =
   let doc = "Parse files with a tree-sitter grammar and print the captures" in
@@ -85,7 +82,7 @@ let parse_cmd =
          S-expression instead, one tree per line, and read no query.";
     ]
   in
-  let info = Cmd.info "parse" ~doc ~man ~exits:parse_exits in
+  let info = Cmd.info "parse" ~docs:plumbing ~doc ~man ~exits:parse_exits in
   let grammar =
     let doc =
       "The grammar to parse with: a tree-sitter grammar as $(i,.wasm)."
@@ -167,7 +164,7 @@ let serve_cmd =
          once. It reads a grammar file again when the file changes.";
     ]
   in
-  let info = Cmd.info "serve" ~doc ~man ~exits:serve_exits in
+  let info = Cmd.info "serve" ~docs:plumbing ~doc ~man ~exits:serve_exits in
   let report message =
     Printf.eprintf "sinter: %s\n" message;
     environment_error
@@ -221,7 +218,7 @@ let scan_cmd =
          read. Each warning goes to standard error.";
     ]
   in
-  let info = Cmd.info "scan" ~doc ~man ~exits:scan_exits in
+  let info = Cmd.info "scan" ~docs:plumbing ~doc ~man ~exits:scan_exits in
   let manifest =
     let doc =
       "The manifest to read, instead of $(i,sinter.toml) at the root of the \
@@ -304,7 +301,22 @@ let check_cmd =
          that the command reports blocks.";
     ]
   in
-  let info = Cmd.info "check" ~doc ~man:(man @ exits_doc) ~exits:check_exits in
+  let examples =
+    [
+      `S Manpage.s_examples;
+      `Pre "  sinter check";
+      `P "Report every finding of the working tree, with no tier.";
+      `Pre "  sinter check --gate merge";
+      `P
+        "Report the findings that matter before a merge, and exit with code 1 \
+         when one of them blocks. Run this in CI on a pull request.";
+      `Pre "  sinter check --json";
+      `P "Print the findings as JSON, for a program to read.";
+    ]
+  in
+  let info =
+    Cmd.info "check" ~doc ~man:(man @ exits_doc @ examples) ~exits:check_exits
+  in
   let manifest =
     let doc =
       "The manifest to read, instead of $(i,sinter.toml) at the root of the \
@@ -393,6 +405,18 @@ let cmd =
       `P
         "To start, run $(b,sinter check) in your repository. Sinter reads its \
          settings from $(i,sinter.toml) at the root.";
+      `S Manpage.s_commands;
+      `S plumbing;
+      `P
+        "These commands give other programs the facts and the parser that \
+         $(b,sinter check) uses.";
+      `S Manpage.s_examples;
+      `Pre "  sinter check";
+      `P "Report every finding of the working tree.";
+      `Pre "  sinter check --gate merge";
+      `P
+        "Report the findings that matter before a merge, and exit with code 1 \
+         when one of them blocks.";
     ]
   in
   let info = Cmd.info "sinter" ~version ~doc ~man ~exits in
