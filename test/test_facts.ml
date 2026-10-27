@@ -1560,6 +1560,50 @@ let a_step_is_done_by_the_list_scan_of_the_verifies_edges =
                plan.steps)
            (Facts.plans facts)))
 
+let by_of_each_promise_is_the_first_residue_in_place =
+  lookup_property
+    "the by of each promise is the first member of the residue in the scope of \
+     its step or in the default location of its kind" (fun facts ->
+      let manifest = manifest ~extra:lookup_extra () in
+      List.for_all
+        (fun (plan : Facts.plan) ->
+          List.for_all
+            (fun (step : Facts.step) ->
+              let discharge = Facts.discharge facts plan step in
+              let in_scope =
+                Path_set.mem (scope_set (Facts.effective_scope plan step))
+              in
+              List.for_all
+                (fun (promise : Facts.promise) ->
+                  let location =
+                    Option.bind
+                      (match promise.word with
+                      | "req" -> Some Manifest.Req
+                      | "design" -> Some Manifest.Design
+                      | "decision" -> Some Manifest.Decision
+                      | _ -> None)
+                      (Manifest.location manifest)
+                  in
+                  let expected =
+                    List.find_opt
+                      (fun (_, path, _) ->
+                        in_scope path
+                        || Option.fold ~none:false
+                             ~some:(fun set -> Path_set.mem set path)
+                             location)
+                      (scanned_residue facts promise)
+                  in
+                  let discharge = discharge promise in
+                  Option.map
+                    (fun (residue : Facts.residue) ->
+                      (residue.id, residue.path, place residue.span))
+                    discharge.by
+                  = expected
+                  && indexed_residue discharge = scanned_residue facts promise)
+                step.promises)
+            plan.steps)
+        (Facts.plans facts))
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -1717,6 +1761,7 @@ let tests =
     case "discharge refuses a promise of other facts"
       discharge_refuses_a_promise_of_other_facts;
     a_step_is_done_by_the_list_scan_of_the_verifies_edges;
+    by_of_each_promise_is_the_first_residue_in_place;
     records_come_in_their_order;
     every_reference_names_a_record;
     every_record_is_canonical;

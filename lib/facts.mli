@@ -204,9 +204,13 @@ val discharge : t -> plan -> step -> promise -> discharge
     resolves, and it is not suspect. No edge of the word [verifies] would
     discharge it.
 
+    [discharge facts plan step] reads the effective scope of [step] once, and
+    gives a function that each promise of [step] can share.
+
     @raise Invalid_argument
-      if [plan] is not one of {!plans} [facts], [step] is not one of the steps
-      of [plan], or [promise] is not one of the promises of [step]. *)
+      if [plan] is not one of {!plans} [facts] or [step] is not one of the steps
+      of [plan], when it is applied to [step]; and if [promise] is not one of
+      the promises of [step], when it is applied to [promise]. *)
 
 val index :
   tree:string ->

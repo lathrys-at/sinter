@@ -816,13 +816,7 @@ let residue facts (promise : promise) =
 
 type discharge = { by : residue option; residue : residue list }
 
-let discharge facts plan step (promise : promise) =
-  if
-    not
-      (List.memq plan facts.plans && List.memq step plan.steps
-      && List.memq promise step.promises)
-  then invalid_arg "Facts.discharge: the promise is not one of these facts";
-  let in_scope = Path_set.mem (path_set (effective_scope plan step)) in
+let discharge_within facts ~in_scope (promise : promise) =
   let residue = residue facts promise in
   let location =
     Option.bind (manifest_kind promise.word) (Manifest.location facts.manifest)
@@ -834,6 +828,15 @@ let discharge facts plan step (promise : promise) =
          location
   in
   { by = List.find_opt inside residue; residue }
+
+let discharge facts plan step =
+  if not (List.memq plan facts.plans && List.memq step plan.steps) then
+    invalid_arg "Facts.discharge: the step is not one of these facts";
+  let in_scope = Path_set.mem (path_set (effective_scope plan step)) in
+  fun (promise : promise) ->
+    if not (List.memq promise step.promises) then
+      invalid_arg "Facts.discharge: the promise is not one of this step";
+    discharge_within facts ~in_scope promise
 
 let step_id (plan : plan) (step : step) = "step:" ^ plan.slug ^ "/" ^ step.slug
 
@@ -864,7 +867,7 @@ let plan_records facts ~changed plan =
     let promises =
       List.map
         (fun (promise : promise) ->
-          let { by; residue } = discharge facts plan step promise in
+          let { by; residue } = discharge_within facts ~in_scope promise in
           (promise, by, residue <> [] && Option.is_none by))
         step.promises
     in
