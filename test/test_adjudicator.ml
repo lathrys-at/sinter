@@ -233,6 +233,103 @@ let the_findings_keep_their_order_with_the_new_ones () =
        [ ("docs/a.md", "# A\n\n@req x v1 Old.\n") ]
        [ ("docs/a.md", "# A\n\n@req x v1 New.\n") ])
 
+let with_tree_findings base tree =
+  let tree_facts = facts tree in
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) ->
+         List.mem finding.finding_class
+           [ Finding_class.Dangling; Finding_class.Renamed ])
+       (Adjudicator.classes ~base:(facts base) tree_facts
+          (Findings.of_facts tree_facts ~not_text:[])))
+
+let renamed_takes_the_place_of_dangling () =
+  Alcotest.check strings "the findings"
+    [
+      "docs/use.md:3 | finding:renamed:cites:site:docs/use.md#use->lockout | \
+       the base declares req:lockout, and req:account-lockout has its extent \
+       now | fix: @cites account-lockout v2";
+      "docs/use.md:4 | finding:renamed:satisfies:site:docs/use.md#use->lockout \
+       | the base declares req:lockout, and req:account-lockout has its extent \
+       now | fix: @satisfies account-lockout";
+    ]
+    (with_tree_findings
+       [
+         ("docs/spec.md", "# Spec\n\n@req lockout v1 Lock it.\n");
+         ("docs/use.md", "# Use\n\n@cites lockout v1\n@satisfies lockout\n");
+       ]
+       [
+         ("docs/moved.md", "# Spec\n\n@req account-lockout v2 Lock it.\n");
+         ("docs/use.md", "# Use\n\n@cites lockout v1\n@satisfies lockout\n");
+       ])
+
+let two_candidates_leave_the_edge_dangling () =
+  let dangling =
+    [
+      "docs/use.md:3 | finding:dangling:cites:site:docs/use.md#use->a | no \
+       declaration has the slug a";
+    ]
+  in
+  Alcotest.check strings "two new declarations with the extent hash" dangling
+    (with_tree_findings
+       [
+         ("docs/spec.md", "# Spec\n\n@req a v1 Same.\n");
+         ("docs/use.md", "# Use\n\n@cites a v1\n");
+       ]
+       [
+         ("docs/one.md", "# Spec\n\n@req b v1 Same.\n");
+         ("docs/two.md", "# Spec\n\n@req c v1 Same.\n");
+         ("docs/use.md", "# Use\n\n@cites a v1\n");
+       ]);
+  Alcotest.check strings "two tombstones with the extent hash" dangling
+    (with_tree_findings
+       [
+         ("docs/spec.md", "# Spec\n\n@req a v1 Same.\n");
+         ("docs/other.md", "# Spec\n\n@req z v1 Same.\n");
+         ("docs/use.md", "# Use\n\n@cites a v1\n");
+       ]
+       [
+         ("docs/one.md", "# Spec\n\n@req b v1 Same.\n");
+         ("docs/use.md", "# Use\n\n@cites a v1\n");
+       ]);
+  Alcotest.check strings "a change of kind" dangling
+    (with_tree_findings
+       [
+         ("docs/spec.md", "# Spec\n\n@req a v1 Same.\n");
+         ("docs/use.md", "# Use\n\n@cites a v1\n");
+       ]
+       [
+         ("docs/one.md", "# Spec\n\n@design b v1 Same.\n");
+         ("docs/use.md", "# Use\n\n@cites a v1\n");
+       ]);
+  Alcotest.check strings "another extent" dangling
+    (with_tree_findings
+       [
+         ("docs/spec.md", "# Spec\n\n@req a v1 Same.\n");
+         ("docs/use.md", "# Use\n\n@cites a v1\n");
+       ]
+       [
+         ("docs/one.md", "# Spec\n\n@req b v1 Other.\n");
+         ("docs/use.md", "# Use\n\n@cites a v1\n");
+       ])
+
+let a_slug_with_two_tombstones_leaves_the_edge_dangling () =
+  Alcotest.check strings "two declarations of the slug at the base"
+    [
+      "docs/use.md:3 | finding:dangling:cites:site:docs/use.md#use->a | no \
+       declaration has the slug a";
+    ]
+    (with_tree_findings
+       [
+         ("docs/one.md", "# Spec\n\n@req a v1 Same.\n");
+         ("docs/two.md", "# Other\n\n@design a v1 Other.\n");
+         ("docs/use.md", "# Use\n\n@cites a v1\n");
+       ]
+       [
+         ("docs/one.md", "# Spec\n\n@req b v1 Same.\n");
+         ("docs/use.md", "# Use\n\n@cites a v1\n");
+       ])
+
 let text_gen =
   Gen.(
     let* words =
@@ -275,5 +372,11 @@ let tests =
       unbumped_holds_for_a_retired_declaration_and_not_under_a_historical_path;
     case "the findings keep their order with the new ones"
       the_findings_keep_their_order_with_the_new_ones;
+    case "renamed takes the place of dangling"
+      renamed_takes_the_place_of_dangling;
+    case "two candidates leave the edge dangling"
+      two_candidates_leave_the_edge_dangling;
+    case "a slug with two tombstones leaves the edge dangling"
+      a_slug_with_two_tombstones_leaves_the_edge_dangling;
     a_tree_like_its_base_has_no_finding;
   ]

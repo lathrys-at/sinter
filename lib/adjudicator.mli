@@ -36,4 +36,14 @@ val classes : base:Facts.t -> Facts.t -> Finding.t list -> Finding.t list
       slug, the first in the order of {!Facts.declarations} counts. The fix is
       the tag line of the declaration with the revision of the base plus 1.
 
+    - [renamed]: an edge whose tag target is a valid slug that no declaration
+      has, when the slug is the slug of exactly one tombstone of a declaration,
+      exactly one tombstone of a declaration has the extent hash of that
+      tombstone, exactly one new declaration has that extent hash, and the new
+      declaration has the kind of the tombstone. A new declaration is a
+      declaration of the working tree whose id no declaration of the base has.
+      The fix is the citation with the slug of the new declaration, and with its
+      revision when the edge has a revision. Each [dangling] finding of
+      [findings] about such an edge leaves the result.
+
     No finding of these classes sits under a historical path. *)

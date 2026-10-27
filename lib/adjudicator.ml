@@ -100,14 +100,91 @@ let unbumped ~base facts =
       | Some _ | None -> None)
     (Facts.declarations facts)
 
+let renamed ~base facts =
+  let gone =
+    List.filter_map
+      (fun (tombstone : tombstone) ->
+        Option.map
+          (fun declared -> (tombstone.kind, declared))
+          tombstone.declared)
+      (tombstones ~base facts)
+  in
+  let earlier = by_id base in
+  let fresh =
+    List.filter
+      (fun (declaration : Facts.declaration) ->
+        List.mem declaration.kind declaration_kinds
+        && not (Slugs.mem (Facts.declaration_id declaration) earlier))
+      (Facts.declarations facts)
+  in
+  let successor slug =
+    match
+      List.filter
+        (fun (_, (declared : declared)) -> String.equal declared.slug slug)
+        gone
+    with
+    | [ (kind, declared) ] -> (
+        match
+          ( List.filter
+              (fun (_, (other : declared)) -> String.equal other.xh declared.xh)
+              gone,
+            List.filter
+              (fun (d : Facts.declaration) ->
+                String.equal d.extent.hash declared.xh)
+              fresh )
+        with
+        | [ _ ], [ (next : Facts.declaration) ] when String.equal next.kind kind
+          ->
+            Some (kind ^ ":" ^ slug, next)
+        | _ -> None)
+    | _ -> None
+  in
+  List.filter_map
+    (fun ((edge : Facts.edge), target) ->
+      match target with
+      | Facts.Unresolved { dangling = true } ->
+          Option.map
+            (fun (was, (next : Facts.declaration)) ->
+              Finding.make Finding_class.Renamed
+                (Finding.Fact
+                   { id = Facts.edge_id edge; ack_name = edge.target_text })
+                ~place:{ Finding.path = edge.path; span = edge.span }
+                ~detail:
+                  (Printf.sprintf
+                     "the base declares %s, and %s has its extent now" was
+                     (Facts.declaration_id next))
+                ~fix:
+                  (Printf.sprintf "@%s %s%s" edge.word next.slug
+                     (Option.fold ~none:""
+                        ~some:(fun _ -> Printf.sprintf " v%d" next.rev)
+                        edge.rev))
+                ())
+            (successor edge.target_text)
+      | Facts.Unresolved { dangling = false }
+      | Facts.Declaration _ | Facts.External _ ->
+          None)
+    (Facts.edges facts)
+
 let historical facts (finding : Finding.t) =
   match finding.place with
   | Some place -> Manifest.is_historical (Facts.manifest facts) place.path
   | None -> false
 
 let classes ~base facts findings =
+  let renamed = renamed ~base facts in
+  let replaced =
+    List.fold_left
+      (fun ids (finding : Finding.t) ->
+        Ids.add (Finding.subject_id finding.subject) ids)
+      Ids.empty renamed
+  in
   List.sort Finding.compare
-    (findings
+    (List.filter
+       (fun (finding : Finding.t) ->
+         not
+           (finding.finding_class = Finding_class.Dangling
+           && Ids.mem (Finding.subject_id finding.subject) replaced))
+       findings
     @ List.filter
         (fun finding -> not (historical facts finding))
-        (unbumped ~base facts))
+        (unbumped ~base facts @ renamed))

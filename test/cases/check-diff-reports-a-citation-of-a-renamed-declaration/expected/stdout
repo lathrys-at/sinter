@@ -1,0 +1,5 @@
+docs/spec.md:3:1: untraced req:account-lockout nothing satisfies it, and nothing verifies it
+docs/spec.md:7:1: untraced design:try-log nothing satisfies it, and nothing verifies it
+docs/use.md:3:1: renamed satisfies:site:docs/use.md#use->lockout the base declares req:lockout, and req:account-lockout has its extent now
+  fix: @satisfies account-lockout v3
+docs/use.md:4:1: dangling cites:site:docs/use.md#use->log no declaration has the slug log
