@@ -477,12 +477,12 @@ let load_with_base ?phases ~env ~dir ~manifest ~base () =
         ~not_utf_8:(not_utf_8 @ base_not_utf_8),
       compared )
 
-let index tree ~tool =
+let index ?(mode = Mode.Tree) tree ~tool =
   let* key = repository (Git.tree_key tree.repo) in
   Ok
     (Facts.index ~tree:key ~base:(base_commit tree.base)
        ~default_branch:(Manifest.default_branch tree.manifest)
-       ~manifest:tree.location ~tool)
+       ~manifest:tree.location ~tool ~mode)
 
 let run ?phases ~env ~dir ~manifest ~base ~tool () =
   let* tree = load ?phases ~env ~dir ~manifest ~base () in

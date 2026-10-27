@@ -67,7 +67,7 @@ let text { finding; tier } =
   String.concat " " words
   :: Option.to_list (Option.map (fun fix -> "  fix: " ^ fix) finding.fix)
 
-let record { finding; tier } =
+let record ~mode { finding; tier } =
   let optional name = function
     | None -> []
     | Some text -> [ (name, Jsonl.string text) ]
@@ -101,7 +101,7 @@ let record { finding; tier } =
     ("subject", Jsonl.string (Finding.subject_id finding.subject));
     ("ack_subject", Jsonl.string (Finding.ack_subject finding.subject));
     ("ackable", Jsonl.bool finding.ackable);
-    ("mode", Jsonl.string "tree");
+    ("mode", Jsonl.string (Mode.name mode));
   ]
   @ optional "detail" finding.detail
   @ optional "fix" finding.fix @ place @ gate
@@ -109,10 +109,43 @@ let record { finding; tier } =
 type format = Text | Json
 type report = { messages : string list; lines : string list; code : int }
 
-let run ?phases ~env ~dir ~manifest ~base ~gate ~strict ~format ~tool () =
-  let* tree = Scan.load ?phases ~env ~dir ~manifest ~base () in
+let base_findings ?phases (tree : Scan.tree) (compared : Scan.compared) findings
+    =
+  let facts =
+    Allocation.measure phases "base-facts" (fun () ->
+        Facts.make tree.manifest compared.base_documents)
+  in
+  let base =
+    Allocation.measure phases "base-findings" (fun () ->
+        Findings.of_facts facts ~not_text:compared.base_not_text)
+  in
+  Allocation.measure phases "findings" (fun () ->
+      Baseline.subtract (Baseline.of_diff compared.diff) ~base findings)
+
+let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool () =
+  let* tree, compared =
+    match mode with
+    | Mode.Tree ->
+        Result.map
+          (fun tree -> (tree, None))
+          (Scan.load ?phases ~env ~dir ~manifest ~base ())
+    | Mode.Diff ->
+        Result.map
+          (fun (tree, compared) -> (tree, Some compared))
+          (Scan.load_with_base ?phases ~env ~dir ~manifest ~base ())
+  in
+  let facts =
+    Allocation.measure phases "facts" (fun () ->
+        Facts.make tree.manifest tree.documents)
+  in
   let findings =
-    Findings.tree ?phases tree.manifest tree.documents ~not_text:tree.not_text
+    Allocation.measure phases "findings" (fun () ->
+        Findings.of_facts facts ~not_text:tree.not_text)
+  in
+  let findings =
+    match compared with
+    | None -> findings
+    | Some compared -> base_findings ?phases tree compared findings
   in
   let entries =
     Allocation.measure phases "findings" (fun () ->
@@ -131,13 +164,15 @@ let run ?phases ~env ~dir ~manifest ~base ~gate ~strict ~format ~tool () =
         }
   | Json ->
       let* index =
-        Allocation.measure phases "repository" (fun () -> Scan.index tree ~tool)
+        Allocation.measure phases "repository" (fun () ->
+            Scan.index ~mode tree ~tool)
       in
       Ok
         {
           messages = tree.warnings;
           lines =
             Allocation.measure phases "output" (fun () ->
-                List.map Jsonl.to_string (index :: List.map record entries));
+                List.map Jsonl.to_string
+                  (index :: List.map (record ~mode) entries));
           code;
         }

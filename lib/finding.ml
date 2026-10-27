@@ -67,10 +67,10 @@ let make finding_class subject ?place ?detail ?fix ?ackable () =
   in
   { finding_class; subject; place; detail; fix; ackable }
 
-let id finding =
-  "finding:"
-  ^ Finding_class.name finding.finding_class
-  ^ ":" ^ subject_id finding.subject
+let id_of finding_class subject =
+  "finding:" ^ Finding_class.name finding_class ^ ":" ^ subject_id subject
+
+let id finding = id_of finding.finding_class finding.subject
 
 let key finding =
   ( Option.is_none finding.place,

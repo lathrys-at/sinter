@@ -58,6 +58,15 @@ let () =
       ("git", Test_git.tests);
       ("git diff", Test_git_diff.tests);
       ("git view", Test_git_view.tests);
+      ("baseline", Test_baseline.tests);
+      ( "mode",
+        [
+          Alcotest.test_case "names each mode" `Quick (fun () ->
+              Alcotest.(check (list string))
+                "the names" [ "tree"; "diff" ]
+                (List.map Sinter_core.Mode.name
+                   [ Sinter_core.Mode.Tree; Sinter_core.Mode.Diff ]));
+        ] );
       ("fixture", Test_fixture.tests);
       ("allocation", Test_allocation.tests);
       ("generated tree", Test_generated_tree.tests);

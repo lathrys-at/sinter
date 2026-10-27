@@ -1026,7 +1026,7 @@ let edges facts = List.combine facts.edges facts.targets
 let acks facts = facts.acks
 let plans facts = facts.plans
 
-let index ~tree ~base ~default_branch ~manifest ~tool =
+let index ~tree ~base ~default_branch ~manifest ~tool ~mode =
   [
     ("v", Jsonl.int 1);
     ("kind", Jsonl.string "index");
@@ -1037,5 +1037,5 @@ let index ~tree ~base ~default_branch ~manifest ~tool =
     ("evidence", Jsonl.bool false);
     ("packs", Jsonl.strings []);
     ("tool", Jsonl.string tool);
-    ("mode", Jsonl.string "tree");
+    ("mode", Jsonl.string (Mode.name mode));
   ]

@@ -157,9 +157,9 @@ val load_with_base :
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
 
-val index : tree -> tool:string -> (Jsonl.record, error) result
+val index : ?mode:Mode.t -> tree -> tool:string -> (Jsonl.record, error) result
 (** [index tree ~tool] is the index record of [tree]. [tool] is the version of
-    the tool. *)
+    the tool. [mode] is the mode of the run; the default is [Tree]. *)
 
 (** {1 The scan} *)
 

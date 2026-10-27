@@ -821,7 +821,16 @@ let the_index_names_the_tree_and_the_base () =
     "{\"base\":\"b\",\"default_branch\":\"main\",\"evidence\":false,\"kind\":\"index\",\"manifest\":\"sinter.toml\",\"mode\":\"tree\",\"packs\":[],\"tool\":\"v1\",\"tree\":\"t\",\"v\":1}"
     (Jsonl.to_string
        (Facts.index ~tree:"t" ~base:"b" ~default_branch:"main"
-          ~manifest:"sinter.toml" ~tool:"v1"))
+          ~manifest:"sinter.toml" ~tool:"v1" ~mode:Mode.Tree));
+  Alcotest.(check (option string))
+    "the mode of a diff" (Some "diff")
+    (match
+       List.assoc_opt "mode"
+         (Facts.index ~tree:"t" ~base:"b" ~default_branch:"main"
+            ~manifest:"sinter.toml" ~tool:"v1" ~mode:Mode.Diff)
+     with
+    | Some (Jsonl.Scalar (Jsonl.String mode)) -> Some mode
+    | _ -> None)
 
 module Gen = QCheck2.Gen
 
