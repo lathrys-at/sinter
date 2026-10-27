@@ -331,10 +331,10 @@ let a_pin_to_another_revision_is_suspect () =
   check_field records "refines:design:b->a" "rung" None;
   check_field records "refines:design:b->a" "effective" None
 
-let a_verifies_edge_in_markdown_is_an_orphan () =
+let a_verifies_edge_in_markdown_has_the_wrong_source () =
   check_field
     (records [ ("a.md", "# A\n\n@req a\n@verifies a v1\n") ])
-    "verifies:req:a->a" "rung" (str "orphan")
+    "verifies:req:a->a" "rung" (str "wrong-source")
 
 let an_inline_description_loses_its_blanks () =
   let records =
@@ -1712,8 +1712,8 @@ let tests =
       a_ref_that_does_not_resolve_gives_no_record;
     case "a pin to another revision is suspect"
       a_pin_to_another_revision_is_suspect;
-    case "a verifies edge in markdown is an orphan"
-      a_verifies_edge_in_markdown_is_an_orphan;
+    case "a verifies edge in markdown has the wrong source"
+      a_verifies_edge_in_markdown_has_the_wrong_source;
     case "an inline description loses its blanks"
       an_inline_description_loses_its_blanks;
     case "an effective supersedes edge retires its target"

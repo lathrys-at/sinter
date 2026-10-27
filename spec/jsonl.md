@@ -250,7 +250,7 @@ the span of the record is the first paragraph of the section.
 | `rev` | int | the pinned revision; omitted when unpinned |
 | `desc` | string | inline description, without the spaces and tabs at both ends; omitted when empty |
 | `suspect` `dangling` | bool | *derived* |
-| `rung` | string | `verifies` only, *derived*: `orphan`, `never-ran`, `failed`, `disconnected`, `unattributed`, or `passing` |
+| `rung` | string | `verifies` only, *derived*: `wrong-source`, `never-ran`, `failed`, `unexercised`, `unmeasured`, or `passing` |
 | `effective` | bool | `supersedes` only, *derived*: whether the edge is effective ([vocabulary.md](vocabulary.md) section 8.1) |
 
 Tags inside plan files never produce edge records. These tags produce

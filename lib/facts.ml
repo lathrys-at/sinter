@@ -773,7 +773,7 @@ let edge_records facts =
         @ optional "rev" (Option.map Jsonl.int edge.rev)
         @ text_unless_empty "desc" edge.desc
         @ (if String.equal edge.word "verifies" then
-             [ ("rung", Jsonl.string "orphan") ]
+             [ ("rung", Jsonl.string "wrong-source") ]
            else [])
         @
         if String.equal edge.word "supersedes" then

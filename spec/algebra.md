@@ -221,7 +221,7 @@ citation is still a citation.
 | `scope(S)` | plan, step, rule, claim | located facts and hunks whose `path` matches the effective scope of some member of `S`. A step's effective scope is the step's own `@scope` when the step declares one; otherwise it is the plan's scope. A plan's effective scope is the union of the effective scopes of its steps. A rule's scope is its `scope` field. `∅` when `S` holds no scope-bearing fact |
 | `promises(S)` | plan, step | promise facts whose step or plan is in `S` |
 | `met(P)` | promise | the promises in `P` that are met, as defined in [vocabulary.md](vocabulary.md) section 10.5 |
-| `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met; for a step with no promises, the first condition is instead that the step's scope intersects `changed(base)`. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unattributed` when `evidence.coverage-attribution` is `"optional"` ([manifest.md](manifest.md) section 12). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
+| `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met; for a step with no promises, the first condition is instead that the step's scope intersects `changed(base)`. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unmeasured` when `evidence.coverage-attribution` is `"optional"` ([manifest.md](manifest.md) section 12). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
 
 ### 6.5 Status predicates
 
@@ -274,11 +274,11 @@ set holds an attributed coverage fact for some `u ∈ tests(t)`.
 
 | function | keeps `e ∈ E` iff |
 |---|---|
-| `orphan(E)` | `kind(t) ≠ test`: the source of the `@verifies` edge is not a test, so the edge has the wrong source ([vocabulary.md](vocabulary.md) section 7.2) |
-| `neverran(E)` | the status of `t` is `skip`: a test of `t` did not run or was skipped, and no test of `t` failed |
+| `wrong-source(E)` | `kind(t) ≠ test`: the source of the `@verifies` edge is not a test, so the edge has the wrong source ([vocabulary.md](vocabulary.md) section 7.2) |
+| `never-ran(E)` | the status of `t` is `skip`: a test of `t` did not run or was skipped, and no test of `t` failed |
 | `failed(E)` | the status of `t` is `fail` or `error` |
-| `disconnected(E)` | The status of `t` is `pass`, and `sites(e) ≠ ∅`, and one of these two holds: attributed coverage for `t` exists and each fact in `cov(t, s)` has `hit = 0`, for every site `s`; or only aggregate coverage exists and `agg(s).hit = 0` for every site `s`. In both cases the whole run executed no line in the sites, so the tests of `t` executed no line in the sites either |
-| `unattributed(E)` | All three of these conditions hold: the status of `t` is `pass`; `sites(e) ≠ ∅`; no attributed coverage for `t` exists. And one of these two conditions holds: some `agg(s).hit > 0`; or the evidence set holds no coverage data at all |
+| `unexercised(E)` | The status of `t` is `pass`, and `sites(e) ≠ ∅`, and one of these two holds: attributed coverage for `t` exists and each fact in `cov(t, s)` has `hit = 0`, for every site `s`; or only aggregate coverage exists and `agg(s).hit = 0` for every site `s`. In both cases the whole run executed no line in the sites, so the tests of `t` executed no line in the sites either |
+| `unmeasured(E)` | All three of these conditions hold: the status of `t` is `pass`; `sites(e) ≠ ∅`; no attributed coverage for `t` exists. And one of these two conditions holds: some `agg(s).hit > 0`; or the evidence set holds no coverage data at all |
 | `passing(E)` | the status of `t` is `pass`, and either `sites(e) = ∅` or some fact in some `cov(t, s)` has `hit > 0` |
 
 ### 6.8 Rule functions
@@ -443,11 +443,11 @@ passes the cap ([manifest.md](manifest.md) section 9.3).
 | `unapproved-plan` | plan | `kind(plan) ^ inforce(all) - approved(all)`. The engine writes the difference between the current commitment set and the approved commitment set into the finding's `detail` field | tree | · | · | warn, block, — |
 | `retired` | edge | `in(cites, all) - in(cites, inforce(all))`: the `cites` edges whose tag target resolves to a fact that is not in force — a rule's origin edge included. When the cited fact has successors ([vocabulary.md](vocabulary.md) section 8.2), the `detail` names the cited fact and then its successors, in the byte order of their ids, for example `decision:a is superseded by decision:b, decision:c`. The `fix` is then the citation of a successor that replaces the edge: `@cites`, the slug of the successor, and the current revision of the successor when the edge carries a revision. With several successors, the `fix` gives one such citation for each, in the same order, for example `@cites b v2 or @cites c v1`. Ackable only when the cited fact has no successor; the `fix` is then the `@ack` line for the finding | tree | A* | · | warn, block, block |
 | `stale-ack` | ack | *engine*: an `@ack` whose hash no longer matches its block, or whose tag target names neither an ackable finding nor an obligation of a rule in that block ([vocabulary.md](vocabulary.md) section 7.4) | tree | · | F | block, block, block |
-| `wrong-source` | edge | `orphan(kind(verifies)) + (kind(refines\|supersedes) - out(refines\|supersedes, kind(req\|design\|decision\|rule)))`: a citation whose kind needs a certain source and that does not have one ([vocabulary.md](vocabulary.md) section 7.2). A `@verifies` needs a test; a `@refines` or a `@supersedes` needs an enclosing declaration | tree | · | · | block, block, block |
-| `never-ran` | edge | `neverran(kind(verifies)) ^ scope(inforce(kind(plan)))` at `turn`; `neverran(kind(verifies))` at `merge` and `target` | tree | · | · | warn, block, block |
+| `wrong-source` | edge | `wrong-source(kind(verifies)) + (kind(refines\|supersedes) - out(refines\|supersedes, kind(req\|design\|decision\|rule)))`: a citation whose kind needs a certain source and that does not have one ([vocabulary.md](vocabulary.md) section 7.2). A `@verifies` needs a test; a `@refines` or a `@supersedes` needs an enclosing declaration | tree | · | · | block, block, block |
+| `never-ran` | edge | `never-ran(kind(verifies)) ^ scope(inforce(kind(plan)))` at `turn`; `never-ran(kind(verifies))` at `merge` and `target` | tree | · | · | warn, block, block |
 | `failed` | edge | `failed(kind(verifies))` | tree | · | · | block, block, block |
-| `unexercised` | edge | `disconnected(kind(verifies))` | tree | A | · | warn, block, block |
-| `unmeasured` | edge | `unattributed(kind(verifies))` | tree | · | · | off, warn, warn |
+| `unexercised` | edge | `unexercised(kind(verifies))` | tree | A | · | warn, block, block |
+| `unmeasured` | edge | `unmeasured(kind(verifies))` | tree | · | · | off, warn, warn |
 | `ambiguous-result` | node | *engine*: a test or a group that a test result binds to, when the same result also binds to a test or a group of another file or another name path ([packs.md](packs.md) section 9.2) | tree | · | · | warn, block, block |
 | `untraced` | node | `untraced(verifies) + untraced(satisfies)` — incompleteness; never blocks a turn end | tree | · | · | off, warn, warn |
 | `unmet-promise` | promise | `unmet(active)` where `unmet(p) = promises($p) - met(promises($p))` — incompleteness; enforced only by `status --done` | tree | · | · | off, off, — |

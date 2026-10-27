@@ -747,13 +747,13 @@ default is `"optional"`. The value decides which rungs of a
 `@verifies` edge meet a promise. [algebra.md](algebra.md) section
 6.7 defines the rungs. **Attributed coverage** is coverage that
 Sinter measures for each test on its own. An edge is at rung
-`unattributed` when its tests pass and the run covered its sites, but
+`unmeasured` when its tests pass and the run covered its sites, but
 no attributed coverage shows that the test ran them.
 
 | value | rungs that meet a promise |
 |---|---|
 | `"required"` | `passing` |
-| `"optional"` | `passing` and `unattributed` |
+| `"optional"` | `passing` and `unmeasured` |
 
 The rule applies in three places:
 
@@ -765,7 +765,7 @@ The rule applies in three places:
   section 8).
 
 The tier of the class `unmeasured` is a separate setting. It decides
-how hard an edge at rung `unattributed` bites as a finding.
+how hard an edge at rung `unmeasured` bites as a finding.
 
 ## 13. Built-ins
 

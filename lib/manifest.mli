@@ -30,7 +30,7 @@ val kind_name : kind -> string
 
 (** Which rungs of an edge of the kind [verifies] complete a promise. *)
 type coverage_attribution =
-  | Optional  (** the rungs [passing] and [unattributed] *)
+  | Optional  (** the rungs [passing] and [unmeasured] *)
   | Required  (** the rung [passing] alone *)
 
 (** {1 Errors} *)

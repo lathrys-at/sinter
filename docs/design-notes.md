@@ -120,7 +120,7 @@ An item is **in force** iff it carries no status tag and no effective `@supersed
 | `@ack <finding> <hash>` | a judgment recorded at this site: the named finding is accepted, or the named rule is satisfied, for the text as hashed |
 | `@pin <ref>` *(deferred)* | arms an upstream-drift check on external content, endorsed through the approval flow |
 
-`@ack` is one mechanism for two jobs. Its grammar is `@ack <target> <hash>` where `<hash>` is the last token and `<target>` is everything between: a finding class with an optional subject (`retired cache-ttl`, `unexercised`) or a rule name (`ste-docs`) — exactly what `check` reported. The hash is the first eight or more hex digits of the block hash (§3.4). An ack is *live* iff the hash matches the block's current hash **and** the target still names something: an obligation of that rule at this site, or a finding of that class (with that subject, if given) at this site. It is void the moment either goes stale: the text changes, or the finding it names no longer exists. Liveness is judged against the *pre-ack* result — a rule's obligations are its trigger alone, a finding class its raw definition before ack subtraction, which is an engine step (§12.8) — so an ack cannot void itself by succeeding. Either way the void ack is itself a finding, so a judgment can never outlive what it judged. `check` prints the exact line to paste, so the ceremony is a copy, and the report lists every ack next to what it accepted or cleared. It is a *targeted* judgment, never a generic ignore: in Luria's first propagation wave, 42 of 70 findings were correct citations of retired records; without a way to say so, the only path to green is un-retiring things — the record lying to quiet a linter. A finding is ackable iff its honest resolution can be a judgment rather than an edit: retired citations, rule obligations whose `expect` is an `@ack`, and disconnected tests (an integration test may exercise a site through a path coverage cannot see) are; suspect and dangling citations are not, because their resolution is a mechanical edit the tool already emits.
+`@ack` is one mechanism for two jobs. Its grammar is `@ack <target> <hash>` where `<hash>` is the last token and `<target>` is everything between: a finding class with an optional subject (`retired cache-ttl`, `unexercised`) or a rule name (`ste-docs`) — exactly what `check` reported. The hash is the first eight or more hex digits of the block hash (§3.4). An ack is *live* iff the hash matches the block's current hash **and** the target still names something: an obligation of that rule at this site, or a finding of that class (with that subject, if given) at this site. It is void the moment either goes stale: the text changes, or the finding it names no longer exists. Liveness is judged against the *pre-ack* result — a rule's obligations are its trigger alone, a finding class its raw definition before ack subtraction, which is an engine step (§12.8) — so an ack cannot void itself by succeeding. Either way the void ack is itself a finding, so a judgment can never outlive what it judged. `check` prints the exact line to paste, so the ceremony is a copy, and the report lists every ack next to what it accepted or cleared. It is a *targeted* judgment, never a generic ignore: in Luria's first propagation wave, 42 of 70 findings were correct citations of retired records; without a way to say so, the only path to green is un-retiring things — the record lying to quiet a linter. A finding is ackable iff its honest resolution can be a judgment rather than an edit: retired citations, rule obligations whose `expect` is an `@ack`, and unexercised tests (an integration test may exercise a site through a path coverage cannot see) are; suspect and dangling citations are not, because their resolution is a mechanical edit the tool already emits.
 
 **Plan-only:** `@scope <globs>`. Headings are steps (§6.1).
 
@@ -165,17 +165,17 @@ This is the section the rest exists to make possible. A `@verifies` citation is 
 
 **Evidence artifacts.** Runner output in standard formats (JUnit XML first; `go test -json`, `cargo nextest` JUnit, pytest `--junitxml`, Jest reporters all produce it) plus coverage in standard formats (lcov, cobertura, coverage.py JSON). Locally, a gitignored evidence directory (`.sinter/evidence/<tree-key>/`) that `sinter evidence import` populates and the gate reads, keyed by **tree key** so stale evidence never binds to a newer tree. The tree key is the git tree hash of the working tree *as it is*, computed non-destructively: stage everything into a temporary index (`GIT_INDEX_FILE=… git add -A && git write-tree`), honoring `.gitignore`. In CI, recomputed from scratch as the authority. Stated plainly: the local evidence dir is agent-writable — trusted, not proof — acceptable because the failure being caught is "claimed the tests pass without running them," which forging well-formed XML does not resemble; PR CI is what makes the merged claim real. The tool never runs tests: whoever runs them — the agent, an orchestrator, a workflow step — points `evidence import` at the artifacts the run produced. And an absent evidence set is a state, not a violation: the ladder's finding classes evaluate only when one exists (§12.8), so a tree with no evidence reads as having none, never red — while `status --done` refuses regardless, because death requires measurement.
 
-**Attribution is the expensive rung.** Rung 4 below asks whether *this test* executed *that site*, which requires coverage attributed per test. Aggregate lcov/cobertura cannot say; they only say the site was executed by *something in the run*. Attributed sources the packs understand: coverage.py with `dynamic_context = test_function` (Python), JaCoCo session data (JVM, when a pack exists), Jest's per-file `coverageProvider: v8` output combined with `--runTestsByPath` batches, and the universal fallback of running each `@verifies`-bearing test in its own process with its own coverage file — slow, always correct, and what the pack's conformance fixture does. `cargo llvm-cov` and `go test -cover` produce aggregate data unless driven per test. Each `cov` fact carries `attributed: true|false`. With unattributed coverage, rung 4 reports **unattributed** rather than *passing*: the site was executed by the run and the test passed, but the join is not proven. One case survives aggregation: zero aggregate hits on every satisfying site proves **disconnected** outright — if the whole run never touched the site, neither did the test (§12.5). Unattributed is warn-tier by default and never blocks; a repo that wants rung 4 to bite pays for attribution in its test configuration, and `sinter evidence import` says so when it sees only aggregate data.
+**Attribution is the expensive rung.** Rung 4 below asks whether *this test* executed *that site*, which requires coverage attributed per test. Aggregate lcov/cobertura cannot say; they only say the site was executed by *something in the run*. Attributed sources the packs understand: coverage.py with `dynamic_context = test_function` (Python), JaCoCo session data (JVM, when a pack exists), Jest's per-file `coverageProvider: v8` output combined with `--runTestsByPath` batches, and the universal fallback of running each `@verifies`-bearing test in its own process with its own coverage file — slow, always correct, and what the pack's conformance fixture does. `cargo llvm-cov` and `go test -cover` produce aggregate data unless driven per test. Each `cov` fact carries `attributed: true|false`. With unattributed coverage, rung 4 reports **unmeasured** rather than *passing*: the site was executed by the run and the test passed, but the join is not proven. One case survives aggregation: zero aggregate hits on every satisfying site proves **unexercised** outright — if the whole run never touched the site, neither did the test (§12.5). Unmeasured is warn-tier by default and never blocks; a repo that wants rung 4 to bite pays for attribution in its test configuration, and `sinter evidence import` says so when it sees only aggregate data.
 
 **The findings ladder**, in order of how much each catches:
 
-1. **Orphan** — `@verifies` attached to something `tests.scm` doesn't capture. Structural, deterministic.
+1. **Wrong source** — `@verifies` attached to something `tests.scm` doesn't capture. Structural, deterministic.
 2. **Never ran** — the test's ID appears in no evidence artifact for this tree.
 3. **Failed or skipped** — present, not passing. The promise is not met.
-4. **Disconnected** — passed, but attributed coverage shows it executes zero lines inside any site that `@satisfies` the same requirement. The closest deterministic proxy for a fraudulent verification. Both endpoints of the join already exist; what costs is attribution (above). When only aggregate coverage is present the rung reports **unattributed** instead — unless the aggregate shows zero hits on every site, which proves disconnection without attribution.
+4. **Unexercised** — passed, but attributed coverage shows it executes zero lines inside any site that `@satisfies` the same requirement. The closest deterministic proxy for a fraudulent verification. Both endpoints of the join already exist; what costs is attribution (above). When only aggregate coverage is present the rung reports **unmeasured** instead — unless the aggregate shows zero hits on every site, which proves the test unexercised without attribution.
 5. **Vacuous** — passed, connected, doesn't actually test the property. Reachable only by a judged rule (§7). This is the ceiling for structural checks, and it is worth saying plainly.
 
-A `@verifies` edge is at exactly one rung at any time: `orphan`, `never-ran`, `failed`, `disconnected`, `unattributed`, or `passing` (rung 5 is a sampled judgment, not a rung the tool assigns). The rung is a field on the edge fact and a family of predicates in the algebra (§12.5). Rungs 1–4 are what tree-sitter and standard artifacts buy. Rung 4 also gives `@satisfies` citations a job beyond coverage bookkeeping. The pack's conformance fixtures include a real runner run with attributed coverage, so the join is verified end-to-end per language, not assumed.
+A `@verifies` edge is at exactly one rung at any time: `wrong-source`, `never-ran`, `failed`, `unexercised`, `unmeasured`, or `passing` (rung 5 is a sampled judgment, not a rung the tool assigns). The rung is a field on the edge fact and a family of predicates in the algebra (§12.5). Rungs 1–4 are what tree-sitter and standard artifacts buy. Rung 4 also gives `@satisfies` citations a job beyond coverage bookkeeping. The pack's conformance fixtures include a real runner run with attributed coverage, so the join is verified end-to-end per language, not assumed.
 
 ## 5. Manifest, Language Packs, Refs
 
@@ -235,7 +235,7 @@ A markdown file under `.plans/`, e.g. `.plans/auth-lockout.md`, **committed on t
 
 **A plan is a set of promised facts.** Same tags, one semantic rule: inside a plan, tags are read in *promissory mood* — `@req auth-lockout` means this step will declare it; `@verifies auth-lockout` means this step will produce a passing, connected test carrying that citation. Every `##` heading carrying at least one plan tag — `@scope` or a promise — is a step (a bare section is prose: context, notes, nothing derived); a step's slug is the heading text lowercased, non-alphanumerics collapsed to single hyphens, trimmed (`## Verify against the reqs` → `verify-against-the-reqs`); two steps slugifying identically is a `duplicate` finding. Steps are unordered facts; document order is advice.
 
-**What meets a promise.** A promised declaration (`@req`, `@design`, `@decision`) is met iff a declaration with that slug exists, located within the step's scope. A promised `@satisfies`/`@refines`/`@cites`/`@supersedes` is met iff at least one such edge exists within the step's scope that is neither dangling nor suspect. A promised `@verifies` is met iff such an edge exists within scope at rung `passing` — or at rung `unattributed`, when the manifest sets `evidence.require_attribution = false` (the default until a repo opts in). A fact that would meet a promise but sits *outside* the step's scope is a warn-tier finding (`promise-out-of-scope`), and it does not meet the promise: the scope is part of the agreement.
+**What meets a promise.** A promised declaration (`@req`, `@design`, `@decision`) is met iff a declaration with that slug exists, located within the step's scope. A promised `@satisfies`/`@refines`/`@cites`/`@supersedes` is met iff at least one such edge exists within the step's scope that is neither dangling nor suspect. A promised `@verifies` is met iff such an edge exists within scope at rung `passing` — or at rung `unmeasured`, when the manifest sets `evidence.require_attribution = false` (the default until a repo opts in). A fact that would meet a promise but sits *outside* the step's scope is a warn-tier finding (`promise-out-of-scope`), and it does not meet the promise: the scope is part of the agreement.
 
 **Scope globs** are gitignore-style patterns relative to the repo root, comma-separated on the `@scope` line: `*` within a segment, `**` across segments, `!` negation, a trailing `/` meaning "directory and everything under it." A step with no `@scope` inherits the plan's. A step's effective scope is what out-of-scope surfacing measures against and where a promise is met.
 
@@ -264,7 +264,7 @@ Plans must be refactorable on the fly *and* harder to loosen than code — other
 
 Death is a **ledger fact, never a file event.** A plan dies `completed` or `abandoned` (§6.7); the file stays where it is. There is no deletion to orchestrate, no merge commit to edit, no host-specific machinery — this used to be the hardest section in the document and is now bookkeeping.
 
-The **death gate** is unchanged in substance: a plan may only be completed when everything it promised has become static fact. Enforcement sits at the merge gate — `status --done`, run where evidence exists (PR CI, the merge queue, or whoever merges). What *writes* the entry is main CI: on every push to the target branch it finds in-force plans now on main — merged, in other words — checks each against the **completion condition** — every promise is met: declarations present, edges present and neither dangling nor suspect, `@verifies` edges at `passing` (or allowed `unattributed`) when main's job measures, at any rung when it does not (§12.8; rung enforcement already happened at the merge gate) — and appends its `completed` entry, recording the merge commit and the hash of the report compiled at completion. An in-force plan on main that *fails* the condition is the `merged-incomplete` finding, blocking: someone merged half a plan, and the honest exits are an approved shrink (§6.2) or reverting the merge. The writer is idempotent bookkeeping — the plan's approvals and the tree are the evidence — so a lost CI run costs a retry, not truth. (The job needs push rights to `refs/sinter/ledger`.)
+The **death gate** is unchanged in substance: a plan may only be completed when everything it promised has become static fact. Enforcement sits at the merge gate — `status --done`, run where evidence exists (PR CI, the merge queue, or whoever merges). What *writes* the entry is main CI: on every push to the target branch it finds in-force plans now on main — merged, in other words — checks each against the **completion condition** — every promise is met: declarations present, edges present and neither dangling nor suspect, `@verifies` edges at `passing` (or allowed `unmeasured`) when main's job measures, at any rung when it does not (§12.8; rung enforcement already happened at the merge gate) — and appends its `completed` entry, recording the merge commit and the hash of the report compiled at completion. An in-force plan on main that *fails* the condition is the `merged-incomplete` finding, blocking: someone merged half a plan, and the honest exits are an approved shrink (§6.2) or reverting the merge. The writer is idempotent bookkeeping — the plan's approvals and the tree are the evidence — so a lost CI run costs a retry, not truth. (The job needs push rights to `refs/sinter/ledger`.)
 
 A plan **not in force** — dead — is exempt from everything: its facts generate no findings (§12.8), it holds no claim, contributes no scope, and is skipped by the active-plan rule. Plan slugs are permanent, like decision slugs — reuse is a `duplicate` — so `compile residual-plan` emits its skeleton under a successor slug. Liveness is a ledger read: without the ledger ref every plan reads live, which `status` flags loudly (fetch the ledger). What this leaves on main is deliberate: the plan and its journal beside the facts they produced, with the ledger saying who approved it, what it promised, and when it stopped being an agreement.
 
@@ -400,7 +400,7 @@ Not a menu, not Datalog: a Bazel-sized algebra over the fact stream, specified i
 
 **10.1 Approval UX** (mechanism decided). Under the collaborative model the requirement is *unmistakable*, not *undeniable*: every bypass must require a deliberate act, because a deliberate act is circumvention and circumvention is out of threat model. Two cheap layers: confirmation read from `/dev/tty`, never stdin (a harness's non-interactive shell has no controlling terminal, so the command refuses; `yes | approve` is dead for free); and a harness-envvar tripwire (`CLAUDECODE=1`, manifest-extensible) closing the tmux-pane gap. Plus the structural layer: ledger on a ref outside every checkout, no approval path reachable from an agent's shell. Rejected: per-session token minting — the cryptographic path in a trench coat. For deployments outside the collaborative model the hardening path is now concrete and design-free: signed ledger commits with a signer allowlist, and the ref placed where the host's push restrictions reach it (§6.4). **Still open:** rendering the spec delta so that what is approved is actually read.
 
-**10.2 Attributed coverage on Rust and Go.** Rung 4 needs per-test coverage (§4). The universal fallback — one process per `@verifies`-bearing test — is correct and slow. Whether `cargo llvm-cov` profraw merging by test name, or a `go test -run` driver, can be made cheap enough to run in the PostToolUse tier rather than only in CI is unknown; until then those packs ship rung 4 as `unattributed` locally and `disconnected`/`passing` in CI.
+**10.2 Attributed coverage on Rust and Go.** Rung 4 needs per-test coverage (§4). The universal fallback — one process per `@verifies`-bearing test — is correct and slow. Whether `cargo llvm-cov` profraw merging by test name, or a `go test -run` driver, can be made cheap enough to run in the PostToolUse tier rather than only in CI is unknown; until then those packs ship rung 4 as `unmeasured` locally and `unexercised`/`passing` in CI.
 
 **10.3 Brief ranking.** "Graph distance from the step's scope" is a heuristic, and a wrong brief is worse than a short one: it fills the budget with the wrong requirements. Whether to weight by citation count, by recency of approval, or by which declarations the step's promises transitively `@refines` is a question for measurement against real sessions — the metrics tables (§6.4) are where the answer will show up as fewer violations per turn report.
 
@@ -521,7 +521,7 @@ OPTIONS
   --plan <slug>   Report on this plan instead of the active one
   --done          Print nothing; exit 0 iff the plan is done (every step done
                   and no verifies edge within plan scope below rung 'passing',
-                  or 'unattributed' where the manifest allows it). For merge
+                  or 'unmeasured' where the manifest allows it). For merge
                   queues and scripts.
   --json          A leading {"kind":"summary"} fact followed by the plan, step,
                   promise, and finding facts the report was built from
@@ -615,8 +615,8 @@ REFERENCE
   Plan        scope(S)  promises(S)  met(P)  done(S)  blocked(P)
   Status      inforce(S)  approved(S)  bumped(S)  declined(S)
   Edge        suspect(E)  dangling(E)
-  Evidence    orphan(E)  neverran(E)  failed(E)  disconnected(E)
-              unattributed(E)  passing(E)
+  Evidence    wrong-source(E)  never-ran(E)  failed(E)  unexercised(E)
+              unmeasured(E)  passing(E)
   Law         obligations(R)  triggered(R)  judged(n)
   Operators   +  union    ^  intersection (binds tighter)    -  difference
   Names may contain '*' as a glob. Kinds may be alternated with '|'. Saved
@@ -1354,7 +1354,7 @@ Notation: `S`, `T` range over fact sets; `E` over sets of edges; `P` promises; `
 |---|---|---|
 | `scope(S)` | plan, step, rule, claim | located facts and hunks whose `path` matches the effective scope of some `x ∈ S`. A step's effective scope is its own `@scope` if present, else its plan's; a plan's effective scope is the union of its steps' (its own `@scope` is the default for steps and the bound on them — a step exceeding it is a `scope-outside-plan` finding); a rule's is its `scope` field. `∅` if `S` has no scope-bearing fact |
 | `promises(S)` | plan, step | promise facts whose step is in `S` or whose plan is in `S` |
-| `met(P)` | promise | promises that are met (§6.1: a declaration with that slug within the step's scope; an edge of that kind within scope that is neither dangling nor suspect; a `verifies` edge within scope at rung `passing`, or `unattributed` if the manifest allows) |
+| `met(P)` | promise | promises that are met (§6.1: a declaration with that slug within the step's scope; an edge of that kind within scope that is neither dangling nor suspect; a `verifies` edge within scope at rung `passing`, or `unmeasured` if the manifest allows) |
 | `done(S)` | plan, step | steps all of whose promises are met — or, for a step with no promises, whose scope intersects `changed(base)` — and whose in-scope `verifies` edges are all at rung `passing`/allowed; plans all of whose steps are done and whose in-scope `verifies` edges are all at `passing`/allowed |
 
 **Status predicates** (filters: `pred(S) ⊆ S`)
@@ -1378,11 +1378,11 @@ Notation: `S`, `T` range over fact sets; `E` over sets of edges; `P` promises; `
 
 | function | keeps `e ∈ E` iff |
 |---|---|
-| `orphan(E)` | `kind(t) ≠ test` — the comment attached to something `tests.scm` does not capture |
-| `neverran(E)` | `runs(t) = ∅` |
+| `wrong-source(E)` | `kind(t) ≠ test` — the comment attached to something `tests.scm` does not capture |
+| `never-ran(E)` | `runs(t) = ∅` |
 | `failed(E)` | some `r ∈ runs(t)` has `status ∈ {fail, error, skip}` |
-| `disconnected(E)` | all runs pass, `sites(e) ≠ ∅`, and either attributed coverage for `t` exists and `∀s ∈ sites(e): cov(t, s).hit = 0`, or only aggregate coverage exists and `∀s ∈ sites(e): agg(s).hit = 0` — the run as a whole never touched the sites, so neither did `t` |
-| `unattributed(E)` | all runs pass, `sites(e) ≠ ∅`, no attributed coverage for `t`, and some `agg(s).hit > 0` or no coverage at all was imported |
+| `unexercised(E)` | all runs pass, `sites(e) ≠ ∅`, and either attributed coverage for `t` exists and `∀s ∈ sites(e): cov(t, s).hit = 0`, or only aggregate coverage exists and `∀s ∈ sites(e): agg(s).hit = 0` — the run as a whole never touched the sites, so neither did `t` |
+| `unmeasured(E)` | all runs pass, `sites(e) ≠ ∅`, no attributed coverage for `t`, and some `agg(s).hit > 0` or no coverage at all was imported |
 | `passing(E)` | all runs pass and either `sites(e) = ∅` (nothing to connect to; `untraced(satisfies)` reports the target separately) or some `cov(t, s).hit > 0` |
 
 **Law**
@@ -1458,11 +1458,11 @@ Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameter
 | `unapproved-plan` | plan | `kind(plan) ^ inforce(all) - approved(all)`; *engine* supplies the set delta as detail | tree | · | · | warn, block, — |
 | `retired` | edge | `kind(cites) - dangling(all) - in(cites, inforce(all))` — includes a rule's origin edge, hence "law resting on withdrawn reasoning" | tree | A | · | warn, block, block |
 | `stale-ack` | ack | *engine*: an `@ack` whose hash no longer matches its block, or whose target names nothing at that site | tree | · | F | block, block, block |
-| `wrong-source` | edge | `orphan(kind(verifies))` | tree | · | · | block, block, block |
-| `never-ran` | edge | `neverran(kind(verifies)) ^ scope(inforce(kind(plan)))` at turn; `neverran(kind(verifies))` at pr and main | tree | · | · | warn, block, block |
+| `wrong-source` | edge | `wrong-source(kind(verifies))` | tree | · | · | block, block, block |
+| `never-ran` | edge | `never-ran(kind(verifies)) ^ scope(inforce(kind(plan)))` at turn; `never-ran(kind(verifies))` at pr and main | tree | · | · | warn, block, block |
 | `failed` | edge | `failed(kind(verifies))` | tree | · | · | block, block, block |
-| `unexercised` | edge | `disconnected(kind(verifies))` | tree | A | · | warn, block, block |
-| `unmeasured` | edge | `unattributed(kind(verifies))` | tree | · | · | off, warn, warn |
+| `unexercised` | edge | `unexercised(kind(verifies))` | tree | A | · | warn, block, block |
+| `unmeasured` | edge | `unmeasured(kind(verifies))` | tree | · | · | off, warn, warn |
 | `untraced` | node | `untraced(verifies) + untraced(satisfies)` — incompleteness; never blocks turn-end | tree | · | · | off, warn, warn |
 | `unmet-promise` | promise | `unmet(active)` where `unmet(p) = promises($p) - met(promises($p))` — incompleteness; enforced only by `status --done` | tree | · | · | off, off, — |
 | `promise-out-of-scope` | promise | *engine*: a promise met only by facts outside its step's scope | tree | · | · | warn, warn, — |
@@ -1621,7 +1621,7 @@ Fields marked *derived* below are computed from the ledger, evidence, session, o
 | `rev` | int | pinned revision; omitted when unpinned |
 | `desc` | string | inline description; omitted if empty |
 | `suspect` `dangling` | bool | *derived* |
-| `rung` | string | `verifies` only, *derived*: `orphan` `never-ran` `failed` `disconnected` `unattributed` `passing` |
+| `rung` | string | `verifies` only, *derived*: `wrong-source` `never-ran` `failed` `unexercised` `unmeasured` `passing` |
 | `effective` | bool | `supersedes` only, *derived* |
 
 Tags inside plan files never produce edges; they are `promise` facts (§6.1).
@@ -1966,7 +1966,7 @@ tiers   = { pr = "warn" }
 | `target` | `"main"` | branch whose merge-base is the default `--base` |
 | `brief.budget` | `12000` | bytes; the turn-level brief uses a quarter of it |
 | `brief.why_budget` | `2000` | bytes; the origin-decision extent attached to an `unmet-rule` block (§7) |
-| `evidence.require_attribution` | `false` | `true`: rung `unattributed` never meets a `@verifies` promise |
+| `evidence.require_attribution` | `false` | `true`: rung `unmeasured` never meets a `@verifies` promise |
 | `ledger.sign`, `ledger.signers` | `false`, `[]` | signed ledger commits and the allowlist (§6.4) |
 | `refuse_env` | `["CLAUDECODE"]` | harness markers that make `approve`/`decline` refuse |
 | `rules.<name>.scope` | `[]` | where the edits that clear a rule's obligations land (§7); only needed when outside the plan's scope |
