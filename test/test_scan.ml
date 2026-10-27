@@ -389,7 +389,9 @@ let each_error_says_what_is_wrong () =
         ".plans/p.md is under .plans/, and the pack markdown does not read it; \
          add \".plans/\" to its files";
       ];
-      [ "the pack ocaml is not in the cache of packs; run sinter pack fetch" ];
+      [
+        "the pack ocaml is not in the cache of packs; run sinter pack add ocaml";
+      ];
       [ "the base 'nope' names no commit" ];
       [
         "no branch 'trunk' exists here or on origin; set 'target' in \

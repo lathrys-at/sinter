@@ -1,1 +1,1 @@
-sinter: the pack ocaml is not in the cache of packs; run sinter pack fetch
+sinter: the pack ocaml is not in the cache of packs; run sinter pack add ocaml

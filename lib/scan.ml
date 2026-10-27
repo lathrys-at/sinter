@@ -70,7 +70,8 @@ let messages = function
   | Pack_not_available name ->
       [
         Printf.sprintf
-          "the pack %s is not in the cache of packs; run sinter pack fetch" name;
+          "the pack %s is not in the cache of packs; run sinter pack add %s"
+          name name;
       ]
   | Bad_base revision ->
       [ Printf.sprintf "the base '%s' names no commit" revision ]
