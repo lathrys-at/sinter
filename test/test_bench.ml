@@ -582,17 +582,20 @@ let run_skips_every_budget_that_it_cannot_check () =
         (member "instructions" result <> `Null);
       Alcotest.(check (list string))
         "the phases"
-        [
-          "repository";
-          "read";
-          "parse";
-          "facts";
-          Yojson.Basic.Util.(
-            if String.equal "scan" (to_string (member "command" result)) then
-              "records"
-            else "findings");
-          "output";
-        ]
+        Yojson.Basic.Util.(
+          if String.equal "scan" (to_string (member "command" result)) then
+            [ "repository"; "read"; "parse"; "facts"; "records"; "output" ]
+          else
+            [
+              "repository";
+              "read";
+              "parse";
+              "base-read";
+              "facts";
+              "findings";
+              "base-facts";
+              "output";
+            ])
         (List.map
            (fun phase -> Yojson.Basic.Util.(to_string (member "phase" phase)))
            Yojson.Basic.Util.(to_list (member "phase_words" result))))

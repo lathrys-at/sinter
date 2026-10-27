@@ -88,20 +88,21 @@ val run :
   unit ->
   (report, Scan.error) result
 (** [run ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool ()] checks
-    the working tree that {!Scan.load} reads with [env], [dir], [manifest], and
-    [base]. [gate] is the gate of the check, [strict] says whether every finding
-    counts for the exit code, and [tool] is the version of the tool, for the
-    index record.
+    the working tree that {!Scan.load_with_base} reads with [env], [dir],
+    [manifest], and [base]. [gate] is the gate of the check, [strict] says
+    whether every finding counts for the exit code, and [tool] is the version of
+    the tool, for the index record.
 
     In the mode [Tree], the findings are those of the working tree. In the mode
     [Diff], they are the findings of the working tree less the findings of the
     base ({!Baseline.subtract}). The findings of the base come from the base
     tree that {!Scan.load_with_base} reads, with the manifest of the working
-    tree and no evidence.
+    tree and no evidence. In both modes, the findings also hold the classes that
+    compare the working tree with the base ({!Adjudicator.classes}).
 
-    With [phases], it counts the phases of {!Scan.load} or
-    {!Scan.load_with_base}, [facts] ({!Facts.make}) and [findings] (the
-    findings, their subtraction, and their selection), [base-facts] and
+    With [phases], it counts the phases of {!Scan.load_with_base}, [facts]
+    ({!Facts.make}) and [findings] (the findings, their subtraction, the classes
+    that compare with the base, and their selection), [base-facts],
     [base-findings] in the mode [Diff], the index record in [repository], and
     the phase [output], the lines of the report.
 

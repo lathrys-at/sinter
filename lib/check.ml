@@ -133,15 +133,7 @@ let compare_with_base ?phases ~mode (tree : Scan.tree)
 
 let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool () =
   let* tree, compared =
-    match mode with
-    | Mode.Tree ->
-        Result.map
-          (fun tree -> (tree, None))
-          (Scan.load ?phases ~env ~dir ~manifest ~base ())
-    | Mode.Diff ->
-        Result.map
-          (fun (tree, compared) -> (tree, Some compared))
-          (Scan.load_with_base ?phases ~env ~dir ~manifest ~base ())
+    Scan.load_with_base ?phases ~env ~dir ~manifest ~base ()
   in
   let facts =
     Allocation.measure phases "facts" (fun () ->
@@ -151,12 +143,7 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool () =
     Allocation.measure phases "findings" (fun () ->
         Findings.of_facts facts ~not_text:tree.not_text)
   in
-  let findings =
-    match compared with
-    | None -> findings
-    | Some compared ->
-        compare_with_base ?phases ~mode tree compared facts findings
-  in
+  let findings = compare_with_base ?phases ~mode tree compared facts findings in
   let entries =
     Allocation.measure phases "findings" (fun () ->
         select tree.manifest gate findings)
