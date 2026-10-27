@@ -14,9 +14,18 @@
 - **`sinter scan`**
   - Emit the facts that `spec/jsonl.md` defines.
   - Conformance fixtures.
+  - Print the `setting` records and the `gate` records of
+    `spec/jsonl.md` section 7. `config-changed` already uses their ids.
+  - `sinter scan --diff`: print the `hunk` records and the `tombstone`
+    records. Not designed.
 - **`sinter check`**
   - The built-in finding classes, `spec/algebra.md` section 9.
   - Classes that need no ledger and no evidence first.
+- **Rule files** — the rules and the finding classes that a
+  repository writes, `spec/manifest.md` section 15.
+  - Decide, when rule files are built, whether an edit of a rule file
+    needs a revision bump (`unbumped`), and whether `config-changed`
+    covers rule files.
 - **`sinter patch`** — print the mechanical fixes of the findings as a
   diff for `git apply`, design notes section 11.10. Sinter itself
   writes no file.

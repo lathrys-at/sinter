@@ -1264,7 +1264,7 @@ Every kind belongs to exactly one **category**. `kind(x)` accepts either.
 | `law` | `rule` `gate` | yes (manifest) | a rule's origin is a `cites` edge with the rule as `src` |
 | `ack` | `ack` | yes | live or void |
 | `ledger` | `claim` `decline` | no | projections of the ledger: a claim of another branch's approved plan (§13.5); a live refusal bound to an extent hash |
-| `hunk` | `hunk` | yes | diff mode only; one per hunk of `git diff B`, new-side coordinates |
+| `hunk` | `hunk` | yes | one per hunk of `git diff B`, new-side coordinates |
 | `tombstone` | `tombstone` | yes (base coordinates) | a fact present in `B`'s index and absent from `T`'s; carries the old `id`, `kind`, and extent hash |
 | `finding` | `finding` | yes (its subject's) | derived; class and subject define identity |
 
@@ -1738,7 +1738,7 @@ Duplicate promissory tags within one step collapse to a single promise fact.
 | `void` | string | *derived*: `hash` or `target`; omitted when live |
 | `for` | string | *derived*: id of the finding accepted, or the rule, when live |
 
-**`hunk`** (diff mode; new-side coordinates; a pure deletion has `line = eline = ` the line after the deletion and `added = 0`)
+**`hunk`** (new-side coordinates; a pure deletion has `line = eline = ` the line after the deletion and `added = 0`)
 
 | field | type | meaning |
 |---|---|---|

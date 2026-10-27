@@ -61,7 +61,7 @@ kind or a category.
 | `config` | `rule` `gate` `setting` | see below |
 | `ack` | `ack` | yes |
 | `ledger` | `claim` `decline` | no |
-| `hunk` | `hunk` | yes; diff mode only |
+| `hunk` | `hunk` | yes |
 | `tombstone` | `tombstone` | yes (base coordinates) |
 | `finding` | `finding` | yes (its subject's location) |
 

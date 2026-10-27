@@ -389,6 +389,10 @@ the repository is unlocated.
 | `default` | bool | `true` when the manifest does not write the key, and the fact holds the default value |
 | `builtin` | bool | `true` when the fact is a built-in member |
 
+`config-changed` uses the ids of gate facts and of setting facts as
+the subjects of its findings ([manifest.md](manifest.md) section 14.4).
+`sinter scan` does not print `gate` records and `setting` records yet.
+
 **`ack`**
 
 | field | type | meaning |
@@ -400,11 +404,11 @@ the repository is unlocated.
 | `void` | string | *derived*: `hash` or `target`, naming the failed condition ([vocabulary.md](vocabulary.md) section 7.4); omitted when live |
 | `for` | string | *derived*: id of the finding accepted, or of the rule, when live |
 
-**`hunk`** — diff mode only; one hunk of the diff
-([algebra.md](algebra.md) section 8.1), in new-side coordinates. A
-pure deletion has `line = eline =` the line after the deletion, and
-`added = 0`. A hunk has `col = 1`, and `ecol` is the end of its last
-line. A hunk with `added = 0` holds no line, and has `ecol = 1`.
+**`hunk`** — one hunk of the diff ([algebra.md](algebra.md) section
+8.1), in new-side coordinates. A pure deletion has `line = eline =`
+the line after the deletion, and `added = 0`. A hunk has `col = 1`,
+and `ecol` is the end of its last line. A hunk with `added = 0` holds
+no line, and has `ecol = 1`.
 
 Each of these files gives one hunk:
 
@@ -431,6 +435,10 @@ Each of these files gives one hunk:
 | `of` | string | the kind of the vanished fact |
 | `was` | string | its id at the base |
 | `slug` `rev` `xh` | | for declarations, so that a tool can compute renames |
+
+Hunk facts and tombstone facts exist in every run that reads the base
+([manifest.md](manifest.md) section 6). `sinter scan` does not print
+`hunk` records and `tombstone` records yet.
 
 ## 8. Finding records
 
