@@ -136,7 +136,7 @@ When the result is empty, the record omits `desc`.
 Example:
 
 ```json
-{"approval":"s-41","approval_required":true,"approved":true,"col":1,"desc":"Five consecutive failures within ten minutes freeze the account.","ecol":21,"eline":13,"id":"req:auth-lockout","inforce":true,"kind":"req","line":13,"pack":"markdown","path":"docs/auth.md","rev":2,"slug":"auth-lockout","title":"Lock account after 5 failed attempts","v":1,"xeline":29,"xh":"9f3a…","xline":12}
+{"approval":"e-3f9a1c0b7d42","approval_required":true,"approved":true,"col":1,"desc":"Five consecutive failures within ten minutes freeze the account.","ecol":21,"eline":13,"id":"req:auth-lockout","inforce":true,"kind":"req","line":13,"pack":"markdown","path":"docs/auth.md","rev":2,"slug":"auth-lockout","title":"Lock account after 5 failed attempts","v":1,"xeline":29,"xh":"9f3a…","xline":12}
 ```
 
 **`plan`**
@@ -389,6 +389,10 @@ the repository is unlocated.
 | `default` | bool | `true` when the manifest does not write the key, and the fact holds the default value |
 | `builtin` | bool | `true` when the fact is a built-in member |
 
+`config-changed` uses the ids of gate facts and of setting facts as
+the subjects of its findings ([manifest.md](manifest.md) section 14.4).
+`sinter scan` does not print `gate` records and `setting` records yet.
+
 **`ack`**
 
 | field | type | meaning |
@@ -400,8 +404,23 @@ the repository is unlocated.
 | `void` | string | *derived*: `hash` or `target`, naming the failed condition ([vocabulary.md](vocabulary.md) section 7.4); omitted when live |
 | `for` | string | *derived*: id of the finding accepted, or of the rule, when live |
 
-**`hunk`** — diff mode only; new-side coordinates. A pure deletion has
-`line = eline =` the line after the deletion, and `added = 0`.
+**`hunk`** — one hunk of the diff ([algebra.md](algebra.md) section
+8.1), in new-side coordinates. A pure deletion has `line = eline =`
+the line after the deletion, and `added = 0`. A hunk has `col = 1`,
+and `ecol` is the end of its last line. A hunk with `added = 0` holds
+no line, and has `ecol = 1`.
+
+Each of these files gives one hunk:
+
+- An added text file of `n` lines gives one hunk over the lines 1 to
+  `n`, with `added = n`. An added empty file gives `hunk:<path>:1-1`,
+  with `added = 0`.
+- A deleted text file, which only the base holds, gives
+  `hunk:<path>:1-1`, with `added = 0` and `removed = n`, where `n` is
+  its number of lines in the base.
+- A binary file, a file that git takes as binary, gives one hunk at
+  line 1, with `added = 0` and `removed = 0`. This holds when the file
+  is added, deleted, or changed.
 
 | field | type | meaning |
 |---|---|---|
@@ -416,6 +435,10 @@ the repository is unlocated.
 | `of` | string | the kind of the vanished fact |
 | `was` | string | its id at the base |
 | `slug` `rev` `xh` | | for declarations, so that a tool can compute renames |
+
+Hunk facts and tombstone facts exist in every run that reads the base
+([manifest.md](manifest.md) section 6). `sinter scan` does not print
+`hunk` records and `tombstone` records yet.
 
 ## 8. Finding records
 
@@ -433,7 +456,7 @@ the position that [manifest.md](manifest.md) section 14.4 gives.
 | `ackable` | bool | whether a live `@ack` can accept this finding ([algebra.md](algebra.md) section 9, column `A`). For a class that the column marks `A*`, the value depends on the finding |
 | `acked` | bool | present only when acked findings are requested |
 | `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3); present only when the command runs with `--gate` |
-| `mode` | string | `tree` or `diff` |
+| `mode` | string | the mode of the run, as in the `index` record (section 10). A finding of a class that compares with the base ([algebra.md](algebra.md) section 8.2) has `tree` in a run of tree mode |
 
 ## 9. Identity
 
@@ -477,6 +500,10 @@ path can contain `@`.
 | a line | `line:<path>@L<line>` | `typo-tag` and `ignored-tag`, at the tag line; `duplicate` of a step, at the line of the step's heading |
 | a tag | `tag:<path>@L<line>C<column>`, from the position of the `@` of the tag | `invalid-target`; `misplaced-plan`; `duplicate` of a declaration or a plan |
 
+Diff mode moves each position in an id of the base through the hunks
+of the diff before it compares ids ([algebra.md](algebra.md) section
+8.2).
+
 An id that is not positional is stable under re-indentation,
 reformatting, line shifts, and re-pinning. It changes under a slug
 rename (rename is deletion plus declaration), under moving a site to a
@@ -498,7 +525,7 @@ excludes it.
 | `evidence` | bool | whether evidence exists for `tree` |
 | `packs` | array of string | `name@version#hash` for each fetched pack, as the lock file `sinter.lock` fixes it. The built-in pack `markdown` is not in the lock file and has no entry |
 | `tool` | string | tool version |
-| `mode` | string | `tree` or `diff` |
+| `mode` | string | the mode of the run: `diff` for `sinter check --diff`, and `tree` for every other run |
 
 **`summary`** — the first line of `status --json`. The finding counts
 use the tiers of the `turn` gate.

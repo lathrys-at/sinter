@@ -553,18 +553,18 @@ USAGE
 MODES
   (default)         Tree mode: every finding on the working tree, pre-existing
                     debt included. Diff-relative classes (unbumped, unplanned-
-                    change, law-touched, code-drift, renamed) are computed
-                    against --base and reported too.
+                    change, config-changed, code-drift, renamed, promise-
+                    collision) are computed against --base and reported too.
   --diff            Diff mode: only findings the diff introduced — those whose
                     identity (sinter scan --help, "Finding identity") is absent
                     from the finding set of the base tree.
 
 SELECTION
   <class>...        Restrict to these finding classes
-  --gate <g>        Tier configuration to apply: turn | pr | main. Without it,
-                    everything is reported and nothing is 'block' for the exit
-                    code unless --strict. Classes at tier 'off' for the gate
-                    are not evaluated.
+  --gate <g>        Tier configuration to apply: turn | review | merged.
+                    Without it, everything is reported and nothing is 'block'
+                    for the exit code unless --strict. Classes at tier 'off'
+                    for the gate are not evaluated.
   --path <glob>     Only findings located under <glob>; repeatable
   --plan <slug>     Only findings located within a plan's scope
   --strict          Treat 'warn' as 'block' for the exit code
@@ -586,7 +586,7 @@ EXAMPLES
   sinter check --diff --gate turn
   sinter check dangling suspect --path 'src/auth/**'
   sinter check --diff --sarif > sinter.sarif
-  sinter check --summary --gate pr
+  sinter check --summary --gate review
 ```
 
 ### 11.4 `sinter query`
@@ -1264,7 +1264,7 @@ Every kind belongs to exactly one **category**. `kind(x)` accepts either.
 | `law` | `rule` `gate` | yes (manifest) | a rule's origin is a `cites` edge with the rule as `src` |
 | `ack` | `ack` | yes | live or void |
 | `ledger` | `claim` `decline` | no | projections of the ledger: a claim of another branch's approved plan (§13.5); a live refusal bound to an extent hash |
-| `hunk` | `hunk` | yes | diff mode only; one per hunk of `git diff B`, new-side coordinates |
+| `hunk` | `hunk` | yes | one per hunk of `git diff B`, new-side coordinates |
 | `tombstone` | `tombstone` | yes (base coordinates) | a fact present in `B`'s index and absent from `T`'s; carries the old `id`, `kind`, and extent hash |
 | `finding` | `finding` | yes (its subject's) | derived; class and subject define identity |
 
@@ -1418,7 +1418,7 @@ Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameter
 
 ### 12.7 `changed(base)` and diff mode
 
-`changed(b)` is the fact set touched by `git diff b` against the working tree (untracked files count as wholly added). "Touched" is defined per category, because the naive definition — extent intersects a hunk — is wrong for declarations in both directions (an `@ack` line added inside a section is not a change of meaning; a section deleted wholesale leaves nothing to intersect):
+`changed(b)` is the fact set touched by `git diff b` against the working tree. The diff compares each file of the working tree that git does not ignore with its blob in the base, whether git tracks the file or not, and a file that the base does not hold is wholly added ([spec/algebra.md](../spec/algebra.md) section 8.1). "Touched" is defined per category, because the naive definition — extent intersects a hunk — is wrong for declarations in both directions (an `@ack` line added inside a section is not a change of meaning; a section deleted wholesale leaves nothing to intersect):
 
 | category | `f ∈ changed(b)` iff |
 |---|---|
@@ -1432,7 +1432,7 @@ Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameter
 
 `b` may be `base` (the `--base` value) or a git revision. Evaluating `changed(x)` for an `x` other than the base requires a second index for `x`, built and cached on demand.
 
-**Diff mode** (`check --diff`) is **baseline subtraction**: `check --diff` reports `F(T) - F(b)` where `F(x)` is the finding set of tree `x` and subtraction is by finding identity (§13.6). `F(b)` is evaluated on the base tree read straight from git objects — no checkout — with the same ledger and an **empty evidence set**: evidence-ladder findings at the base are all `never-ran`, so a pre-existing `unexercised` test surfaces as introduced on the first PR that measures it, a one-time cost of first light, accepted. A finding that existed at the base and still exists is debt, not a violation; a finding absent at the base is what this diff introduced. This subsumes the intersection rule for every class where it was right and repairs it for `dangling` and `retired`, where the introduced finding sits on a line the diff never touched. Diff-relative classes — `unbumped`, `unplanned-change`, `law-touched`, `code-drift`, `renamed` — have `F(b) = ∅` by construction and appear in both modes.
+**Diff mode** (`check --diff`) is **baseline subtraction**: `check --diff` reports `F(T) - F(b)` where `F(x)` is the finding set of tree `x` and subtraction is by finding identity (§13.6). `F(b)` is evaluated on the base tree read straight from git objects — no checkout — with the same ledger and an **empty evidence set**: evidence-ladder findings at the base are all `never-ran`, so a pre-existing `unexercised` test surfaces as introduced on the first PR that measures it, a one-time cost of first light, accepted. A finding that existed at the base and still exists is debt, not a violation; a finding absent at the base is what this diff introduced. This subsumes the intersection rule for every class where it was right and repairs it for `dangling` and `retired`, where the introduced finding sits on a line the diff never touched. Diff-relative classes — `unbumped`, `unplanned-change`, `config-changed`, `code-drift`, `renamed`, `promise-collision` — have `F(b) = ∅` by construction and appear in both modes.
 
 ### 12.8 Built-in finding definitions
 
@@ -1565,7 +1565,7 @@ Fields marked *derived* below are computed from the ledger, evidence, session, o
 | `declined` | bool | *derived*: a live decline exists for `(slug, xh)` |
 
 ```json
-{"approval":"s-41","approved":true,"col":1,"desc":"Five consecutive failures within ten minutes freeze the account.","ecol":21,"eline":13,"gated":true,"id":"req:auth-lockout","inforce":true,"kind":"req","line":13,"pack":"markdown","path":"docs/auth.md","rev":2,"slug":"auth-lockout","title":"Lock account after 5 failed attempts","v":1,"xeline":29,"xh":"9f3a…","xline":12}
+{"approval":"e-3f9a1c0b7d42","approved":true,"col":1,"desc":"Five consecutive failures within ten minutes freeze the account.","ecol":21,"eline":13,"gated":true,"id":"req:auth-lockout","inforce":true,"kind":"req","line":13,"pack":"markdown","path":"docs/auth.md","rev":2,"slug":"auth-lockout","title":"Lock account after 5 failed attempts","v":1,"xeline":29,"xh":"9f3a…","xline":12}
 ```
 
 **`plan`**
@@ -1577,7 +1577,7 @@ Fields marked *derived* below are computed from the ledger, evidence, session, o
 | `approved` | bool | *derived*: current commitment set approved against the last approval (§13.7) |
 | `approval` | string | *derived* |
 | `active` | bool | *derived* from session |
-| `live` | bool | *derived*: no `completed` or `abandoned` ledger entry for the plan (§6.3); its in-force state |
+| `open` | bool | *derived*: no `completed` or `abandoned` ledger entry for the plan (§6.3); its in-force state |
 | `csh` | string | commitment-set hash: SHA-256 over a canonical, step-name-free form — sorted `(word, target, effective step scope)` triples plus the plan scope — so free renames leave it unchanged and a `decline` bound to it survives them |
 | `declined` | bool | *derived* |
 
@@ -1738,7 +1738,7 @@ Duplicate promissory tags within one step collapse to a single promise fact.
 | `void` | string | *derived*: `hash` or `target`; omitted when live |
 | `for` | string | *derived*: id of the finding accepted, or the rule, when live |
 
-**`hunk`** (diff mode; new-side coordinates; a pure deletion has `line = eline = ` the line after the deletion and `added = 0`)
+**`hunk`** (new-side coordinates; a pure deletion has `line = eline = ` the line after the deletion and `added = 0`)
 
 | field | type | meaning |
 |---|---|---|
