@@ -112,3 +112,39 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
   writes, checked against the facts; only a bump of a declaration can
   write any higher revision. A check of the shape alone would let any
   retarget of a citation pass without a plan step.
+
+## Check a diff
+
+- The diff is way C4 of the research: a copy of the index with the
+  assume-unchanged and skip-worktree flags cleared, `git add -N` of
+  the untracked files, and `git diff` with a temporary object folder
+  that holds the empty blob. Git still sets the time of
+  `.git/sharedindex.<id>` in a repository with a split index, because
+  every read of a split index does so, the old reads included. The
+  reads of the index pass `-c core.fsmonitor=false`, because with
+  `core.fsmonitor=true` they started the monitor daemon in `.git`.
+- A file that the diff finds binary has one hunk with no lines, so
+  each position of the base in it, or in a deleted file, has no place
+  in the working tree. Diff mode reports the findings of such a file
+  again.
+- `unbumped` compares a declaration with every declaration of the
+  base that has its slug. It is unchanged when one of them has its
+  kind and its extent hash. With two declarations of the slug at the
+  base, this departs from the wording of `changed` in algebra section
+  8.1. It is bumped when one has a lower revision, as `bumped` reads.
+  The fix takes the highest revision plus 1.
+- `renamed` needs exactly one tombstone of a declaration with the slug
+  of the edge. Two tombstones of one slug leave the edge `dangling`.
+- Tree mode first read the whole base into a second set of facts. On
+  the tree of 10,000 declarations, the peak memory of check rose from
+  66.7 to 85.3 MiB on macOS. A file whose document the base reuses has
+  the same facts in both trees, so tree mode now builds facts only for
+  the files that differ, and the git part of the base read runs before
+  the parse. The peak fell to 71.3 MiB. In tree mode, those facts
+  count in the phase `findings`: their size follows the number of
+  changed files, not the size of the tree, and as a phase of their
+  own they failed the growth limit (19.1). `base-facts` and
+  `base-findings` are phases of `check --diff`, where they hold the
+  whole base.
+- `bench/budgets.toml` gives `check-diff` a growth limit only. Its
+  memory number waits for the first measure of the CI job on Linux.
