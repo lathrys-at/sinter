@@ -1,0 +1,12 @@
+notes/ack.md:3:1: retired cites:site:notes/ack.md#ack->gone decision:gone is superseded by decision:next
+  fix: @cites next v2
+notes/cites-pin.md:3:1: unplanned-change hunk:notes/cites-pin.md:3-3 no step of an open plan, no rule, and no exempt path covers notes/cites-pin.md
+notes/description.md:3:1: unplanned-change hunk:notes/description.md:3-3 no step of an open plan, no rule, and no exempt path covers notes/description.md
+notes/mixed.md:3:1: unplanned-change hunk:notes/mixed.md:3-4 no step of an open plan, no rule, and no exempt path covers notes/mixed.md
+notes/moved.md:3:1: unplanned-change hunk:notes/moved.md:3-3 no step of an open plan, no rule, and no exempt path covers notes/moved.md
+notes/task.md:3:1: unplanned-change hunk:notes/task.md:3-3 no step of an open plan, no rule, and no exempt path covers notes/task.md
+notes/wrong-pin.md:3:1: unplanned-change hunk:notes/wrong-pin.md:3-3 no step of an open plan, no rule, and no exempt path covers notes/wrong-pin.md
+notes/wrong-target.md:3:1: retired cites:site:notes/wrong-target.md#wrong-target->gone decision:gone is superseded by decision:next
+  fix: @cites next v2
+notes/wrong-target.md:3:1: unplanned-change hunk:notes/wrong-target.md:3-3 no step of an open plan, no rule, and no exempt path covers notes/wrong-target.md
+spec/new.md:3:1: untraced req:new nothing satisfies it, and nothing verifies it

@@ -146,7 +146,13 @@ let compare_with_base ?phases ~mode (tree : Scan.tree)
               ~base:base_findings findings)
   in
   Allocation.measure phases "findings" (fun () ->
-      Adjudicator.classes ~same ~base facts findings)
+      Adjudicator.classes ~same ~base facts
+        (findings
+        @ Unplanned.findings ~same ~base
+            ~manifest:
+              (if Filename.is_relative tree.location then Some tree.location
+               else None)
+            facts compared.diff))
 
 let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool () =
   let* tree, compared =

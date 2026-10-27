@@ -1,5 +1,13 @@
+docs/spec.md:1:1: block unplanned-change hunk:docs/spec.md:1-1 no step of an open plan, no rule, and no exempt path covers docs/spec.md
+docs/spec.md:3:1: block unplanned-change hunk:docs/spec.md:3-3 no step of an open plan, no rule, and no exempt path covers docs/spec.md
 docs/spec.md:5:1: block unbumped req:a the extent differs from the base, and the revision is not above v1
   fix: @req a v2
+docs/spec.md:5:1: block unplanned-change hunk:docs/spec.md:5-5 no step of an open plan, no rule, and no exempt path covers docs/spec.md
+docs/spec.md:7:1: block unplanned-change hunk:docs/spec.md:7-7 no step of an open plan, no rule, and no exempt path covers docs/spec.md
+docs/spec.md:9:1: block unplanned-change hunk:docs/spec.md:9-9 no step of an open plan, no rule, and no exempt path covers docs/spec.md
+docs/spec.md:11:1: block unplanned-change hunk:docs/spec.md:11-11 no step of an open plan, no rule, and no exempt path covers docs/spec.md
 docs/spec.md:13:1: block unbumped design:c the base declares req:c v1, and a change of kind needs a higher revision
   fix: @design c v2
+docs/spec.md:13:1: block unplanned-change hunk:docs/spec.md:13-13 no step of an open plan, no rule, and no exempt path covers docs/spec.md
 docs/spec.md:13:1: warn untraced design:c nothing satisfies it, and nothing verifies it
+docs/spec.md:15:1: block unplanned-change hunk:docs/spec.md:15-15 no step of an open plan, no rule, and no exempt path covers docs/spec.md

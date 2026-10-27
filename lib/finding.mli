@@ -5,7 +5,9 @@
 
 type place = { path : string; span : Markdown.span }
 (** A piece of one file of the working tree. [path] is relative to the
-    repository root. *)
+    repository root. The place of a finding about a hunk of the diff is in the
+    file of the hunk: the working tree can lack that file, and the place can
+    start on the line after the last line of the file. *)
 
 (** What a finding is about: a fact, or a file, a line, or a tag that is no
     fact. *)
