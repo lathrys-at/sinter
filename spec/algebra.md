@@ -41,7 +41,10 @@ a least fixpoint of a monotone function, so every closure terminates.
 `U` is a function of `(T, B, L, E, S)`. Two evaluations with the same
 five inputs see the same universe and produce the same output bytes.
 The algebra has no access to time, to the environment, or to the
-network.
+network. The tool sets `GIT_NO_LAZY_FETCH=1` in the environment of
+every git child process. So in a **partial clone**, a clone that
+leaves out some objects, git reports a missing object as an error and
+never downloads it.
 
 ## 3. Kinds and categories
 

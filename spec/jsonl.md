@@ -448,7 +448,7 @@ the position that [manifest.md](manifest.md) section 14.4 gives.
 | `ackable` | bool | whether a live `@ack` can accept this finding ([algebra.md](algebra.md) section 9, column `A`). For a class that the column marks `A*`, the value depends on the finding |
 | `acked` | bool | present only when acked findings are requested |
 | `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3); present only when the command runs with `--gate` |
-| `mode` | string | `tree` or `diff` |
+| `mode` | string | the mode of the run, as in the `index` record (section 10). A finding of a class that compares with the base ([algebra.md](algebra.md) section 8.2) has `tree` in a run of tree mode |
 
 ## 9. Identity
 
@@ -517,7 +517,7 @@ excludes it.
 | `evidence` | bool | whether evidence exists for `tree` |
 | `packs` | array of string | `name@version#hash` for each fetched pack, as the lock file `sinter.lock` fixes it. The built-in pack `markdown` is not in the lock file and has no entry |
 | `tool` | string | tool version |
-| `mode` | string | `tree` or `diff` |
+| `mode` | string | the mode of the run: `diff` for `sinter check --diff`, and `tree` for every other run |
 
 **`summary`** — the first line of `status --json`. The finding counts
 use the tiers of the `turn` gate.

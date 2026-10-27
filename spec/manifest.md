@@ -327,6 +327,11 @@ writes the key only when the default branch is not `main`.
 The value must be a branch name: `refs/heads/<value>` must pass
 `git check-ref-format`, and the value must not start with `refs/`.
 
+Every run of `sinter check` and of `sinter scan` needs a base, in
+both modes of `sinter check` ([algebra.md](algebra.md) section 8).
+No mode runs without a base. When the command does not find the base,
+it stops with exit code 3 and a message that this section gives.
+
 A command that needs a base, and that has no `--base`, resolves the
 default branch to a commit. In the list below, `<branch>` is the value
 of `default-branch`. The command tries these refs in order, and it
