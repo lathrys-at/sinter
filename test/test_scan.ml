@@ -238,6 +238,37 @@ let a_head_with_no_common_ancestor_is_an_error () =
      --base"
     (failure (scan repo))
 
+let shallow repo revisions =
+  Git_fixture.write repo ".git/shallow"
+    (Git_fixture.git repo ("rev-parse" :: revisions))
+
+let a_shallow_clone_with_no_target_branch_is_an_error () =
+  let repo =
+    repository [ ("sinter.toml", "target = \"trunk\"\n\n" ^ manifest) ]
+  in
+  shallow repo [ "HEAD" ];
+  Alcotest.(check string)
+    "the message"
+    "this clone is shallow, so the merge base of HEAD and the branch 'trunk' \
+     is not here; fetch the whole history with git fetch --unshallow origin \
+     trunk:refs/remotes/origin/trunk"
+    (failure (scan repo))
+
+let a_shallow_clone_with_no_merge_base_is_an_error () =
+  let repo = repository [ ("sinter.toml", manifest) ] in
+  ignore (Git_fixture.git repo [ "checkout"; "-q"; "-b"; "work" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "--allow-empty"; "-m"; "w" ]);
+  ignore (Git_fixture.git repo [ "checkout"; "-q"; "main" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "--allow-empty"; "-m"; "m" ]);
+  ignore (Git_fixture.git repo [ "checkout"; "-q"; "work" ]);
+  shallow repo [ "main"; "work" ];
+  Alcotest.(check string)
+    "the message"
+    "this clone is shallow, so the merge base of HEAD and the branch 'main' is \
+     not here; fetch the whole history with git fetch --unshallow origin \
+     main:refs/remotes/origin/main"
+    (failure (scan repo))
+
 let a_file_that_does_not_read_is_an_error () =
   let repo = repository [ ("sinter.toml", manifest); ("a.md", "# A\n") ] in
   let path = Filename.concat (Git_fixture.root repo) "a.md" in
@@ -394,12 +425,18 @@ let each_error_says_what_is_wrong () =
       ];
       [ "the base 'nope' names no commit" ];
       [
-        "no branch 'trunk' exists here or on origin; set 'target' in \
-         sinter.toml";
+        "no branch 'trunk' exists here or on origin; fetch it with git fetch \
+         origin trunk:refs/remotes/origin/trunk, or set 'target' in \
+         sinter.toml to the name of the main branch";
       ];
       [
         "HEAD and the branch 'main' have no common ancestor; name a base with \
          --base";
+      ];
+      [
+        "this clone is shallow, so the merge base of HEAD and the branch \
+         'trunk' is not here; fetch the whole history with git fetch \
+         --unshallow origin trunk:refs/remotes/origin/trunk";
       ];
       [ "HEAD names no commit; make a commit, or name a base with --base" ];
       [ "a.md: the file does not open" ];
@@ -442,6 +479,7 @@ let each_error_says_what_is_wrong () =
          Scan.Bad_base "nope";
          Scan.Target_not_found "trunk";
          Scan.No_merge_base "main";
+         Scan.Shallow_clone "trunk";
          Scan.No_head;
          Scan.Unreadable_file
            {
@@ -483,6 +521,10 @@ let tests =
     case "a HEAD with no commit is an error" a_head_with_no_commit_is_an_error;
     case "a HEAD with no common ancestor is an error"
       a_head_with_no_common_ancestor_is_an_error;
+    case "a shallow clone with no target branch is an error"
+      a_shallow_clone_with_no_target_branch_is_an_error;
+    case "a shallow clone with no merge base is an error"
+      a_shallow_clone_with_no_merge_base_is_an_error;
     case "a file that does not read is an error"
       a_file_that_does_not_read_is_an_error;
     case "a byte outside UTF-8 shows as hex" a_byte_outside_utf_8_shows_as_hex;

@@ -15,6 +15,7 @@ let usage_error = Sinter_core.Exit_code.usage_error
 let environment_error = Sinter_core.Exit_code.environment_error
 let refused = Sinter_core.Exit_code.refused
 let clean_exit = Cmd.Exit.info ~doc:"on success, when no finding blocks." clean
+let success_exit = Cmd.Exit.info ~doc:"on success." clean
 
 let findings_exit =
   Cmd.Exit.info
@@ -32,7 +33,7 @@ let refused_exit = Cmd.Exit.info ~doc:"when the command refuses to act." refused
 let exits =
   [ clean_exit; findings_exit; usage_exit; environment_exit; refused_exit ]
 
-let parse_exits = [ clean_exit; usage_exit; environment_exit ]
+let parse_exits = [ success_exit; usage_exit; environment_exit ]
 
 let with_phases run =
   match Sys.getenv_opt Sinter_core.Allocation.variable with
@@ -125,7 +126,7 @@ let parse_cmd =
   in
   Cmd.v info Term.(ret (const run $ grammar $ query $ tree $ paths))
 
-let serve_exits = [ clean_exit; usage_exit; environment_exit ]
+let serve_exits = [ success_exit; usage_exit; environment_exit ]
 
 let serve_cmd =
   let doc = "Answer requests that arrive as JSON lines on standard input" in
@@ -197,7 +198,7 @@ let serve_cmd =
   in
   Cmd.v info Term.(const run $ const ())
 
-let scan_exits = [ clean_exit; usage_exit; environment_exit ]
+let scan_exits = [ success_exit; usage_exit; environment_exit ]
 
 let scan_cmd =
   let doc = "Print the facts of the repository as JSON lines" in
@@ -205,9 +206,9 @@ let scan_cmd =
     [
       `S Manpage.s_description;
       `P
-        "Read the git repository that holds the current folder, and print one \
-         fact per line, as canonical JSONL: an object with sorted keys, on one \
-         line, with no insignificant whitespace.";
+        "Read the current working tree, and print one fact per line, as \
+         canonical JSONL: an object with sorted keys, on one line, with no \
+         insignificant whitespace.";
       `P
         "The first line is the index record. It names the tree key of the \
          working tree, the base commit, the target branch, the manifest, and \
@@ -215,7 +216,7 @@ let scan_cmd =
          line, column, and id; the facts with no path come last, sorted by id.";
       `P
         "The command reads the manifest, and each file of the repository that \
-         the pack markdown reads. A file that git ignores, a symbolic link, a \
+         the markdown pack reads. A file that git ignores, a symbolic link, a \
          file inside a submodule, and a file whose path is not UTF-8 are not \
          read. Each warning goes to standard error.";
     ]
@@ -266,35 +267,41 @@ let check_cmd =
     [
       `S Manpage.s_description;
       `P
-        "Read the git repository that holds the current folder, as $(b,sinter \
-         scan) reads it, and report each finding: a place where the files of \
-         the repository break a rule of Sinter. Print one finding per line:";
+        "Check the current working tree, and report each problem that Sinter \
+         finds in it. Sinter calls such a problem a finding: for example, a \
+         tag that names a spec that does not exist, or a test that checks an \
+         old version of a spec.";
+      `P "Each finding prints as one line:";
       `Pre "  PATH:LINE:COLUMN: CLASS SUBJECT DETAIL";
       `P
-        "CLASS is the finding class, SUBJECT the id of what the finding is \
-         about, and DETAIL says more when the class has more to say. A line \
-         that starts with $(b,fix:) follows a finding whose class names a \
-         repair: the text to paste, or what to do. A finding with no place \
-         prints $(b,-:-:-:) for its place. The findings are sorted by path, \
-         line, column, and class.";
+        "PATH, LINE, and COLUMN say where the problem is. CLASS names the kind \
+         of problem, for example $(b,dangling) or $(b,suspect). SUBJECT names \
+         the tag or the item that has the problem. DETAIL explains the \
+         problem, when there is more to say. When Sinter knows how to repair a \
+         finding, the next line starts with $(b,fix:) and gives the text to \
+         paste or the thing to do. A finding that belongs to no one file \
+         starts with $(b,-:-:-:) instead of a place. The findings are sorted \
+         by file, line, column, and class.";
       `P
-        "With $(b,--gate), each finding takes the tier of its class at that \
-         gate, and the tier follows the place. A class whose tier is $(b,off), \
-         or that takes no tier at the gate, reports nothing. Without \
-         $(b,--gate), the command reports every finding, with no tier.";
+        "Each class of finding has a tier at each gate: $(b,off), $(b,warn), \
+         or $(b,block). Sinter gives every class a default tier, and the \
+         manifest can change it. With $(b,--gate), the command reports only \
+         the findings whose tier at that gate is $(b,warn) or $(b,block), and \
+         prints the tier after the place. Without $(b,--gate), the command \
+         reports every finding, and prints no tier.";
       `P
-        "In text form, the command names the base on standard error; with \
-         $(b,--json), the index record names it. Each warning goes to standard \
-         error.";
+        "Some checks compare the working tree with a base commit. The command \
+         prints the base on standard error, or, with $(b,--json), in the first \
+         record. Warnings also go to standard error.";
     ]
   in
   let exits_doc =
     [
       `S Manpage.s_exit_status;
       `P
-        "With $(b,--gate), a finding blocks when its tier at the gate is \
-         $(b,block). Without $(b,--gate), no finding blocks, unless \
-         $(b,--strict) is given.";
+        "A finding blocks when its tier at the gate is $(b,block). Without \
+         $(b,--gate), no finding blocks. With $(b,--strict), every finding \
+         that the command reports blocks.";
     ]
   in
   let info = Cmd.info "check" ~doc ~man:(man @ exits_doc) ~exits:check_exits in
@@ -314,9 +321,10 @@ let check_cmd =
   in
   let gate =
     let doc =
-      "The gate to check at: $(b,turn), at the end of a turn of an agent; \
-       $(b,merge), on a change before it merges into the target branch; or \
-       $(b,target), on the target branch after a merge."
+      "The point at which the check runs: $(b,turn), when an agent finishes a \
+       turn and hands back its work; $(b,merge), on a change before it merges \
+       into the target branch, for example on a pull request; or $(b,target), \
+       on the target branch after a merge."
     in
     let gates =
       List.map
@@ -328,14 +336,16 @@ let check_cmd =
   in
   let strict =
     let doc =
-      "Count every finding that the command reports as one that blocks."
+      "Exit with code 1 when the command reports any finding, not only one \
+       that blocks."
     in
     Arg.(value & flag & info [ "strict" ] ~doc)
   in
   let json =
     let doc =
-      "Print canonical JSONL instead of text: the index record first, as \
-       $(b,sinter scan) prints it, and then one record per finding."
+      "Print JSON instead of text, one object per line, in the form that \
+       $(b,sinter scan) uses. The first record describes the run, as the first \
+       line of $(b,sinter scan) does. Each record after it is one finding."
     in
     Arg.(value & flag & info [ "json" ] ~doc)
   in
@@ -370,8 +380,22 @@ let check_cmd =
   Cmd.v info Term.(const run $ manifest $ base $ gate $ strict $ json)
 
 let cmd =
-  let doc = "plans die into residue; residue is checked" in
-  let info = Cmd.info "sinter" ~version ~doc ~exits in
+  let doc = "a linter for keeping your specs, plans, and code in sync" in
+  let man =
+    [
+      `S Manpage.s_description;
+      `P
+        "Sinter reads the tags in your repository's files: specs, plans, \
+         decision records, and the code and tests that refer to them. It \
+         reports where they have drifted apart, for example a test that checks \
+         an old version of a spec, or a plan step whose promised work never \
+         showed up.";
+      `P
+        "To start, run $(b,sinter check) in your repository. Sinter reads its \
+         settings from $(i,sinter.toml) at the root.";
+    ]
+  in
+  let info = Cmd.info "sinter" ~version ~doc ~man ~exits in
   Cmd.group info
     ~default:Term.(ret (const (`Help (`Pager, None))))
     [ check_cmd; parse_cmd; scan_cmd; serve_cmd ]

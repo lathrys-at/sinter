@@ -274,7 +274,8 @@ sinter: sinter.toml:12:1: 'config-changed' takes no tier; it always reports and 
 sinter: sinter.toml:13:1: 'bad-scope' takes no tier at the gate 'target'
 sinter: sinter.toml:6:12: '.' is not in the id pattern language; put it in a class, for example [.]
 sinter: sinter.toml:6:12: the pattern matches an empty id
-sinter: no branch 'main' exists here or on origin; set 'target' in sinter.toml
+sinter: no branch 'main' exists here or on origin; fetch it with git fetch origin main:refs/remotes/origin/main, or set 'target' in sinter.toml to the name of the main branch
+sinter: this clone is shallow, so the merge base of HEAD and the branch 'main' is not here; fetch the whole history with git fetch --unshallow origin main:refs/remotes/origin/main
 sinter: src/a.ts is in the files of two packs, typescript and javascript; add a '!' glob to one of them
 sinter: .plans/auth.md is under .plans/, and the pack markdown does not read it; add ".plans/" to its files
 ```
@@ -333,11 +334,16 @@ first that exists:
 3. The remote branch `refs/remotes/origin/<branch>`.
 
 When none of the three exists, the command stops with exit code 3. The
-message says to set `target` in the manifest.
+message says to fetch the branch, or to set `target` in the manifest.
 
 The base of the diff is the merge base of `HEAD` and the commit of the
 target branch. When the two commits have no common ancestor, the
 command stops with exit code 3.
+
+When the repository is a shallow clone, and the target branch or the
+merge base is not found, the command stops with exit code 3. The
+message says that the clone is shallow, and says to fetch the whole
+history.
 
 The plain output of `sinter status` and of `sinter check` names the
 base that the command used: the ref that resolved, and the commit of
