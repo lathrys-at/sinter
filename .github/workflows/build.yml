@@ -27,6 +27,8 @@ jobs:
     runs-on: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: Name the runner image
         id: image
         run: |
@@ -88,6 +90,17 @@ jobs:
         run: git diff --exit-code -- sinter.opam
       - name: Test
         run: dune test
+      - name: Check Sinter with Sinter
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set -eu
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            gate=merge
+          else
+            gate=target
+          fi
+          echo "The gate is $gate."
+          dune exec -- sinter check --gate "$gate"
 
   format:
     name: Check formatting

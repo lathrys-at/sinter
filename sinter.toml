@@ -1,0 +1,29 @@
+spec = "1.0"
+
+[scan]
+packs.markdown.files = ["**/*.md", "!test/**"]
+refs.gh = "[1-9][0-9]*"
+
+[check]
+rollout-cap = false
+
+[plan]
+ambient = [
+  "bridge/Cargo.lock",
+  "sinter.opam",
+  "sinter.opam.locked",
+]
+shared = [
+  ".gitignore",
+  ".ocamlformat",
+  "DCO",
+  "LICENSE",
+  "LICENSE-SPEC",
+  "LICENSES/",
+  "NOTICE",
+  "REUSE.toml",
+  "THIRD_PARTY.md",
+  "bridge/Cargo.toml",
+  "dune-project",
+]
+locations.decision = ["docs/decisions/"]
