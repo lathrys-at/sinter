@@ -542,7 +542,7 @@ this file.
 - End the message with the trailers of
   `docs/decisions/commit-messages.md`, before the sign-off: one
   `Step:`, `Record:`, or `Issue:` line that names what allows the
-  change, and one `Discharges:` line for each promise of the step
+  change, and one `Meets:` line for each promise of the step
   that the commit carries out.
 - Do not commit build output. `.gitignore` covers `_build/`.
 

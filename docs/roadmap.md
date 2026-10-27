@@ -47,7 +47,7 @@
   step of `sinter-v0.1` would name the plan `readable-output`. Not
   designed.
 - **Commit trailers** — read the `Step:`, `Record:`, `Issue:`, and
-  `Discharges:` trailers of the commits on a branch (record
+  `Meets:` trailers of the commits on a branch (record
   `commit-messages`) and check them against the plan and the diff.
   Not designed.
 - **jj repositories without `.git`** — support a jj repository that
