@@ -11,19 +11,12 @@ let read path =
 let list name =
   read name |> String.split_on_char '\n' |> List.filter (fun line -> line <> "")
 
-let toml_1_0 = lazy (list "files-toml-1.0.0")
-
-let only_toml_1_1 =
-  lazy
-    (let earlier = Lazy.force toml_1_0 in
-     List.filter
-       (fun path -> not (List.mem path earlier))
-       (list "files-toml-1.1.0"))
+let toml_1_1 = lazy (list "files-toml-1.1.0")
 
 let is_case prefix path =
   String.starts_with ~prefix path && Filename.check_suffix path ".toml"
 
-let needs_toml_1_1 =
+let valid_only_in_toml_1_1 =
   [
     "valid/datetime/no-seconds.toml";
     "valid/inline-table/newline.toml";
@@ -35,6 +28,19 @@ let needs_toml_1_1 =
     "valid/spec-1.1.0/common-47.toml";
     "valid/string/escape-esc.toml";
     "valid/string/hex-escape.toml";
+  ]
+
+let invalid_only_in_toml_1_0 =
+  [
+    "invalid/datetime/no-secs.toml";
+    "invalid/inline-table/linebreak-01.toml";
+    "invalid/inline-table/linebreak-02.toml";
+    "invalid/inline-table/linebreak-03.toml";
+    "invalid/inline-table/linebreak-04.toml";
+    "invalid/inline-table/trailing-comma.toml";
+    "invalid/local-datetime/no-secs.toml";
+    "invalid/local-time/no-secs.toml";
+    "invalid/string/basic-byte-escapes.toml";
   ]
 
 let typed kind text = `Assoc [ ("type", `String kind); ("value", `String text) ]
@@ -259,26 +265,43 @@ let check_all paths check () =
   | [] -> ()
   | failures -> Alcotest.fail (String.concat "\n" failures)
 
+let is_accepted path =
+  match Toml.parse (read path) with
+  | Ok _ -> None
+  | Error error ->
+      Some (Printf.sprintf "%s: rejected: %s" path (Toml.error_message error))
+
 let every_valid_case_decodes_to_its_json () =
-  let paths = List.filter (is_case "valid/") (Lazy.force toml_1_0) in
-  Alcotest.(check int) "the number of valid cases" 205 (List.length paths);
+  let paths = List.filter (is_case "valid/") (Lazy.force toml_1_1) in
+  Alcotest.(check int) "the number of valid cases" 214 (List.length paths);
   check_all paths decodes_to_its_json ()
 
 let every_invalid_case_is_rejected_with_a_known_message () =
-  let paths = List.filter (is_case "invalid/") (Lazy.force toml_1_0) in
-  Alcotest.(check int) "the number of invalid cases" 474 (List.length paths);
+  let paths = List.filter (is_case "invalid/") (Lazy.force toml_1_1) in
+  Alcotest.(check int) "the number of invalid cases" 467 (List.length paths);
   check_all paths is_rejected_with_a_known_message ()
 
-let every_form_of_toml_1_1_is_rejected () =
-  let paths = List.filter (is_case "") (Lazy.force only_toml_1_1) in
-  Alcotest.(check int)
-    "the number of cases only TOML 1.1 lists" 67 (List.length paths);
-  check_all paths
-    (fun path ->
-      if List.mem path needs_toml_1_1 || is_case "invalid/" path then
-        is_rejected_with_a_known_message path
-      else decodes_to_its_json path)
-    ()
+let every_form_that_toml_1_1_adds_is_accepted () =
+  let toml_1_0 = list "files-toml-1.0.0" and toml_1_1 = Lazy.force toml_1_1 in
+  let only_in path_list other =
+    List.filter
+      (fun path -> is_case "" path && not (List.mem path other))
+      path_list
+  in
+  Alcotest.(check (list string))
+    "the valid cases that only TOML 1.1 lists, and that use a form of TOML 1.1"
+    valid_only_in_toml_1_1
+    (List.filter
+       (fun path -> List.mem path valid_only_in_toml_1_1)
+       (only_in toml_1_1 toml_1_0));
+  Alcotest.(check (list string))
+    "the invalid cases of TOML 1.0 that TOML 1.1 no longer lists"
+    invalid_only_in_toml_1_0
+    (List.filter
+       (fun path -> not (String.starts_with ~prefix:"invalid/spec-1.0.0/" path))
+       (List.filter (is_case "invalid/") (only_in toml_1_0 toml_1_1)));
+  check_all valid_only_in_toml_1_1 decodes_to_its_json ();
+  check_all invalid_only_in_toml_1_0 is_accepted ()
 
 let tests =
   [
@@ -286,6 +309,6 @@ let tests =
       every_valid_case_decodes_to_its_json;
     Alcotest.test_case "every invalid case is rejected with a known message"
       `Quick every_invalid_case_is_rejected_with_a_known_message;
-    Alcotest.test_case "every form of TOML 1.1 is rejected" `Quick
-      every_form_of_toml_1_1_is_rejected;
+    Alcotest.test_case "every form that TOML 1.1 adds is accepted" `Quick
+      every_form_that_toml_1_1_adds_is_accepted;
   ]

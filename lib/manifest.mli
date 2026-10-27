@@ -46,7 +46,7 @@ type expected =
 (** What is wrong at one place of the manifest. A key is named by its key path,
     the names from the top of the file down to the key. *)
 type problem =
-  | Syntax of Toml.error  (** the text is not a TOML 1.0.0 document *)
+  | Syntax of Toml.error  (** the text is not a TOML 1.1.0 document *)
   | Not_a_version of { key : string list; text : string }
       (** the string of [spec] or of a pack version is not of the form
           MAJOR.MINOR *)

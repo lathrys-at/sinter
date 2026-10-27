@@ -236,7 +236,7 @@ An instrumented build writes over `_build`. The next ordinary
 the Rust crate again: cargo builds outside `_build`, so it finds its
 work done.
 
-CI runs the same commands on `ubuntu-24.04` and fails below the
+CI runs the same commands on `ubuntu-26.04` and fails below the
 minimum that the `coverage` job sets. That job holds the number. A
 change does not lower the coverage.
 

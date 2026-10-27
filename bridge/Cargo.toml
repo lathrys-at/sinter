@@ -4,7 +4,7 @@
 [package]
 name = "sinter-bridge"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
 publish = false
 description = "The C interface that Sinter uses to load tree-sitter grammars from WebAssembly"
@@ -20,9 +20,9 @@ tree-sitter = { version = "0.26", features = ["wasm"] }
 # wasmtime: it adds the "cache" feature to the copy tree-sitter builds.
 wasmtime = { version = "36", default-features = false, features = ["cache", "cranelift", "runtime", "std"] }
 # @cites sha256
-sha2 = "=0.10.9"
+sha2 = "=0.11.1"
 # @cites toml-reader
-toml_edit = "=0.22.27"
+toml_edit = "=0.25.17"
 
 [profile.release]
 opt-level = 2

@@ -404,10 +404,10 @@ let a_syntax_error_reports_the_toml_reader () =
       | Error e -> Toml.error_message e
       | Ok _ -> "");
     ];
-  reports "a dotted key under a later header" "[a.b.c]\nz = 9\n[a]\nb.ct = 1\n"
+  reports "a dotted key under a later header" "[a.b.c]\nz = 9\n[a]\nb.c.x = 1\n"
     [
-      "sinter.toml:4:1: the dotted key 'b.ct' adds a key to the table 'a.b', \
-       which a table header made; write 'ct' under the header [a.b]";
+      "sinter.toml:4:1: the dotted key 'b.c.x' adds a key to the table \
+       'a.b.c', which a table header made; write 'x' under the header [a.b.c]";
     ]
 
 let spec_errors () =
@@ -948,6 +948,21 @@ let the_runners_key_can_follow_the_runner_tables () =
                  runner.settings ))
            (pack_runners (read text) "ts")))
     forms
+
+let a_dotted_key_can_add_a_key_to_a_table_above_a_header_table () =
+  let manifest =
+    read
+      "[scan.packs.ts.vitest]\n\
+       mode = \"run\"\n\
+       [scan]\n\
+       packs.ts.files = [\"a\"]\n\
+       packs.ts.version = \"1.0\"\n\
+       packs.ts.runners = [\"vitest\"]\n"
+  in
+  Alcotest.(check (list string))
+    "the runners of ts"
+    [ "vitest 6:21-6:29 mode@2:1=\"run\"" ]
+    (runners_of manifest "ts")
 
 let a_runner_can_take_the_name_of_another_place () =
   let manifest =
@@ -2097,6 +2112,8 @@ let tests =
     case "a pack with no runners has none" a_pack_with_no_runners_has_none;
     case "the runners key can follow the runner tables"
       the_runners_key_can_follow_the_runner_tables;
+    case "a dotted key can add a key to a table above a header table"
+      a_dotted_key_can_add_a_key_to_a_table_above_a_header_table;
     case "a runner can take the name of another place"
       a_runner_can_take_the_name_of_another_place;
     case "runner errors" runner_errors;

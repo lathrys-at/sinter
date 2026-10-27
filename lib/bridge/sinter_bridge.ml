@@ -705,7 +705,12 @@ module Toml_raw = struct
   and entry = { name : string; key_start : int; key_end : int; item : item }
 
   type error =
-    | Crate_error of { start_byte : int; end_byte : int; message : string }
+    | Crate_error of {
+        start_byte : int;
+        end_byte : int;
+        message : string;
+        path : string list option;
+      }
     | Header_table of {
         start_byte : int;
         end_byte : int;
@@ -808,13 +813,19 @@ module Toml_raw = struct
         let message, offset =
           read_string buffer offset ~what:"the message of a TOML error"
         in
-        (Crate_error { start_byte; end_byte; message }, offset)
+        (Crate_error { start_byte; end_byte; message; path = None }, offset)
     | 1 ->
         let key, offset = read_string buffer offset ~what:"a TOML key" in
         let table, offset = read_list buffer offset read_name in
         let array = read_flag buffer offset ~what:"the array flag" in
         let rest, offset = read_list buffer (offset + 4) read_name in
         (Header_table { start_byte; end_byte; key; table; array; rest }, offset)
+    | 2 ->
+        let message, offset =
+          read_string buffer offset ~what:"the message of a TOML error"
+        in
+        let path, offset = read_list buffer offset read_name in
+        (Crate_error { start_byte; end_byte; message; path = Some path }, offset)
     | other -> malformed (Printf.sprintf "a TOML error has the form %d" other)
 
   let decode ~length buffer =

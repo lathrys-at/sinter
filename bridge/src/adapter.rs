@@ -8,8 +8,8 @@
 use tree_sitter::wasmtime::{self, Engine, ExternType, Instance, Module, Store, Trap, ValType};
 
 use crate::failure::{
-    Failure, CALL_REPORT, CALL_REQUEST, CAUSE_EXPORT_TYPE, CAUSE_IMPORTS, CAUSE_MISSING_EXPORT,
-    CAUSE_NOT_A_MODULE,
+    CALL_REPORT, CALL_REQUEST, CAUSE_EXPORT_TYPE, CAUSE_IMPORTS, CAUSE_MISSING_EXPORT,
+    CAUSE_NOT_A_MODULE, Failure,
 };
 
 /// The most table elements that the instance of an adapter may hold,

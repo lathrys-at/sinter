@@ -235,13 +235,14 @@ record starts with a form, a u32, and a span, two u32 fields.
 
 | form | meaning | fields after the span |
 |---|---|---|
-| 0 | `toml_edit` stopped at the span | the message of `toml_edit`, u32 + bytes; it can hold more than one line |
+| 0 | `toml_edit` stopped at the span, and the text at the span is not one key | the message of `toml_edit`, u32 + bytes |
 | 1 | a dotted key at the span adds a key to a table that a table header made | the dotted key as the text writes it, u32 + bytes; the names of that table from the top level, a count and then that many strings; `1` when that table is the last table of an array of tables, else `0`, a u32; the names of the dotted key after that table, a count and then that many strings |
+| 2 | `toml_edit` stopped at the span, and the text at the span is one key | the message of `toml_edit`, u32 + bytes; the names of the dotted key that holds that key, decoded, from its first part to that key, a count and then that many strings |
 
-`toml_edit` reports form 1 as a duplicate key and names a key that is
-not one. The bridge finds the case: it reads the text before the
-dotted key again, finds the table that the last table header opened,
-and follows the dotted key from it.
+`toml_edit` reports form 1 as a duplicate key, at the span of one part
+of the dotted key. The bridge finds the case: it reads the text before
+the line of the dotted key again, finds the table that the last table
+header opened, and follows the dotted key from it.
 
 ### A failure, when kind is 5
 

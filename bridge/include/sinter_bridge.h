@@ -211,7 +211,7 @@ sinter_bridge_result *sinter_bridge_adapter_call(
    sinter_bridge_result_free frees it. */
 sinter_bridge_result *sinter_bridge_sha256(const uint8_t *data, size_t len);
 
-/* Read a TOML 1.0.0 document.
+/* Read a TOML 1.1.0 document.
 
    "text" points to "len" bytes of UTF-8 text; it may be NULL when
    "len" is 0. The bytes must stay readable until the call returns.
