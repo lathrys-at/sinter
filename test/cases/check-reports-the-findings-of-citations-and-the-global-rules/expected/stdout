@@ -5,8 +5,8 @@ docs/guide.md:4:1: unpinned satisfies:site:docs/guide.md#guide->store the @satis
 docs/guide.md:5:1: dangling cites:site:docs/guide.md#guide->Login no declaration has the slug Login
   fix: @cites login v2
 docs/guide.md:6:1: dangling cites:site:docs/guide.md#guide->nothing no declaration has the slug nothing
-docs/guide.md:7:1: disendorsed cites:site:docs/guide.md#guide->logout decision:logout is deprecated
-  fix: @ack disendorsed logout 34f77c51
-docs/guide.md:8:1: orphan verifies:site:docs/guide.md#guide->store a @verifies needs a test as its source
-docs/guide.md:9:1: orphan refines:site:docs/guide.md#guide->store a @refines needs a declaration that holds it
+docs/guide.md:7:1: retired cites:site:docs/guide.md#guide->logout decision:logout is deprecated
+  fix: @ack retired logout 34f77c51
+docs/guide.md:8:1: wrong-source verifies:site:docs/guide.md#guide->store a @verifies needs a test as its source
+docs/guide.md:9:1: wrong-source refines:site:docs/guide.md#guide->store a @refines needs a declaration that holds it
 docs/records.md:19:1: cycle decision:new-store with decision:old-store

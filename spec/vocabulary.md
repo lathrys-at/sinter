@@ -151,7 +151,7 @@ Slugs name declared items. There are three separate slug namespaces:
 Two declarations in one namespace are an error (finding class
 `duplicate`) when their slugs are equal, or when their slugs differ
 only in case. A slug that fails the pattern is an error (finding class
-`bad-target`).
+`invalid-target`).
 
 A citation whose tag target differs from a declared slug only in case
 does not resolve, so the citation is dangling (section 7.2). The `fix`
@@ -179,7 +179,7 @@ namespace declares ([manifest.md](manifest.md) section 8.3). Example:
 A ref is a pointer, not a declared item. It has no revision, no
 extent, and no approval. A ref whose namespace is not declared, or
 whose id fails the namespace's pattern, is an error (finding class
-`bad-target`).
+`invalid-target`).
 
 ## 5. Revisions
 
@@ -318,8 +318,8 @@ A declaration says: this text defines a thing.
 `@design` and `@req` differ in two ways only. They differ in purpose:
 a design item describes architecture between the requirements and the
 code. They also differ in the default strictness of their approval
-checks — see the finding classes `unratified-req` and
-`unratified-design` in [algebra.md](algebra.md) section 9. The kind
+checks — see the finding classes `unapproved-req` and
+`unapproved-design` in [algebra.md](algebra.md) section 9. The kind
 lives on the tag, not on a file path, so these documents can live
 anywhere in the repository.
 
@@ -366,19 +366,19 @@ same slug, the first heading keeps the slug. Each later heading adds
 anchors of headings. Example: `example`, `example-1`. Only a heading
 that opens a section counts (section 2).
 
-A citation is an **orphan** (finding class `orphan`) when its kind
-needs a certain source and the citation does not have one. A
-`@verifies` needs a test. A `@refines` or a `@supersedes` needs an
-enclosing declaration.
+A citation has the **wrong source** (finding class `wrong-source`)
+when its kind needs a certain source and the citation does not have
+one. A `@verifies` needs a test. A `@refines` or a `@supersedes` needs
+an enclosing declaration.
 
 A citation is **dangling** when its tag target is well formed and does
 not resolve: no declaration has the slug. A tag target that fails its
 pattern, or a ref whose namespace is not declared, is not dangling. It
-is the finding `bad-target` only (sections 4.1 and 4.2).
+is the finding `invalid-target` only (sections 4.1 and 4.2).
 
 A `@supersedes` edge whose source and tag target have different kinds
-is an error. A live `@supersedes` edge retires the declaration that
-its tag target names (section 8).
+is an error. An effective `@supersedes` edge retires the declaration
+that its tag target names (section 8).
 
 ### 7.3 Status tags
 
@@ -393,7 +393,7 @@ stand in that paragraph. There is no "done" status.
 | tag | applies to | meaning |
 |---|---|---|
 | `@deprecated` | `req`, `design`, `decision` | no longer applies; nothing replaces it |
-| `@rejected` | `decision` | considered and declined; the record stays |
+| `@rejected` | `decision` | considered and not chosen; the record stays |
 | `@deferred` | `decision` | not decided; the description says what would settle it |
 
 ### 7.4 Directives
@@ -408,7 +408,7 @@ that person read it. In the grammar, `<hash>` is the last token, and
 is one of:
 
 - a finding class, with an optional subject — for example
-  `disendorsed cache-ttl` or `disconnected`;
+  `retired cache-ttl` or `unexercised`;
 - a rule name — for example `ste-docs`.
 
 The **subject** of a finding is what the finding is about: a fact, or
@@ -430,7 +430,7 @@ An ack is **live** if and only if both conditions hold:
 
 1. The hash matches the block's current block hash.
 2. The tag target of the ack still names something in this block: a
-   finding of that class that accepts an ack, or an obligation of that
+   finding of that class that is ackable, or an obligation of that
    rule. When the ack gives a subject, the finding must also have that
    subject.
 
@@ -442,11 +442,11 @@ definition. An ack therefore cannot make itself void by removing the
 finding it names.
 
 When either condition fails, the ack is **void**. A void ack is itself
-a finding (`stale-ack`). Only some findings accept an ack. The
-finding-class table in [algebra.md](algebra.md) section 9 marks the
-classes whose findings accept one, and it states the condition when
-only some findings of a class accept one. An ack that names only
-findings that accept no ack is void by condition 2.
+a finding (`stale-ack`). Only some findings are **ackable**: a live
+ack can accept them. The finding-class table in [algebra.md](algebra.md)
+section 9 marks the classes whose findings are ackable, and it states
+the condition when only some findings of a class are ackable. An ack
+that names only findings that are not ackable is void by condition 2.
 
 **`@pin <ref>`** is deferred. A future version will use it to watch
 external content for changes. A person endorses the content's current
@@ -463,12 +463,12 @@ finding stays until a person endorses the new hash.
 
 ### 8.1 In force
 
-An item is **in force** if and only if it carries no status tag and one
-of two conditions holds: no live `@supersedes` edge points at it, or
-it sits on a cycle of `@supersedes` edges (below).
+An item is **in force** if and only if it carries no status tag and
+one of two conditions holds: no effective `@supersedes` edge points at
+it, or it sits on a cycle of `@supersedes` edges (below).
 
-A `@supersedes` edge is **live** if and only if both conditions hold.
-First: the edge's source is a declaration, and that declaration
+A `@supersedes` edge is **effective** if and only if both conditions
+hold. First: the edge's source is a declaration, and that declaration
 carries no status tag. Second: when the source's kind needs approval,
 the source is approved at its current revision. The manifest key
 `ledger.approval-required` lists the kinds that need approval
@@ -476,38 +476,38 @@ the source is approved at its current revision. The manifest key
 [ledger.md](ledger.md), defines approval. An edge whose source is not
 approved retires nothing yet.
 
-An edge stays live when a later edge supersedes its source. In a
+An edge stays effective when a later edge supersedes its source. In a
 **chain** of `@supersedes` edges, each declaration supersedes the one
-before it. When every edge of a chain is live, every declaration of
-the chain before the last one is retired. Example: `b` supersedes
-`a`, and `c` supersedes `b`. Both edges are live, so `a` and `b` are
-retired, and `c` is in force. When `b` carries a status tag, the edge
-from `b` to `a` is not live, and `a` is in force.
+before it. When every edge of a chain is effective, every declaration
+of the chain before the last one is retired. Example: `b` supersedes
+`a`, and `c` supersedes `b`. Both edges are effective, so `a` and `b`
+are retired, and `c` is in force. When `b` carries a status tag, the
+edge from `b` to `a` is not effective, and `a` is in force.
 
 A declaration sits on a **cycle** when it reaches itself along
-`@supersedes` edges, live or not. A declaration on a cycle that
-carries no status tag is in force, even when a live edge points at it.
-The cycle is an error (finding class `cycle`).
+`@supersedes` edges, effective or not. A declaration on a cycle that
+carries no status tag is in force, even when an effective edge points
+at it. The cycle is an error (finding class `cycle`).
 
 ### 8.2 Retirement
 
 An item that is not in force is **retired**. Two triggers retire an
-item: a status tag, or a live `@supersedes` edge. Retirement does not
-cascade. A citation of a retired item is a finding (`disendorsed`),
-never an automatic retirement of the citing item.
+item: a status tag, or an effective `@supersedes` edge. Retirement
+does not cascade. A citation of a retired item is a finding
+(`retired`), never an automatic retirement of the citing item.
 
 The **successors** of a retired declaration are the declarations in
-force that replace it. To find them, take the source of each live
-`@supersedes` edge that points at the declaration. A source that is
-in force is a successor. For a source that is retired, take the
+force that replace it. To find them, take the source of each effective
+`@supersedes` edge that points at the declaration. A source that is in
+force is a successor. For a source that is retired, take the
 successors of that source instead. Such a source carries no status
-tag, because it is the source of a live edge. It is retired all the
-same, so a live edge points at it, and it sits on no cycle (section
-8.1). The search therefore never comes back to a declaration, and it
-ends at declarations in force. In the chain of section 8.1, `c` is
-the successor of `a` and of `b`. A declaration that a live edge
-retires has at least one successor. A declaration that only a status
-tag retires has no successor.
+tag, because it is the source of an effective edge. It is retired all
+the same, so an effective edge points at it, and it sits on no cycle
+(section 8.1). The search therefore never comes back to a declaration,
+and it ends at declarations in force. In the chain of section 8.1, `c`
+is the successor of `a` and of `b`. A declaration that an effective
+edge retires has at least one successor. A declaration that only a
+status tag retires has no successor.
 
 The repair of a citation of a retired declaration depends on the
 successors of that declaration:
@@ -518,7 +518,7 @@ successors of that declaration:
   person writes the current revision of the successor. When the
   citation stands in the extent of a declaration, that extent changes,
   so the revision of that declaration must increase (section 9). The
-  finding accepts no ack. When the cited declaration has several
+  finding is not ackable. When the cited declaration has several
   successors, a person chooses one of them.
 - When the declaration has no successor, only a person can decide
   whether the citing item is still correct for other reasons. The
@@ -530,7 +530,7 @@ successors of that declaration:
 A decision record must not be deleted. The allowed moves are:
 supersede it, reject it, or defer it. The old text stays, because the
 old reasoning is the record of why the new decision exists. An edit of
-a decision record is allowed: like every extent edit, it owes a
+a decision record is allowed: like every extent edit, it needs a
 revision bump (section 9).
 
 ### 8.4 Historical paths
@@ -548,9 +548,9 @@ A person writes every revision pin by hand. Sinter stores no hash of a
 declaration's text outside the repository. Sinter also never writes
 into a governed file. Two rules make hand-written pins work:
 
-1. **Every extent edit owes a bump.** When a declaration's extent
+1. **Every extent edit needs a bump.** When a declaration's extent
    changes relative to the diff base and its revision does not
-   increase, that is an error (finding class `rev-owed`). A writer
+   increase, that is an error (finding class `unbumped`). A writer
    cannot claim an exception: Sinter does not accept the claim "this
    edit did not change the meaning", because no tool can check that
    claim.
@@ -558,7 +558,7 @@ into a governed file. Two rules make hand-written pins work:
    `v2` becomes suspect when the declaration that it names moves to
    `v3`. Suspect citations are findings until they are re-pinned.
 
-A bump also removes the item's approval until it is stamped again (see
+A bump also removes the item's approval until it is approved again (see
 [ledger.md](ledger.md)).
 
 ## 10. Plan files
@@ -571,7 +571,7 @@ repository when the step is done.
 
 A plan file is a markdown file under `.plans/`, committed on its
 branch, and never deleted. A plan is **open** until the ledger holds a
-`discharged` or `abandoned` entry for it; then it is **closed**. Only
+`completed` or `abandoned` entry for it; then it is **closed**. Only
 a ledger entry closes a plan. No change to the plan file — an edit, a
 move, or a deletion — closes a plan. See [ledger.md](ledger.md).
 
@@ -588,11 +588,11 @@ Inside a plan file, the scanner reads tags as promises, not as facts:
   `@verifies` citation of `x`. That citation must have the properties
   that section 10.5 requires.
 
-**Residue** is the set of facts in the tree that a promise asked for:
-the declarations and the edges that discharge it. Tags in plan files
-never produce declarations or edges themselves. Revisions are absent
-on promises; a promise is checked against the revision that is current
-when it is discharged.
+The facts that meet a promise are the declarations and the edges in
+the tree that the promise asks for. Tags in plan files never produce
+declarations or edges themselves. Revisions are absent on promises; a
+promise is checked against the revision that is current when it is
+met.
 
 ### 10.3 Steps
 
@@ -643,18 +643,18 @@ section 7.2): a glob that starts with `!` leaves paths out.
 A step with no `@scope` inherits the plan's scope. A step's `@scope`
 must be contained in its plan's scope, by the rule that
 [algebra.md](algebra.md) section 9 gives for the finding class
-`bad-scope`. A step's **effective scope** is its own scope when it has
-one, and otherwise the plan's scope.
+`scope-outside-plan`. A step's **effective scope** is its own scope
+when it has one, and otherwise the plan's scope.
 
 The manifest key `plan.shared` ([manifest.md](manifest.md) section
 10.3) names paths that every step of every plan can change, for
 example the dependency and license files at the repository root. A
 change under a shared path is never work outside the plan. A shared
-path does not widen the discharge location of any promise: a promised
+path does not widen the place where a promise can be met: a promised
 item is met only inside the step's effective scope or inside the
 default location of its kind (section 10.5).
 
-### 10.5 Discharge
+### 10.5 Met promises
 
 A promise is **met** as follows:
 
@@ -672,13 +672,13 @@ A promise is **met** as follows:
 - A promised `@verifies` is met if and only if such an edge exists
   inside the step's effective scope at evidence rung `passing`. When
   `evidence.coverage-attribution` is `"optional"`, the default, an
-  edge at rung `unattributed` also meets the promise
+  edge at rung `unmeasured` also meets the promise
   ([manifest.md](manifest.md) section 12). Rungs are defined in
   [algebra.md](algebra.md) section 6.7.
 
-Residue that would discharge a promise, but that sits outside both
-the step's scope and the default location of its kind, does not
-discharge that promise. The scanner reports this case as a finding
+A fact that would meet a promise, but that sits outside both the
+step's scope and the default location of its kind, does not meet that
+promise. The scanner reports this case as a finding
 (`promise-out-of-scope`).
 
 A step is **done** if and only if all its promises are met and all
@@ -703,5 +703,5 @@ one. The citations of the old slug then dangle. When the new
 declaration has an extent hash equal to the old one, the rename is
 mechanical: a tool can retarget the citations (finding class
 `renamed`, which carries a mechanical fix). A rename removes an item's
-approval. A renamed item stays unapproved until it is stamped again,
+approval. A renamed item stays unapproved until it is approved again,
 even when its text is unchanged.

@@ -34,7 +34,7 @@
     `sinter check` never reads the network.
   - A rule (design notes section 7) whose origin is the record
     triggers on that file. A plan that cites the observation, or an
-    `@ack`, discharges the obligation.
+    `@ack`, clears the obligation.
   - It shares its design with `@pin` (`spec/vocabulary.md` section
     7.4) and with evidence import. Not designed.
 - **Plans with their journals** — show each plan step with the

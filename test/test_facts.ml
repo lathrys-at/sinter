@@ -329,12 +329,12 @@ let a_pin_to_another_revision_is_suspect () =
   check_field records "cites:design:b->a" "suspect" (bool false)
     ~message:"(the first of two)";
   check_field records "refines:design:b->a" "rung" None;
-  check_field records "refines:design:b->a" "live" None
+  check_field records "refines:design:b->a" "effective" None
 
-let a_verifies_edge_in_markdown_is_an_orphan () =
+let a_verifies_edge_in_markdown_has_the_wrong_source () =
   check_field
     (records [ ("a.md", "# A\n\n@req a\n@verifies a v1\n") ])
-    "verifies:req:a->a" "rung" (str "orphan")
+    "verifies:req:a->a" "rung" (str "wrong-source")
 
 let an_inline_description_loses_its_blanks () =
   let records =
@@ -346,9 +346,9 @@ let an_inline_description_loses_its_blanks () =
 let supersedes =
   "# A\n\n@decision new v1\n@supersedes old v1\n\n# B\n\n@decision old\n"
 
-let a_live_supersedes_edge_retires_its_target () =
+let an_effective_supersedes_edge_retires_its_target () =
   let records = records [ ("a.md", supersedes) ] in
-  check_field records "supersedes:decision:new->old" "live" (bool true);
+  check_field records "supersedes:decision:new->old" "effective" (bool true);
   check_field records "decision:old" "inforce" (bool false);
   check_field records "decision:new" "inforce" (bool true)
 
@@ -357,7 +357,7 @@ let a_source_that_is_not_approved_retires_nothing () =
     records ~extra:"[ledger]\napproval-required = [\"decision\"]\n"
       [ ("a.md", supersedes) ]
   in
-  check_field records "supersedes:decision:new->old" "live" (bool false);
+  check_field records "supersedes:decision:new->old" "effective" (bool false);
   check_field records "decision:old" "inforce" (bool true)
 
 let chain ?(kind = "decision") ?(middle = "") () =
@@ -369,16 +369,16 @@ let chain ?(kind = "decision") ?(middle = "") () =
 
 let a_chain_retires_each_declaration_before_its_end () =
   let records = records (chain ()) in
-  check_field records "supersedes:decision:c->b" "live" (bool true);
-  check_field records "supersedes:decision:b->a" "live" (bool true);
+  check_field records "supersedes:decision:c->b" "effective" (bool true);
+  check_field records "supersedes:decision:b->a" "effective" (bool true);
   check_field records "decision:c" "inforce" (bool true);
   check_field records "decision:b" "inforce" (bool false);
   check_field records "decision:a" "inforce" (bool false)
 
 let a_status_tag_on_the_middle_of_a_chain_brings_back_the_first () =
   let records = records (chain ~middle:"@deprecated\n" ()) in
-  check_field records "supersedes:decision:c->b" "live" (bool true);
-  check_field records "supersedes:decision:b->a" "live" (bool false);
+  check_field records "supersedes:decision:c->b" "effective" (bool true);
+  check_field records "supersedes:decision:b->a" "effective" (bool false);
   check_field records "decision:b" "inforce" (bool false);
   check_field records "decision:a" "inforce" (bool true)
 
@@ -387,8 +387,8 @@ let a_middle_that_is_not_approved_retires_nothing () =
     records ~extra:"[ledger]\napproval-required = [\"design\"]\n"
       (chain ~kind:"design" ())
   in
-  check_field records "supersedes:decision:c->b" "live" (bool true);
-  check_field records "supersedes:design:b->a" "live" (bool false);
+  check_field records "supersedes:decision:c->b" "effective" (bool true);
+  check_field records "supersedes:design:b->a" "effective" (bool false);
   check_field records "design:b" "inforce" (bool false);
   check_field records "decision:a" "inforce" (bool true)
 
@@ -407,8 +407,8 @@ let two_declarations_that_supersede_one_both_retire_it () =
            @decision a\n" );
       ]
   in
-  check_field records "supersedes:decision:b->a" "live" (bool true);
-  check_field records "supersedes:decision:c->a" "live" (bool true);
+  check_field records "supersedes:decision:b->a" "effective" (bool true);
+  check_field records "supersedes:decision:c->a" "effective" (bool true);
   check_field records "decision:a" "inforce" (bool false)
 
 let declarations_of_two_files_keep_their_own_numbers () =
@@ -419,7 +419,7 @@ let declarations_of_two_files_keep_their_own_numbers () =
         ("b.md", "# B\n\n@decision y\n@supersedes z v1\n\n# Z\n\n@decision z\n");
       ]
   in
-  check_field records "supersedes:decision:y->z" "live" (bool true);
+  check_field records "supersedes:decision:y->z" "effective" (bool true);
   check_field records "decision:z" "inforce" (bool false)
 
 let a_rule_that_supersedes_retires_its_target () =
@@ -450,7 +450,7 @@ let every_member_of_a_supersedes_cycle_is_in_force () =
     (fun id -> check_field records id "inforce" (bool true))
     [ "decision:a"; "decision:b"; "decision:s" ]
 
-let a_cycle_counts_its_edges_that_are_not_live () =
+let a_cycle_counts_its_edges_that_are_not_effective () =
   let records =
     records
       [
@@ -467,16 +467,16 @@ let a_cycle_counts_its_edges_that_are_not_live () =
            @supersedes x v1\n" );
       ]
   in
-  check_field records "supersedes:decision:z->x" "live" (bool true);
-  check_field records "supersedes:decision:y->x" "live" (bool false);
+  check_field records "supersedes:decision:z->x" "effective" (bool true);
+  check_field records "supersedes:decision:y->x" "effective" (bool false);
   check_field records "decision:x" "inforce" (bool true);
   check_field records "decision:y" "inforce" (bool false)
 
-let a_supersedes_edge_from_a_site_is_not_live () =
+let a_supersedes_edge_from_a_site_is_not_effective () =
   let records =
     records [ ("a.md", "# A\n\n@supersedes old v1\n\n# B\n\n@decision old\n") ]
   in
-  check_field records "supersedes:site:a.md#a->old" "live" (bool false);
+  check_field records "supersedes:site:a.md#a->old" "effective" (bool false);
   check_field records "decision:old" "inforce" (bool true)
 
 let an_ack_names_the_fact_of_its_block () =
@@ -486,7 +486,7 @@ let an_ack_names_the_fact_of_its_block () =
         ( "a.md",
           "# A\n\n\
            @req a\n\
-           @ack disendorsed  cache-ttl 1a2b3c4d\n\n\
+           @ack retired  cache-ttl 1a2b3c4d\n\n\
            # B\n\n\
            @cites a\n\
            @ack stale 0123abcd\n" );
@@ -494,10 +494,10 @@ let an_ack_names_the_fact_of_its_block () =
   in
   Alcotest.(check string)
     "the ack of a declaration"
-    "{\"block\":\"req:a\",\"col\":1,\"ecol\":37,\"eline\":4,\"hash\":\"1a2b3c4d\",\"id\":\"ack:req:a:disendorsed  \
-     cache-ttl\",\"kind\":\"ack\",\"line\":4,\"pack\":\"markdown\",\"path\":\"a.md\",\"target\":\"disendorsed  \
+    "{\"block\":\"req:a\",\"col\":1,\"ecol\":33,\"eline\":4,\"hash\":\"1a2b3c4d\",\"id\":\"ack:req:a:retired  \
+     cache-ttl\",\"kind\":\"ack\",\"line\":4,\"pack\":\"markdown\",\"path\":\"a.md\",\"target\":\"retired  \
      cache-ttl\",\"v\":1}"
-    (Jsonl.to_string (find "ack:req:a:disendorsed  cache-ttl" records));
+    (Jsonl.to_string (find "ack:req:a:retired  cache-ttl" records));
   check_field records "ack:site:a.md#b:stale" "block" (str "site:a.md#b")
 
 let the_hash_of_an_ack_follows_its_last_blank () =
@@ -1107,19 +1107,19 @@ let graph_text declarations =
                 (List.map (Printf.sprintf "@supersedes d%d v1\n") superseded)))
          declarations)
 
-let successors_end_in_force_and_only_live_edges_retire =
+let successors_end_in_force_and_only_effective_edges_retire =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count:200
        ~name:
-         "a declaration that a live edge retires has successors, each in \
-          force; only a status tag or a live edge retires a declaration"
+         "a declaration that an effective edge retires has successors, each in \
+          force; only a status tag or an effective edge retires a declaration"
        ~print:graph_text graph (fun graph ->
          let facts =
            facts ~extra:"[ledger]\napproval-required = [\"design\"]\n"
              [ ("a.md", graph_text graph) ]
          in
          let declarations = Array.of_list (Facts.declarations facts) in
-         let live_into index =
+         let effective_into index =
            List.exists
              (fun ((edge : Facts.edge), target) ->
                match (edge.word, edge.source, target) with
@@ -1134,13 +1134,13 @@ let successors_end_in_force_and_only_live_edges_retire =
            (fun index ->
              let in_force = Facts.is_in_force facts index in
              let successors = Facts.successors facts index in
-             let retired_by_an_edge = (not in_force) && live_into index in
+             let retired_by_an_edge = (not in_force) && effective_into index in
              (if retired_by_an_edge then
                 successors <> []
                 && List.for_all (Facts.is_in_force facts) successors
               else successors = [])
              && (Option.is_some declarations.(index).status
-                || live_into index || in_force)
+                || effective_into index || in_force)
              && (Option.is_none declarations.(index).status || not in_force))
            (List.init (Array.length declarations) Fun.id)))
 
@@ -1190,17 +1190,16 @@ let acks_give_their_block () =
     facts
       [
         ( "docs/a.md",
-          "# A\n\n@req a v1\n\n## B\n\n@cites a\n@ack disendorsed a 1234abcd\n"
-        );
+          "# A\n\n@req a v1\n\n## B\n\n@cites a\n@ack retired a 1234abcd\n" );
         ( "docs/b.md",
-          "# B\n\nText.\n\n## C\n\n@cites a\n@ack disendorsed 89abcdef\n" );
+          "# B\n\nText.\n\n## C\n\n@cites a\n@ack retired 89abcdef\n" );
       ]
   in
   Alcotest.(check (list string))
     "path, span, block, target, hash, block index"
     [
-      "docs/a.md 8:1-8:28 req:a disendorsed a 1234abcd 1";
-      "docs/b.md 8:1-8:26 site:docs/b.md#c disendorsed 89abcdef 0";
+      "docs/a.md 8:1-8:24 req:a retired a 1234abcd 1";
+      "docs/b.md 8:1-8:22 site:docs/b.md#c retired 89abcdef 0";
     ]
     (List.map
        (fun (ack : Facts.ack) ->
@@ -1278,7 +1277,7 @@ let plans_give_their_steps_and_promises () =
               plan.steps)
        (Facts.plans facts))
 
-let discharge_names_the_residue_and_the_one_in_scope () =
+let standing_names_the_facts_that_meet_and_the_one_in_scope () =
   let facts =
     facts ~extra:"[plan]\nlocations.decision = [\"docs/decisions/\"]\n"
       [
@@ -1300,12 +1299,11 @@ let discharge_names_the_residue_and_the_one_in_scope () =
   in
   match Facts.plans facts with
   | [ ({ steps = [ step ]; _ } as plan) ] ->
-      let residue (residue : Facts.residue) =
-        Printf.sprintf "%s %s %s" residue.id residue.path
-          (span_text residue.span)
+      let fact_text (fact : Facts.meeting_fact) =
+        Printf.sprintf "%s %s %s" fact.id fact.path (span_text fact.span)
       in
       Alcotest.(check (list string))
-        "by, then the residue"
+        "by, then the facts that meet the promise"
         [
           "req a: lib/a.md | req:a docs/a.md 3:1-3:10, req:a lib/a.md 3:1-3:10";
           "req b: - | ";
@@ -1316,12 +1314,12 @@ let discharge_names_the_residue_and_the_one_in_scope () =
         ]
         (List.map
            (fun (promise : Facts.promise) ->
-             let discharge = Facts.discharge facts plan step promise in
+             let standing = Facts.standing facts plan step promise in
              Printf.sprintf "%s %s: %s | %s" promise.word promise.target
                (Option.fold ~none:"-"
-                  ~some:(fun (by : Facts.residue) -> by.path)
-                  discharge.by)
-               (String.concat ", " (List.map residue discharge.residue)))
+                  ~some:(fun (by : Facts.meeting_fact) -> by.path)
+                  standing.by)
+               (String.concat ", " (List.map fact_text standing.meeting_facts)))
            step.promises)
   | _ -> Alcotest.fail "one plan with one step"
 
@@ -1345,9 +1343,9 @@ let lookup_lines =
     "@verifies a";
     "@verifies b";
     "@deprecated";
-    "@ack disendorsed a 0123abcd";
-    "@ack disendorsed 89abcdef";
-    "@cites a\n@ack disendorsed a 0123abcd\n@ack disendorsed b 89abcdef";
+    "@ack retired a 0123abcd";
+    "@ack retired 89abcdef";
+    "@cites a\n@ack retired a 0123abcd\n@ack retired b 89abcdef";
   ]
 
 let lookup_promises =
@@ -1417,7 +1415,7 @@ let lookup_property name check =
 
 let place (span : Markdown.span) = (span.start.line, span.start.column)
 
-let scanned_residue facts (promise : Facts.promise) =
+let scanned_meeting facts (promise : Facts.promise) =
   let declarations = Array.of_list (Facts.declarations facts) in
   let found =
     if List.mem promise.word [ "req"; "design"; "decision" ] then
@@ -1433,7 +1431,7 @@ let scanned_residue facts (promise : Facts.promise) =
     else
       List.filter_map
         (fun ((edge : Facts.edge), target) ->
-          let discharges =
+          let meets =
             match (target, edge.rev) with
             | Facts.Declaration index, Some rev ->
                 declarations.(index).rev = rev
@@ -1443,7 +1441,7 @@ let scanned_residue facts (promise : Facts.promise) =
           if
             String.equal edge.word promise.word
             && String.equal edge.target_text promise.target
-            && discharges
+            && meets
           then Some (Facts.edge_id edge, edge.path, place edge.span)
           else None)
         (Facts.edges facts)
@@ -1453,29 +1451,28 @@ let scanned_residue facts (promise : Facts.promise) =
       compare (path_a, place_a) (path_b, place_b))
     found
 
-let indexed_residue (discharge : Facts.discharge) =
+let indexed_meeting (standing : Facts.standing) =
   List.map
-    (fun (residue : Facts.residue) ->
-      (residue.id, residue.path, place residue.span))
-    discharge.residue
+    (fun (fact : Facts.meeting_fact) -> (fact.id, fact.path, place fact.span))
+    standing.meeting_facts
 
-let the_residue_index_gives_the_list_scan =
+let the_meeting_index_gives_the_list_scan =
   lookup_property
-    "the residue of each promise is the list scan of the declarations and the \
-     edges" (fun facts ->
+    "the facts that meet each promise are the list scan of the declarations \
+     and edges" (fun facts ->
       List.for_all
         (fun (plan : Facts.plan) ->
           List.for_all
             (fun (step : Facts.step) ->
               List.for_all
                 (fun promise ->
-                  indexed_residue (Facts.discharge facts plan step promise)
-                  = scanned_residue facts promise)
+                  indexed_meeting (Facts.standing facts plan step promise)
+                  = scanned_meeting facts promise)
                 step.promises)
             plan.steps)
         (Facts.plans facts))
 
-let discharge_refuses_a_promise_of_other_facts () =
+let standing_refuses_a_promise_of_other_facts () =
   let plan_file =
     ( ".plans/p.md",
       "# P\n\n@plan p\n@scope **\n\n## One\n\n@req a\n\n## Two\n\n@req b\n" )
@@ -1494,15 +1491,15 @@ let discharge_refuses_a_promise_of_other_facts () =
       ] ) ->
       List.iter
         (fun (name, plan, step, promise) ->
-          match Facts.discharge facts plan step promise with
-          | (_ : Facts.discharge) -> Alcotest.failf "%s: no exception" name
+          match Facts.standing facts plan step promise with
+          | (_ : Facts.standing) -> Alcotest.failf "%s: no exception" name
           | exception Invalid_argument _ -> ())
         [
           ("a plan of other facts", other, other_one, other_a);
           ("a step of another plan", plan, other_one, other_a);
           ("a promise of another step", plan, one, b);
         ];
-      ignore (Facts.discharge facts plan one a)
+      ignore (Facts.standing facts plan one a)
   | _ -> Alcotest.fail "one plan with two steps of one promise in each"
 
 let scope_set globs =
@@ -1546,7 +1543,7 @@ let a_step_is_done_by_the_list_scan_of_the_verifies_edges =
                      (List.filter
                         (fun promise ->
                           Option.is_some
-                            (Facts.discharge facts plan step promise).by)
+                            (Facts.standing facts plan step promise).by)
                         step.promises)
                  in
                  let total = List.length step.promises in
@@ -1562,16 +1559,16 @@ let a_step_is_done_by_the_list_scan_of_the_verifies_edges =
                plan.steps)
            (Facts.plans facts)))
 
-let by_of_each_promise_is_the_first_residue_in_place =
+let by_of_each_promise_is_the_first_meeting_fact_in_place =
   lookup_property
-    "the by of each promise is the first member of the residue in the scope of \
+    "the by of each promise is the first fact that meets it in the scope of \
      its step or in the default location of its kind" (fun facts ->
       let manifest = manifest ~extra:lookup_extra () in
       List.for_all
         (fun (plan : Facts.plan) ->
           List.for_all
             (fun (step : Facts.step) ->
-              let discharge = Facts.discharge facts plan step in
+              let standing = Facts.standing facts plan step in
               let in_scope =
                 Path_set.mem (scope_set (Facts.effective_scope plan step))
               in
@@ -1593,15 +1590,15 @@ let by_of_each_promise_is_the_first_residue_in_place =
                         || Option.fold ~none:false
                              ~some:(fun set -> Path_set.mem set path)
                              location)
-                      (scanned_residue facts promise)
+                      (scanned_meeting facts promise)
                   in
-                  let discharge = discharge promise in
+                  let standing = standing promise in
                   Option.map
-                    (fun (residue : Facts.residue) ->
-                      (residue.id, residue.path, place residue.span))
-                    discharge.by
+                    (fun (fact : Facts.meeting_fact) ->
+                      (fact.id, fact.path, place fact.span))
+                    standing.by
                   = expected
-                  && indexed_residue discharge = scanned_residue facts promise)
+                  && indexed_meeting standing = scanned_meeting facts promise)
                 step.promises)
             plan.steps)
         (Facts.plans facts))
@@ -1715,12 +1712,12 @@ let tests =
       a_ref_that_does_not_resolve_gives_no_record;
     case "a pin to another revision is suspect"
       a_pin_to_another_revision_is_suspect;
-    case "a verifies edge in markdown is an orphan"
-      a_verifies_edge_in_markdown_is_an_orphan;
+    case "a verifies edge in markdown has the wrong source"
+      a_verifies_edge_in_markdown_has_the_wrong_source;
     case "an inline description loses its blanks"
       an_inline_description_loses_its_blanks;
-    case "a live supersedes edge retires its target"
-      a_live_supersedes_edge_retires_its_target;
+    case "an effective supersedes edge retires its target"
+      an_effective_supersedes_edge_retires_its_target;
     case "a source that is not approved retires nothing"
       a_source_that_is_not_approved_retires_nothing;
     case "a chain retires each declaration before its end"
@@ -1737,10 +1734,10 @@ let tests =
       a_rule_that_supersedes_retires_its_target;
     case "every member of a supersedes cycle is in force"
       every_member_of_a_supersedes_cycle_is_in_force;
-    case "a cycle counts its edges that are not live"
-      a_cycle_counts_its_edges_that_are_not_live;
-    case "a supersedes edge from a site is not live"
-      a_supersedes_edge_from_a_site_is_not_live;
+    case "a cycle counts its edges that are not effective"
+      a_cycle_counts_its_edges_that_are_not_effective;
+    case "a supersedes edge from a site is not effective"
+      a_supersedes_edge_from_a_site_is_not_effective;
     case "an ack names the fact of its block" an_ack_names_the_fact_of_its_block;
     case "the hash of an ack follows its last blank"
       the_hash_of_an_ack_follows_its_last_blank;
@@ -1812,19 +1809,19 @@ let tests =
       a_member_of_a_cycle_has_no_successors;
     case "successors refuse an index out of range"
       successors_refuse_an_index_out_of_range;
-    successors_end_in_force_and_only_live_edges_retire;
+    successors_end_in_force_and_only_effective_edges_retire;
     case "edges give what their targets resolve to"
       edges_give_what_their_targets_resolve_to;
     case "acks give their block" acks_give_their_block;
     case "plans give their steps and promises"
       plans_give_their_steps_and_promises;
-    case "discharge names the residue and the one in scope"
-      discharge_names_the_residue_and_the_one_in_scope;
-    the_residue_index_gives_the_list_scan;
-    case "discharge refuses a promise of other facts"
-      discharge_refuses_a_promise_of_other_facts;
+    case "standing names the facts that meet and the one in scope"
+      standing_names_the_facts_that_meet_and_the_one_in_scope;
+    the_meeting_index_gives_the_list_scan;
+    case "standing refuses a promise of other facts"
+      standing_refuses_a_promise_of_other_facts;
     a_step_is_done_by_the_list_scan_of_the_verifies_edges;
-    by_of_each_promise_is_the_first_residue_in_place;
+    by_of_each_promise_is_the_first_meeting_fact_in_place;
     block_hash_is_the_hash_of_the_listed_document;
     block_acks_are_the_list_scan_of_the_acks;
     case "block hash reads the first of two files with one path"

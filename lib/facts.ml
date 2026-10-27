@@ -144,7 +144,7 @@ type plan = {
   steps : step list;
 }
 
-type residue = { id : string; path : string; span : Markdown.span }
+type meeting_fact = { id : string; path : string; span : Markdown.span }
 
 module Pairs = Map.Make (struct
   type t = string * string
@@ -486,7 +486,7 @@ let approved manifest (declarations : declaration array) index =
   | Some kind -> not (List.mem kind (Manifest.approval_required manifest))
   | None -> true
 
-let live_source manifest (declarations : declaration array) index =
+let effective_source manifest (declarations : declaration array) index =
   Option.is_none declarations.(index).status
   && approved manifest declarations index
 
@@ -496,7 +496,7 @@ let retirers manifest (declarations : declaration array) edges targets =
     (fun (edge : edge) target ->
       match (edge.word, edge.source, target) with
       | "supersedes", Some source, Declaration target
-        when live_source manifest declarations source ->
+        when effective_source manifest declarations source ->
           found.(target) <- source :: found.(target)
       | _ -> ())
     edges targets;
@@ -527,7 +527,7 @@ let in_force ~retirers (declarations : declaration array) edges targets =
       Option.is_none declarations.(node).status
       && (retirers.(node) = [] || on_cycle node))
 
-let in_place_order (a : residue) (b : residue) =
+let in_place_order (a : meeting_fact) (b : meeting_fact) =
   compare
     (a.path, a.span.start.line, a.span.start.column)
     (b.path, b.span.start.line, b.span.start.column)
@@ -565,14 +565,13 @@ let lookups (declarations : declaration array) edges targets plans =
     cited =
       group keys
         (fun ((edge : edge), target) ->
-          let discharges =
+          let meets =
             match (target, edge.rev) with
             | Declaration index, Some rev -> declarations.(index).rev = rev
             | Declaration _, None | Ref _, _ -> true
             | Unresolved _, _ -> false
           in
-          if discharges then Some ((edge.word, edge.target_text), edge)
-          else None)
+          if meets then Some ((edge.word, edge.target_text), edge) else None)
         (List.combine edges targets);
     verifies =
       List.sort_uniq String.compare
@@ -758,9 +757,9 @@ let edge_records facts =
         | Some rev, Declaration index -> facts.declarations.(index).rev <> rev
         | _ -> false
       in
-      let live =
+      let effective =
         match edge.source with
-        | Some index -> live_source facts.manifest facts.declarations index
+        | Some index -> effective_source facts.manifest facts.declarations index
         | None -> false
       in
       located ~kind:edge.word ~id:(edge_id edge) ~path:edge.path ~span:edge.span
@@ -774,11 +773,11 @@ let edge_records facts =
         @ optional "rev" (Option.map Jsonl.int edge.rev)
         @ text_unless_empty "desc" edge.desc
         @ (if String.equal edge.word "verifies" then
-             [ ("rung", Jsonl.string "orphan") ]
+             [ ("rung", Jsonl.string "wrong-source") ]
            else [])
         @
         if String.equal edge.word "supersedes" then
-          [ ("live", Jsonl.bool live) ]
+          [ ("effective", Jsonl.bool effective) ]
         else []))
     facts.edges facts.targets
 
@@ -826,7 +825,7 @@ let ack_records facts =
         ])
     facts.acks
 
-let residue facts (promise : promise) =
+let meeting_facts facts (promise : promise) =
   let lookups = Lazy.force facts.lookups in
   let find groups =
     Option.value
@@ -849,29 +848,29 @@ let residue facts (promise : promise) =
   in
   List.sort in_place_order found
 
-type discharge = { by : residue option; residue : residue list }
+type standing = { by : meeting_fact option; meeting_facts : meeting_fact list }
 
-let discharge_within facts ~in_scope (promise : promise) =
-  let residue = residue facts promise in
+let standing_within facts ~in_scope (promise : promise) =
+  let meeting_facts = meeting_facts facts promise in
   let location =
     Option.bind (manifest_kind promise.word) (Manifest.location facts.manifest)
   in
-  let inside (residue : residue) =
-    in_scope residue.path
+  let inside (fact : meeting_fact) =
+    in_scope fact.path
     || Option.fold ~none:false
-         ~some:(fun set -> Path_set.mem set residue.path)
+         ~some:(fun set -> Path_set.mem set fact.path)
          location
   in
-  { by = List.find_opt inside residue; residue }
+  { by = List.find_opt inside meeting_facts; meeting_facts }
 
-let discharge facts plan step =
+let standing facts plan step =
   if not (List.memq plan facts.plans && List.memq step plan.steps) then
-    invalid_arg "Facts.discharge: the step is not one of these facts";
+    invalid_arg "Facts.standing: the step is not one of these facts";
   let in_scope = Path_set.mem (path_set (effective_scope plan step)) in
   fun (promise : promise) ->
     if not (List.memq promise step.promises) then
-      invalid_arg "Facts.discharge: the promise is not one of this step";
-    discharge_within facts ~in_scope promise
+      invalid_arg "Facts.standing: the promise is not one of this step";
+    standing_within facts ~in_scope promise
 
 let step_id (plan : plan) (step : step) = "step:" ^ plan.slug ^ "/" ^ step.slug
 
@@ -902,8 +901,8 @@ let plan_records facts ~changed plan =
     let promises =
       List.map
         (fun (promise : promise) ->
-          let { by; residue } = discharge_within facts ~in_scope promise in
-          (promise, by, residue <> [] && Option.is_none by))
+          let { by; meeting_facts } = standing_within facts ~in_scope promise in
+          (promise, by, meeting_facts <> [] && Option.is_none by))
         step.promises
     in
     let met =
@@ -944,7 +943,8 @@ let plan_records facts ~changed plan =
                 ("out_of_scope", Jsonl.bool out_of_scope);
               ]
              @ optional "by"
-                 (Option.map (fun (by : residue) -> Jsonl.string by.id) by)))
+                 (Option.map (fun (by : meeting_fact) -> Jsonl.string by.id) by)
+             ))
          promises
   in
   plan_record :: List.concat_map step_records plan.steps

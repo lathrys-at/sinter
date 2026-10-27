@@ -149,21 +149,21 @@ val declarations : t -> declaration list
 
 val is_in_force : t -> int -> bool
 (** [is_in_force facts index] is [true] when the declaration at [index] is in
-    force: it carries no status and no live [supersedes] edge points at it. A
-    [supersedes] edge is live when its source is a declaration that carries no
-    status and whose kind needs no approval. A declaration with no status on a
-    cycle of [supersedes] edges is in force.
+    force: it carries no status and no effective [supersedes] edge points at it.
+    A [supersedes] edge is effective when its source is a declaration that
+    carries no status and whose kind needs no approval. A declaration with no
+    status on a cycle of [supersedes] edges is in force.
 
     @raise Invalid_argument if [index] is not an index of {!declarations}. *)
 
 val successors : t -> int -> int list
 (** [successors facts index] is the indices in {!declarations} of the successors
-    of the declaration at [index]. For each live [supersedes] edge that points
-    at the declaration, the source of the edge is a successor when it is in
-    force; otherwise the successors of the source are. The list is in the byte
-    order of the ids of the declarations, and holds each id once: of the
+    of the declaration at [index]. For each effective [supersedes] edge that
+    points at the declaration, the source of the edge is a successor when it is
+    in force; otherwise the successors of the source are. The list is in the
+    byte order of the ids of the declarations, and holds each id once: of the
     declarations that share an id, the first in the order of the records. The
-    list is empty if and only if the declaration is in force or no live
+    list is empty if and only if the declaration is in force or no effective
     [supersedes] edge points at it. Each member is in force.
 
     @raise Invalid_argument if [index] is not an index of {!declarations}. *)
@@ -196,28 +196,28 @@ val effective_scope : plan -> step -> string list
 (** [effective_scope plan step] is the globs of the [@scope] of [step], or of
     [plan] when the step has none. *)
 
-type residue = private { id : string; path : string; span : Markdown.span }
-(** A fact that would discharge a promise: its id, its path, and its span. *)
+type meeting_fact = private { id : string; path : string; span : Markdown.span }
+(** A fact that would meet a promise: its id, its path, and its span. *)
 
-type discharge = private {
-  by : residue option;
-      (** the first member of [residue] whose path is in the effective scope of
-          the step or in the default location of the kind of the promise *)
-  residue : residue list;
-      (** every fact that would discharge the promise if its place were right,
-          in the order of the paths in byte order and then of the places *)
+type standing = private {
+  by : meeting_fact option;
+      (** the first member of [meeting_facts] whose path is in the effective
+          scope of the step or in the default location of the kind of the
+          promise *)
+  meeting_facts : meeting_fact list;
+      (** every fact that would meet the promise if its place were right, in the
+          order of the paths in byte order and then of the places *)
 }
 (** How a promise stands. *)
 
-val discharge : t -> plan -> step -> promise -> discharge
-(** [discharge facts plan step promise] is how [promise], a promise of [step] of
-    [plan], stands. A declaration would discharge it when its kind is the word
-    and its slug is the tag target of the promise. An edge would discharge it
-    when its word and its tag target are those of the promise, its tag target
-    resolves, and it is not suspect. No edge of the word [verifies] would
-    discharge it.
+val standing : t -> plan -> step -> promise -> standing
+(** [standing facts plan step promise] is how [promise], a promise of [step] of
+    [plan], stands. A declaration would meet it when its kind is the word and
+    its slug is the tag target of the promise. An edge would meet it when its
+    word and its tag target are those of the promise, its tag target resolves,
+    and it is not suspect. No edge of the word [verifies] would meet it.
 
-    [discharge facts plan step] reads the effective scope of [step] once, and
+    [standing facts plan step] reads the effective scope of [step] once, and
     gives a function that each promise of [step] can share.
 
     @raise Invalid_argument

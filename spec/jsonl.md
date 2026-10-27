@@ -118,7 +118,7 @@ conformance fixtures ship their own ledger and evidence.
 | `status` | string | `deprecated`, `rejected`, or `deferred`; omitted when none |
 | `inforce` | bool | *derived* |
 | `approved` | bool | *derived* |
-| `stamp` | string | *derived*: the id of the ledger stamp that approves the declaration; omitted when none |
+| `approval` | string | *derived*: the id of the `approval` entry of the ledger that approves the declaration; omitted when none |
 | `approval_required` | bool | whether the kind needs approval: `ledger.approval-required` lists it ([manifest.md](manifest.md) section 11.1) |
 | `declined` | bool | *derived*: a live decline exists for `(slug, xh)` |
 
@@ -136,7 +136,7 @@ When the result is empty, the record omits `desc`.
 Example:
 
 ```json
-{"approval_required":true,"approved":true,"col":1,"desc":"Five consecutive failures within ten minutes freeze the account.","ecol":21,"eline":13,"id":"req:auth-lockout","inforce":true,"kind":"req","line":13,"pack":"markdown","path":"docs/auth.md","rev":2,"slug":"auth-lockout","stamp":"s-41","title":"Lock account after 5 failed attempts","v":1,"xeline":29,"xh":"9f3a…","xline":12}
+{"approval":"s-41","approval_required":true,"approved":true,"col":1,"desc":"Five consecutive failures within ten minutes freeze the account.","ecol":21,"eline":13,"id":"req:auth-lockout","inforce":true,"kind":"req","line":13,"pack":"markdown","path":"docs/auth.md","rev":2,"slug":"auth-lockout","title":"Lock account after 5 failed attempts","v":1,"xeline":29,"xh":"9f3a…","xline":12}
 ```
 
 **`plan`**
@@ -147,9 +147,9 @@ Example:
 | `title` | string | the heading text of the section that holds the `@plan` tag ([vocabulary.md](vocabulary.md) section 10.3); omitted for the section of level 0 |
 | `scope` | array of string | plan-level globs |
 | `approved` | bool | *derived*: the plan is approved ([algebra.md](algebra.md) section 6.5) |
-| `stamp` | string | *derived* |
+| `approval` | string | *derived* |
 | `active` | bool | *derived* from the session; `false` when there is no session |
-| `open` | bool | *derived*: the plan is open — the ledger holds no `discharged` entry and no `abandoned` entry for it ([ledger.md](ledger.md) section 10) |
+| `open` | bool | *derived*: the plan is open — the ledger holds no `completed` entry and no `abandoned` entry for it ([ledger.md](ledger.md) section 10) |
 | `csh` | string | the commitment-set hash, as the text after this table gives it |
 | `declined` | bool | *derived* |
 
@@ -250,8 +250,8 @@ the span of the record is the first paragraph of the section.
 | `rev` | int | the pinned revision; omitted when unpinned |
 | `desc` | string | inline description, without the spaces and tabs at both ends; omitted when empty |
 | `suspect` `dangling` | bool | *derived* |
-| `rung` | string | `verifies` only, *derived*: `orphan`, `never-ran`, `failed`, `disconnected`, `unattributed`, or `passing` |
-| `live` | bool | `supersedes` only, *derived*: whether the edge is live ([vocabulary.md](vocabulary.md) section 8.1) |
+| `rung` | string | `verifies` only, *derived*: `wrong-source`, `never-ran`, `failed`, `unexercised`, `unmeasured`, or `passing` |
+| `effective` | bool | `supersedes` only, *derived*: whether the edge is effective ([vocabulary.md](vocabulary.md) section 8.1) |
 
 Tags inside plan files never produce edge records. These tags produce
 promise records instead.
@@ -277,8 +277,8 @@ Example:
 | `word` | string | `req`, `design`, `decision`, `satisfies`, `verifies`, `refines`, `cites`, or `supersedes` |
 | `target` | string | the tag target, as written |
 | `met` | bool | *derived* |
-| `by` | string | *derived*: id of the discharging fact, when met |
-| `out_of_scope` | bool | *derived*: `true` when residue that would discharge the promise exists, but every such fact sits outside the step's scope. In this case `met` stays `false`. Residue is defined in [vocabulary.md](vocabulary.md) section 10.2 |
+| `by` | string | *derived*: id of the fact that meets the promise, when met |
+| `out_of_scope` | bool | *derived*: `true` when facts that would meet the promise exist, but every such fact sits outside the step's scope. In this case `met` stays `false` ([vocabulary.md](vocabulary.md) section 10.5) |
 
 Duplicate promissory tags within one step collapse into one promise
 record.
@@ -320,11 +320,11 @@ into the evidence directory, never into the tree.
 
 ## 7. Ledger-projection, rule, gate, setting, ack, hunk, and tombstone records
 
-**`lease`** — unlocated. Sinter projects lease records from the
-ledger. It emits one record for each stamped plan that meets all three
+**`claim`** — unlocated. Sinter projects claim records from the
+ledger. It emits one record for each approved plan that meets all three
 conditions:
 
-- The plan's stamp was written from a branch other than the current
+- The plan's approval was written from a branch other than the current
   one.
 - The plan is open ([ledger.md](ledger.md) section 10).
 - That branch existed on the remote at the last fetch.
@@ -332,11 +332,11 @@ conditions:
 | field | type | meaning |
 |---|---|---|
 | `plan` | string | plan slug |
-| `branch` | string | the branch the stamp was written from |
-| `stamp` | string | latest stamp id |
-| `scope` | array of string | union of the stamped step scopes |
-| `declares` | array of string | slugs the lease promises to declare |
-| `stamped` | string | RFC 3339 timestamp |
+| `branch` | string | the branch the approval was written from |
+| `approval` | string | the id of the latest `approval` entry |
+| `scope` | array of string | union of the approved step scopes |
+| `declares` | array of string | slugs the claim promises to declare |
+| `ts` | string | RFC 3339 timestamp of the approval |
 
 **`decline`** — unlocated. Sinter projects decline records from the
 ledger. It emits live entries only.
@@ -354,11 +354,11 @@ section 15).
 
 | field | type | meaning |
 |---|---|---|
-| `name` `origin` `trigger` `discharge` | string | as declared |
-| `via` | string | `checked`, `judged`, or `acked` — inferred from the discharge expression |
+| `name` `origin` `trigger` `expect` | string | as declared |
+| `via` | string | `checked`, `judged`, or `acked` — inferred from the `expect` expression |
 | `scope` | array of string | |
 | `triggered` | bool | *derived* |
-| `owed` | int | *derived* obligation count |
+| `obligations` | int | *derived* obligation count |
 
 **`gate`** — Sinter emits one record for each pair of a gate and a
 finding class that takes a tier at that gate ([manifest.md](manifest.md)
@@ -394,11 +394,11 @@ the repository is unlocated.
 | field | type | meaning |
 |---|---|---|
 | `block` | string | id of the block's primary fact: the declaration, site, or test the block belongs to |
-| `target` | string | the tag target, as written, for example `disendorsed cache-ttl` or `ste-docs` |
+| `target` | string | the tag target, as written, for example `retired cache-ttl` or `ste-docs` |
 | `hash` | string | as written |
 | `live` | bool | *derived* |
 | `void` | string | *derived*: `hash` or `target`, naming the failed condition ([vocabulary.md](vocabulary.md) section 7.4); omitted when live |
-| `for` | string | *derived*: id of the finding discharged, or of the rule, when live |
+| `for` | string | *derived*: id of the finding accepted, or of the rule, when live |
 
 **`hunk`** — diff mode only; new-side coordinates. A pure deletion has
 `line = eline =` the line after the deletion, and `added = 0`.
@@ -408,7 +408,7 @@ the repository is unlocated.
 | `added` `removed` | int | |
 | `ambient` | bool | *derived* |
 | `shared` | bool | *derived*: the hunk is under a shared path (`plan.shared`, [manifest.md](manifest.md) section 10.3) |
-| `mapped` | array of string | *derived*: ids of the steps or rules whose scope covers the hunk; empty when unmapped |
+| `planned` | array of string | *derived*: ids of the steps or rules whose scope covers the hunk; empty when no step and no rule covers the hunk |
 
 **`tombstone`** — base coordinates.
 
@@ -428,10 +428,10 @@ the position that [manifest.md](manifest.md) section 14.4 gives.
 | `class` | string | a class from [algebra.md](algebra.md) section 9 |
 | `subject` | string | the subject id: the id of the fact that the finding is about, or a positional subject id (section 9) |
 | `ack_subject` | string | the subject in the form that an `@ack` names it ([vocabulary.md](vocabulary.md) section 7.4) |
-| `rule` | string | `rule-owed` findings only |
+| `rule` | string | `unmet-rule` findings only |
 | `detail` | string | one line, human-facing, deterministic |
-| `fix` | string | the repair of the finding, on one line; omitted when none. It is a line to paste, or an instruction. A line to paste is, for example, an `@ack` line, a tag line with a corrected word or revision, or, for a `disendorsed` finding, the citation of a successor that replaces the edge. With several successors, the fix gives the citation of each, and a person chooses one ([algebra.md](algebra.md) section 9) |
-| `ackable` | bool | whether a live `@ack` can discharge this finding ([algebra.md](algebra.md) section 9, column `A`). For a class that the column marks `A*`, the value depends on the finding |
+| `fix` | string | the repair of the finding, on one line; omitted when none. It is a line to paste, or an instruction. A line to paste is, for example, an `@ack` line, a tag line with a corrected word or revision, or, for a `retired` finding, the citation of a successor that replaces the edge. With several successors, the fix gives the citation of each, and a person chooses one ([algebra.md](algebra.md) section 9) |
+| `ackable` | bool | whether a live `@ack` can accept this finding ([algebra.md](algebra.md) section 9, column `A`). For a class that the column marks `A*`, the value depends on the finding |
 | `acked` | bool | present only when acked findings are requested |
 | `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3); present only when the command runs with `--gate` |
 | `mode` | string | `tree` or `diff` |
@@ -456,7 +456,7 @@ uses a position in the file only when no content can name the fact.
 | `run` | `run:<test-id>@<tree>` | |
 | `cov` | `cov:<test-id or *>@<site-id>` | |
 | `judgment` | `judgment:<rule>:<subject-id>@<hash>` | |
-| `lease` | `lease:<plan>@<branch>` | |
+| `claim` | `claim:<plan>@<branch>` | |
 | `decline` | `decline:<entry-id>` | |
 | `rule` | `rule:<name>` | |
 | `gate` | `gate:<gate>/<class>` | |
@@ -475,8 +475,8 @@ path can contain `@`.
 |---|---|---|
 | a file | `file:<path>` | `parse-error` in a file that yields no fact: a file that is not valid UTF-8, or a file of a fetched pack with a parse failure ([packs.md](packs.md) sections 5.1 and 5.2) |
 | an error node of a markdown file | `file:<path>@L<line>C<column>`, from the position where the node starts | `parse-error` in a markdown file ([packs.md](packs.md) section 5.2) |
-| a line | `line:<path>@L<line>` | `typo-tag` and `unread-tag`, at the tag line; `duplicate` of a step, at the line of the step's heading |
-| a tag | `tag:<path>@L<line>C<column>`, from the position of the `@` of the tag | `bad-target`; `misplaced-plan`; `duplicate` of a declaration or a plan |
+| a line | `line:<path>@L<line>` | `typo-tag` and `ignored-tag`, at the tag line; `duplicate` of a step, at the line of the step's heading |
+| a tag | `tag:<path>@L<line>C<column>`, from the position of the `@` of the tag | `invalid-target`; `misplaced-plan`; `duplicate` of a declaration or a plan |
 
 An id that is not positional is stable under re-indentation,
 reformatting, line shifts, and re-pinning. It changes under a slug
@@ -510,13 +510,13 @@ use the tiers of the `turn` gate.
 | `done` | bool |
 | `steps_done` `steps_total` | int |
 | `block` `warn` | int (finding counts, under the `turn` gate's tiers) |
-| `unmapped` | int (hunks) |
-| `owed` | int (rule obligations) |
+| `unplanned` | int (hunks) |
+| `obligations` | int (rule obligations) |
 | `evidence_fresh` | bool |
 | `bumps` | int (declarations bumped since the base) |
 | `acks_live` `acks_void` | int |
 | `declines` | int (live, in scope) |
-| `leases` `blocked` | int |
+| `claims` `waiting` | int |
 | `code_drift` | int |
 | `config_changed` | bool (`true` when the diff changes the configuration: the check reports at least one `config-changed` finding, [manifest.md](manifest.md) section 14.4) |
 

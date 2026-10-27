@@ -30,7 +30,7 @@ val kind_name : kind -> string
 
 (** Which rungs of an edge of the kind [verifies] complete a promise. *)
 type coverage_attribution =
-  | Optional  (** the rungs [passing] and [unattributed] *)
+  | Optional  (** the rungs [passing] and [unmeasured] *)
   | Required  (** the rung [passing] alone *)
 
 (** {1 Errors} *)
@@ -88,7 +88,7 @@ type problem =
       gate : Finding_class.gate;
     }  (** the class takes no tier at the gate *)
   | Never_blocks  (** a tier for [config-changed] *)
-  | No_tier_at_any_gate  (** a tier for [pack-drift] *)
+  | No_tier_at_any_gate  (** a tier for [pack-mismatch] *)
   | Unknown_kind of { name : string; nearest : string option }
       (** a name under [plan.locations] that is not a kind *)
   | Plan_location  (** [plan.locations.plan] *)

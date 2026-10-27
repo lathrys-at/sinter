@@ -389,13 +389,13 @@ let the_check_of_a_jj_state_reports_the_findings_of_new_files () =
         ( 0,
           1,
           [
-            "docs/late.md:3:1: uncovered req:late nothing satisfies it, and \
+            "docs/late.md:3:1: untraced req:late nothing satisfies it, and \
              nothing verifies it";
             "docs/new.md:3:1: dangling cites:site:docs/new.md#new->missing no \
              declaration has the slug missing";
-            "docs/reqs.md:3:1: uncovered req:login nothing satisfies it, and \
+            "docs/reqs.md:3:1: untraced req:login nothing satisfies it, and \
              nothing verifies it";
-            "docs/reqs.md:8:1: uncovered req:out nothing satisfies it, and \
+            "docs/reqs.md:8:1: untraced req:out nothing satisfies it, and \
              nothing verifies it";
           ] )
         (status, json_status, lines text)

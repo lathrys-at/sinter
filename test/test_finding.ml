@@ -59,7 +59,7 @@ let make_keeps_each_part () =
   Alcotest.(check bool) "the place" true (finding.place = Some (place ()));
   Alcotest.(check (option string)) "the detail" (Some "d") finding.detail;
   Alcotest.(check (option string)) "the fix" (Some "f") finding.fix;
-  let bare = Finding.make Finding_class.Orphan fact () in
+  let bare = Finding.make Finding_class.Wrong_source fact () in
   Alcotest.(check bool) "no place" true (bare.place = None);
   Alcotest.(check (option string)) "no detail" None bare.detail;
   Alcotest.(check (option string)) "no fix" None bare.fix
@@ -71,13 +71,13 @@ let make_refuses_an_empty_text () =
     | exception Invalid_argument _ -> ()
   in
   refuses "an empty detail" (fun () ->
-      Finding.make Finding_class.Orphan fact ~detail:"" ());
+      Finding.make Finding_class.Wrong_source fact ~detail:"" ());
   refuses "an empty fix" (fun () ->
-      Finding.make Finding_class.Orphan fact ~fix:"" ())
+      Finding.make Finding_class.Wrong_source fact ~fix:"" ())
 
 let make_escapes_a_detail_and_a_fix () =
   let finding =
-    Finding.make Finding_class.Orphan fact ~detail:"a\nb" ~fix:"c\rd" ()
+    Finding.make Finding_class.Wrong_source fact ~detail:"a\nb" ~fix:"c\rd" ()
   in
   Alcotest.(check (option string)) "the detail" (Some "a\\nb") finding.detail;
   Alcotest.(check (option string)) "the fix" (Some "c\\rd") finding.fix
@@ -105,13 +105,15 @@ let make_takes_any_text_that_is_not_empty =
     ~print:String.escaped any_text (fun text ->
       String.equal text ""
       ||
-      let finding = Finding.make Finding_class.Orphan fact ~detail:text () in
+      let finding =
+        Finding.make Finding_class.Wrong_source fact ~detail:text ()
+      in
       finding.detail = Some (Finding.escape text))
 
 let the_id_names_the_class_and_the_subject () =
   Alcotest.(check string)
-    "a fact" "finding:disendorsed:cites:req:a->b"
-    (Finding.id (Finding.make Finding_class.Disendorsed fact ()));
+    "a fact" "finding:retired:cites:req:a->b"
+    (Finding.id (Finding.make Finding_class.Retired fact ()));
   Alcotest.(check string)
     "a line" "finding:typo-tag:line:docs/a.md@L4"
     (Finding.id

@@ -55,12 +55,12 @@ let typo_tags documents =
           (Edit_distance.nearest tag.word vocabulary))
     (tags documents)
 
-let unread_tags documents =
+let ignored_tags documents =
   List.concat_map
     (fun (path, (document : Markdown.t)) ->
       List.map
         (fun (span : Markdown.span) ->
-          Finding.make Finding_class.Unread_tag
+          Finding.make Finding_class.Ignored_tag
             (Finding.Line { path; line = span.start.line })
             ~place:(place path span)
             ~detail:
@@ -100,13 +100,13 @@ let target_problem manifest ~word target =
   else if List.mem word ("plan" :: declaration_words) then slug ()
   else None
 
-let bad_targets manifest documents =
+let invalid_targets manifest documents =
   List.filter_map
     (fun (path, (tag : Markdown.tag)) ->
       Option.bind tag.target (fun target ->
           Option.map
             (fun detail ->
-              Finding.make Finding_class.Bad_target
+              Finding.make Finding_class.Invalid_target
                 (Finding.Tag { path; position = start_of tag.span })
                 ~place:(place path tag.span) ~detail ())
             (target_problem manifest ~word:tag.word target)))
@@ -400,7 +400,7 @@ let cycles facts =
                ?detail ()))
     (components successors)
 
-let disendorsed facts =
+let retired facts =
   let declarations = Array.of_list (Facts.declarations facts) in
   List.filter_map
     (fun ((edge : Facts.edge), target) ->
@@ -410,7 +410,7 @@ let disendorsed facts =
              && not (Facts.is_in_force facts index) ->
           let declaration = declarations.(index) in
           let finding =
-            Finding.make Finding_class.Disendorsed (edge_subject edge)
+            Finding.make Finding_class.Retired (edge_subject edge)
               ~place:(place edge.path edge.span)
           in
           Some
@@ -430,7 +430,7 @@ let disendorsed facts =
                          (Facts.declaration_id declaration)
                          status)
                     ~fix:
-                      (Printf.sprintf "@ack disendorsed %s %s" edge.target_text
+                      (Printf.sprintf "@ack retired %s %s" edge.target_text
                          (String.sub hash 0 8))
                     ~ackable:true ()
               | successors, _ ->
@@ -451,7 +451,7 @@ let disendorsed facts =
       | _ -> None)
     (Facts.edges facts)
 
-let orphans facts =
+let wrong_sources facts =
   List.filter_map
     (fun ((edge : Facts.edge), _) ->
       let detail =
@@ -465,13 +465,13 @@ let orphans facts =
       in
       Option.map
         (fun detail ->
-          Finding.make Finding_class.Orphan (edge_subject edge)
+          Finding.make Finding_class.Wrong_source (edge_subject edge)
             ~place:(place edge.path edge.span)
             ~detail ())
         detail)
     (Facts.edges facts)
 
-let uncovered facts =
+let untraced facts =
   let count = List.length (Facts.declarations facts) in
   let satisfied = Array.make count false
   and verified = Array.make count false in
@@ -499,7 +499,7 @@ let uncovered facts =
          then
            Option.map
              (fun detail ->
-               Finding.make Finding_class.Uncovered
+               Finding.make Finding_class.Untraced
                  (declaration_subject declaration)
                  ~place:(place declaration.path declaration.span)
                  ~detail ())
@@ -534,7 +534,7 @@ let contained inner outer =
       else Glob.matches outer_glob inner
   | Error _, _ | _, Error _ -> false
 
-let bad_scopes facts =
+let scopes_outside_plans facts =
   List.concat_map
     (fun (plan : Facts.plan) ->
       let outer = plain plan.scope in
@@ -551,7 +551,7 @@ let bad_scopes facts =
               | [] -> None
               | outside ->
                   Some
-                    (Finding.make Finding_class.Bad_scope
+                    (Finding.make Finding_class.Scope_outside_plan
                        (Finding.Fact
                           { id = Facts.step_id plan step; ack_name = step.slug })
                        ~place:(place plan.path step.span)
@@ -649,11 +649,11 @@ let promises_out_of_scope facts =
     (fun (plan : Facts.plan) ->
       List.concat_map
         (fun (step : Facts.step) ->
-          let discharge = Facts.discharge facts plan step in
+          let standing = Facts.standing facts plan step in
           List.filter_map
             (fun (promise : Facts.promise) ->
-              match discharge promise with
-              | { by = None; residue = first :: _ } ->
+              match standing promise with
+              | { by = None; meeting_facts = first :: _ } ->
                   Some
                     (Finding.make Finding_class.Promise_out_of_scope
                        (promise_subject plan step promise)
@@ -663,7 +663,7 @@ let promises_out_of_scope facts =
                             "%s at %s:%d is outside the scope of the step"
                             first.id first.path first.span.start.line)
                        ())
-              | { by = Some _; _ } | { residue = []; _ } -> None)
+              | { by = Some _; _ } | { meeting_facts = []; _ } -> None)
             step.promises)
         plan.steps)
     (Facts.plans facts)
@@ -698,7 +698,7 @@ let acked facts (edge : Facts.edge) =
       let finding_class, subject = ack_target ack.target in
       String.length ack.hash >= 8
       && String.starts_with ~prefix:ack.hash hash
-      && String.equal finding_class "disendorsed"
+      && String.equal finding_class "retired"
       && Option.fold ~none:true ~some:(String.equal edge.target_text) subject)
     (Facts.block_acks facts edge.path edge.block_index)
 
@@ -719,8 +719,8 @@ let tree ?phases manifest documents ~not_text =
           [
             parse_errors documents ~not_text;
             typo_tags documents;
-            unread_tags documents;
-            bad_targets manifest documents;
+            ignored_tags documents;
+            invalid_targets manifest documents;
             misplaced_plans documents;
             duplicates facts;
             unpinned facts;
@@ -731,10 +731,10 @@ let tree ?phases manifest documents ~not_text =
               (fun (edge, (finding : Finding.t)) ->
                 if finding.ackable && acked facts edge then None
                 else Some finding)
-              (disendorsed facts);
-            orphans facts;
-            uncovered facts;
-            bad_scopes facts;
+              (retired facts);
+            wrong_sources facts;
+            untraced facts;
+            scopes_outside_plans facts;
             scope_overlaps facts;
             unverified_promises facts;
             promises_out_of_scope facts;

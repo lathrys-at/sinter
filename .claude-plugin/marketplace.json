@@ -12,7 +12,7 @@
       "name": "sinter",
       "source": "./plugins/sinter",
       "description": "Turn an approved plan into a Sinter plan file, and write down a decision as a decision record.",
-      "version": "0.1.9"
+      "version": "0.1.10"
     }
   ]
 }

@@ -119,7 +119,7 @@ text that holds those.>
 
 ## Alternatives considered
 
-- **<Alternative>** — <why it was rejected, in one or two
+- **<Alternative>** — <why it was not chosen, in one or two
   sentences>.
 - **<Alternative>** — <...>.
 

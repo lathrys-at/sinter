@@ -245,7 +245,7 @@ let ack_files state ~declarations ~decisions =
                     (text (List.map (fun _ -> "") sections))
                 in
                 let ack target hash =
-                  Printf.sprintf "@ack disendorsed %s %s\n" target hash
+                  Printf.sprintf "@ack retired %s %s\n" target hash
                 in
                 let heads =
                   List.map2
