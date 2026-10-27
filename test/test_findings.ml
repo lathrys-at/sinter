@@ -947,8 +947,164 @@ let of_facts_gives_the_findings_of_tree () =
     (List.map show (Findings.tree m files ~not_text:[ ("docs/c.md", 3) ]))
     (List.map show (Findings.of_facts facts ~not_text:[ ("docs/c.md", 3) ]))
 
+let parts (finding : Finding.t) =
+  String.concat " / "
+    ((match finding.place with
+     | Some { path; span } -> Printf.sprintf "%s:%d" path span.start.line
+     | None -> "-")
+    :: (match finding.mark with
+    | Some { start; stop; label } -> Printf.sprintf "%d-%d %s" start stop label
+    | None -> "no mark")
+    :: List.map
+         (fun ({ label; place } : Finding.related) ->
+           match place with
+           | Some { path; span } ->
+               Printf.sprintf "%s at %s:%d:%d-%d:%d" label path span.start.line
+                 span.start.column span.stop.line span.stop.column
+           | None -> label)
+         finding.related)
+
+let check_parts ?extra finding_class files expected =
+  Alcotest.(check (list string))
+    (Finding_class.name finding_class)
+    expected
+    (List.map parts
+       (List.filter
+          (fun (finding : Finding.t) -> finding.finding_class = finding_class)
+          (findings ?extra files)))
+
+let typo_tag_marks_the_word () =
+  check_parts Finding_class.Typo_tag
+    [ ("docs/a.md", "# A\n\n- @reqq \xc3\xa9 v1\n") ]
+    [ "docs/a.md:3 / 3-8 not a tag word" ]
+
+let invalid_target_marks_the_target () =
+  check_parts Finding_class.Invalid_target
+    [
+      ( "docs/a.md",
+        "# A\n\n@req a! v1\n@cites xy/1\n@cites gh/0\n@cites /1\n@cites gh/\n"
+      );
+    ]
+    [
+      "docs/a.md:3 / 6-8 not a valid slug";
+      "docs/a.md:4 / 8-12 no such namespace";
+      "docs/a.md:5 / 8-12 does not match the id pattern";
+      "docs/a.md:6 / 8-10 names no namespace";
+      "docs/a.md:7 / 8-11 names no id";
+    ]
+
+let misplaced_plan_marks_the_word () =
+  check_parts Finding_class.Misplaced_plan
+    [
+      ("docs/a.md", "# A\n\n@plan a\n");
+      (".plans/p.md", "# P\n\n@plan p\n\n## S\n\n@plan q\n");
+    ]
+    [
+      ".plans/p.md:7 / 1-6 not in the first tag block";
+      "docs/a.md:3 / 1-6 not in a file under .plans/";
+    ]
+
+let duplicate_marks_the_target () =
+  check_parts Finding_class.Duplicate
+    [
+      ("docs/b.md", "# B\n\nText.\n\n- @req Auth v1\n");
+      ("docs/a.md", "# A\n\n@decision auth\n");
+      ( ".plans/q.md",
+        "# Q\n\n@plan P\n\n## One\n\n@req x\n\n## One!\n\n@req y\n" );
+      (".plans/p.md", "# P\n\n@plan p\n");
+    ]
+    [
+      ".plans/q.md:3 / 7-8 declared again here";
+      ".plans/q.md:9 / no mark";
+      "docs/b.md:5 / 8-12 declared again here";
+    ]
+
+let unpinned_marks_the_target () =
+  check_parts Finding_class.Unpinned
+    [ ("docs/a.md", "# A\n\n@req a v3\n\n## B\n\n@satisfies a\n") ]
+    [ "docs/a.md:7 / 12-13 no revision" ]
+
+let dangling_marks_the_target () =
+  check_parts Finding_class.Dangling
+    [ ("docs/b.md", "# B\n\n- @cites Login v2\n") ]
+    [ "docs/b.md:3 / 10-15 no declaration has this slug" ]
+
+let suspect_marks_the_revision () =
+  check_parts Finding_class.Suspect
+    [
+      ( "docs/a.md",
+        "# A\n\n@req a v2\n\n## B\n\n@cites a v1\n@verifies a\tv3 x\n" );
+    ]
+    [ "docs/a.md:7 / 10-12 names v1"; "docs/a.md:8 / 13-15 names v3" ]
+
+let retired_marks_the_target () =
+  check_parts Finding_class.Retired
+    [
+      ("docs/a.md", "# A\n\n@decision old\n@deprecated\n");
+      ("docs/b.md", "# B\n\n@cites old\n");
+    ]
+    [ "docs/b.md:3 / 8-11 cites a retired item" ]
+
+let wrong_source_marks_the_word () =
+  check_parts Finding_class.Wrong_source
+    [
+      ("docs/a.md", "# A\n\n@req a v1\n@verifies a v1\n");
+      ("docs/b.md", "# B\n\nText.\n\n- @refines a v1\n");
+    ]
+    [
+      "docs/a.md:4 / 1-10 needs a test as its source";
+      "docs/b.md:5 / 3-11 needs a declaration that holds it";
+    ]
+
+let untraced_marks_the_target () =
+  check_parts Finding_class.Untraced
+    [
+      ("docs/a.md", "# A\n\n@req a\n\n## B\n\n@design b\n");
+      ("docs/b.md", "# B\n\nText.\n\n- @satisfies b v1\n");
+    ]
+    [
+      "docs/a.md:3 / 6-7 nothing satisfies it, and nothing verifies it";
+      "docs/a.md:7 / 9-10 nothing verifies it";
+    ]
+
+let unverified_promise_marks_the_target () =
+  check_parts Finding_class.Unverified_promise
+    [ (".plans/p.md", "# P\n\n@plan p\n\n## One\n\n@design b\n") ]
+    [ ".plans/p.md:7 / 9-10 no promised @verifies" ]
+
+let promise_out_of_scope_marks_the_target () =
+  check_parts Finding_class.Promise_out_of_scope
+    [
+      (".plans/p.md", "# P\n\n@plan p\n\n## One\n\n@scope lib/**\n@req a\n");
+      ("docs/a.md", "# A\n\n@req a v1\n");
+    ]
+    [ ".plans/p.md:8 / 6-7 met only outside the scope of the step" ]
+
 let tests =
   [
+    Alcotest.test_case "typo-tag marks the word" `Quick typo_tag_marks_the_word;
+    Alcotest.test_case "invalid-target marks the target" `Quick
+      invalid_target_marks_the_target;
+    Alcotest.test_case "misplaced-plan marks the word" `Quick
+      misplaced_plan_marks_the_word;
+    Alcotest.test_case "duplicate marks the target" `Quick
+      duplicate_marks_the_target;
+    Alcotest.test_case "unpinned marks the target" `Quick
+      unpinned_marks_the_target;
+    Alcotest.test_case "dangling marks the target" `Quick
+      dangling_marks_the_target;
+    Alcotest.test_case "suspect marks the revision" `Quick
+      suspect_marks_the_revision;
+    Alcotest.test_case "retired marks the target" `Quick
+      retired_marks_the_target;
+    Alcotest.test_case "wrong-source marks the word" `Quick
+      wrong_source_marks_the_word;
+    Alcotest.test_case "untraced marks the target" `Quick
+      untraced_marks_the_target;
+    Alcotest.test_case "unverified-promise marks the target" `Quick
+      unverified_promise_marks_the_target;
+    Alcotest.test_case "promise-out-of-scope marks the target" `Quick
+      promise_out_of_scope_marks_the_target;
     case "of_facts gives the findings of tree"
       of_facts_gives_the_findings_of_tree;
     case "parse-error sits at each error and at a file that is not text"

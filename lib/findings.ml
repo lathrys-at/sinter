@@ -52,7 +52,9 @@ let typo_tags documents =
             (Finding.Line { path; line = tag.span.start.line })
             ~place:(place path tag.span)
             ~detail:(Printf.sprintf "@%s is not a tag word of sinter" tag.word)
-            ~fix:("@" ^ nearest) ())
+            ~fix:("@" ^ nearest)
+            ?mark:(Finding.part tag Tag_line.Word "not a tag word")
+            ())
         (nearest_word tag.word))
     (tags documents)
 
@@ -74,7 +76,8 @@ let ignored_tags documents =
 let target_problem manifest ~word target =
   let slug () =
     if Slug.is_valid target then None
-    else Some (Printf.sprintf "%s is not a valid slug" target)
+    else
+      Some (Printf.sprintf "%s is not a valid slug" target, "not a valid slug")
   in
   if List.mem word citation_words then
     match String.index_opt target '/' with
@@ -86,18 +89,24 @@ let target_problem manifest ~word target =
         in
         match List.assoc_opt ns (Manifest.namespaces manifest) with
         | None when String.equal ns "" ->
-            Some (Printf.sprintf "the external id %s names no namespace" target)
+            Some
+              ( Printf.sprintf "the external id %s names no namespace" target,
+                "names no namespace" )
         | None ->
-            Some (Printf.sprintf "the manifest declares no namespace %s" ns)
+            Some
+              ( Printf.sprintf "the manifest declares no namespace %s" ns,
+                "no such namespace" )
         | Some _ when String.equal id "" ->
-            Some (Printf.sprintf "the external id %s names no id" target)
+            Some
+              ( Printf.sprintf "the external id %s names no id" target,
+                "names no id" )
         | Some pattern ->
             if Id_pattern.matches pattern id then None
             else
               Some
-                (Printf.sprintf
-                   "%s does not match the id pattern of the namespace %s" id ns)
-        )
+                ( Printf.sprintf
+                    "%s does not match the id pattern of the namespace %s" id ns,
+                  "does not match the id pattern" ))
   else if List.mem word ("plan" :: declaration_words) then slug ()
   else None
 
@@ -106,10 +115,12 @@ let invalid_targets manifest documents =
     (fun (path, (tag : Markdown.tag)) ->
       Option.bind tag.target (fun target ->
           Option.map
-            (fun detail ->
+            (fun (detail, label) ->
               Finding.make Finding_class.Invalid_target
                 (Finding.Tag { path; position = start_of tag.span })
-                ~place:(place path tag.span) ~detail ())
+                ~place:(place path tag.span) ~detail
+                ?mark:(Finding.part tag Tag_line.Target label)
+                ())
             (target_problem manifest ~word:tag.word target)))
     (tags documents)
 
@@ -119,16 +130,22 @@ let misplaced_plans documents =
       let detail =
         if not (String.equal tag.word "plan") then None
         else if not (String.starts_with ~prefix:".plans/" path) then
-          Some "a @plan tag stands only in a file under .plans/"
+          Some
+            ( "a @plan tag stands only in a file under .plans/",
+              "not in a file under .plans/" )
         else if tag.block <> 0 then
-          Some "a @plan tag stands only in the first tag block of its file"
+          Some
+            ( "a @plan tag stands only in the first tag block of its file",
+              "not in the first tag block" )
         else None
       in
       Option.map
-        (fun detail ->
+        (fun (detail, label) ->
           Finding.make Finding_class.Misplaced_plan
             (Finding.Tag { path; position = start_of tag.span })
-            ~place:(place path tag.span) ~detail ())
+            ~place:(place path tag.span) ~detail
+            ?mark:(Finding.part tag Tag_line.Word label)
+            ())
         detail)
     (tags documents)
 
@@ -155,6 +172,8 @@ let later_of_groups ~key ~order items =
             | Some first -> (firsts, (item, first) :: found)
             | None -> (Keys.add (key item) item firsts, found))
           (Keys.empty, []) sorted))
+
+let declared_again = "declared again here"
 
 let comes_first slug path line =
   Printf.sprintf "the slug %s comes first at %s:%d" slug path line
@@ -188,6 +207,7 @@ let duplicates facts =
       Finding.make Finding_class.Duplicate (tag d.path d.span)
         ~place:(place d.path d.span)
         ~detail:(comes_first first.slug first.path first.span.start.line)
+        ?mark:(Finding.part d.tag Tag_line.Target declared_again)
         ())
     declarations
   @ List.map
@@ -195,6 +215,7 @@ let duplicates facts =
         Finding.make Finding_class.Duplicate (tag plan.path plan.span)
           ~place:(place plan.path plan.span)
           ~detail:(comes_first first.slug first.path first.span.start.line)
+          ?mark:(Finding.part plan.tag Tag_line.Target declared_again)
           ())
       plans
   @ List.concat_map
@@ -232,7 +253,9 @@ let unpinned facts =
           (Finding.make Finding_class.Unpinned (edge_subject edge)
              ~place:(place edge.path edge.span)
              ~detail:(Printf.sprintf "the @%s names no revision" edge.word)
-             ?fix ())
+             ?fix
+             ?mark:(Finding.part edge.tag Tag_line.Target "no revision")
+             ())
       else None)
     (Facts.edges facts)
 
@@ -280,7 +303,11 @@ let dangling facts =
                ~detail:
                  (Printf.sprintf "no declaration has the slug %s"
                     edge.target_text)
-               ?fix ())
+               ?fix
+               ?mark:
+                 (Finding.part edge.tag Tag_line.Target
+                    "no declaration has this slug")
+               ())
       | Facts.Unresolved { dangling = false }
       | Facts.Declaration _ | Facts.External _ ->
           None)
@@ -305,6 +332,9 @@ let suspect facts =
                ~fix:
                  (citation ~word:edge.word ~target:edge.target_text
                     (Some declaration.rev))
+               ?mark:
+                 (Finding.part edge.tag Tag_line.Revision
+                    (Printf.sprintf "names v%d" rev))
                ())
       | _ -> None)
     (Facts.edges facts)
@@ -425,6 +455,8 @@ let retired facts =
           let finding =
             Finding.make Finding_class.Retired (edge_subject edge)
               ~place:(place edge.path edge.span)
+              ?mark:
+                (Finding.part edge.tag Tag_line.Target "cites a retired item")
           in
           Some
             ( edge,
@@ -469,18 +501,24 @@ let wrong_sources facts =
     (fun ((edge : Facts.edge), _) ->
       let detail =
         match (edge.word, edge.source) with
-        | "verifies", _ -> Some "a @verifies needs a test as its source"
+        | "verifies", _ ->
+            Some
+              ( "a @verifies needs a test as its source",
+                "needs a test as its source" )
         | ("refines" | "supersedes"), None ->
             Some
-              (Printf.sprintf "a @%s needs a declaration that holds it"
-                 edge.word)
+              ( Printf.sprintf "a @%s needs a declaration that holds it"
+                  edge.word,
+                "needs a declaration that holds it" )
         | _ -> None
       in
       Option.map
-        (fun detail ->
+        (fun (detail, label) ->
           Finding.make Finding_class.Wrong_source (edge_subject edge)
             ~place:(place edge.path edge.span)
-            ~detail ())
+            ~detail
+            ?mark:(Finding.part edge.tag Tag_line.Word label)
+            ())
         detail)
     (Facts.edges facts)
 
@@ -515,7 +553,9 @@ let untraced facts =
                Finding.make Finding_class.Untraced
                  (declaration_subject declaration)
                  ~place:(place declaration.path declaration.span)
-                 ~detail ())
+                 ~detail
+                 ?mark:(Finding.part declaration.tag Tag_line.Target detail)
+                 ())
              detail
          else None)
        (Facts.declarations facts))
@@ -651,6 +691,9 @@ let unverified_promises facts =
                      ~detail:
                        (Printf.sprintf "the plan promises no @verifies %s"
                           promise.target)
+                     ?mark:
+                       (Finding.part promise.tag Tag_line.Target
+                          "no promised @verifies")
                      ())
               else None)
             step.promises)
@@ -675,6 +718,9 @@ let promises_out_of_scope facts =
                          (Printf.sprintf
                             "%s at %s:%d is outside the scope of the step"
                             first.id first.path first.span.start.line)
+                       ?mark:
+                         (Finding.part promise.tag Tag_line.Target
+                            "met only outside the scope of the step")
                        ())
               | { by = Some _; _ } | { meeting_facts = []; _ } -> None)
             step.promises)

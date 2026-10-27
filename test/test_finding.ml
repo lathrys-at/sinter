@@ -474,6 +474,39 @@ let every_label_is_one_line =
            finding.mark
         @ List.map (fun (r : Finding.related) -> r.label) finding.related))
 
+let first_tag text =
+  match Markdown.create (Sinter_bridge.create ()) with
+  | Error _ -> Alcotest.fail "the reader does not start"
+  | Ok reader ->
+      Fun.protect
+        ~finally:(fun () -> Markdown.close reader)
+        (fun () ->
+          match Markdown.read reader text with
+          | Ok document -> document.tags.(0)
+          | Error _ -> Alcotest.fail "the text gives no document")
+
+let part_marks_a_part_of_a_tag () =
+  let tag = first_tag "- @cites \xc3\xa9t\xc3\xa9 v2\n" in
+  let show =
+    Option.map (fun ({ start; stop; label } : Finding.mark) ->
+        (start, stop, label))
+  in
+  Alcotest.(check (option (triple int int string)))
+    "the word"
+    (Some (3, 9, "w"))
+    (show (Finding.part tag Tag_line.Word "w"));
+  Alcotest.(check (option (triple int int string)))
+    "the target"
+    (Some (10, 13, "t"))
+    (show (Finding.part tag Tag_line.Target "t"));
+  Alcotest.(check (option (triple int int string)))
+    "the revision"
+    (Some (14, 16, "r"))
+    (show (Finding.part tag Tag_line.Revision "r"));
+  Alcotest.(check (option (triple int int string)))
+    "no revision" None
+    (show (Finding.part (first_tag "@req a\n") Tag_line.Revision "r"))
+
 let case name test = Alcotest.test_case name `Quick test
 
 let tests =
@@ -501,6 +534,7 @@ let tests =
     compare_is_transitive;
     compare_is_zero_only_on_equal_keys;
     compare_puts_a_place_before_none;
+    case "part marks a part of a tag" part_marks_a_part_of_a_tag;
     case "make keeps the mark and the related places"
       make_keeps_the_mark_and_the_related_places;
     case "make takes a mark at the ends of the place"

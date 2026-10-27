@@ -38,6 +38,11 @@ type mark = { start : int; stop : int; label : string }
     character, the column one past its last character, and a label for a person.
 *)
 
+val part : Markdown.tag -> Tag_line.part -> string -> mark option
+(** [part tag part label] is the mark of [part] of [tag], with the columns that
+    {!Markdown.columns} gives and the label [label]; [None] when [tag] has no
+    such part. *)
+
 type related = { label : string; place : place option }
 (** A place that explains a finding, with a label for a person. [place] is
     [None] for a place in no file. *)

@@ -84,6 +84,7 @@ type declaration = {
   title : string option;
   desc : string;
   status : string option;
+  tag : Markdown.tag;
 }
 
 let declaration_id (declaration : declaration) =
@@ -104,6 +105,7 @@ type edge = {
   rev : int option;
   desc : string;
   block_index : int;
+  tag : Markdown.tag;
 }
 
 let edge_id (edge : edge) = edge.word ^ ":" ^ edge.src ^ "->" ^ edge.target_text
@@ -125,7 +127,12 @@ type ack = {
   block_index : int;
 }
 
-type promise = { word : string; target : string; span : Markdown.span }
+type promise = {
+  word : string;
+  target : string;
+  span : Markdown.span;
+  tag : Markdown.tag;
+}
 
 type step = {
   slug : string;
@@ -142,6 +149,7 @@ type plan = {
   title : string option;
   scope : string list;
   steps : step list;
+  tag : Markdown.tag;
 }
 
 type meeting_fact = { id : string; path : string; span : Markdown.span }
@@ -267,6 +275,7 @@ let ordinary_file ~base ~path (document : Markdown.t) =
                   String.concat "\n"
                     ((if String.equal inline "" then [] else [ inline ]) @ prose);
                 status = status.(index);
+                tag;
               }
         | _ -> None)
       declared
@@ -292,6 +301,7 @@ let ordinary_file ~base ~path (document : Markdown.t) =
                 rev = tag.rev;
                 desc = trim tag.desc;
                 block_index = tag.block;
+                tag;
               }
         | _ -> None)
       (Array.to_list tags)
@@ -388,7 +398,7 @@ let promises_of (document : Markdown.t) indices =
                           String.equal promise.word tag.word
                           && String.equal promise.target target)
                         found) ->
-             { word = tag.word; target; span = tag.span } :: found
+             { word = tag.word; target; span = tag.span; tag } :: found
          | Some _ | None -> found)
        [] indices)
 
@@ -439,6 +449,7 @@ let plan_file ~path (document : Markdown.t) plan_index =
           steps =
             List.filter_map step
               (List.init (Array.length document.sections) Fun.id);
+          tag = plan_tag;
         }
   | Some _ | None -> None
 

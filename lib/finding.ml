@@ -26,6 +26,11 @@ let ack_subject = function
 type mark = { start : int; stop : int; label : string }
 type related = { label : string; place : place option }
 
+let part tag part label =
+  Option.map
+    (fun (start, stop) -> { start; stop; label })
+    (Markdown.columns tag part)
+
 type t = {
   finding_class : Finding_class.t;
   subject : subject;
