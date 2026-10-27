@@ -105,7 +105,7 @@ codes, as text and as JSON.
 Keep a `@supersedes` edge live when its source is itself superseded,
 so that a chain of records retires each record before its end. Give a
 citation of a superseded item a fix that names the item that
-supersedes it, and let no `@ack` discharge that finding. Tell authors,
+supersedes it, and let no `@ack` accept that finding. Tell authors,
 in the decision skill and in `CONTRIBUTING.md`, to move such a
 citation in the change that supersedes the item.
 
@@ -160,13 +160,15 @@ section number that a heading can carry.
 ## Check a diff
 @scope lib/**, bin/**, test/**, bench/**
 Read the facts of the base from git, and add diff mode to
-`sinter check`: the findings that the diff adds, `rev-owed`, and
-`renamed`.
+`sinter check`: the findings that the diff adds, `unbumped`,
+`renamed`, and `promise-collision`. Report these classes in tree mode
+too, and remove the section number from the text of a heading.
 
-## Report unmapped work
+## Report unplanned changes
 @scope lib/**, bin/**, test/**, bench/**
-Report `unmapped-work`: each hunk of the diff that no open plan step,
-rule, ambient path, or shared path covers.
+Report `unplanned-change`: each hunk of the diff that no open plan
+step, rule, or exempt path covers, and that is not a mechanical
+repair.
 
 ## Report changes to the configuration
 @scope lib/**, bin/**, test/**, bench/**
