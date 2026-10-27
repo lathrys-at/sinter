@@ -286,6 +286,12 @@ let a_tree_key_leaves_the_intent_to_add_entries_in_the_index () =
   Alcotest.(check string) "the index" before (Repo.index_state jj)
 
 let sinter = Filename.concat (Sys.getcwd ()) "../bin/main.exe"
+let coverage_file = "BISECT_FILE=" ^ Filename.concat (Sys.getcwd ()) "bisect"
+
+let environment repo =
+  let env = Repo.env repo in
+  if Array.exists (String.starts_with ~prefix:"BISECT_FILE=") env then env
+  else Array.append env [| coverage_file |]
 
 let run_sinter repo args =
   let output = Filename.temp_file "sinter-jj" ".out" in
@@ -309,7 +315,7 @@ let run_sinter repo args =
               (Array.of_list
                  ([ "/bin/sh"; "-c"; "cd \"$1\" && shift && exec \"$@\""; "sh" ]
                  @ (Repo.root repo :: sinter :: args)))
-              (Repo.env repo) Unix.stdin to_output to_errors)
+              (environment repo) Unix.stdin to_output to_errors)
       in
       let status =
         match Unix.waitpid [] pid with
