@@ -108,3 +108,7 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
   `config-changed` ignores historical paths; what counts on the base
   side; the line of an entry; the form of a tier change. Runner
   settings wait for packs with descriptors.
+- A mechanical repair must write exactly the tag that Sinter's fix
+  writes, checked against the facts; only a bump of a declaration can
+  write any higher revision. A check of the shape alone would let any
+  retarget of a citation pass without a plan step.
