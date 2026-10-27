@@ -336,8 +336,28 @@ finding.
 ### 8.1 `changed(b)`
 
 `changed(b)` is the fact set touched by `git diff b` against the
-working tree. Untracked files count as wholly added. The table below
-defines "touched" for each category:
+working tree. In this specification, `git diff b` is the diff that git
+makes with these options:
+
+- no rename detection: a moved file is a deleted file and an added
+  file;
+- the Myers algorithm;
+- the indent heuristic;
+- no context lines;
+- no effect of the user's git configuration.
+
+The diff compares the file set of the working tree with the file set
+of the base ([manifest.md](manifest.md) section 7.3), by content. A
+path of the working tree that the base holds is compared with its blob
+in the base, whether git tracks the file or not, and whatever the
+index of git holds. A tool can do this with a temporary index in which
+git tracks every file of the file set. A path that the base does not
+hold is wholly added, and a path that only the base holds is wholly
+deleted. So the diff depends only on the files on disk and on the base
+commit. [jsonl.md](jsonl.md) section 7 gives the hunks
+of the diff.
+
+The table below defines "touched" for each category:
 
 | category | `f ∈ changed(b)` iff |
 |---|---|

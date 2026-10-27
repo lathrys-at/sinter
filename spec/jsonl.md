@@ -400,8 +400,23 @@ the repository is unlocated.
 | `void` | string | *derived*: `hash` or `target`, naming the failed condition ([vocabulary.md](vocabulary.md) section 7.4); omitted when live |
 | `for` | string | *derived*: id of the finding accepted, or of the rule, when live |
 
-**`hunk`** — diff mode only; new-side coordinates. A pure deletion has
-`line = eline =` the line after the deletion, and `added = 0`.
+**`hunk`** — diff mode only; one hunk of the diff
+([algebra.md](algebra.md) section 8.1), in new-side coordinates. A
+pure deletion has `line = eline =` the line after the deletion, and
+`added = 0`. A hunk has `col = 1`, and `ecol` is the end of its last
+line. A hunk with `added = 0` holds no line, and has `ecol = 1`.
+
+Each of these files gives one hunk:
+
+- An added text file of `n` lines gives one hunk over the lines 1 to
+  `n`, with `added = n`. An added empty file gives `hunk:<path>:1-1`,
+  with `added = 0`.
+- A deleted text file, which only the base holds, gives
+  `hunk:<path>:1-1`, with `added = 0` and `removed = n`, where `n` is
+  its number of lines in the base.
+- A binary file, a file that git takes as binary, gives one hunk at
+  line 1, with `added = 0` and `removed = 0`. This holds when the file
+  is added, deleted, or changed.
 
 | field | type | meaning |
 |---|---|---|

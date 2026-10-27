@@ -1418,7 +1418,7 @@ Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameter
 
 ### 12.7 `changed(base)` and diff mode
 
-`changed(b)` is the fact set touched by `git diff b` against the working tree (untracked files count as wholly added). "Touched" is defined per category, because the naive definition — extent intersects a hunk — is wrong for declarations in both directions (an `@ack` line added inside a section is not a change of meaning; a section deleted wholesale leaves nothing to intersect):
+`changed(b)` is the fact set touched by `git diff b` against the working tree. The diff compares each file of the working tree that git does not ignore with its blob in the base, whether git tracks the file or not, and a file that the base does not hold is wholly added ([spec/algebra.md](../spec/algebra.md) section 8.1). "Touched" is defined per category, because the naive definition — extent intersects a hunk — is wrong for declarations in both directions (an `@ack` line added inside a section is not a change of meaning; a section deleted wholesale leaves nothing to intersect):
 
 | category | `f ∈ changed(b)` iff |
 |---|---|
