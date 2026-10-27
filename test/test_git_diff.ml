@@ -402,7 +402,7 @@ let diff_is_total =
 
 let shared =
   lazy
-    (let repo = Git_fixture.shared () in
+    (let repo = Shared_repo.shared () in
      match
        Git.open_repo ~env:(Git_fixture.env repo) (Git_fixture.root repo)
      with
@@ -412,7 +412,7 @@ let shared =
 let open_shared () = Lazy.force shared
 
 let open_with env =
-  let repo = Git_fixture.shared () in
+  let repo = Shared_repo.shared () in
   match Git.open_repo ~env (Git_fixture.root repo) with
   | Ok t -> t
   | Error _ -> Alcotest.fail "the shared repository does not open"
@@ -428,7 +428,7 @@ let refs =
 
 let commits =
   lazy
-    (let repo = Git_fixture.shared () in
+    (let repo = Shared_repo.shared () in
      List.combine refs
        (String.split_on_char '\n'
           (String.trim (Git_fixture.git repo ("rev-parse" :: refs)))))
@@ -549,7 +549,7 @@ let commit_of_gives_the_commit_of_a_revision () =
     (Git.commit_of t (commit_id "main~1"))
 
 let commit_of_peels_an_annotated_tag () =
-  let repo = Git_fixture.copy (Git_fixture.shared ()) in
+  let repo = Git_fixture.copy (Shared_repo.shared ()) in
   ignore
     (Git_fixture.git repo
        [ "tag"; "--annotate"; "--message=tag"; "first"; "main~1" ]);
@@ -618,7 +618,7 @@ let configured_env repo =
 
 let shared_diff =
   lazy
-    (let repo = Git_fixture.shared () in
+    (let repo = Shared_repo.shared () in
      let t = open_with (configured_env repo) in
      let before = Git_fixture.index_state repo in
      let changes = Git.diff t ~base:"HEAD" in

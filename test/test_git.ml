@@ -340,7 +340,7 @@ let splits_at_the_first_tab () =
     (Git.Decode.ls_files_stage ("100644 " ^ id ^ " 2\ta\tb\000")
     = Ok [ { Git.Decode.mode = 0o100644; id; stage = 2; path = "a\tb" } ])
 
-let shared = lazy (Repo.shared ())
+let shared = lazy (Shared_repo.shared ())
 let hello_id = "ce013625030ba8dba906f756967f9e9ca394464a"
 
 let opened =
@@ -593,7 +593,7 @@ let expected_files =
     "added.txt";
     "bin.dat";
     "bytes.bin";
-    Repo.quoted_name;
+    Shared_repo.quoted_name;
     "head.txt";
     "mod.txt";
     "mode.sh";
@@ -673,7 +673,7 @@ let contents_of_main =
     ("README.md", "hello\n");
     ("bin.dat", "\000binary\000\n");
     ("bytes.bin", "\000\001\n\255");
-    (Repo.quoted_name, "before\n");
+    (Shared_repo.quoted_name, "before\n");
     ("gone.txt", "deleted on disk\n");
     ("head.txt", "a\nb\nc\n");
     ("mod.txt", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n");

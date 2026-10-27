@@ -15,6 +15,7 @@
  (libraries
   sinter_core
   sinter_bridge
+  git_fixture
   alcotest
   qcheck-core
   qcheck-alcotest
