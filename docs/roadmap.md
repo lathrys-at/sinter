@@ -33,6 +33,19 @@
     successor, and bump the revision of the citing declaration (record
     `cite-the-successor`).
 - **Ledger commands and evidence import**
+- **Show the approval delta so that a person reads it** — a person
+  approves the changes to a set of items since their last approval
+  (design notes section 6.4). How to show those changes so that the
+  person actually reads what they approve is open. Not designed.
+- **The coverage of each test for Rust and Go** — rung 4 of the
+  evidence ladder needs the coverage of each test (design notes
+  section 4). To run each test that carries a `@verifies` in its own
+  process is correct and slow. A driver could merge the coverage files
+  of `cargo llvm-cov` by test name, or run `go test -run` for each
+  test. Whether either can be fast enough for the hook after each
+  edit, and not only for CI, is unknown. Until then, these packs
+  report rung 4 as `unmeasured` on a local machine, and as
+  `unexercised` or `passing` in CI. Not designed.
 - **Observations of the outside world** — an obligation that a
   decision record makes and that never ends, where the work depends on
   events outside the repository. An example is a decision to keep
@@ -96,10 +109,24 @@
     the same protocol.
 - **`spec/protocol.md`** — the `serve` request and response protocol,
   as a specification of its own.
+- **Rank the items of the brief** — the brief ranks its items by
+  their distance in the graph from the step's scope (design notes
+  section 8.1). A wrong brief is worse than a short one, because it
+  fills the budget with the wrong requirements. Other weights are
+  possible: the number of citations, the recency of approval, or the
+  declarations that the step's promises reach through `@refines`.
+  Measurements of real sessions will decide; the metrics of the
+  ledger (design notes section 6.4) will show the answer as fewer
+  violations in each turn report. Not designed.
 - **`sinter-packs` repository** — the language packs, built and
   verified as `docs/licensing-setup.md` describes.
 - **Test evidence for Sinter itself** — JUnit output from the test
   suite, for `evidence import`.
+- **Tests with no name** — the OCaml tests of `ppx_expect` and
+  `ppx_inline_test` are anonymous extension nodes, and the runner
+  reports no name for them. The OCaml pack needs a way to bind their
+  results before it can read them as tests. This matters because
+  Sinter checks its own code. Not designed.
 - **Drop the pins on the measuring tools** when upstream `bisect_ppx`
   and `mutaml` release versions that install beside the lock file
   (`docs/decisions/instrumented-tooling.md`).

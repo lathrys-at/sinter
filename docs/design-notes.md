@@ -1331,19 +1331,20 @@ To embed a real engine, such as views in SQLite or Datalog, stays the
 documented way to grow, not a commitment. The condition to reconsider it
 is a rule that the algebra cannot express.
 
-## 10. Open Questions
+## 10. Open questions
 
-**10.1 Approval UX** (mechanism decided). Under the collaborative model the requirement is *unmistakable*, not *undeniable*: every bypass must require a deliberate act, because a deliberate act is circumvention and circumvention is out of threat model. Two cheap layers: confirmation read from `/dev/tty`, never stdin (a harness's non-interactive shell has no controlling terminal, so the command refuses; `yes | approve` is dead for free); and a harness-envvar tripwire (`CLAUDECODE=1`, manifest-extensible) closing the tmux-pane gap. Plus the structural layer: ledger on a ref outside every checkout, no approval path reachable from an agent's shell. Not chosen: per-session token minting — the cryptographic path in a trench coat. For deployments outside the collaborative model the hardening path is now concrete and design-free: signed ledger commits with a signer allowlist, and the ref placed where the host's push restrictions reach it (§6.4). **Still open:** rendering the spec delta so that what is approved is actually read.
+The questions of the design that are still open are in
+`docs/roadmap.md`, with the other directions that are agreed but not
+designed. Two earlier questions have answers:
 
-**10.2 The coverage of each test on Rust and Go.** Rung 4 needs per-test coverage (§4). The universal fallback — one process per `@verifies`-bearing test — is correct and slow. Whether `cargo llvm-cov` profraw merging by test name, or a `go test -run` driver, can be made cheap enough to run in the PostToolUse tier rather than only in CI is unknown; until then those packs ship rung 4 as `unmeasured` locally and `unexercised`/`passing` in CI.
-
-**10.3 Brief ranking.** "Graph distance from the step's scope" is a heuristic, and a wrong brief is worse than a short one: it fills the budget with the wrong requirements. Whether to weight by citation count, by recency of approval, or by which declarations the step's promises transitively `@refines` is a question for measurement against real sessions — the metrics tables (§6.4) are where the answer will show up as fewer violations per turn report.
-
-**10.4 ID strategies for unusual test conventions.** OCaml's `ppx_expect` and `ppx_inline_test` are anonymous inline extension nodes with no runner-reported names; JS `describe`/`it` nesting is a title path, not a symbol. The fixed strategy menu must cover these before those packs ship; the OCaml one matters because the tool dogfoods on itself.
-
----
-
-# Part II — Surfaces
+- How a person approves: the confirmation on the controlling terminal
+  and the agent markers (section 6.4).
+- How a test runner's names match the tests in the source: runner
+  adapters in the packs replace a fixed menu of strategies in the tool
+  (record `runner-adapters`, `spec/packs.md` sections 10 and 11). The
+  default adapter joins the names of the groups and the test, so the
+  nested `describe` and `it` blocks of JavaScript need no strategy of
+  their own.
 
 ## 11. CLI Surface
 
