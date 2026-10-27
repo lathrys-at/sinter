@@ -103,23 +103,47 @@ let the_help_of_parse_names_only_the_codes_it_returns () =
         false (contains line text))
     [ "1   when"; "4   when" ]
 
-let the_help_lists_the_five_exit_codes () =
+let the_help_lists_the_exit_codes_that_a_command_returns () =
   let status, text = run "--help=plain" in
   code "the exit code is 0" 0 status;
   List.iter
     (fun line ->
       Alcotest.(check bool)
         (Printf.sprintf "the help holds %S" line)
-        true
-        (String.length text > 0
-        &&
-        let n = String.length line and h = String.length text in
-        let rec search index =
-          index + n <= h
-          && (String.equal (String.sub text index n) line || search (index + 1))
-        in
-        search 0))
-    [ "EXIT STATUS"; "0   on"; "1   when"; "2   when"; "3   when"; "4   when" ]
+        true (contains line text))
+    [ "EXIT STATUS"; "0   on"; "1   when"; "2   when"; "3   when" ];
+  Alcotest.(check bool)
+    "the help does not hold \"4   when\"" false (contains "4   when" text)
+
+let the_help_lists_scan_parse_and_serve_as_plumbing () =
+  let status, text = run "--help=plain" in
+  code "the exit code is 0" 0 status;
+  let index line =
+    let n = String.length line and h = String.length text in
+    let rec search i =
+      if i + n > h then None
+      else if String.equal (String.sub text i n) line then Some i
+      else search (i + 1)
+    in
+    search 0
+  in
+  match index "PLUMBING COMMANDS" with
+  | None -> Alcotest.fail "the help holds no PLUMBING COMMANDS section"
+  | Some plumbing ->
+      List.iter
+        (fun command ->
+          match index ("       " ^ command ^ " ") with
+          | None -> Alcotest.failf "the help does not list %s" command
+          | Some at ->
+              Alcotest.(check bool)
+                (Printf.sprintf "%s is under PLUMBING COMMANDS" command)
+                true (at > plumbing))
+        [ "parse"; "scan"; "serve" ];
+      Alcotest.(check bool)
+        "check is above PLUMBING COMMANDS" true
+        (match index "       check " with
+        | Some at -> at < plumbing
+        | None -> false)
 
 let the_version_names_the_checkout () =
   let status, text = run "--version" in
@@ -368,8 +392,10 @@ let tests =
       the_version_starts_with_the_release_version;
     Alcotest.test_case "a parse run that fails names no module of the library"
       `Quick a_parse_run_that_fails_names_no_module_of_the_library;
-    Alcotest.test_case "the help lists the five exit codes" `Quick
-      the_help_lists_the_five_exit_codes;
+    Alcotest.test_case "the help lists the exit codes that a command returns"
+      `Quick the_help_lists_the_exit_codes_that_a_command_returns;
+    Alcotest.test_case "the help lists scan, parse, and serve as plumbing"
+      `Quick the_help_lists_scan_parse_and_serve_as_plumbing;
     Alcotest.test_case "the help of parse names only the codes it returns"
       `Quick the_help_of_parse_names_only_the_codes_it_returns;
     Alcotest.test_case "an answer arrives before the input ends" `Quick
