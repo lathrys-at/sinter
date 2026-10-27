@@ -159,6 +159,8 @@ type lookups = {
   verifies : string list;
 }
 
+module Paths = Map.Make (String)
+
 type t = {
   manifest : Manifest.t;
   declarations : declaration array;
@@ -170,6 +172,7 @@ type t = {
   acks : ack list;
   plans : plan list;
   lookups : lookups Lazy.t;
+  block_hashes : string array Paths.t Lazy.t;
 }
 
 let site_id path (section : Markdown.section) =
@@ -607,6 +610,20 @@ let make manifest files =
     acks = List.rev acks;
     plans;
     lookups = lazy (lookups declarations edges targets plans);
+    block_hashes =
+      lazy
+        (List.fold_left
+           (fun hashes (path, (document : Markdown.t)) ->
+             Paths.update path
+               (function
+                 | None ->
+                     Some
+                       (Array.map
+                          (fun (block : Markdown.block) -> block.hash)
+                          document.blocks)
+                 | kept -> kept)
+               hashes)
+           Paths.empty files);
   }
 
 let needs_changes facts =
@@ -973,6 +990,9 @@ let successors facts index =
        (List.sort order
           (Indices.elements
              (Indices.filter (fun node -> facts.inforce.(node)) reached))))
+
+let block_hash facts path index =
+  (Paths.find path (Lazy.force facts.block_hashes)).(index)
 
 let edges facts = List.combine facts.edges facts.targets
 let acks facts = facts.acks

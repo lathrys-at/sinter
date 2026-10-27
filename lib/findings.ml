@@ -400,11 +400,7 @@ let cycles facts =
                ?detail ()))
     (components successors)
 
-let block_hash documents path index =
-  let document : Markdown.t = List.assoc path documents in
-  document.blocks.(index).hash
-
-let disendorsed facts documents =
+let disendorsed facts =
   let declarations = Array.of_list (Facts.declarations facts) in
   List.filter_map
     (fun ((edge : Facts.edge), target) ->
@@ -425,7 +421,9 @@ let disendorsed facts documents =
                   declaration.status )
               with
               | [], Some status ->
-                  let hash = block_hash documents edge.path edge.block_index in
+                  let hash =
+                    Facts.block_hash facts edge.path edge.block_index
+                  in
                   finding
                     ~detail:
                       (Printf.sprintf "%s is %s"
@@ -693,8 +691,8 @@ let ack_target target =
     if start = length then None
     else Some (String.sub target start (length - start)) )
 
-let acked facts documents (edge : Facts.edge) =
-  let hash = block_hash documents edge.path edge.block_index in
+let acked facts (edge : Facts.edge) =
+  let hash = Facts.block_hash facts edge.path edge.block_index in
   List.exists
     (fun (ack : Facts.ack) ->
       let finding_class, subject = ack_target ack.target in
@@ -733,9 +731,9 @@ let tree ?phases manifest documents ~not_text =
             cycles facts;
             List.filter_map
               (fun (edge, (finding : Finding.t)) ->
-                if finding.ackable && acked facts documents edge then None
+                if finding.ackable && acked facts edge then None
                 else Some finding)
-              (disendorsed facts documents);
+              (disendorsed facts);
             orphans facts;
             uncovered facts;
             bad_scopes facts;

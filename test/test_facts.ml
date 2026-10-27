@@ -1604,6 +1604,43 @@ let by_of_each_promise_is_the_first_residue_in_place =
             plan.steps)
         (Facts.plans facts))
 
+let block_hash_is_the_hash_of_the_listed_document =
+  property
+    "the block hash of each block of each file is the hash in the document \
+     that the list of files holds" (fun files ->
+      let documents =
+        List.map (fun (path, text) -> (path, document text)) files
+      in
+      let facts = Facts.make (manifest ()) documents in
+      List.for_all
+        (fun (path, _) ->
+          let listed : Markdown.t = List.assoc path documents in
+          Array.for_all Fun.id
+            (Array.mapi
+               (fun index (block : Markdown.block) ->
+                 String.equal block.hash (Facts.block_hash facts path index))
+               listed.blocks)
+          &&
+          match Facts.block_hash facts path (Array.length listed.blocks) with
+          | (_ : string) -> false
+          | exception Invalid_argument _ -> true)
+        documents
+      &&
+      match Facts.block_hash facts "missing.md" 0 with
+      | (_ : string) -> false
+      | exception Not_found -> true)
+
+let block_hash_reads_the_first_of_two_files_with_one_path () =
+  let first = document "# A\n\n@req a\nOne.\n" in
+  let second = document "# A\n\n@req a\nTwo.\n" in
+  let facts = Facts.make (manifest ()) [ ("a.md", first); ("a.md", second) ] in
+  Alcotest.(check string)
+    "the hash" first.blocks.(0).hash
+    (Facts.block_hash facts "a.md" 0);
+  Alcotest.(check bool)
+    "the two hashes differ" false
+    (String.equal first.blocks.(0).hash second.blocks.(0).hash)
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -1762,6 +1799,9 @@ let tests =
       discharge_refuses_a_promise_of_other_facts;
     a_step_is_done_by_the_list_scan_of_the_verifies_edges;
     by_of_each_promise_is_the_first_residue_in_place;
+    block_hash_is_the_hash_of_the_listed_document;
+    case "block hash reads the first of two files with one path"
+      block_hash_reads_the_first_of_two_files_with_one_path;
     records_come_in_their_order;
     every_reference_names_a_record;
     every_record_is_canonical;

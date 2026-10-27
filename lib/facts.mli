@@ -172,6 +172,15 @@ val edges : t -> (edge * target) list
 (** [edges facts] is every edge, with what its tag target resolves to, in the
     order of the files of {!make} and then of the lines. *)
 
+val block_hash : t -> string -> int -> string
+(** [block_hash facts path index] is the hash of the block at [index] in the
+    blocks of the document of [path] that {!make} took. When [path] occurs more
+    than once, the first document counts.
+
+    @raise Not_found if no file of {!make} has the path [path].
+    @raise Invalid_argument
+      if [index] is not an index of the blocks of that document. *)
+
 val acks : t -> ack list
 (** [acks facts] is every ack, in the order of the files and then of the lines.
 *)
