@@ -1346,837 +1346,301 @@ designed. Two earlier questions have answers:
   nested `describe` and `it` blocks of JavaScript need no strategy of
   their own.
 
-## 11. CLI Surface
+## 11. Command-line surface
 
-The surface is specified as the help text itself. Conventions that apply to every verb:
+No specification covers the commands as a whole yet. Where a
+specification holds a part of a command, the text gives the reason and
+names the specification. A command that exists states its options in its
+own help text, `sinter <command> --help`.
 
-- **Repo discovery.** Every verb runs from anywhere inside a git worktree; the repo root is `git rev-parse --show-toplevel` and the manifest is `sinter.toml` there. Nothing is looked up in the home directory except the pack cache.
-- **Base.** `--base <rev>` is accepted by every verb that reads the diff. Default: `git merge-base HEAD <branch>` where `<branch>` is the manifest's `default-branch` (`main`). The working tree is always "now."
-- **Output is deterministic.** Line output is sorted by `(kind, path, line, col, id)`. JSONL is canonical (§13.1). Two runs on the same tree, base, ledger, and evidence produce identical bytes.
-- **Exit codes** are shared: `0` clean/success · `1` findings present (or plan not done under `status --done`) · `2` usage error · `3` environment error (manifest invalid, pack missing or hash mismatch, git unavailable, parse error in a governed file when `--strict-parse`) · `4` refused (`approve`, `decline`, or `ledger abandon` without a tty or under an agent marker; ledger not fast-forward; revision taken). A hook translates these into its harness's protocol (§11.18).
-- **Line format** for findings, used by `check`, `status`, `query` when the result contains findings, and hook stderr:
+These conventions apply to every command:
+
+- **The repository and the base.** Every command runs from anywhere
+  inside a git worktree, and reads the manifest at the repository root
+  (`spec/manifest.md` section 2). The base of a diff is by default the
+  merge base of `HEAD` and the default branch, and `--base` overrides
+  it. The working tree is always "now".
+- **Fixed output.** Lines sort by kind, path, line, column, and id, and
+  JSONL is in its canonical form (`spec/jsonl.md` section 2). Two runs
+  on the same inputs give the same bytes, so a script or a diff of two
+  runs can rely on the output.
+- **One set of exit codes.** Every command uses five codes (record
+  `exit-codes-by-gate`). Code 1 means at least one finding that blocks
+  at the gate that `--gate` names, so a hook or a CI job decides with
+  one comparison. Without `--gate`, and without `--strict`, a command
+  reports every finding and exits 0. Code 2 means that the command line
+  is wrong, code 3 that the command could not run here, and code 4 that
+  it refused, as `approve` does for an agent.
+- **One line for each finding**, which `check`, `status`, `query`, and
+  the hooks print:
 
   ```
   <path>:<line>:<col>: <class> <subject> [<detail>]
     fix: <one-line instruction or the exact line to paste>
   ```
 
-  Identifiers containing whitespace (JS test titles) are double-quoted. Facts without a location (external ids, runs) print `-:-:-:` in the location slot so the column count is stable for `cut`/`awk`.
+  A finding with no place in a file prints `-:-:-:` in the place of
+  the location, so that the number of columns stays the same for
+  `cut` and `awk`.
 
 ### 11.1 `sinter`
 
-```
-sinter — plans die into facts; facts are checked
+| group | commands |
+|---|---|
+| everyday | `status`, `brief`, `check`, `explain`, `query`, `declare`, `patch` |
+| judgment | `inbox`, `approve`, `decline`, `compile`, `ledger` |
+| plumbing | `scan`, `evidence`, `pack`, `hook`, `init`, `parse`, `serve` |
 
-USAGE
-  sinter <command> [options]
-  sinter --help | --version
-
-COMMANDS
-  Everyday
-    status      What should happen next: active plan and step, derived step
-                states, open obligations, finding counts (recomputed every run)
-    brief       Compile the context the active step needs (for hooks)
-    check       Evaluate every finding definition; exit 1 if any fire
-    explain     Why a finding fired, and the reasoning behind the rule
-    query       Evaluate an expression in the fact algebra
-    declare     Record the active plan/step (session state, never truth)
-    patch       Print mechanical fix-ups as a unified diff (never applies them)
-
-  Cash-out
-    inbox       Everything that needs a human judgment, across branches
-    approve     Approve pending items into the ledger (human, on a terminal)
-    decline     Record a refusal with a reason, bound to the text refused
-    compile     Render specs, coverage, reports, previews, history, metrics
-    ledger      Inspect and verify the approval ledger ref
-
-  Plumbing
-    scan        Rebuild the fact index and print it as JSONL
-    evidence    Import runner and coverage artifacts for the current tree
-    pack        Fetch, verify, and list language packs
-    hook        Harness hook entrypoint (registered by init)
-    init        Install manifest skeleton, hooks, CI workflows, ledger ref
-
-GLOBAL OPTIONS
-  -C <dir>            Run as if started in <dir>
-  --manifest <path>   Manifest path (default: <repo>/sinter.toml)
-  --base <rev>        Diff base (default: merge-base of HEAD and the default branch)
-  --json              JSON Lines on stdout; one fact per line (see: sinter scan --help)
-  --color <when>      auto | always | never  (also honors NO_COLOR)
-  -q, --quiet         Findings only; no progress, hints, or health lines
-  -v, --verbose       More detail; repeatable
-  --no-cache          Ignore the on-disk index cache
-  -h, --help          Help for sinter or a command
-  -V, --version       Tool version, schema version, wasmtime version
-
-EXIT CODES
-  0  clean / success
-  1  findings present, or plan not done (status --done)
-  2  usage error
-  3  environment error (manifest, packs, git)
-  4  refused (approve, decline, or ledger abandon without a controlling
-     terminal or under a harness)
-
-ENVIRONMENT
-  SINTER_BASE          Default for --base
-  SINTER_PACK_CACHE    Pack cache directory (default: $XDG_CACHE_HOME/sinter/packs)
-  CLAUDECODE, …       Agent markers; approve refuses when any is set
-                      (list extended by refuse_env in the manifest)
-
-Run 'sinter <command> --help' for details. The algebra is documented in
-'sinter query --help'; the JSONL schema in 'sinter scan --help'.
-```
+The everyday commands serve the agent and the person during the work.
+The commands of judgment serve the person who approves, and only
+`approve`, `decline`, and `ledger abandon` change the ledger (section
+9.1). Every command accepts `-C <dir>`, `--manifest`, `--base`,
+`--json`, `--color`, `-q`, `-v`, and `--no-cache`, and the variables
+`SINTER_BASE` and `SINTER_PACK_CACHE` give defaults for the base and the
+cache of packs. `parse` and `serve` exist: `parse` prints the tree of a
+file or the matches of a query, and `serve` is the serve loop of section
+9.1.
 
 ### 11.2 `sinter status`
 
-```
-sinter status — what should happen next
-
-USAGE
-  sinter status [--plan <slug>] [--done] [--json] [--base <rev>]
-
-  Prints, in order:
-    1. Active plan and step (or why there is none), with the effective scope.
-    2. Every step of the active plan with its derived state and unmet promises:
-         done          every promise met, evidence green within scope
-         partial n/m   n of m promises met (0/m once a hunk lands in scope)
-         untouched     no promise met and no hunk in scope
-         refactor      no promises; done iff scope touched and evidence green
-    3. Open obligations: unplanned hunks, unmet-rule items, unapproved targets.
-    3a. Live declines on anything in scope, with their reasons.
-    3b. Claims: other branches' approved plans overlapping this scope, and
-        promises here that are waiting on promises there (§6.7).
-    4. Finding counts by class, split by tier under the turn tier set.
-    5. Machinery health: revisions bumped since base, live acks, void acks,
-       evidence age (tree key match), rules whose origin is not in force.
-    6. Next-action hints ("sinter patch suspect", "sinter evidence import …").
-  Nothing here is stored; every line is recomputed from the tree, the ledger
-  ref, and the evidence directory.
-
-OPTIONS
-  --plan <slug>   Report on this plan instead of the active one
-  --done          Print nothing; exit 0 iff the plan is done (every step done
-                  and no verifies edge within plan scope below rung 'passing',
-                  or 'unmeasured' where the manifest allows it). For merge
-                  queues and scripts.
-  --json          A leading {"kind":"summary"} fact followed by the plan, step,
-                  promise, and finding facts the report was built from
-
-EXAMPLES
-  sinter status
-  sinter status --done && git push
-  sinter status --json | jq -c 'select(.kind=="promise" and .met==false)'
-```
+`sinter status` answers "what should happen next". It prints the
+active plan and step; each step with its derived state and its unmet
+promises; the open obligations; the live declines and the claims that
+touch the scope; the counts of findings; the health of the machinery,
+such as the bumps since the base and the void acks; and a hint of the
+next command, such as `sinter patch suspect`. Sinter stores none of
+it, and computes every line again from the tree, the ledger, and the
+evidence. `--done` prints nothing and exits 0 only when the plan is
+done, for a merge queue or a script: `sinter status --done && git push`.
 
 ### 11.3 `sinter check`
 
-```
-sinter check — evaluate every finding definition
+`sinter check` evaluates every finding class over the working tree
+against the base. This one command is the turn report, the CI jobs,
+and the check before a commit: each is `sinter check --gate <gate>`,
+with `--diff` where only the change counts, and with its own base. So
+every gate sees what the others see (section 8). The classes and
+their tiers are in `spec/algebra.md` section 9, diff mode in section
+8.2, and the gates in `spec/manifest.md` section 9.
 
-USAGE
-  sinter check [options] [<class>...]
-
-  Evaluates each finding definition — built-in (sinter query --list) and
-  manifest-defined — over the working tree against --base, and prints one
-  line per finding. With no <class> argument every class runs. Exits 1 iff
-  any finding whose tier for the selected gate is 'block' fires; 'warn'
-  findings print but do not affect the exit code unless --strict.
-
-  This command is the turn report, the CI job, and the pre-commit check.
-  Each is 'sinter check --diff --gate <g>' with a different base and gate
-  (pre-commit uses the turn tiers).
-
-MODES
-  (default)         Tree mode: every finding on the working tree, pre-existing
-                    debt included. Diff-relative classes (unbumped, unplanned-
-                    change, config-changed, code-drift, renamed, promise-
-                    collision) are computed against --base and reported too.
-  --diff            Diff mode: only findings the diff introduced — those whose
-                    identity (sinter scan --help, "Finding identity") is absent
-                    from the finding set of the base tree.
-
-SELECTION
-  <class>...        Restrict to these finding classes
-  --gate <g>        Tier configuration to apply: turn | review | merged.
-                    Without it, everything is reported and nothing is 'block'
-                    for the exit code unless --strict. Classes at tier 'off'
-                    for the gate are not evaluated.
-  --path <glob>     Only findings located under <glob>; repeatable
-  --plan <slug>     Only findings located within a plan's scope
-  --strict          Treat 'warn' as 'block' for the exit code
-  --acked           Also print findings accepted by a live @ack (marked)
-  --strict-parse    Exit 3 on any parse error in a governed file instead of
-                    reporting it as a 'parse-error' finding
-
-OUTPUT
-  (default)         path:line:col: class subject [detail]
-                      fix: …        (present when a mechanical fix exists)
-  --json            JSONL finding facts (kind "finding")
-  --sarif           SARIF 2.1.0 to stdout; class → ruleId, tier → level,
-                    finding id → partialFingerprints.sinterId, patches → fixes
-  --summary         One line per class: count, tier, ackable
-  --explain         After each finding, the expanded definition it fired from
-
-EXAMPLES
-  sinter check
-  sinter check --diff --gate turn
-  sinter check dangling suspect --path 'src/auth/**'
-  sinter check --diff --sarif > sinter.sarif
-  sinter check --summary --gate review
-```
+The other options narrow or change the output: `--path` and `--plan`
+narrow it; `--strict` makes every finding block; `--acked` also shows
+the findings that an ack accepted; `--strict-parse` turns a parse error
+into exit code 3; `--summary` prints one line for each class; and
+`--explain` prints the definition behind each finding. `--json` prints
+the records of `spec/jsonl.md` section 8, and `--sarif` prints SARIF as
+section 13 maps it.
 
 ### 11.4 `sinter query`
 
+`sinter query <expr>` evaluates an expression of the algebra of
+section 9.2 over the facts (`spec/algebra.md`). `--list` lists the
+saved definitions, and `--explain <name>` expands one. Besides lines,
+it prints `--json`, `--dot` for Graphviz, and `--jq <filter>`.
+Examples:
+
 ```
-sinter query — evaluate an expression in the fact algebra
-
-USAGE
-  sinter query [options] <expr>
-  sinter query --list
-  sinter query --explain <name>
-
-  The universe is the fact set of the working tree (sinter scan). An
-  expression denotes a subset of it. Selectors pick facts; traversals and
-  closures walk edges; predicates filter by derived state; + ^ - combine.
-  Binary operators must be whitespace-separated: 'a - b' is difference,
-  'auth-lockout' is a slug. Full semantics: see the manual page or §12 of
-  the design notes; a one-screen reference follows.
-
-REFERENCE
-  Selectors   all  kind(k|…)  req(s) design(s) decision(s) plan(s) step(p/s)
-              test(id) external(ns/id) rule(n)  path(glob)  changed(base|<rev>)
-              active  historical  exempt  acked(target)  findings(class|…)
-  Traversal   out(k|…, S)  in(k|…, S)  src(E)  dst(E)  subject(F)
-  Closure     deps(k|…, S)  rdeps(k|…, S)  paths(S, T)
-  Plan        scope(S)  promises(S)  met(P)  done(S)  waiting(P)
-  Status      inforce(S)  approved(S)  bumped(S)  declined(S)
-  Edge        suspect(E)  dangling(E)
-  Evidence    wrong-source(E)  never-ran(E)  failed(E)  unexercised(E)
-              unmeasured(E)  passing(E)
-  Law         obligations(R)  triggered(R)  judged(n)
-  Operators   +  union    ^  intersection (binds tighter)    -  difference
-  Names may contain '*' as a glob. Kinds may be alternated with '|'. Saved
-  definitions are invoked like functions: untraced(verifies), unmet(active).
-
-OPTIONS
-  --list            List saved definitions: built-in and [findings] in the manifest
-  --explain <name>  Print a saved definition with every nested definition
-                    expanded, and its inferred category
-  --count           Print the cardinality only
-  --order <keys>    Sort keys, comma-separated, from: kind path line col id
-                    (default: kind,path,line,col,id)
-  --json            JSONL facts
-  --dot             Graphviz: node facts become nodes, edge facts become edges;
-                    other kinds are omitted with a note on stderr
-  --sarif           Only when the result is all findings
-  --jq <filter>     Pipe the JSONL through the bundled jq
-
-EXAMPLES
-  sinter query 'kind(req) ^ inforce(all) - dst(in(verifies, all))'
-  sinter query 'untraced(verifies) ^ path(docs/auth/**)'
-  sinter query --count 'suspect(kind(edge))'
-  sinter query --json 'deps(refines, req(auth-lockout))'
-  sinter query --dot 'rdeps(satisfies|verifies, req(auth-*))' | dot -Tsvg
-  sinter query 'kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - exempt'
-  sinter query --jq '.slug' 'kind(decision) - inforce(all)'
+sinter query 'untraced(verifies) ^ path(docs/auth/**)'
+sinter query --dot 'rdeps(satisfies|verifies, req(auth-*))' | dot -Tsvg
+sinter query 'kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - exempt'
 ```
 
 ### 11.5 `sinter declare`
 
-```
-sinter declare — record the active plan and step
-
-USAGE
-  sinter declare <plan>[/<step>]
-  sinter declare --clear
-  sinter declare --show
-
-  Writes the active-step claim to .sinter/session.json, keyed by harness
-  session id when one exists so parallel sessions in a worktree do not
-  fight. The claim is session state, never truth: it only anchors the brief and
-  out-of-scope surfacing (§8). Misdeclaring makes reports noisier, never
-  quieter, which is why this is the one self-report the tool accepts.
-
-  <plan> is the plan slug (the @plan tag), <step> the step slug derived from
-  its heading (sinter status lists them). With <plan> alone, scope falls back
-  to the plan's @scope.
-
-OPTIONS
-  --clear    Remove the claim; surfacing falls back to the sole plan's scope
-             if there is exactly one plan, otherwise says so on every edit
-  --show     Print the current claim and its effective scope
-
-EXAMPLES
-  sinter declare auth-lockout/implement-lockout-counter-and-freeze
-  sinter declare auth-lockout
-  sinter declare --show
-```
-
+`sinter declare <plan>[/<step>]` records the active plan and step for
+the session (section 6.1). The record only anchors the brief and the
+note about edits outside the scope, so it is the one statement of the
+agent that Sinter accepts. `--clear` removes it, and `--show` prints
+it with its effective scope.
 
 ### 11.6 `sinter brief`
 
-```
-sinter brief — compile the context the active step needs
-
-USAGE
-  sinter brief [--plan <slug>[/<step>]] [--budget <bytes>] [--json]
-
-  The informational channel (§8.1). Prints, ranked by graph distance from
-  the active step's scope and cut to the budget:
-
-    1. The active plan and step; each promise with its state.
-    2. The approved text — the extent, not a summary — of every declaration
-       the step's promises target. Unapproved targets are marked as such.
-    3. Decisions in force reachable from the scope: cited by anything in
-       scope, or on a paths() route from in-scope items.
-    4. Rules whose trigger intersects the scope, each with its origin's
-       first line.
-    5. Live declines on anything in scope, with reasons.
-    6. Claims overlapping the scope, and promises here waiting on promises
-       there.
-    7. Current block-tier findings with fix lines.
-
-  Deterministic for a given index. Enforces nothing; no gate trusts it.
-  Delivered by 'sinter hook session-start' after compaction, which is the
-  reason it exists.
-
-OPTIONS
-  --plan <p[/s]>    Brief for this plan/step instead of the active one
-  --budget <bytes>  Cut here (default [brief].budget)
-  --json            The facts the brief was built from, in rank order
-
-EXAMPLES
-  sinter brief
-  sinter brief --budget 4000
-```
+`sinter brief` prints the brief of section 8.1, and marks each target
+that nobody approved. `--plan` gives the brief of another step,
+`--budget` sets the budget, and `--json` prints the facts of the brief
+in the order of their rank.
 
 ### 11.7 `sinter explain`
 
-```
-sinter explain — why a finding fired, and the reasoning behind the rule
-
-USAGE
-  sinter explain <finding-id> | <class> | rule:<name> | <subject-id>
-
-  For a finding id: the finding line; the definition it fired from, fully
-  expanded; the facts on each side of the final set difference that put the
-  subject in the result; the fix line; and for unmet-rule findings the origin
-  decision's full extent — context, choice, alternatives considered.
-  For a class: its definition, tiers per gate, ackability, mechanical fix.
-  For a rule: trigger, `expect` and its kind, scope, and its origin's
-  extent.
-  For a subject: every finding on it and every ledger entry about it.
-
-  This is the why-layer reaching the moment it changes behavior (§7). The
-  turn report includes the same origin text, so an agent normally does not
-  need to run this; a human reviewing a finding does.
-
-EXAMPLES
-  sinter explain finding:unmet-rule:req:auth-lockout:ste-docs
-  sinter explain rule:ste-docs
-  sinter explain req:auth-lockout
-```
+`sinter explain` takes a finding, a class, a rule, or a subject. For a
+finding, it prints the definition that the finding fired from, the
+facts that put the subject in the result, the fix, and for an
+`unmet-rule` finding the whole extent of the rule's origin. For a
+subject, it prints every finding on it and every ledger entry about
+it. This is where the reasons reach the moment when they change
+behavior (section 7). The turn report carries the same text of the
+origin, so an agent rarely needs this command; a person who reviews a
+finding does.
 
 ### 11.8 `sinter decline`
 
-```
-sinter decline — record a refusal, bound to the text refused
-
-USAGE
-  sinter decline <subject> --reason <text>
-
-  Appends a decline entry (subject, current extent hash, reason) to the
-  ledger. The decline is live while the subject's extent hash is unchanged
-  and is surfaced by status, brief, and inbox until then; when the text
-  changes it is void and the subject returns to pending, with the old
-  reason shown beside the new delta so the reviewer can judge whether it
-  was addressed.
-
-  This is the human's durable voice: an instruction attached to an
-  artifact instead of a context, which is the only kind that survives
-  compaction. Shares approve's refusal set — controlling terminal required,
-  agent markers refuse, exit 4.
-
-OPTIONS
-  --reason <text>   Required. One paragraph is the right length.
-  --push            Push the ledger ref after writing
-
-EXAMPLES
-  sinter decline req:auth-lockout --reason "Lockout must be per principal, not per IP; see decision shared-nat"
-```
+`sinter decline <subject> --reason <text>` appends a decline to the
+ledger (section 6.4, `spec/ledger.md` section 7). When the text
+changes, the decline is void, and the old reason shows beside the new
+delta, so the reviewer can judge whether the rework answered it. The
+command has the refusals of `approve`.
 
 ### 11.9 `sinter inbox`
 
-```
-sinter inbox — everything that needs a human judgment, across branches
-
-USAGE
-  sinter inbox [--fetch] [--since <date>] [--json]
-
-  One list, batched, from the ledger and every branch the remote knows:
-
-    approvals     pending approvals per branch, with batch size — large
-                  batches flagged (review fatigue)
-    deaths        plans whose death is blocked, and on what
-    reworks       declines whose subject has since changed: the rework
-                  landed; is it right now?
-    spot-checks   rule acks recorded by agents since the last inbox visit
-    claims        overlapping scopes, waiting cross-plan promises, and
-                  claims released by branch deletion since the last visit
-
-  Each item names the command that resolves it. The tool never notifies;
-  this is the one place to ask "what needs me," so that nothing else ever
-  has to.
-
-OPTIONS
-  --fetch         Fetch the ledger and branch heads first
-  --since <date>  Spot-check window (default: last inbox run, from session)
-  --json          One fact per item
-
-EXAMPLES
-  sinter inbox --fetch
-```
+`sinter inbox` prints the list of section 6.8, from the ledger and
+every branch that the remote knows. It marks a large batch of
+approvals, because a large batch causes fatigue. `--fetch` fetches the
+ledger and the branches first.
 
 ### 11.10 `sinter patch`
 
-```
-sinter patch — print mechanical fix-ups as a unified diff
+`sinter patch` prints, for each finding with a mechanical fix, a hunk
+that resolves it, as a unified diff. Sinter writes nothing into the
+tree: a person or an agent applies the diff with `git apply`, for
+example `sinter patch suspect | git apply`, and the checks judge the
+edit like any other. So the tool suggests and never touches (section
+9.1). The classes with a mechanical fix are marked in `spec/algebra.md`
+section 9, and section 9.1 there lists their edits, which
+`unplanned-change` does not report as unplanned work. They include the
+new pin of a suspect citation, the bump of an unbumped declaration, and
+the move of a citation to the successor of a retired item, when the item
+has exactly one successor (record `cite-the-successor`).
 
-USAGE
-  sinter patch [options] [<class>...]
-
-  For every finding of a class with a mechanical resolution, prints a hunk
-  that resolves it, as a unified diff on stdout with repo-root-relative
-  paths (apply from the root, or 'git -C <root> apply'). Nothing is written to the
-  tree: apply with 'git apply' (or 'sinter patch | git apply') and the
-  resulting edit is adjudicated like any other. Classes with a mechanical
-  fix:
-
-    suspect        re-pin each citation to the target's current revision
-    renamed        retarget citations of a slug that was renamed in the
-                   diff (tombstone at base, new slug with equal extent hash)
-    unbumped       bump the revision by one and re-pin its citations
-    unpinned       pin @satisfies/@verifies to the target's current revision
-    typo-tag       replace a near-miss tag word with the vocabulary word
-    stale-ack      delete the void @ack line
-    ack            for findings of ackable classes, insert the @ack line
-                   'check' printed (requires --ack; a judgment, not a fix)
-
-  Anything not listed has no mechanical fix by design: dangling citations
-  whose target was never renamed, unexercised tests, and rule obligations
-  need an edit or a judgment.
-
-OPTIONS
-  --ack             Include @ack insertions (see above)
-  --path <glob>     Restrict to hunks under <glob>; repeatable
-  --plan <slug>     Restrict to the plan's scope
-  --dry-run         Print the count of hunks per class instead of the diff
-
-EXAMPLES
-  sinter patch suspect | git apply
-  sinter patch unbumped --path 'docs/**'
-  sinter patch --ack unexercised --path 'tests/integration/**' | git apply
-```
+With `--ack`, the command also inserts the `@ack` lines that `check`
+printed for ackable findings; that is a judgment, not a fix. Every other
+finding has no mechanical fix by design: a dangling citation that no
+rename and no difference of case explains, an unexercised test, and an
+obligation of a rule need an edit or a judgment from someone who knows
+the meaning.
 
 ### 11.11 `sinter approve`
 
-```
-sinter approve — approve pending items into the ledger
+`sinter approve` shows the pending delta, asks for a confirmation on
+the controlling terminal, and appends the approvals to the ledger
+(section 6.4). For each subject, the prompt offers three answers:
+approve, skip, or decline with a reason. An item is pending when it
+needs approval and the ledger holds no approval for its current text
+(`spec/ledger.md` sections 5 and 11). The delta shows the changes of
+words since the last approved text, one line for a rename with an
+unchanged hash, and for a plan the promises added or removed and the
+scopes widened.
 
-USAGE
-  sinter approve [options] [<subject>...]
-
-  Renders the pending delta and asks for confirmation on the controlling
-  terminal (/dev/tty, never stdin), then appends approvals to refs/sinter/ledger.
-  With 'decline' and 'ledger abandon', this is one of the three verbs that
-  change durable state.
-  Each approval records HEAD and the branch, and is signed when [ledger].sign
-  is set. At each subject the prompt offers: approve / skip / decline (with a
-  reason, written as a decline entry — see sinter decline --help).
-
-  Pending means: an approval-gated declaration whose (slug, rev, extent
-  hash) has no ledger entry — new items and bumped items; and a plan whose
-  current commitment set is not approved against its most recent approved
-  set (§13.7). Text changed under an unchanged rev is not pending — it is
-  unbumped here, and on another branch it is the reservation refusal below. Free amendments
-  (narrowing scope; splitting, merging, renaming, reordering steps with the
-  commitment multiset preserved) never make a plan pending.
-
-  The delta is rendered as 'sinter compile spec --pending' renders it: for
-  text kinds, the extent with word-level changes since the last approved
-  extent; for a rename with an unchanged hash, one line saying so; for
-  plans, added and removed promises and widened scope per step.
-
-REFUSES (exit 4) when
-  - /dev/tty cannot be opened (no controlling terminal)
-  - an agent marker is set: CLAUDECODE or any name in [approve].refuse_env
-  - refs/sinter/ledger is not a fast-forward of its fetched remote (--push
-    fetches first; without --push the check uses the last fetched state;
-    a lost race is recovered with 'sinter ledger push --replay')
-  - any subject being approved has a blocking finding on it (dangling,
-    duplicate, invalid-target, parse-error)
-  - the ledger already holds an approval for the same slug and rev with a
-    different extent hash: the revision is taken by another branch. The
-    refusal names it and the fix is a bump ("rebase to v4").
-
-OPTIONS
-  <subject>...      Restrict to these subjects, as 'req:auth-lockout',
-                    'design:session-store', 'plan:auth-lockout'
-  --dry-run         Render the delta, approve nothing, exit 0 (works anywhere,
-                    including under a harness)
-  --note <text>     Attach a note to every approval written this run
-  --push            Fetch, verify fast-forward, write, push the ledger ref
-  --no-pager        Do not page the delta
-  --yes             Skip the per-subject prompt after the delta is shown.
-                    Still requires a tty; 'yes | sinter approve' cannot work.
-
-EXAMPLES
-  sinter approve --dry-run
-  sinter approve
-  sinter approve plan:auth-lockout --note "cut step 4, ships without notify"
-  sinter approve --push
-```
+The command refuses, with exit code 4, when it has no controlling
+terminal or an agent marker is set (section 6.4), when the ledger ref
+would not move forward, when a subject has a blocking finding such as
+`dangling`, and when another branch took the revision (`spec/ledger.md`
+section 5.3). `--dry-run` shows the delta and works anywhere, also under
+an agent. `--yes` skips the prompt for each subject, but still needs a
+terminal, so `yes | sinter approve` cannot work.
 
 ### 11.12 `sinter compile`
 
-```
-sinter compile — render generated documents (never into the tree)
+`sinter compile` writes documents that are views of the facts. It never
+writes them into the repository, and for the same inputs each document
+is always the same, so a diff of two compilations has meaning.
 
-USAGE
-  sinter compile spec          [--pending | --plan <slug> | --path <glob>]
-                               [--as-of <ledger-commit>]
-  sinter compile coverage      [--plan <slug> | --path <glob>] [--edge verifies|satisfies]
-  sinter compile report        [--base <rev>]
-  sinter compile residual-plan --plan <slug>
-  sinter compile plan-preview  --plan <slug>
-  sinter compile history       <subject>
-  sinter compile release-notes --from <ledger-commit> [--to <ledger-commit>]
-  sinter compile merge-order
-  sinter compile metrics       [--since <date>]
-  … [--out <file>] [--format md|html]
-
-  Every compiled document is a projection of the fact set. None is written
-  into the repository by the tool; --out writes wherever you say, default
-  stdout. Documents are deterministic for a given tree, ledger, and
-  evidence, so diffing two compilations is meaningful.
-
-  spec            A specification: declarations under the selection,
-                  rendered as prose in document order with status, rev,
-                  approval, and coverage per item. --pending renders only the
-                  approval delta — exactly what 'approve' would show.
-  coverage        Requirements and design items with their satisfying sites
-                  and verifying tests (rung shown), plus untraced items.
-                  Anonymous sites render as path:line links.
-  report          The complete account for the diff: findings by class and
-                  tier; every ack and what it accepted or cleared; law
-                  touched by the diff; machinery health; evidence provenance.
-                  This is what PR CI posts.
-  residual-plan   The unmet remainder of a plan as a plan skeleton —
-                  steps with unmet promises and their scopes, and the plan's
-                  journal if it has one — under a successor slug (plan slugs
-                  are permanent, §6.3), for a later branch. Emitted, not
-                  written to .plans/.
-  plan-preview    The graph after the plan, as if every promise were met:
-                  declarations that will exist, edges they will carry, items
-                  that become suspect or retired, coverage gaps that close or
-                  open, and the plan-level findings (§6.6). This is what the
-                  plan approval is taken against.
-  history         A subject's life from the ledger joined with git: each
-                  approved revision's extent (word-diffed against the previous),
-                  who approved it and when, declines and their reasons, the
-                  plan that promised it, the merge that completed that plan.
-  release-notes   The requirements-layer delta between two ledger points:
-                  declarations approved, bumped, retired, or completed in the
-                  interval, rendered with extents. Derived, never written.
-  merge-order     Claims in dependency order from cross-plan promises (§6.7),
-                  or the cycle that prevents one.
-  metrics         Health signals with a time axis: revision churn per item,
-                  amendments per plan, approval-to-completion time, approvals per
-                  approval session and seconds per approval, acks per week,
-                  code-drift counts. Tables, not judgments.
-
-OPTIONS
-  --pending         (spec) Only items pending approval
-  --as-of <c>       (spec) Reconstruct what was approved as of ledger commit <c>
-  --plan <slug>     Selection: items promised by, or within the scope of, plan
-  --path <glob>     Selection: items located under glob
-  --edge <k>        (coverage) Which citation kind defines coverage
-  --out <file>      Write here instead of stdout
-  --format <f>      md (default) or html
-
-EXAMPLES
-  sinter compile spec --pending
-  sinter compile coverage --plan auth-lockout
-  sinter compile report --base origin/main > report.md
-  sinter compile residual-plan --plan auth-lockout > /tmp/auth-lockout-2.md
-```
+| document | content |
+|---|---|
+| `spec` | a compiled specification: the declarations of a selection, with the status, revision, approval, and coverage of each. `--pending` shows only the delta that `approve` would show. `--as-of` rebuilds what was approved at a point of the ledger |
+| `coverage` | the requirements, with their sites, their tests and rungs, and the untraced items |
+| `report` | the complete account of a diff (section 8), with the changes of configuration and where the evidence came from; CI on a pull request posts it |
+| `residual-plan` | the unmet rest of a plan, with its journal, as a plan for a later branch (section 6.2) |
+| `plan-preview` | the graph after the plan, and the checks of the plan (section 6.6) |
+| `history` | the life of a subject: each approved revision and its changes, who approved it, the declines, and the plan that promised it |
+| `release-notes` | the delta of the requirements between two points of the ledger (section 6.4) |
+| `merge-order` | the claims in the order that promises across plans require (section 6.7) |
+| `metrics` | the health signals with a time axis (section 6.4), as tables, not judgments |
 
 ### 11.13 `sinter ledger`
 
-```
-sinter ledger — inspect and verify the approval ledger ref
-
-USAGE
-  sinter ledger log    [-n <count>] [--subject <s>] [--json]
-  sinter ledger show   <subject> [--json]
-  sinter ledger verify [--against <remote>] [--signers <file>]
-  sinter ledger fetch  [<remote>]
-  sinter ledger push   [<remote>] [--replay]
-  sinter ledger abandon <plan> --reason <text>
-
-  The ledger is JSONL on refs/sinter/ledger (sinter scan --help, "Ledger
-  entries"). Each approve appends lines in a new commit whose parent is the
-  previous tip. The ledger is not a checkout path: no editor or file tool
-  reaches it without git plumbing, which is the point.
-
-  log       Entries newest first: approvals, declines, completions — id,
-            subject, rev, by, branch, when, note or reason
-  show      Every approval for a subject, and for plans the approved
-            commitment set alongside the current one with the delta marked
-  verify    Exit 0 iff every commit on the ref is a fast-forward of its
-            parent and every ledger file is a byte-prefix extension of its
-            parent's; --against also requires the local ref to be an
-            ancestor-or-equal of the remote's; --signers requires every
-            commit to carry a valid signature from a listed key. Main CI
-            runs this.
-  fetch     git fetch <remote> refs/sinter/ledger:refs/sinter/ledger, fast-
-            forward only
-  push      git push <remote> refs/sinter/ledger, refusing non-fast-forward;
-            --replay recovers a lost race: fetch, re-append the local
-            entries absent upstream (by id) in ts order, push again
-  abandon   Record that an approved plan will never merge: its claim dies,
-            with the waiting-on promises resting on it. A human verb —
-            shares approve's refusal set (tty required, harness refuses)
-
-EXAMPLES
-  sinter ledger log -n 10
-  sinter ledger show plan:auth-lockout
-  sinter ledger verify --against origin
-```
+`sinter ledger` reads and moves the ledger ref (`spec/ledger.md`). `log`
+and `show` print entries; `show` of a plan sets the approved commitment
+set beside the current one. `verify` checks that the ref only moved
+forward and that no entry changed (section 13 there), with `--signers`
+for the signatures of section 6.4; CI on the default branch runs it.
+`fetch` and `push` move the ref by fast-forward only, and
+`push --replay` recovers a lost race (section 3.2 there).
+`abandon <plan> --reason <text>` closes a plan that will never merge and
+ends its claim; it is a command for a person, with the refusals of
+`approve`.
 
 ### 11.14 `sinter evidence`
 
+`sinter evidence import <file>...` reads the reports of test runners and
+of coverage, binds each result to its test through the runner adapters,
+and stores the results by tree key (section 4, `spec/packs.md` section
+9). It warns when a report lies inside the worktree where git does not
+ignore it, because the report itself would change the tree key. It
+prints how many tests it bound, and names the tests that it could not
+bind, with the nearest test by name. `sinter evidence key` prints the
+current tree key, so that a test script can name its output folder.
+Example:
+
 ```
-sinter evidence — import runner and coverage artifacts for the current tree
-
-USAGE
-  sinter evidence import <file>... [--format <f>] [--tree <key>]
-  sinter evidence list   [--all]
-  sinter evidence clear  [--all]
-  sinter evidence key
-
-  Evidence binds to a tree key: the git tree hash of the working tree as it
-  is, computed through a temporary index so nothing is staged for real.
-  Artifacts imported for one key never bind to another; 'evidence key'
-  prints the current one so a test script can name its output directory.
-
-  import    Parse each artifact, bind test IDs to test facts through the
-            pack's ID strategy, and store the normalized facts under
-            .sinter/evidence/<key>/, warning when an artifact path sits
-            inside the worktree unignored (the artifact itself would perturb
-            the tree key). Prints a binding summary: tests seen,
-            tests bound, tests unbound (with the nearest test fact by
-            edit distance), coverage attributed or aggregate. Exit 1 if a
-            @verifies-bearing test was seen in no artifact.
-  list      Evidence sets present, newest first, with age relative to the
-            current key; --all includes keys for other trees
-  clear     Remove evidence for the current key; --all for every key
-  key       Print the current tree key
-
-FORMATS  (auto-detected from content; --format to force)
-  junit           JUnit XML (pytest --junitxml, cargo nextest, Jest reporters)
-  go-test-json    go test -json
-  lcov            lcov .info (aggregate unless the file carries TN: records
-                  per test, which some drivers emit)
-  cobertura       Cobertura XML (aggregate)
-  coverage-json   coverage.py JSON with contexts (attributed when
-                  dynamic_context = test_function was set)
-  jacoco          JaCoCo XML with session data (attributed)
-
-OPTIONS
-  --format <f>    Force a format for every file given
-  --tree <key>    Bind to a specific key instead of the current one
-
-EXAMPLES
-  pytest --junitxml .sinter/junit.xml --cov --cov-context test \
-      && coverage json -o .sinter/cov.json \
-      && sinter evidence import .sinter/junit.xml .sinter/cov.json
-  sinter evidence list
+pytest --junitxml .sinter/junit.xml --cov --cov-context test \
+    && coverage json -o .sinter/cov.json \
+    && sinter evidence import .sinter/junit.xml .sinter/cov.json
 ```
 
 ### 11.15 `sinter scan`
 
-```
-sinter scan — rebuild the fact index and print it
-
-USAGE
-  sinter scan [--json] [--path <glob>] [--kind <k|…>] [--stats] [--no-cache]
-
-  Parses every governed file with its language pack and prints the fact set
-  as JSON Lines: one fact per line, canonical (RFC 8785, keys sorted, no
-  floats, no nested objects), sorted by (kind, path, line, col, id). This is
-  the interchange the whole tool speaks; 'query --json' and 'check --json'
-  are filtered scans. The first line is the index header; conformance
-  fixtures compare every line after it.
-
-  Line output (no --json) is one summary line per governed file: path,
-  pack, facts, parse errors.
-
-OPTIONS
-  --path <glob>   Only facts under glob; repeatable
-  --kind <k|…>    Only facts of these kinds or categories
-  --stats         Counts per kind and per pack, and cache status
-  --no-cache      Parse everything; ignore and rewrite the on-disk cache
-
-SCHEMA
-  Documented in the manual page and in §13 of the design notes; the schema
-  version is the "v" field on every line and is printed by 'sinter -V'.
-
-EXAMPLES
-  sinter scan --json > facts.jsonl
-  sinter scan --json --kind edge | jq -c 'select(.suspect)'
-  sinter scan --stats
-```
+`sinter scan` prints the facts of every governed file as JSONL, in the
+form of `spec/jsonl.md`. `sinter query --json` and `sinter check --json`
+print filtered scans, so every tool that reads Sinter reads one
+format.
 
 ### 11.16 `sinter pack`
 
-```
-sinter pack — fetch, verify, and list language packs
-
-USAGE
-  sinter pack add    <name>[@<version>] [--hash <sha256>] [--registry <url>]
-  sinter pack verify <name> | --all
-  sinter pack list
-  sinter pack info   <name>
-
-  A pack is a directory: grammar.wasm, queries (*.scm), pack.toml, and
-  conformance fixtures. It contains no executable code except a lexer with
-  no WASI imports; 'verify' checks that too. Packs live in the user cache
-  keyed by hash. The manifest [languages] table names them with a version
-  constraint; sinter.lock pins the exact version and hash. A pack whose
-  hash does not match the lock is a refusal (exit 3) everywhere, not a
-  warning.
-
-  add      Resolve the constraint (or the given version) against the
-           registry, fetch into the cache, and write sinter.lock. Prints the
-           [languages] line to add if the manifest lacks one. With --hash,
-           refuse anything else.
-  verify   Run the pack's conformance fixtures: parse the fixture project,
-           compare the JSONL byte-for-byte, bind the fixture's runner
-           output, and check the wasm import section is empty
-  list     Pinned packs with cache status and the tree-sitter and wasi-sdk
-           versions each was built with
-  info     Descriptor, ID strategy and parameters, evidence formats and
-           the suggested runner invocation that produces them, designated
-           tag-bearing nodes
-
-EXAMPLES
-  sinter pack add rust@1.4.0
-  sinter pack verify --all
-  sinter pack info markdown
-```
+`sinter pack add <name>` fetches a pack from the packs repository,
+checks its hash, and records it in `sinter.lock`. `sinter pack fetch`
+fills the cache from the lock file on another machine (`spec/packs.md`
+section 12). `verify` runs the conformance fixtures of a pack and checks
+the import sections of its wasm files (section 5.2). `list` and `info`
+describe the packs. A pack whose hash does not match the lock stops
+every command with exit code 3, because a pack that changed could change
+every extent hash of its language.
 
 ### 11.17 `sinter init`
 
-```
-sinter init — install the integration the design assumes
+`sinter init` installs the integration that the design assumes. It
+writes only what is missing, reports drift in what exists, and never
+overwrites a user's edit. It touches only files that the tool owns:
 
-USAGE
-  sinter init [--hook <harness>]... [--ci <host>] [--default-branch <branch>]
-             [--check] [--yes] [--print]
+| file | content |
+|---|---|
+| `sinter.toml`, `sinter.lock` | a manifest that names the packs for the languages in the tree, with `check.warn-only = true` (section 8); the lock |
+| `.gitignore` | the line `.sinter/` |
+| `.plans/` | the folder of plans |
+| `refs/sinter/ledger` | an empty ledger commit, when the ref is absent |
+| the settings of the harness | the hooks that call `sinter hook <event>`; for Claude Code, in `.claude/settings.json` |
+| the CI workflows | a job for pull requests: `check --diff --gate review` on the host's merge ref, against the tip of the default branch (section 3.5), the import of evidence, the report, and SARIF. A job for the default branch: `check --gate merged`, `ledger verify`, and the step that appends `completed` (section 6.3), with the right to push the ledger ref. Both jobs fetch the ledger ref, because a clone does not |
 
-  Idempotent. Writes only what is missing; reports drift in what exists and
-  never overwrites a user's edits. Interactive when run bare on a terminal;
-  fully scriptable with flags. Touches only tool-owned integration files:
-
-    sinter.toml, sinter.lock     manifest skeleton naming the languages
-                                 found in the tree; lock with exact versions
-                                 and hashes; enforce = "warn" (§8)
-    .gitignore                   the '.sinter/' entry
-    .plans/.gitkeep              the plan directory
-    refs/sinter/ledger            an empty ledger commit, if absent
-    <harness settings>           PostToolUse/SessionStart entries calling
-                                 'sinter hook <event>' (--hook claude-code
-                                 writes .claude/settings.json;
-                                 UserPromptSubmit is offered, off by
-                                 default)
-    <ci workflows>               PR job, on the host's merge ref with
-                                 --base at the tip of the default branch
-                                 (§3.5): check --diff --gate pr, evidence
-                                 import, report as a comment, SARIF
-                                 upload. The test-run
-                                 line is the repo's own bash: init writes a
-                                 marked RUN-TESTS step it cannot fill,
-                                 seeded with each pack's suggested
-                                 invocation, and --check flags it while
-                                 unfilled. Both jobs fetch
-                                 refs/sinter/ledger explicitly — clones do
-                                 not.
-                                 Main job: check --gate main, ledger verify,
-                                 and the completion step — append 'completed'
-                                 for merged plans meeting §6.3's condition;
-                                 needs push rights to refs/sinter/ledger.
-                                 No merge tooling exists: death is a ledger
-                                 fact (--ci github writes .github/workflows/)
-
-OPTIONS
-  --hook <harness>   claude-code (others by PR to the harness table)
-  --ci <host>        github | gitlab
-  --default-branch <branch>
-                     Default branch for base computation (default: main)
-  --check            Write nothing; exit 1 if anything is missing or drifted
-  --yes              Accept defaults without prompting
-  --print            Print what would be written, to stdout, and stop
-
-EXAMPLES
-  sinter init
-  sinter init --hook claude-code --ci github --yes
-  sinter init --check
-```
+The command that runs the tests is the repository's own. `init` writes a
+marked step that it cannot fill, with the runner command that each pack
+suggests, and `--check` reports the step while it is empty. No tooling
+for merges exists, because the closing of a plan is a ledger entry.
+`--hook claude-code` chooses the harness, and `--ci github` or
+`--ci gitlab` the host. `--check` writes nothing and exits 1 when
+anything is missing, and `--print` prints what it would write. The
+skills of the Claude Code plugin reach a repository by the same route
+(record `skills-distribution`).
 
 ### 11.18 `sinter hook`
 
-```
-sinter hook — harness hook entrypoint
+`sinter hook <event>` is the entry point that `sinter init --hook`
+registers. Each event is a filtered `sinter check` or a `sinter brief`,
+so a hook sees nothing that those cannot see. Hooks inform and never
+block (section 8).
 
-USAGE
-  sinter hook <event> [--harness <h>]
+| event | effect |
+|---|---|
+| `post-tool-use` | when the payload names a file (the tools `Edit`, `Write`, `MultiEdit`, and `NotebookEdit`), parse that file again and report its findings with their fix lines, and note an edit outside the active step's scope |
+| `session-start` | print the brief, which the harness adds to the context; it fires after a compaction, the case that it exists for |
+| `user-prompt-submit` | print the brief at a quarter of its budget, on every turn; registered only on request |
 
-  Registered by 'sinter init --hook'. Reads the harness's hook payload on
-  stdin, evaluates the corresponding surface, and answers in the harness's
-  protocol. Every event is a filtered 'sinter check' or a 'sinter brief';
-  nothing here can see what they cannot. Hooks inform, never block: local
-  enforcement is the workflow of whoever runs the turn report (§8).
-
-EVENTS
-  post-tool-use   If the payload names a file path (Edit, Write, MultiEdit,
-                  NotebookEdit): re-parse the edited file; surface parse
-                  errors, typo-tags, invalid targets, any finding on facts in
-                  that file, and a note when the edit landed outside the
-                  active step's scope — each with its fix line. Tools
-                  without a path pass silently.
-  session-start   'sinter brief' on stdout, which the harness injects as
-                  context. Fires on new sessions and after compaction
-                  (source: compact), which is the case it exists for.
-  user-prompt-    'sinter brief' at a quarter of brief.budget, every turn.
-  submit          Smaller and cheaper; registered only if asked at init.
-
-HARNESS PROTOCOLS
-  claude-code     stdin JSON (hook_event_name, tool_name, tool_input,
-                  session_id, source). PostToolUse feedback is exit 2 with
-                  the findings on stderr — the tool already ran, so this
-                  surfaces to the agent without undoing anything; a clean
-                  file is exit 0. SessionStart and UserPromptSubmit stdout
-                  is added to the agent's context. Session state (the
-                  declared step) is keyed by session_id.
-
-OPTIONS
-  --harness <h>   Protocol to speak (default: claude-code)
-
-EXAMPLES
-  echo '{"hook_event_name":"PostToolUse","tool_input":{"file_path":"src/x.rs"}}' \
-      | sinter hook post-tool-use; echo $?
-```
+**The protocol of Claude Code.** The payload is JSON on standard input,
+with `hook_event_name`, `tool_name`, `tool_input`, `session_id`, and
+`source`. Feedback after a tool is exit code 2 with the findings on
+standard error: the tool already ran, so the agent sees the findings and
+nothing is undone. A clean file is exit code 0. The standard output of
+`SessionStart` and `UserPromptSubmit` goes into the agent's context. The
+state of the session, the declared step, is kept per `session_id`.
+`--harness <h>` names the protocol, and the default is `claude-code`.
 
 ## 12. The Query Algebra
 
