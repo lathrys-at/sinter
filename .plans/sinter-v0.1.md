@@ -149,11 +149,29 @@ wasmtime 48 needs. Keep a limit of fuel that a call exceeds on every
 machine or on none (`spec/packs.md` section 10.2). Measure the
 baseline of the performance step again.
 
+## Close the gaps of diff mode
+@scope spec/**, docs/design-notes.md, docs/roadmap.md
+State in the specifications what diff mode needs and the
+specifications do not yet say: the options and the hunks of the diff,
+the ids that the subtraction compares, the rules of `renamed` and of
+mechanical repairs, the classes that compare with the base, and the
+section number that a heading can carry.
+
 ## Check a diff
-@scope lib/**, bin/**, test/**
+@scope lib/**, bin/**, test/**, bench/**
 Read the facts of the base from git, and add diff mode to
-`sinter check`: the findings that the diff adds, `rev-owed`,
-`renamed`, `unmapped-work`, and `config-changed`.
+`sinter check`: the findings that the diff adds, `rev-owed`, and
+`renamed`.
+
+## Report unmapped work
+@scope lib/**, bin/**, test/**, bench/**
+Report `unmapped-work`: each hunk of the diff that no open plan step,
+rule, ambient path, or shared path covers.
+
+## Report changes to the configuration
+@scope lib/**, bin/**, test/**, bench/**
+Report `config-changed`: each setting of the manifest that differs
+from the base.
 
 ## Check Sinter with Sinter
 @scope sinter.toml, .github/workflows/**, spec/**, docs/**, .plans/**
