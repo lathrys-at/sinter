@@ -488,6 +488,8 @@ let a_diff_against_the_merge_base_reports_what_the_branch_adds () =
   Alcotest.(check (list string))
     "the finding of the branch"
     [
+      "docs/a.md:5:1: unplanned-change hunk:docs/a.md:5-8 no step of an open \
+       plan, no rule, and no exempt path covers docs/a.md";
       "docs/a.md:8:1: dangling cites:site:docs/a.md#b->new no declaration has \
        the slug new";
     ]
@@ -526,8 +528,12 @@ let a_diff_compares_each_file_as_git_stores_it () =
   Alcotest.(check (list string))
     "the findings that the changes add"
     [
+      "docs/assumed.md:3:1: unplanned-change hunk:docs/assumed.md:3-6 no step \
+       of an open plan, no rule, and no exempt path covers docs/assumed.md";
       "docs/assumed.md:7:1: dangling cites:site:docs/assumed.md#s->old-assumed \
        no declaration has the slug old-assumed";
+      "docs/skipped.md:3:1: unplanned-change hunk:docs/skipped.md:3-6 no step \
+       of an open plan, no rule, and no exempt path covers docs/skipped.md";
       "docs/skipped.md:7:1: dangling cites:site:docs/skipped.md#s->old-skipped \
        no declaration has the slug old-skipped";
     ]

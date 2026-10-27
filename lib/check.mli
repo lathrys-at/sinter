@@ -98,7 +98,8 @@ val run :
     base ({!Baseline.subtract}). The findings of the base come from the base
     tree that {!Scan.load_with_base} reads, with the manifest of the working
     tree and no evidence. In both modes, the findings also hold the classes that
-    compare the working tree with the base ({!Adjudicator.classes}).
+    compare the working tree with the base ({!Adjudicator.classes}) and the
+    class [unplanned-change] ({!Unplanned.findings}).
 
     With [phases], it counts the phases of {!Scan.load_with_base}, [facts]
     ({!Facts.make}) and [findings] (the findings, their subtraction, the classes

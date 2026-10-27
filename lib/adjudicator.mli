@@ -65,3 +65,16 @@ val classes :
       is absent, so no claim counts.
 
     No finding of these classes sits under a historical path. *)
+
+val renamed_to :
+  ?same:(string -> bool) ->
+  base:Facts.t ->
+  Facts.t ->
+  string ->
+  Facts.declaration option
+(** [renamed_to ~same ~base facts target] is the new declaration that the fix of
+    [renamed] names for an edge of [facts] whose tag target is [target], by the
+    conditions of the class [renamed] in {!classes}. It is [None] when such an
+    edge is not [renamed]. [same] and [base] are as {!tombstones} takes them.
+    [renamed_to ~same ~base facts] makes the tombstones once, when the first tag
+    target needs them, and gives a function that each tag target can share. *)

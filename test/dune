@@ -56,3 +56,19 @@
 (subdir
  cases/check-diff-reports-a-promise-of-a-slug-that-the-base-declares/tree
  (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-reports-each-hunk-that-no-step-covers/base
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-reports-each-hunk-that-no-step-covers/tree
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-passes-a-mechanical-repair-and-reports-other-edits/base
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-passes-a-mechanical-repair-and-reports-other-edits/tree
+ (dirs :standard .plans))

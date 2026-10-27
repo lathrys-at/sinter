@@ -491,6 +491,73 @@ let a_base_without_the_same_files_gives_the_same_classes =
       && List.map tombstone (Adjudicator.tombstones ~base:full tree)
          = List.map tombstone (Adjudicator.tombstones ~same ~base:part tree))
 
+let renamed_to_names_the_new_declaration_of_the_fix () =
+  let base =
+    facts
+      [
+        ("docs/spec.md", "# Spec\n\n@req lockout v1 Lock it.\n");
+        ("docs/use.md", "# Use\n\n@cites lockout v1\n");
+      ]
+  and tree =
+    facts
+      [
+        ("docs/moved.md", "# Spec\n\n@req account-lockout v2 Lock it.\n");
+        ("docs/use.md", "# Use\n\n@cites lockout v1\n");
+      ]
+  in
+  let renamed_to = Adjudicator.renamed_to ~base tree in
+  Alcotest.(check (list (option string)))
+    "the new declaration of each tag target"
+    [ Some "req:account-lockout v2"; None; None; None ]
+    (List.map
+       (fun target ->
+         Option.map
+           (fun (d : Facts.declaration) ->
+             Printf.sprintf "%s v%d" (Facts.declaration_id d) d.rev)
+           (renamed_to target))
+       [ "lockout"; "account-lockout"; "other"; "Bad!" ])
+
+let renamed_to_holds_for_the_edges_that_renamed_reports =
+  property ~name:"renamed_to names a declaration for each renamed edge alone"
+    ~print:print_trees trees_gen (fun (a, b, p) ->
+      let side at_base =
+        List.filter_map
+          (fun (path, version) ->
+            Option.map
+              (fun text -> (path, document text))
+              (match version with
+              | Same t -> Some t
+              | Changed (x, y) -> Some (if at_base then x else y)
+              | Base_only t -> if at_base then Some t else None
+              | Tree_only t -> if at_base then None else Some t))
+          [ ("docs/a.md", a); ("docs/b.md", b); (".plans/p.md", p) ]
+      in
+      let base = Facts.make manifest (side true)
+      and tree = Facts.make manifest (side false) in
+      let reported =
+        List.filter_map
+          (fun (finding : Finding.t) ->
+            if finding.finding_class = Finding_class.Renamed then
+              Some (Finding.subject_id finding.subject, finding.fix)
+            else None)
+          (Adjudicator.classes ~base tree (Findings.of_facts tree ~not_text:[]))
+      in
+      let renamed_to = Adjudicator.renamed_to ~base tree in
+      List.for_all
+        (fun ((edge : Facts.edge), _) ->
+          let fix =
+            Option.map
+              (fun (d : Facts.declaration) ->
+                Printf.sprintf "@%s %s%s" edge.word d.slug
+                  (Option.fold ~none:""
+                     ~some:(fun _ -> Printf.sprintf " v%d" d.rev)
+                     edge.rev))
+              (renamed_to edge.target_text)
+          in
+          List.assoc_opt (Facts.edge_id edge) reported
+          = Option.map Option.some fix)
+        (Facts.edges tree))
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -523,4 +590,7 @@ let tests =
       a_new_promise_of_a_slug_of_the_base_collides;
     a_tree_like_its_base_has_no_finding;
     a_base_without_the_same_files_gives_the_same_classes;
+    case "renamed_to names the new declaration of the fix"
+      renamed_to_names_the_new_declaration_of_the_fix;
+    renamed_to_holds_for_the_edges_that_renamed_reports;
   ]
