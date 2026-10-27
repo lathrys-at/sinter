@@ -979,79 +979,357 @@ ask anything.
 Plans do not model time, effort, priority, or assignment. Those belong
 to the tracker that the external ids point at.
 
-## 7. Standing Law: Rules & Derived Obligations
+## 7. Rules and obligations
 
-Process conventions ("all drafted prose gets rewritten into Simplified Technical English") are neither derivable from the graph nor tasks. They are **rules**: *(origin, trigger, expect)* triples in the manifest, where trigger and expect are expressions in the query algebra (§9.2) and an obligation is literally `trigger − expect`:
+Some conventions of a process, such as "rewrite all drafted prose in
+Simplified Technical English", are not facts that Sinter can derive
+from the graph, and they are not tasks. They are **rules**. A rule has
+two expressions of the query algebra (section 9.2): a **trigger** and
+an **expect**. Its **obligations** are the facts that the trigger
+selects and the expect does not: the trigger minus the expect.
 
-```toml
-[rules.ste-docs]
-origin    = "ste-adoption"                                   # a @decision slug
-trigger   = "kind(req|design) ^ path(docs/**) ^ changed(base)"
-expect    = "acked(ste-docs)"
-scope     = ["docs/**"]                                      # where the edits that clear the obligation are expected
-```
+An example: a rule `ste-docs` has the trigger
+`kind(req|design) ^ path(docs/**) ^ changed(base)`, which selects each
+requirement and design item under `docs/` that the diff changed. Its
+expect is `acked(ste-docs)`, which selects each item whose block holds a
+live `@ack ste-docs`. So each changed item without such an ack is an
+obligation. A rule also has a scope: the paths where the edits that
+clear its obligations land. So work done for a triggered rule outside
+the plan's scope is not reported as `unplanned-change`.
 
-The rules engine *is* the query engine — no second predicate language, and the exhaustive-match property OCaml buys covers rules for free. Because obligations attach to **artifacts, not contexts**, rules are immune to §1's decay: the turn report re-derives the obligation from the diff no matter what fell out of whose window. Rules are themselves facts in the universe (kind `rule`, §13.5), which is what lets the report and the algebra reason about the law the same way they reason about everything else.
+A rule lives in a **rule file**: a markdown file that starts with front
+matter, a block of TOML. The front matter holds the expressions, and the
+text below it holds the reason for the rule. `@rule <slug> vN` declares
+the rule, and the extent of the rule is the whole file. So a change to
+the expressions or to the reason needs a bump. A rule file keeps a rule
+beside its argument, so the reviewer of a change sees both (record
+`rule-files`, `spec/manifest.md` section 15). Where rule files live, how
+a rule is approved, and what its scope means are settled with the work
+on rules.
 
-**Every rule cites its origin** — the `decision` that earned it — because a law whose evidence is missing reads as taste, and taste gets re-litigated by the next agent. The origin is modeled as a `cites` edge whose source is the rule fact, so retiring the origin makes the rule surface as *law resting on withdrawn reasoning* through the ordinary `retired` finding — this system's own decay mode, caught by its own machinery with no special case. A rule's `scope` declares where the edits that clear its obligations land, so that work done to satisfy a triggered rule outside the plan's scope is not reported as invented (§12.8, `unplanned-change`). Promotion heuristic: one instance is a decision; write the rule on the second re-derivation.
+The engine of rules is the query engine. There is no second language of
+predicates, and the exhaustive matching that OCaml gives (section 9)
+covers the rules at no extra cost. Obligations attach to artifacts, not
+to a context, so the decay of section 1 cannot touch them. The turn
+report derives each obligation again from the diff, whatever fell out of
+any agent's context. Rules are facts like all others, of the kind
+`rule`, so the report and the algebra reason about rules as they reason
+about everything else.
 
-**The why reaches the block.** Rules cite origins, and origins have extents with an *alternatives considered* section. In v13 that reasoning existed but never reached the moment it would change behavior. Now every `unmet-rule` finding carries its origin decision's extent (byte-budgeted by `[brief].why_budget`) in the turn report and in `sinter explain`. An agent told "obligation: rule `ste-docs`; its origin decision says *three users misread the lockout docs; alternatives considered: glossary (not chosen, nobody reads it), reviewer checklist (not chosen, decays)*" reframes; an agent told only "obligation: rule `ste-docs`" routes around.
+**A rule should cite its origin**, the decision that earned it, with
+`@cites`. A rule whose evidence is missing reads as taste, and the next
+agent argues against taste. The citation is an ordinary `cites` edge
+whose source is the rule. When the origin retires, the ordinary
+`retired` finding shows a rule that rests on withdrawn reasons. So the
+way this system decays is caught by its own machinery, with no special
+case. When to write a rule: one case is a decision. Write the rule when
+the same reasons come up a second time.
 
-**Three kinds of `expect`**, in descending trust. A rule does not declare which; the tool reads it off the `expect` expression and labels the rule with it in every report, so it is always explicit which laws are enforced and which merely witnessed:
+**The reasons reach the finding.** The origin of a rule has an extent
+with the alternatives considered. That reasoning helps only when it
+reaches the moment where it would change what the agent does. So each
+`unmet-rule` finding carries the extent of its origin, cut to a budget
+of bytes, in the turn report and in `sinter explain`. Compare two
+agents. The first is told: "obligation: rule `ste-docs`; its origin
+says that three users misread the lockout documents; alternatives
+considered: a glossary (not chosen, nobody reads it), a checklist for
+reviewers (not chosen, it decays)". That agent understands the purpose
+and changes its approach. The second is told only "obligation: rule
+`ste-docs`", and works around it.
 
-- **Checked** — the `expect` is a structural expression: the obligation is gone when the graph says so (`issue-linked` above is cleared by a `@cites gh/*` edge existing). Also the home for external linters: a checker writes `judgment` facts like the judge does, and the `expect` is `judged(<rule>)` with a program, not a model, as the judge. Use whenever one exists.
-- **Judged** — the `expect` is `judged(<rule>)`: an independent LLM call, never the working agent, against a rubric; a fresh context cannot be motivated by wanting to finish. Deferred with `sinter judge`.
-- **Acknowledged** — the `expect` is `acked(<rule>)`: `@ack <rule> <hash>` (§3.3). Self-report with a liveness mechanism: the text changes, the ack is void, the obligation is back. Known soft spot: an agent under completion pressure will eventually ack text it merely glanced at. Mitigations: every cleared obligation surfaced in the report and the inbox; later, a sampled fraction routed to the judge. No new grammar — acknowledgment arrives with rules, not after them.
+**Three kinds of expect**, from the most trusted to the least. A rule
+does not declare its kind. Sinter reads the kind from the expect, and it
+shows the kind in every report. So it is always clear which rules Sinter
+enforces and which it only records.
 
-How hard a rule's obligations bite is a separate question from how they are cleared, and it is answered the way it is for every other finding: the `unmet-rule` class has a tier per gate, and a rule may override it with its own `tiers`.
+1. **Checked.** The expect is an expression of structure, and the
+   obligation ends when the graph says so. An example is a rule
+   `issue-linked` with the expect
+   `src(out(cites, kind(req)) ^ in(cites, external(gh/*)))`: a
+   `@cites gh/*` on the requirement clears it. External linters fit here
+   too. A checker writes `judgment` facts as the judge does, and the
+   expect is `judged(<rule>)`, with a program as the judge instead of a
+   model. Use this kind wherever it can work.
+2. **Judged.** The expect is `judged(<rule>)`: a separate call to a
+   language model, never the agent that does the work, against a
+   rubric. A fresh context has no wish to finish. This kind is
+   deferred, with `sinter judge`.
+3. **Acknowledged.** The expect is `acked(<rule>)`: an
+   `@ack <rule> <hash>` (section 3.3). This is a report of the agent
+   with a check that it is still live: when the text changes, the ack is
+   void, and the obligation returns. A known weak point: an agent under
+   pressure to finish will at some point ack text that it only glanced
+   at. The defenses: the report and the inbox show every cleared
+   obligation, and later the judge will check a sample.
 
-The system does not model pipelines and does not care whether an obligation is cleared inline or by a subagent: it publishes the obligations; orchestration stays the agent's problem.
+How hard the obligations of a rule bite is a separate question from
+how they are cleared, and it has the usual answer. The class
+`unmet-rule` has a tier at each gate, and a rule can set tiers of its
+own.
 
-## 8. Gates, and the Brief
+Sinter does not model pipelines: it publishes the obligations, and
+whether the agent clears one itself or through another agent is the
+agent's choice.
 
-**Adjudication is layered**, fast/local → authoritative, all installed by `init` (§11). Hooks, the CLI, and CI share one adjudication library, and **the local tiers inform; only CI blocks.** A position, not a concession: in-loop interception — denying tool calls, seizing turn-ends — is enforcement aimed at the agent's hands, and what it trains under pressure is bypass. Enforcement belongs at the merge boundary, which cannot be talked past, and in the workflow of whoever orchestrates the session — a human, or a lead agent running workers — consuming the same deterministic report CI will recompute. What the tool contributes is that the report is seconds-fast, identical at every tier, and derived from artifacts alone; a hand-edit meets the same adjudication as an agent edit.
+## 8. Gates and the brief
 
-**One diff, adjudicated at several moments.** Every gate evaluates the working tree against the same **base**: the merge-base of `HEAD` and the manifest's default branch (`main` by default), overridable with `--base`. The working tree is always "now," uncommitted and untracked files included. Hooks, pre-commit, `sinter check`, and PR CI therefore see the same findings, differing only in when they look and which tiers they consult — pre-commit runs the turn tiers, and PR CI is the one variation in *what* it sees: it evaluates the host's merge ref with `--base` at the tip of the default branch (§3.5), so the diff is exactly the branch's contribution as it would land. Diff mode (`--diff`) reports the findings the diff *introduced*: those whose identity (§13.6) does not appear in the base tree's finding set. Intersecting with touched facts, as v13 said, would miss a citation nobody touched whose target was deleted.
+**Checks come in layers**, from fast and local to authoritative.
+`sinter init` installs all of them (section 11.17). Hooks, the command
+line, and CI share one library for the checks. **The local layers
+inform, and only CI blocks.** A block inside the agent's loop, such as a
+denied tool call or a held end of a turn, acts on the agent's actions.
+Under pressure, it teaches the agent to go around the block. Enforcement
+belongs at the merge, which nobody can talk past, and in the workflow of
+whoever directs the session, a person or a lead agent. That person or
+lead agent reads the same report that CI will compute. What Sinter adds:
+the report takes seconds, it is the same at every layer, and it comes
+from artifacts alone. An edit by hand meets the same checks as an edit
+by an agent.
 
-- **PostToolUse** (surfaces): parse and validation failures on the just-edited file, seconds after writing, plus a note when the edit landed outside the active step's scope. Parse errors degrade toward *stricter* findings, never silent holes — an unparsed `@verifies` is an absent edge — which makes fast parse feedback load-bearing. Only file-path-bearing tools (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`) yield a just-edited file; shell writes surface at the next turn report, which re-derives everything from the actual diff.
-- **The turn report** (`check --diff --gate turn`) is the hand-back contract: what an orchestrator runs before accepting a worker's turn, a human before walking away, an agent before calling itself done — its exit code is what a workflow gates on. Its block tier marks **violations, never incompleteness.** Violations are states the tree must never be *left* in: a missing rev bump, dangling citations, out-of-plan work (every hunk maps onto a step or a triggered rule's scope), rule obligations triggered by artifacts touched this turn, claims-vs-evidence divergence. Incompleteness — unmet promises, untraced items — is never a violation; it is enforced solely by the death gate. An agent that cannot honestly hand back "not done yet" is an agent being trained to fabricate doneness — which is why nothing mechanical seizes the turn: the report is addressed to whoever accepts it.
-- **Fresh-context verification** (merge-request time and on demand): an independent agent re-derives expected work from the approved spec and plan, reporting drift both ways — missing *and invented*. It exists because the turn report is path-granular; only a semantic reading catches unrequested work inside a legitimate scope. Also the tier that samples rung 5 of the evidence ladder.
-- **CI, two tiers — the only mechanical blocks**: PR CI recomputes the full adjudication and evidence binding against the branch-committed plan — the authoritative backstop. Main CI recomputes the promise checks on the merged result, appends `completed` entries for merged complete plans (§6.3), runs networked checks, and enforces the evidence ladder iff its job imports evidence (§12.8).
+**One diff, checked at several moments.** Every check compares the
+working tree with the same **base**. By default, the base is the merge
+base of `HEAD` and the default branch that the manifest names (`main`
+unless the manifest says otherwise), and `--base` overrides it. The
+working tree is always "now", with its uncommitted and untracked files.
+So hooks, the git hook before a commit, `sinter check`, and CI see the
+same findings. They differ only in when they look and in which gate's
+tiers they apply. The hook before a commit uses the tiers of the gate
+`turn`. CI on a pull request is the one place that sees something
+different. It checks the merge ref that the host makes, with the base at
+the tip of the default branch (section 3.5). So its diff is exactly what
+the branch adds, as it would land.
 
-**Rollout discipline:** every class ships as *warn*, promoted to *block* individually after its false-positive rate proves out. A gate that cries wolf trains bypass behavior, which is worse than no gate. Mechanically: `init` writes `enforce = "warn"`, a cap over the shipped tiers (§12.8); a class is promoted by naming it under `[gates.<gate>]`, and the cap is lifted for everything by deleting the line. Both are `law-touched`, so promotion is always a visible act. The `turn` tiers ride the same cap — under it `check --gate turn` exits 0, so an orchestrator's gate opens too.
+**Diff mode** (`--diff`) reports only the findings that the diff
+introduced: the findings that the base tree does not have. A simpler
+rule, to keep only the findings on lines that the diff touched, would
+miss a citation that nobody touched whose target the diff deleted.
+`spec/algebra.md` section 8 gives the rules.
 
-**Reporting discipline:** the compiled report is a complete account — every ack and pin counted next to what it accepted, cleared, or armed — and carries **machinery-health signals**: a repo where no rev has ever bumped and no ack exists is not clean; it is one whose propagation has never fired, and its green says only that nobody has looked.
+A **gate** is a point where Sinter checks the work. Each finding class
+has a **tier** at each gate: `off`, `warn`, or `block`. A finding at
+`block` makes the check exit with code 1 (`spec/manifest.md` section
+9.1). The layers:
 
-### 8.1 The Informational Channel: The Brief
+- **After each edit.** A hook of the harness reports parse errors and
+  other findings in the file that the agent just edited, seconds after
+  the edit. It also notes when the edit landed outside the active
+  step's scope. A parse error makes the findings stricter, never a
+  silent gap: a `@verifies` that does not parse is a missing edge. That
+  is why fast feedback on parsing matters. Only a tool that names a
+  file gives the hook an edited file. A write by a shell command shows
+  at the next turn report, which derives everything again from the
+  actual diff.
+- **The turn report**, `sinter check --diff --gate turn`, is the
+  contract when an agent hands back its work. A lead agent runs it
+  before it accepts a worker's turn, a person before walking away, and
+  an agent before it calls itself done. Its exit code is what a workflow
+  gates on. Its tier `block` marks **violations, never incompleteness**.
+  A violation is a state that the tree must never be left in:
 
-§1 names two channels and v13 built only one. The cited results — plan signal decaying within a step, governance decaying after compaction — are answered on the enforcement side by gates and, on the informational side, by nothing: the agent is left to remember. But the tool is the one component that knows exactly what the agent needs right now, because it is all in the index.
+  - a missing bump;
+  - a dangling citation;
+  - work outside the plan: each hunk must map to a step or to the
+    scope of a triggered rule;
+  - an obligation of a rule that the turn's changes triggered;
+  - a statement of the agent that the evidence contradicts.
 
-**`sinter brief`** compiles that: the active plan and step with its promises and their states; the *approved text* of every declaration the step's promises target (not a summary — the extent, since that is what the agent is implementing against); decisions in force reachable from the step's scope, by `paths` and by `@cites` from anything in scope; rules whose trigger intersects the scope, each with its origin's one-line summary; live declines on anything in scope; claims that overlap; and the current blocking findings with fix lines. Ranked by graph distance from the step's scope, cut to `[brief].budget` bytes, deterministic for a given index.
+  Incompleteness, such as an unmet promise or an untraced item, is
+  never a violation; only the completion gate enforces it. An agent
+  that cannot honestly hand back "not done yet" learns to fake that it
+  is done. So nothing mechanical holds the turn: the report goes to
+  whoever accepts the work.
+- **A check with a fresh context**, at the time of the merge request
+  and on demand. A separate agent derives the expected work again from
+  the approved requirements and the plan, and reports drift in both
+  directions: missing work and invented work. This check exists
+  because the turn report works at the level of paths. Only a reading
+  of the meaning catches work that nobody asked for inside a
+  legitimate scope. This layer also takes the samples for rung 5 of
+  the evidence ladder (section 4).
+- **CI, at two gates, the only mechanical blocks.** At the gate
+  `review`, CI on a pull request computes every check, and binds the
+  evidence again, against the plan committed on the branch. It is the
+  authoritative backstop. At the gate `merged`, CI on the default branch
+  checks the promises again on the merged result. It appends the
+  `completed` entries of complete plans (section 6.3), and it runs the
+  checks that need the network. It enforces the evidence ladder when its
+  job imports evidence.
 
-**Delivery** is by hook. Claude Code's `SessionStart` fires with `source: compact` after a compaction, and `UserPromptSubmit` fires every turn; the stdout of either becomes context. `init --hook claude-code` registers `sinter hook session-start` and, optionally, `sinter hook user-prompt-submit` with a smaller budget. Re-injecting the agreement from artifacts after every compaction is the direct countermeasure to both cited failure modes, and it costs a projection of facts the tool already holds. The brief is informational: it enforces nothing, and nothing in it is trusted by any gate. It exists so the turn report stays short.
+**Each check starts as a warning.** Every finding class starts as a
+warning, and becomes a block only after it proves that it rarely reports
+a problem that is not real. A gate that often reports problems that are
+not real teaches people to bypass it, which is worse than no gate. In
+practice, `sinter init` writes `check.warn-only = true`, which lowers
+each built-in `block` to `warn`. A project makes one class block by
+writing its tier under `check.tiers`, and lifts `warn-only` for all
+classes by deleting its line. Both changes are `config-changed`
+findings, so a change of a tier is always visible. The gate `turn`
+follows `warn-only` too: under it, `sinter check --gate turn` exits 0,
+so a lead agent's gate opens too. `spec/manifest.md` section 9.3 gives
+the rule, and record `exit-codes-by-gate` gives the exit codes.
+
+**The report counts everything.** The compiled report is a complete
+account: it counts every ack and every pin beside what it accepted,
+cleared, or armed. It also carries signals about the health of the
+machinery. A repository where no revision ever rose and no ack exists
+is not clean. Its propagation has never fired, and its clean result
+says only that nobody has looked.
+
+### 8.1 The brief
+
+Section 1 names two channels, enforcement and information. Section 1
+cites two results: the decay of a plan within a step, and the decay of
+rules after compaction. On the side of enforcement, the gates answer
+them. On the side of information, without the brief, the agent would
+have to remember. But Sinter is the one part of the system that knows
+exactly what the agent needs now, because all of it is in the index.
+
+**`sinter brief`** compiles it:
+
+1. the active plan and step, with the state of each promise;
+2. the approved text of every declaration that the step's promises
+   target: the extent, not a summary, because the agent works against
+   that text;
+3. the decisions in force that the step's scope reaches, by `paths`
+   and by `@cites` from anything in the scope;
+4. the rules whose trigger meets the scope, each with the first line
+   of its origin;
+5. the live declines on anything in the scope;
+6. the claims that overlap the scope;
+7. the current blocking findings, with their fix lines.
+
+The brief ranks these items by their distance in the graph from the
+step's scope, and cuts them to a budget of bytes. For one index, it
+always gives the same output.
+
+**Delivery** is by hook. In Claude Code, the hook `SessionStart` fires
+with `source: compact` after a compaction, and `UserPromptSubmit` fires
+on every turn. The standard output of either hook becomes context.
+`sinter init --hook claude-code` registers `sinter hook session-start`,
+and on request `sinter hook user-prompt-submit` with a smaller budget.
+To put the agreement back into the context from artifacts after each
+compaction is the direct answer to both failures that section 1 cites.
+It costs one view of facts that Sinter already holds. The brief only
+informs: it enforces nothing, and no gate trusts anything in it. It
+exists so that the turn report can stay short.
 
 ## 9. Infrastructure
 
-**Implementation: OCaml.** The vocabulary is a variant type and every gate is an exhaustive match over it, so "no mouth carries logic of its own" is a compile error rather than a discipline: add a tag and every adjudicator, query, and compiler that hasn't handled it fails to build. Language packs, markdown, and TOML sit behind one module signature. Native startup in milliseconds keeps hook latency below where gates get disabled. Costs accepted: agents are weaker at OCaml than at Rust or TypeScript; the wasmtime link (§5.2); Windows unsupported in v1. Git is shelled out to, never linked.
+**Implementation: OCaml.** The vocabulary is a variant type, and every
+gate is an exhaustive match over it. So when someone adds a tag, every
+check, query, and compiler that does not handle it fails to build: the
+compiler enforces the rule, not a discipline. The language packs and
+markdown sit behind one module signature. A native program starts in
+milliseconds, which keeps the delay of a hook below the point where
+people turn the hook off. The costs: agents write OCaml less well than
+Rust or TypeScript; the binary links wasmtime (section 5.2) through a
+small bridge in Rust; and version 1 does not support Windows. Sinter
+runs git as a separate program and never links it. Records
+`implementation-language` and `rust-bridge` give the reasons.
 
-**Canonical interchange: JSON Lines, one fact per line** — node, edge, external id, plan fact, evidence fact, rule, or derived finding, each with a kind, a stable identity, and a schema version, canonicalized per RFC 8785 with values restricted to strings, integers, booleans, and flat arrays of those (which makes JCS trivial: sort keys, no floats). Only ever machine-written. Conformance is byte equality against checked-in fixtures. **The JSONL is always derived, never source.** **Hash domains never blur:** text extents hash as pack-normalized text (§3.4); semantic objects hash over canonical bytes. The index is in-memory with a rebuildable on-disk cache; no database. The schema is specified in §13.
+**The interchange format is JSON Lines (JSONL)**: one fact per line.
+Each line is a node, an edge, an external id, a plan fact, an evidence
+fact, a rule, or a finding, with a kind, a stable identity, and a schema
+version. Each line is in the canonical form of RFC 8785. The values are
+only strings, integers, booleans, flat arrays of those, and arrays of
+flat objects, whose values are again strings, integers, or booleans
+(record `json-handling`). This makes the canonical form simple to write:
+sort the keys, and no floats exist. Only a machine writes the JSONL.
+Conformance is byte equality with fixtures that the repository holds.
 
-### 9.1 Tool Surface
+- **The JSONL is always derived, never a source.**
+- **The two domains of hashes never mix.** An extent hashes as
+  normalized text (section 3.4). An object of meaning, such as a
+  commitment set, hashes over its canonical bytes.
+- **No database.** The index lives in memory, with a cache on disk
+  that Sinter can rebuild.
 
-The binary is `sinter` (sintering fuses loose particles into a solid mass under pressure, without melting them). One core library and thin mouths — CLI, hooks, CI — all speaking the same JSONL. Agents use the CLI through their shell like everyone else; there is no MCP server, because a stateless tool has no process to host one and a stdio shim over the CLI would add a tool surface without adding a capability. The surface is specified as help text in §11. Its principles:
+Section 13 gives the reasons for the format, and points to
+`spec/jsonl.md`.
 
-- **Suggest, never touch.** `init` is the one exception, and it touches only tool-owned integration files — workflows, hook settings, the manifest skeleton — never governed text. Otherwise the tool may *emit* a patch (`sinter patch`) on stdout; it never applies one. Whoever applies it authors the diff, and the adjudicator judges it like any other.
-- **Three verbs change durable state.** `approve`, `decline`, and `ledger abandon` write the ledger; all refuse to run under a harness (§10.1) and share one refusal set. Main CI appends `completed` entries (§6.3). `declare` and `evidence import` write session and evidence state under `.sinter/`, which is gitignored scratch, never truth.
-- **Absences by design:** no daemon, no web UI, no MCP server, no second predicate language — every addition in this document is a compiled projection, a ledger entry kind, or a finding definition. No `new`, no `close`, no `ack` (the tool prints the line; a human or agent pastes it, and that edit is adjudicated), no configuration outside the manifest.
-- **Every mouth is a saved query.** `check` is the union of finding definitions; the turn report is `check --diff --gate turn`; CI is `check --gate pr` or `--gate main`; a hook is a filtered `check` or a `brief`. There is nothing a gate can see that `sinter query` cannot show you.
+### 9.1 Tool surface
 
-### 9.2 Queries: A Closed Algebra
+The binary is `sinter`. Sintering fuses loose particles into a solid
+mass under pressure, without melting them. One core library sits
+under thin surfaces: the command line, the hooks, and CI. All of them
+speak the same JSONL. Agents use the command line through their shell,
+as everyone else does. Section 11 gives the design of the commands.
+Its principles:
 
-Not a menu, not Datalog: a Bazel-sized algebra over the fact stream, specified in §12. The universe is *facts* — nodes, edges, external ids, plan facts, evidence, rules, hunks, and derived findings, each with a kind — so a query returns fact lines, and `query --json` is simply a filtered `scan --json`. Bazel's universe is node sets only, which is its one structural mismatch with this domain: half of what matters here (suspect, dangling, evidence) is about edges or (edge, evidence) pairs.
+- **Suggest, never touch.** `sinter init` is the one exception, and it
+  touches only integration files that the tool owns, such as
+  workflows, hook settings, and the skeleton of the manifest. It never
+  touches governed text. Otherwise, Sinter can print a patch
+  (`sinter patch`) on standard output, but it never applies one.
+  Whoever applies the patch is the author of the diff, and the checks
+  judge it like any other diff.
+- **Three commands change durable state.** `approve`, `decline`, and
+  `ledger abandon` write the ledger. All three refuse to run under an
+  agent (section 6.4), and they share one set of refusals. CI on the
+  default branch appends the `completed` entries (section 6.3).
+  `declare` and `evidence import` write the state of the session and
+  the evidence under `.sinter/`, which git ignores and which is never
+  truth.
+- **Absences by design.** There is no web interface, and no second
+  language of predicates. Every feature in this document is a compiled
+  view, a kind of ledger entry, or a definition of a finding. There is
+  no `new`, no `close`, and no `ack` command. For an ack, Sinter prints
+  the line, a person or an agent pastes it, and the checks judge that
+  edit. There is no configuration outside the manifest and the rule
+  files.
+- **One serve loop.** A tool without state has no process to host a
+  server, and a thin layer over the command line adds a surface without
+  a capability. But a loop that keeps the WebAssembly runtime and the
+  grammars loaded is a capability, because each fresh call pays to start
+  the runtime and to compile the grammar. So Sinter has one serve loop.
+  Its first form is `sinter serve`, a child process of its caller, which
+  reads requests on standard input and answers on standard output. Later
+  forms are adapters over the same loop: a detached process on a socket,
+  a server of the Model Context Protocol (MCP), and a server of the
+  Language Server Protocol (record `serve-mode`, and `docs/roadmap.md`).
+- **Every surface is a saved query.** `sinter check` is the union of the
+  definitions of findings. The turn report is
+  `check --diff --gate turn`. CI runs `check --gate review` or
+  `check --gate merged`. A hook is a filtered `check` or a `brief`. A
+  gate can see nothing that `sinter query` cannot show.
 
-`changed(base)` is the one selector without a Bazel analog and the one that makes the unification real: the fact set touched by a diff against a base. With it, hooks, CI, and `check` are all `query` with a different base, and every mouth on the tool is a saved expression.
+### 9.2 Queries: a closed algebra
 
-**Output modes**, in order of who uses them: ripgrep-shaped lines by default — `docs/auth.md:12:1: req auth-lockout v2  untraced(verifies)` — in deterministic order always, sort key `(kind, path, line, col, id)`, never hash-iteration order (Bazel added `--order_output` after nondeterminism broke everyone's scripts); `--json` for JSONL facts; `--sarif` for findings, so PR CI gets file-and-line annotations from GitHub code scanning with zero integration work (CodeQL and Semgrep's lesson); `--dot` for anything graph-shaped; and `--jq`, bundled the way `gh` bundles it, as the escape hatch for whatever the algebra can't express. Templates (`--format`) wait until someone asks. Embedding a real engine — SQLite views, Datalog — remains the documented upgrade path, not a commitment; the revisit trigger is a *rule* that cannot be written in the algebra.
+Sinter has neither a fixed menu of queries nor Datalog. It has a small
+algebra over the stream of facts, about the size of the query language
+of Bazel, a build tool. Section 12 gives its reasons, and
+`spec/algebra.md` gives its rules. The universe of the algebra is the
+facts: nodes, edges, external ids, plan facts, evidence, rules, hunks,
+and findings, each with a kind. So a query returns fact lines, and
+`sinter query --json` is a filtered `sinter scan`. Bazel's universe
+holds only nodes, and that is its one mismatch with this domain. Half of
+what matters here concerns edges, or an edge with its evidence: suspect
+citations, dangling citations, and the evidence ladder.
+
+`changed(base)` is the one selector with no counterpart in Bazel. It
+selects the facts that a diff against a base touches. With it, the
+hooks, CI, and `sinter check` are all `sinter query` with a different
+base, and every surface of the tool is a saved expression.
+
+**Output modes**, in the order of who uses them:
+
+- lines in the style of ripgrep by default, such as
+  `docs/auth.md:12:1: req auth-lockout v2  untraced(verifies)`. The
+  order is always fixed, by kind, path, line, column, and id, and never
+  the order of a hash table. Bazel added `--order_output` after an
+  unstable order broke the scripts of its users;
+- `--json`, for JSONL facts;
+- `--sarif`, for findings, so that CI on a pull request gets annotations
+  at each file and line from GitHub code scanning with no work of
+  integration, as CodeQL and Semgrep showed;
+- `--dot`, for anything that has the shape of a graph;
+- `--jq`, bundled as the `gh` command bundles it, for whatever the
+  algebra cannot express. Templates (`--format`) wait until someone asks
+  for them.
+
+To embed a real engine, such as views in SQLite or Datalog, stays the
+documented way to grow, not a commitment. The condition to reconsider it
+is a rule that the algebra cannot express.
 
 ## 10. Open Questions
 
