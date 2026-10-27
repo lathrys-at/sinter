@@ -9,7 +9,7 @@
     and each value against the rules of its key. It stops at the first step that
     finds an error, and gives every error of that step. *)
 
-(** {1 Versions and kinds} *)
+(** {1 Versions, kinds, and names} *)
 
 val specification : Major_minor.t
 (** The version of the specifications that this reader implements: [1.0]. *)
@@ -27,6 +27,10 @@ type kind = Req | Design | Decision | Plan
 
 val kind_name : kind -> string
 (** [kind_name kind] is ["req"], ["design"], ["decision"], or ["plan"]. *)
+
+val is_name : string -> bool
+(** [is_name name] is [true] when [name] matches [[a-z][a-z0-9]*(-[a-z0-9]+)*],
+    the pattern of the name of a pack, a namespace, and a runner. *)
 
 (** Which rungs of an edge of the kind [verifies] complete a promise. *)
 type test_coverage =
@@ -202,6 +206,10 @@ val load : string -> (t, load_error) result
     @raise Sinter_bridge.Error on the conditions of {!of_string}. *)
 
 (** {1 Settings} *)
+
+val document : t -> Toml.table
+(** [document manifest] is the TOML document that [manifest] was read from, with
+    the place of every key and value. *)
 
 val sinter_spec : t -> Major_minor.t option
 (** [sinter_spec manifest] is the version that [sinter-spec] states, or [None].

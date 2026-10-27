@@ -304,7 +304,8 @@ let check_cmd =
       `P
         "A finding blocks when its tier at the gate is $(b,block). Without \
          $(b,--gate), no finding blocks. With $(b,--strict), every finding \
-         that the command reports blocks.";
+         that the command reports blocks, except a finding of \
+         $(b,config-changed), which never blocks.";
     ]
   in
   let examples =
@@ -359,7 +360,7 @@ let check_cmd =
   let strict =
     let doc =
       "Exit with code 1 when the command reports any finding, not only one \
-       that blocks."
+       that blocks. A finding of $(b,config-changed) never counts."
     in
     Arg.(value & flag & info [ "strict" ] ~doc)
   in

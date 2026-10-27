@@ -334,6 +334,7 @@ type pack = {
 }
 
 type t = {
+  document : Toml.table;
   sinter_spec : Major_minor.t option;
   default_branch : string;
   packs : pack list;
@@ -392,7 +393,7 @@ let inside node offset =
 
 let is_name_char c = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
 
-let is_layout_name name =
+let is_name name =
   name <> ""
   && name.[0] >= 'a'
   && name.[0] <= 'z'
@@ -525,7 +526,7 @@ let pack_place reading (key : Toml.key) =
       ( "runners",
         Varying
           (fun key ->
-            if is_layout_name key.name then
+            if is_name key.name then
               Ok
                 (Kept
                    (fun settings ->
@@ -594,7 +595,7 @@ let layout reading =
           ( "packs",
             Varying
               (fun key ->
-                if is_layout_name key.name then begin
+                if is_name key.name then begin
                   reading.pack_keys <-
                     (key.name, key.at.start) :: reading.pack_keys;
                   Ok (pack_place reading key)
@@ -603,7 +604,7 @@ let layout reading =
           ( "namespaces",
             Varying
               (fun key ->
-                if is_layout_name key.name then
+                if is_name key.name then
                   Ok
                     (Text
                        (fun node value ->
@@ -920,6 +921,7 @@ let of_string text =
               else
                 Ok
                   {
+                    document;
                     sinter_spec;
                     default_branch =
                       Option.value reading.default_branch ~default:"main";
@@ -952,6 +954,7 @@ let load path =
       | Ok manifest -> Ok manifest
       | Error errors -> Error (Invalid errors))
 
+let document (manifest : t) = manifest.document
 let sinter_spec (manifest : t) = manifest.sinter_spec
 let default_branch (manifest : t) = manifest.default_branch
 let packs (manifest : t) = manifest.packs

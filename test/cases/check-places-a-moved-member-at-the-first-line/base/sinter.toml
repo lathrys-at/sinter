@@ -1,0 +1,7 @@
+[scan]
+packs.markdown.files = ["**/*.md"]
+
+[check]
+historical = [
+  "a/",
+]

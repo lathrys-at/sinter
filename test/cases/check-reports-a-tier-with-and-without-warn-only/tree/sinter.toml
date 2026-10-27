@@ -1,0 +1,6 @@
+[scan]
+packs.markdown.files = ["**/*.md"]
+
+[check]
+warn-only = true
+tiers.review.untraced = "block"

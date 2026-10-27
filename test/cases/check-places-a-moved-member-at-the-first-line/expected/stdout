@@ -1,0 +1,2 @@
+sinter.toml:1:1: config-changed tombstone:setting:check.historical=a/ check.historical: removed "a/" (strengthens)
+sinter.toml:6:3: config-changed setting:plan.exempt=a/ plan.exempt: added "a/" (weakens)

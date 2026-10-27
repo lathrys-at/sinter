@@ -617,10 +617,79 @@ let a_base_path_that_is_not_utf_8_gives_one_warning () =
     ]
     tree.warnings
 
+let base_manifest (compared : Scan.compared) =
+  match compared.base_manifest with
+  | Scan.Outside -> "outside"
+  | Scan.Absent -> "absent"
+  | Scan.Unchanged -> "unchanged"
+  | Scan.Changed text -> "changed " ^ text
+
+let warn_only = manifest ^ "[check]\nwarn-only = true\n"
+
+let the_base_reads_the_manifest_only_when_the_diff_changes_it () =
+  let unchanged = with_base [ ("a.md", "# A\n") ] in
+  Git_fixture.make_executable unchanged "sinter.toml";
+  Alcotest.(check string)
+    "an unchanged manifest" "unchanged"
+    (base_manifest (snd (load_with_base unchanged)));
+  let changed =
+    with_base ~manifest:warn_only
+      [ ("a.md", "# A\n\n@req old\n"); ("b.md", "# B\n\n@req b\n") ]
+  in
+  Git_fixture.write changed "sinter.toml" manifest;
+  Git_fixture.write changed "a.md" "# A\n\n@req new\n";
+  let _, compared = load_with_base changed in
+  Alcotest.(check string)
+    "a changed manifest" ("changed " ^ warn_only) (base_manifest compared);
+  Alcotest.(check (list (pair string (list string))))
+    "the documents of the base beside it"
+    [ ("a.md", [ "req old" ]); ("b.md", [ "req b" ]) ]
+    (List.map
+       (fun (path, document) -> (path, declared document))
+       compared.base_documents)
+
+let a_manifest_that_the_base_does_not_hold_is_absent () =
+  let added = repository [ ("a.md", "# A\n") ] in
+  Git_fixture.write added "sinter.toml" manifest;
+  Alcotest.(check string)
+    "an added manifest" "absent"
+    (base_manifest (snd (load_with_base added)));
+  let ignored =
+    repository [ (".gitignore", "sinter.toml\n"); ("a.md", "# A\n") ]
+  in
+  Git_fixture.write ignored "sinter.toml" manifest;
+  let _, compared = load_with_base ignored in
+  Alcotest.(check string)
+    "an ignored manifest" "absent" (base_manifest compared);
+  Alcotest.(check (list string)) "the diff" [] (List.map fst compared.diff)
+
+let a_manifest_outside_the_repository_has_no_base () =
+  let repo = with_base [ ("a.md", "# A\n") ] in
+  let path =
+    Filename.concat (Unix.realpath (Git_fixture.temp_dir ())) "o.toml"
+  in
+  Out_channel.with_open_bin path (fun channel ->
+      Out_channel.output_string channel manifest);
+  match
+    Scan.load_with_base ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+      ~manifest:(Some path) ~base:(Some "HEAD") ()
+  with
+  | Ok (_, compared) ->
+      Alcotest.(check string) "the base" "outside" (base_manifest compared)
+  | Error error ->
+      Alcotest.failf "the load fails: %s"
+        (String.concat "; " (Scan.messages error))
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
   [
+    case "the base reads the manifest only when the diff changes it"
+      the_base_reads_the_manifest_only_when_the_diff_changes_it;
+    case "a manifest that the base does not hold is absent"
+      a_manifest_that_the_base_does_not_hold_is_absent;
+    case "a manifest outside the repository has no base"
+      a_manifest_outside_the_repository_has_no_base;
     case "the base reuses each document that the diff does not change"
       the_base_reuses_each_document_that_the_diff_does_not_change;
     case "the base reads each changed file from its blob"

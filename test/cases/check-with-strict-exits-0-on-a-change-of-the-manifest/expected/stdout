@@ -1,0 +1,1 @@
+sinter.toml:4:1: warn config-changed setting:check.warn-only check.warn-only: false -> true (weakens)

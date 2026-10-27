@@ -32,8 +32,8 @@ val select :
 
 val exit_code : strict:bool -> entry list -> int
 (** [exit_code ~strict entries] is {!Exit_code.findings} when an entry has the
-    tier [Block], or when [strict] is [true] and [entries] is not empty.
-    Otherwise it is {!Exit_code.clean}. *)
+    tier [Block], or when [strict] is [true] and an entry has a class other than
+    [config-changed]. Otherwise it is {!Exit_code.clean}. *)
 
 (** {1 Output} *)
 
@@ -102,8 +102,12 @@ val run :
     base ({!Baseline.subtract}). The findings of the base come from the base
     tree that {!Scan.load_with_base} reads, with the manifest of the working
     tree and no evidence. In both modes, the findings also hold the classes that
-    compare the working tree with the base ({!Adjudicator.classes}) and the
-    class [unplanned-change] ({!Unplanned.findings}).
+    compare the working tree with the base ({!Adjudicator.classes}), the class
+    [unplanned-change] ({!Unplanned.findings}), and the findings of
+    [config-changed] ({!Config_change.findings}) when the manifest is inside the
+    repository and the diff changes it or the base tree does not hold it. The
+    built-in members of the manifest come from the plan files of the working
+    tree.
 
     With [phases], it counts the phases of {!Scan.load_with_base}, [facts]
     ({!Facts.make}) and [findings] (the findings, their subtraction, the classes
