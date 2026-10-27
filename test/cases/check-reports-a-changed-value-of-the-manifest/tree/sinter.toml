@@ -1,0 +1,8 @@
+[scan]
+packs.markdown.files = ["**/*.md"]
+
+[check]
+historical = ["sinter.toml"]
+
+[evidence]
+test-coverage = "optional"

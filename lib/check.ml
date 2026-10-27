@@ -30,9 +30,14 @@ let select manifest gate findings =
 let blocks entry =
   match entry.tier with Some (_, Finding_class.Block) -> true | _ -> false
 
+let counts_under_strict entry =
+  entry.finding.finding_class <> Finding_class.Config_changed
+
 let exit_code ~strict entries =
-  if List.exists blocks entries || (strict && entries <> []) then
-    Exit_code.findings
+  if
+    List.exists blocks entries
+    || (strict && List.exists counts_under_strict entries)
+  then Exit_code.findings
   else Exit_code.clean
 
 let quoted text =
@@ -111,6 +116,26 @@ type report = { messages : string list; lines : string list; code : int }
 
 module Paths = Map.Make (String)
 
+let configuration (tree : Scan.tree) (compared : Scan.compared) facts =
+  let read base =
+    let plan_files =
+      List.map (fun (plan : Facts.plan) -> plan.path) (Facts.plans facts)
+    in
+    Config_change.findings
+      ~plan_file:(fun path -> List.mem path plan_files)
+      ~location:tree.location
+      ~hunks:
+        (match List.assoc_opt tree.location compared.diff with
+        | Some change -> Git.hunks change
+        | None -> [])
+      ~base
+      (Manifest.document tree.manifest)
+  in
+  match compared.base_manifest with
+  | Scan.Outside | Scan.Unchanged -> []
+  | Scan.Absent -> read None
+  | Scan.Changed text -> read (Some text)
+
 let compare_with_base ?phases ~mode (tree : Scan.tree)
     (compared : Scan.compared) facts findings =
   let held = Paths.of_list tree.documents
@@ -146,13 +171,15 @@ let compare_with_base ?phases ~mode (tree : Scan.tree)
               ~base:base_findings findings)
   in
   Allocation.measure phases "findings" (fun () ->
-      Adjudicator.classes ~same ~base facts
-        (findings
-        @ Unplanned.findings ~same ~base
-            ~manifest:
-              (if Filename.is_relative tree.location then Some tree.location
-               else None)
-            facts compared.diff))
+      List.merge Finding.compare
+        (Adjudicator.classes ~same ~base facts
+           (findings
+           @ Unplanned.findings ~same ~base
+               ~manifest:
+                 (if Filename.is_relative tree.location then Some tree.location
+                  else None)
+               facts compared.diff))
+        (List.sort Finding.compare (configuration tree compared facts)))
 
 let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool () =
   let* tree, compared =

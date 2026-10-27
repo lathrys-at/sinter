@@ -1,0 +1,7 @@
+default-branch = "main"
+
+[scan]
+packs.markdown.files = ["**/*.md"]
+
+[evidence]
+test-coverage = "required"

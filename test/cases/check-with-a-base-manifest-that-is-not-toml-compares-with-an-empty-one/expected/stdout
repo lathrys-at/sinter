@@ -1,0 +1,1 @@
+sinter.toml:2:25: config-changed setting:scan.packs.markdown.files=**/*.md scan.packs.markdown.files: added "**/*.md" (strengthens); the base manifest is not valid TOML

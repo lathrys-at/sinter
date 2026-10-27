@@ -1,0 +1,2 @@
+sinter.toml:3:25: config-changed setting:scan.packs.markdown.files=**/*.md scan.packs.markdown.files: added "**/*.md" (strengthens)
+sinter.toml:4:1: config-changed setting:scan.namespaces.gh scan.namespaces.gh: added "[1-9][0-9]*" (weakens)

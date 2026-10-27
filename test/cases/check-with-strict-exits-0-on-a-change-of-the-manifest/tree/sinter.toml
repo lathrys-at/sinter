@@ -1,0 +1,4 @@
+[scan]
+packs.markdown.files = ["**/*.md"]
+[check]
+warn-only = true
