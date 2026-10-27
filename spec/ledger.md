@@ -268,12 +268,12 @@ runs the abandon command; the tool never writes this entry on its own.
 | `subject` | `plan:<slug>` |
 | `reason` | required |
 
-### 9.2 The end of the lease
+### 9.2 The end of the claim
 
-@req ledger-abandoned-lease v2
+@req ledger-abandoned-claim
 
-An `abandoned` entry ends the plan's lease. It also releases every
-`waiting-on` promise that depended on that lease.
+An `abandoned` entry ends the plan's claim. It also releases every
+`waiting-on` promise that depended on that claim.
 
 ## 10. Open and closed plans
 
@@ -287,7 +287,7 @@ Only a ledger entry closes a plan. No change to the plan file — an
 edit, a move, or a deletion — closes a plan, and the plan file stays
 in the tree.
 
-A closed plan generates no findings, holds no lease, contributes no
+A closed plan generates no findings, holds no claim, contributes no
 scope, and is not a candidate for the active plan. Plan slugs are
 permanent; a successor plan needs a new slug.
 

@@ -320,7 +320,7 @@ into the evidence directory, never into the tree.
 
 ## 7. Ledger-projection, rule, gate, setting, ack, hunk, and tombstone records
 
-**`lease`** — unlocated. Sinter projects lease records from the
+**`claim`** — unlocated. Sinter projects claim records from the
 ledger. It emits one record for each approved plan that meets all three
 conditions:
 
@@ -335,7 +335,7 @@ conditions:
 | `branch` | string | the branch the approval was written from |
 | `approval` | string | the id of the latest `approval` entry |
 | `scope` | array of string | union of the approved step scopes |
-| `declares` | array of string | slugs the lease promises to declare |
+| `declares` | array of string | slugs the claim promises to declare |
 | `ts` | string | RFC 3339 timestamp of the approval |
 
 **`decline`** — unlocated. Sinter projects decline records from the
@@ -456,7 +456,7 @@ uses a position in the file only when no content can name the fact.
 | `run` | `run:<test-id>@<tree>` | |
 | `cov` | `cov:<test-id or *>@<site-id>` | |
 | `judgment` | `judgment:<rule>:<subject-id>@<hash>` | |
-| `lease` | `lease:<plan>@<branch>` | |
+| `claim` | `claim:<plan>@<branch>` | |
 | `decline` | `decline:<entry-id>` | |
 | `rule` | `rule:<name>` | |
 | `gate` | `gate:<gate>/<class>` | |
@@ -516,7 +516,7 @@ use the tiers of the `turn` gate.
 | `bumps` | int (declarations bumped since the base) |
 | `acks_live` `acks_void` | int |
 | `declines` | int (live, in scope) |
-| `leases` `blocked` | int |
+| `claims` `blocked` | int |
 | `code_drift` | int |
 | `config_changed` | bool (`true` when the diff changes the configuration: the check reports at least one `config-changed` finding, [manifest.md](manifest.md) section 14.4) |
 

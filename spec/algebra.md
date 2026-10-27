@@ -57,7 +57,7 @@ kind or a category.
 | `evidence` | `run` `cov` `judgment` | no |
 | `config` | `rule` `gate` `setting` | see below |
 | `ack` | `ack` | yes |
-| `ledger` | `lease` `decline` | no |
+| `ledger` | `claim` `decline` | no |
 | `hunk` | `hunk` | yes; diff mode only |
 | `tombstone` | `tombstone` | yes (base coordinates) |
 | `finding` | `finding` | yes (its subject's location) |
@@ -151,7 +151,7 @@ evaluation:
 - `out`, `in` → `{edge}`. `src`, `dst`, `deps`, `rdeps`, `paths` →
   `{node, ref, config}` (the `src` of a rule's origin edge is a rule).
   `subject` → every category a finding can be about. `scope` → the
-  located categories plus `hunk`; its argument also accepts `lease`.
+  located categories plus `hunk`; its argument also accepts `claim`.
   `promises`, `met` → `{promise}`. `done` → `{node}`. A predicate →
   the category set of its argument, intersected with what it accepts.
   `obligations`, `judged` → every category. `triggered` →
@@ -218,7 +218,7 @@ citation is still a citation.
 
 | function | accepts | denotes |
 |---|---|---|
-| `scope(S)` | plan, step, rule, lease | located facts and hunks whose `path` matches the effective scope of some member of `S`. A step's effective scope is the step's own `@scope` when the step declares one; otherwise it is the plan's scope. A plan's effective scope is the union of the effective scopes of its steps. A rule's scope is its `scope` field. `∅` when `S` holds no scope-bearing fact |
+| `scope(S)` | plan, step, rule, claim | located facts and hunks whose `path` matches the effective scope of some member of `S`. A step's effective scope is the step's own `@scope` when the step declares one; otherwise it is the plan's scope. A plan's effective scope is the union of the effective scopes of its steps. A rule's scope is its `scope` field. `∅` when `S` holds no scope-bearing fact |
 | `promises(S)` | plan, step | promise facts whose step or plan is in `S` |
 | `met(P)` | promise | the promises in `P` that are met, as defined in [vocabulary.md](vocabulary.md) section 10.5 |
 | `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met; for a step with no promises, the first condition is instead that the step's scope intersects `changed(base)`. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unattributed` when `evidence.coverage-attribution` is `"optional"` ([manifest.md](manifest.md) section 12). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
@@ -233,7 +233,7 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 | `approved(S)` | any | A kind needs approval when `ledger.approval-required` lists it ([manifest.md](manifest.md) section 11.1). The predicate keeps `f` when any one of these conditions holds: `f` is a declaration of a kind that needs approval, and the ledger holds an approval for `f`'s `(slug, rev, xh)`; `f` is a declaration of a kind that does not need approval; `f` is a plan, the kind `plan` needs approval, and `f`'s current commitment set is approved against the plan's latest approved set ([ledger.md](ledger.md) section 11); `f` is a plan, and the kind `plan` does not need approval; `f` is a step of an approved plan; `f` is a fact of any other kind |
 | `bumped(S)` | node | `f` is a declaration absent from the fact set of `B`, or present there with a smaller revision |
 | `declined(S)` | node | `f` is a declaration or a plan with a live decline: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
-| `blocked(P)` | promise | The tag target of the promise is a slug that no declaration in `T` declares, and that some lease promises to declare. This case means that the current branch and the lease's branch are ordered, not that the promise is broken. The tool reports `waiting-on` for it, and not `dangling` |
+| `blocked(P)` | promise | The tag target of the promise is a slug that no declaration in `T` declares, and that some claim promises to declare. This case means that the current branch and the claim's branch are ordered, not that the promise is broken. The tool reports `waiting-on` for it, and not `dangling` |
 
 ### 6.6 Edge predicates
 
@@ -430,7 +430,7 @@ passes the cap ([manifest.md](manifest.md) section 9.3).
 | `scope-outside-plan` | step | *engine*: a step whose `@scope` is not contained in its plan's `@scope`. The tool decides containment on the plain globs ([manifest.md](manifest.md) section 7.2), by the rule of glob containment of [ledger.md](ledger.md) section 11: each plain glob of the step must be contained in a plain glob of the plan. A `!` glob of the step only narrows the step's scope, so it never breaks containment | tree | · | · | block, block, — |
 | `misplaced-plan` | tag | *engine*: a `@plan` tag that does not stand in the first tag block of a file under `.plans/`: a `@plan` outside `.plans/**`, or a `@plan` in a later block of a file under `.plans/` ([vocabulary.md](vocabulary.md) section 10.1) | tree | · | · | block, block, block |
 | `unpinned` | edge | *engine*: a `satisfies`, `verifies`, `refines`, or `supersedes` edge without a revision | tree | · | F | block, block, block |
-| `dangling` | edge | `dangling(kind(edge))`, minus edges whose tag target a lease promises to declare — those surface as `waiting-on` instead (*engine* performs this subtraction). When the tag target differs from a declared slug only in case, the `fix` of the finding names the declared spelling | tree | · | · | block, block, block |
+| `dangling` | edge | `dangling(kind(edge))`, minus edges whose tag target a claim promises to declare — those surface as `waiting-on` instead (*engine* performs this subtraction). When the tag target differs from a declared slug only in case, the `fix` of the finding names the declared spelling | tree | · | · | block, block, block |
 | `renamed` | edge | *engine*: dangling edges whose slug has a tombstone in `B` and a new declaration in `T` with an equal extent hash | diff | · | F | block, block, block |
 | `suspect` | edge | `suspect(kind(edge))` | tree | · | F | block, block, block |
 | `unbumped` | node | `kind(req\|design\|decision) ^ changed(base) - bumped(all)` | diff | · | F | block, block, block |
@@ -453,10 +453,10 @@ passes the cap ([manifest.md](manifest.md) section 9.3).
 | `unmet-promise` | promise | `unmet(active)` where `unmet(p) = promises($p) - met(promises($p))` — incompleteness; enforced only by `status --done` | tree | · | · | off, off, — |
 | `promise-out-of-scope` | promise | *engine*: a promise met only by residue outside its step's scope | tree | · | · | warn, warn, — |
 | `unverified-promise` | promise | *engine*: a promised `req` or `design` with no promised `verifies` of it in the same plan | tree | · | · | warn, warn, — |
-| `promise-collision` | promise | *engine*: a promised declaration whose slug a lease promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise with the same plan, step, word, and target. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered | tree | · | · | block, block, — |
+| `promise-collision` | promise | *engine*: a promised declaration whose slug a claim promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise with the same plan, step, word, and target. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered | tree | · | · | block, block, — |
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets. Two scopes intersect when a plain glob of one contains a plain glob of the other, or is contained in it, by the rule of glob containment of [ledger.md](ledger.md) section 11 | tree | · | · | warn, warn, — |
-| `waiting-on` | promise | `blocked(promises(kind(plan)))` — reported in place of `dangling`, with the lease and step named | tree | · | · | off, warn, — |
-| `branch-overlap` | step | *engine*: a step's scope intersects the scope of another branch's lease | tree | · | · | warn, warn, — |
+| `waiting-on` | promise | `blocked(promises(kind(plan)))` — reported in place of `dangling`, with the claim and step named | tree | · | · | off, warn, — |
+| `branch-overlap` | step | *engine*: a step's scope intersects the scope of another branch's claim | tree | · | · | warn, warn, — |
 | `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient - shared`. The engine also exempts hunks that are wholly mechanical repairs — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's `expect` is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
 | `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 14.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
