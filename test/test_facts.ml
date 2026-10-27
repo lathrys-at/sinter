@@ -329,7 +329,7 @@ let a_pin_to_another_revision_is_suspect () =
   check_field records "cites:design:b->a" "suspect" (bool false)
     ~message:"(the first of two)";
   check_field records "refines:design:b->a" "rung" None;
-  check_field records "refines:design:b->a" "live" None
+  check_field records "refines:design:b->a" "effective" None
 
 let a_verifies_edge_in_markdown_is_an_orphan () =
   check_field
@@ -346,9 +346,9 @@ let an_inline_description_loses_its_blanks () =
 let supersedes =
   "# A\n\n@decision new v1\n@supersedes old v1\n\n# B\n\n@decision old\n"
 
-let a_live_supersedes_edge_retires_its_target () =
+let an_effective_supersedes_edge_retires_its_target () =
   let records = records [ ("a.md", supersedes) ] in
-  check_field records "supersedes:decision:new->old" "live" (bool true);
+  check_field records "supersedes:decision:new->old" "effective" (bool true);
   check_field records "decision:old" "inforce" (bool false);
   check_field records "decision:new" "inforce" (bool true)
 
@@ -357,7 +357,7 @@ let a_source_that_is_not_approved_retires_nothing () =
     records ~extra:"[ledger]\napproval-required = [\"decision\"]\n"
       [ ("a.md", supersedes) ]
   in
-  check_field records "supersedes:decision:new->old" "live" (bool false);
+  check_field records "supersedes:decision:new->old" "effective" (bool false);
   check_field records "decision:old" "inforce" (bool true)
 
 let chain ?(kind = "decision") ?(middle = "") () =
@@ -369,16 +369,16 @@ let chain ?(kind = "decision") ?(middle = "") () =
 
 let a_chain_retires_each_declaration_before_its_end () =
   let records = records (chain ()) in
-  check_field records "supersedes:decision:c->b" "live" (bool true);
-  check_field records "supersedes:decision:b->a" "live" (bool true);
+  check_field records "supersedes:decision:c->b" "effective" (bool true);
+  check_field records "supersedes:decision:b->a" "effective" (bool true);
   check_field records "decision:c" "inforce" (bool true);
   check_field records "decision:b" "inforce" (bool false);
   check_field records "decision:a" "inforce" (bool false)
 
 let a_status_tag_on_the_middle_of_a_chain_brings_back_the_first () =
   let records = records (chain ~middle:"@deprecated\n" ()) in
-  check_field records "supersedes:decision:c->b" "live" (bool true);
-  check_field records "supersedes:decision:b->a" "live" (bool false);
+  check_field records "supersedes:decision:c->b" "effective" (bool true);
+  check_field records "supersedes:decision:b->a" "effective" (bool false);
   check_field records "decision:b" "inforce" (bool false);
   check_field records "decision:a" "inforce" (bool true)
 
@@ -387,8 +387,8 @@ let a_middle_that_is_not_approved_retires_nothing () =
     records ~extra:"[ledger]\napproval-required = [\"design\"]\n"
       (chain ~kind:"design" ())
   in
-  check_field records "supersedes:decision:c->b" "live" (bool true);
-  check_field records "supersedes:design:b->a" "live" (bool false);
+  check_field records "supersedes:decision:c->b" "effective" (bool true);
+  check_field records "supersedes:design:b->a" "effective" (bool false);
   check_field records "design:b" "inforce" (bool false);
   check_field records "decision:a" "inforce" (bool true)
 
@@ -407,8 +407,8 @@ let two_declarations_that_supersede_one_both_retire_it () =
            @decision a\n" );
       ]
   in
-  check_field records "supersedes:decision:b->a" "live" (bool true);
-  check_field records "supersedes:decision:c->a" "live" (bool true);
+  check_field records "supersedes:decision:b->a" "effective" (bool true);
+  check_field records "supersedes:decision:c->a" "effective" (bool true);
   check_field records "decision:a" "inforce" (bool false)
 
 let declarations_of_two_files_keep_their_own_numbers () =
@@ -419,7 +419,7 @@ let declarations_of_two_files_keep_their_own_numbers () =
         ("b.md", "# B\n\n@decision y\n@supersedes z v1\n\n# Z\n\n@decision z\n");
       ]
   in
-  check_field records "supersedes:decision:y->z" "live" (bool true);
+  check_field records "supersedes:decision:y->z" "effective" (bool true);
   check_field records "decision:z" "inforce" (bool false)
 
 let a_rule_that_supersedes_retires_its_target () =
@@ -450,7 +450,7 @@ let every_member_of_a_supersedes_cycle_is_in_force () =
     (fun id -> check_field records id "inforce" (bool true))
     [ "decision:a"; "decision:b"; "decision:s" ]
 
-let a_cycle_counts_its_edges_that_are_not_live () =
+let a_cycle_counts_its_edges_that_are_not_effective () =
   let records =
     records
       [
@@ -467,16 +467,16 @@ let a_cycle_counts_its_edges_that_are_not_live () =
            @supersedes x v1\n" );
       ]
   in
-  check_field records "supersedes:decision:z->x" "live" (bool true);
-  check_field records "supersedes:decision:y->x" "live" (bool false);
+  check_field records "supersedes:decision:z->x" "effective" (bool true);
+  check_field records "supersedes:decision:y->x" "effective" (bool false);
   check_field records "decision:x" "inforce" (bool true);
   check_field records "decision:y" "inforce" (bool false)
 
-let a_supersedes_edge_from_a_site_is_not_live () =
+let a_supersedes_edge_from_a_site_is_not_effective () =
   let records =
     records [ ("a.md", "# A\n\n@supersedes old v1\n\n# B\n\n@decision old\n") ]
   in
-  check_field records "supersedes:site:a.md#a->old" "live" (bool false);
+  check_field records "supersedes:site:a.md#a->old" "effective" (bool false);
   check_field records "decision:old" "inforce" (bool true)
 
 let an_ack_names_the_fact_of_its_block () =
@@ -1107,19 +1107,19 @@ let graph_text declarations =
                 (List.map (Printf.sprintf "@supersedes d%d v1\n") superseded)))
          declarations)
 
-let successors_end_in_force_and_only_live_edges_retire =
+let successors_end_in_force_and_only_effective_edges_retire =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count:200
        ~name:
-         "a declaration that a live edge retires has successors, each in \
-          force; only a status tag or a live edge retires a declaration"
+         "a declaration that an effective edge retires has successors, each in \
+          force; only a status tag or an effective edge retires a declaration"
        ~print:graph_text graph (fun graph ->
          let facts =
            facts ~extra:"[ledger]\napproval-required = [\"design\"]\n"
              [ ("a.md", graph_text graph) ]
          in
          let declarations = Array.of_list (Facts.declarations facts) in
-         let live_into index =
+         let effective_into index =
            List.exists
              (fun ((edge : Facts.edge), target) ->
                match (edge.word, edge.source, target) with
@@ -1134,13 +1134,13 @@ let successors_end_in_force_and_only_live_edges_retire =
            (fun index ->
              let in_force = Facts.is_in_force facts index in
              let successors = Facts.successors facts index in
-             let retired_by_an_edge = (not in_force) && live_into index in
+             let retired_by_an_edge = (not in_force) && effective_into index in
              (if retired_by_an_edge then
                 successors <> []
                 && List.for_all (Facts.is_in_force facts) successors
               else successors = [])
              && (Option.is_some declarations.(index).status
-                || live_into index || in_force)
+                || effective_into index || in_force)
              && (Option.is_none declarations.(index).status || not in_force))
            (List.init (Array.length declarations) Fun.id)))
 
@@ -1716,8 +1716,8 @@ let tests =
       a_verifies_edge_in_markdown_is_an_orphan;
     case "an inline description loses its blanks"
       an_inline_description_loses_its_blanks;
-    case "a live supersedes edge retires its target"
-      a_live_supersedes_edge_retires_its_target;
+    case "an effective supersedes edge retires its target"
+      an_effective_supersedes_edge_retires_its_target;
     case "a source that is not approved retires nothing"
       a_source_that_is_not_approved_retires_nothing;
     case "a chain retires each declaration before its end"
@@ -1734,10 +1734,10 @@ let tests =
       a_rule_that_supersedes_retires_its_target;
     case "every member of a supersedes cycle is in force"
       every_member_of_a_supersedes_cycle_is_in_force;
-    case "a cycle counts its edges that are not live"
-      a_cycle_counts_its_edges_that_are_not_live;
-    case "a supersedes edge from a site is not live"
-      a_supersedes_edge_from_a_site_is_not_live;
+    case "a cycle counts its edges that are not effective"
+      a_cycle_counts_its_edges_that_are_not_effective;
+    case "a supersedes edge from a site is not effective"
+      a_supersedes_edge_from_a_site_is_not_effective;
     case "an ack names the fact of its block" an_ack_names_the_fact_of_its_block;
     case "the hash of an ack follows its last blank"
       the_hash_of_an_ack_follows_its_last_blank;
@@ -1809,7 +1809,7 @@ let tests =
       a_member_of_a_cycle_has_no_successors;
     case "successors refuse an index out of range"
       successors_refuse_an_index_out_of_range;
-    successors_end_in_force_and_only_live_edges_retire;
+    successors_end_in_force_and_only_effective_edges_retire;
     case "edges give what their targets resolve to"
       edges_give_what_their_targets_resolve_to;
     case "acks give their block" acks_give_their_block;

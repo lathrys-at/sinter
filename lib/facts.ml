@@ -486,7 +486,7 @@ let approved manifest (declarations : declaration array) index =
   | Some kind -> not (List.mem kind (Manifest.approval_required manifest))
   | None -> true
 
-let live_source manifest (declarations : declaration array) index =
+let effective_source manifest (declarations : declaration array) index =
   Option.is_none declarations.(index).status
   && approved manifest declarations index
 
@@ -496,7 +496,7 @@ let retirers manifest (declarations : declaration array) edges targets =
     (fun (edge : edge) target ->
       match (edge.word, edge.source, target) with
       | "supersedes", Some source, Declaration target
-        when live_source manifest declarations source ->
+        when effective_source manifest declarations source ->
           found.(target) <- source :: found.(target)
       | _ -> ())
     edges targets;
@@ -757,9 +757,9 @@ let edge_records facts =
         | Some rev, Declaration index -> facts.declarations.(index).rev <> rev
         | _ -> false
       in
-      let live =
+      let effective =
         match edge.source with
-        | Some index -> live_source facts.manifest facts.declarations index
+        | Some index -> effective_source facts.manifest facts.declarations index
         | None -> false
       in
       located ~kind:edge.word ~id:(edge_id edge) ~path:edge.path ~span:edge.span
@@ -777,7 +777,7 @@ let edge_records facts =
            else [])
         @
         if String.equal edge.word "supersedes" then
-          [ ("live", Jsonl.bool live) ]
+          [ ("effective", Jsonl.bool effective) ]
         else []))
     facts.edges facts.targets
 

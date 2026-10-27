@@ -149,21 +149,21 @@ val declarations : t -> declaration list
 
 val is_in_force : t -> int -> bool
 (** [is_in_force facts index] is [true] when the declaration at [index] is in
-    force: it carries no status and no live [supersedes] edge points at it. A
-    [supersedes] edge is live when its source is a declaration that carries no
-    status and whose kind needs no approval. A declaration with no status on a
-    cycle of [supersedes] edges is in force.
+    force: it carries no status and no effective [supersedes] edge points at it.
+    A [supersedes] edge is effective when its source is a declaration that
+    carries no status and whose kind needs no approval. A declaration with no
+    status on a cycle of [supersedes] edges is in force.
 
     @raise Invalid_argument if [index] is not an index of {!declarations}. *)
 
 val successors : t -> int -> int list
 (** [successors facts index] is the indices in {!declarations} of the successors
-    of the declaration at [index]. For each live [supersedes] edge that points
-    at the declaration, the source of the edge is a successor when it is in
-    force; otherwise the successors of the source are. The list is in the byte
-    order of the ids of the declarations, and holds each id once: of the
+    of the declaration at [index]. For each effective [supersedes] edge that
+    points at the declaration, the source of the edge is a successor when it is
+    in force; otherwise the successors of the source are. The list is in the
+    byte order of the ids of the declarations, and holds each id once: of the
     declarations that share an id, the first in the order of the records. The
-    list is empty if and only if the declaration is in force or no live
+    list is empty if and only if the declaration is in force or no effective
     [supersedes] edge points at it. Each member is in force.
 
     @raise Invalid_argument if [index] is not an index of {!declarations}. *)

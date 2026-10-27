@@ -99,7 +99,7 @@ Fourteen words. One more (`@pin`) is designed but deferred.
 | `@verifies <slug> vN` | test → req or design | the attached test, identified from the AST | all of the above, plus the evidence ladder (§4) |
 | `@refines <slug> vN` | req or design → req or design | enclosing declaration | target exists, rev current; builds the hierarchy |
 | `@cites <slug or ref> [vN]` | anything → any declaration or ref | anonymous | target exists; if a decision, still in force |
-| `@supersedes <slug> vN` | T → T, same type | enclosing declaration | endpoint types match; live edge retires its target |
+| `@supersedes <slug> vN` | T → T, same type | enclosing declaration | endpoint types match; an effective edge retires its target |
 
 The source rule follows one principle: *a name is needed exactly when other machinery must address the node; location suffices for everything that merely reads.* Coverage reports render anonymous sources as links. Tests are the case where machinery must address the node — and the AST already names them, so no declaration is needed.
 
@@ -111,7 +111,7 @@ The source rule follows one principle: *a name is needed exactly when other mach
 | `@rejected` | decision | considered and declined; the record stays so nobody re-argues it |
 | `@deferred` | decision | undecided; the description says what would settle it |
 
-An item is **in force** iff it carries no status tag and no live `@supersedes` targets it. A `@supersedes` edge is **live** iff its source is itself in force and — for approval-gated types — approved at its current revision. Supersession is an edge, not a status, so the retirement rides the successor's approval turn instead of owing a second approval on the old item; an unapproved successor retires nothing yet, which is the point.
+An item is **in force** iff it carries no status tag and no effective `@supersedes` targets it. A `@supersedes` edge is **effective** iff its source is itself in force and — for approval-gated types — approved at its current revision. Supersession is an edge, not a status, so the retirement rides the successor's approval turn instead of owing a second approval on the old item; an unapproved successor retires nothing yet, which is the point.
 
 **Directives** — recorded judgment at a site.
 
@@ -143,7 +143,7 @@ One collision statelessness cannot see locally: two branches each bump `v2`→`v
 Two orthogonal propagation triggers share machinery and differ in what clears them:
 
 - **Rev bump** — *the meaning changed*: pinned citations go suspect until re-pinned.
-- **Retirement** — *we no longer stand behind this*: via a status tag or a live `@supersedes`. Every `@cites` of a retired item becomes a finding: "this argues from something the record no longer endorses."
+- **Retirement** — *we no longer stand behind this*: via a status tag or an effective `@supersedes`. Every `@cites` of a retired item becomes a finding: "this argues from something the record no longer endorses."
 
 Propagation halts at the finding, never cascades: a bad argument for P is not a defeater of P — only a judgment can say whether the thing resting on a withdrawn premise stands on other grounds. (Classical TMS marks nodes OUT automatically; that is precisely the part not imported.) Retired items drop out of coverage queries. One polarity, filed: status tags fail closed; edge-derived retirement fails open — a deleted `@supersedes` restores its target and leaves no dangling edge behind to report it. What catches it is rev discipline: the edge's tag line is part of its source's extent, so the deletion owes a bump and, for gated kinds, a new approval.
 
@@ -1261,7 +1261,7 @@ Every kind belongs to exactly one **category**. `kind(x)` accepts either.
 | `evidence` | `run` `cov` `judgment` | no | keyed to the tree key; `cov` is the site-level join, not raw lines; `judgment` is a judge's or checker's verdict |
 | `law` | `rule` `gate` | yes (manifest) | a rule's origin is a `cites` edge with the rule as `src` |
 | `ack` | `ack` | yes | live or void |
-| `ledger` | `claim` `decline` | no | projections of the ledger: a live claim of another branch's approved plan (§13.5); a live refusal bound to an extent hash |
+| `ledger` | `claim` `decline` | no | projections of the ledger: a claim of another branch's approved plan (§13.5); a live refusal bound to an extent hash |
 | `hunk` | `hunk` | yes | diff mode only; one per hunk of `git diff B`, new-side coordinates |
 | `tombstone` | `tombstone` | yes (base coordinates) | a fact present in `B`'s index and absent from `T`'s; carries the old `id`, `kind`, and extent hash |
 | `finding` | `finding` | yes (its subject's) | derived; class and subject define identity |
@@ -1361,11 +1361,11 @@ Notation: `S`, `T` range over fact sets; `E` over sets of edges; `P` promises; `
 
 | function | accepts | keeps `f ∈ S` iff |
 |---|---|---|
-| `inforce(S)` | any | for a declaration: `f` carries no status tag and no live `@supersedes` edge has `dst = f` (live: the edge's source is in force and, if its kind is approval-gated, approved, §3.3 — a fixpoint over supersession chains; on a `supersedes` cycle every member is treated as in force and retired by nothing, and the `cycle` finding blocks, so the state is loud rather than guessed). For a plan, its steps, and its promises: the ledger holds no `completed` or `abandoned` entry for the plan (§6.3). Every other kind: kept |
+| `inforce(S)` | any | for a declaration: `f` carries no status tag and no effective `@supersedes` edge has `dst = f` (effective: the edge's source is in force and, if its kind is approval-gated, approved, §3.3 — a fixpoint over supersession chains; on a `supersedes` cycle every member is treated as in force and retired by nothing, and the `cycle` finding blocks, so the state is loud rather than guessed). For a plan, its steps, and its promises: the ledger holds no `completed` or `abandoned` entry for the plan (§6.3). Every other kind: kept |
 | `approved(S)` | any | `f` is a declaration of a gated kind with a ledger approval for `(slug, rev, xh)`; or a declaration of a non-gated kind; or a plan whose current commitment set is approved against its latest approved set (§13.7 containment, not `csh` equality); or a step of an approved plan; or any other kind |
 | `bumped(S)` | node | `f` is a declaration absent from `B`'s index, or present with `rev_B(f) < rev_T(f)` |
 | `declined(S)` | node | `f` is a declaration or plan with a live `decline` fact: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
-| `blocked(P)` | promise | `p` targets a slug declared nowhere in `T` but promised for declaration by some live `claim` — an ordering fact, reported instead of `dangling` |
+| `blocked(P)` | promise | `p` targets a slug declared nowhere in `T` but promised for declaration by some `claim` — an ordering fact, reported instead of `dangling` |
 
 **Edge predicates**
 
@@ -1470,7 +1470,7 @@ Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameter
 | `promise-collision` | promise | *engine*: a promised declaration whose slug exists in `index(B)` or is promised by a claim | tree | · | · | block, block, — |
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets | tree | · | · | warn, warn, — |
 | `waiting-on` | promise | `blocked(promises(kind(plan)))` — reported in place of `dangling` for the citation, with the claim and step named (§6.7) | tree | · | · | off, warn, — |
-| `branch-overlap` | step | *engine*: a step's scope intersects a live claim's scope on another branch | tree | · | · | warn, warn, — |
+| `branch-overlap` | step | *engine*: a step's scope intersects a claim's scope on another branch | tree | · | · | warn, warn, — |
 | `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient`; *engine* also exempts hunks that are wholly the tool's own medicine — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable iff the rule's `expect` is `acked`; a rule's `tiers` overrides the class's | tree | A* | · | warn, block, block |
 | `law-touched` | law | `kind(rule\|gate) ^ changed(base)` — non-disableable; always reported, never blocks | diff | · | · | warn, warn, warn |
@@ -1622,7 +1622,7 @@ Fields marked *derived* below are computed from the ledger, evidence, session, o
 | `desc` | string | inline description; omitted if empty |
 | `suspect` `dangling` | bool | *derived* |
 | `rung` | string | `verifies` only, *derived*: `orphan` `never-ran` `failed` `disconnected` `unattributed` `passing` |
-| `live` | bool | `supersedes` only, *derived* |
+| `effective` | bool | `supersedes` only, *derived* |
 
 Tags inside plan files never produce edges; they are `promise` facts (§6.1).
 

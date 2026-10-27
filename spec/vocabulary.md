@@ -377,8 +377,8 @@ pattern, or a ref whose namespace is not declared, is not dangling. It
 is the finding `invalid-target` only (sections 4.1 and 4.2).
 
 A `@supersedes` edge whose source and tag target have different kinds
-is an error. A live `@supersedes` edge retires the declaration that
-its tag target names (section 8).
+is an error. An effective `@supersedes` edge retires the declaration
+that its tag target names (section 8).
 
 ### 7.3 Status tags
 
@@ -463,12 +463,12 @@ finding stays until a person endorses the new hash.
 
 ### 8.1 In force
 
-An item is **in force** if and only if it carries no status tag and one
-of two conditions holds: no live `@supersedes` edge points at it, or
-it sits on a cycle of `@supersedes` edges (below).
+An item is **in force** if and only if it carries no status tag and
+one of two conditions holds: no effective `@supersedes` edge points at
+it, or it sits on a cycle of `@supersedes` edges (below).
 
-A `@supersedes` edge is **live** if and only if both conditions hold.
-First: the edge's source is a declaration, and that declaration
+A `@supersedes` edge is **effective** if and only if both conditions
+hold. First: the edge's source is a declaration, and that declaration
 carries no status tag. Second: when the source's kind needs approval,
 the source is approved at its current revision. The manifest key
 `ledger.approval-required` lists the kinds that need approval
@@ -476,38 +476,38 @@ the source is approved at its current revision. The manifest key
 [ledger.md](ledger.md), defines approval. An edge whose source is not
 approved retires nothing yet.
 
-An edge stays live when a later edge supersedes its source. In a
+An edge stays effective when a later edge supersedes its source. In a
 **chain** of `@supersedes` edges, each declaration supersedes the one
-before it. When every edge of a chain is live, every declaration of
-the chain before the last one is retired. Example: `b` supersedes
-`a`, and `c` supersedes `b`. Both edges are live, so `a` and `b` are
-retired, and `c` is in force. When `b` carries a status tag, the edge
-from `b` to `a` is not live, and `a` is in force.
+before it. When every edge of a chain is effective, every declaration
+of the chain before the last one is retired. Example: `b` supersedes
+`a`, and `c` supersedes `b`. Both edges are effective, so `a` and `b`
+are retired, and `c` is in force. When `b` carries a status tag, the
+edge from `b` to `a` is not effective, and `a` is in force.
 
 A declaration sits on a **cycle** when it reaches itself along
-`@supersedes` edges, live or not. A declaration on a cycle that
-carries no status tag is in force, even when a live edge points at it.
-The cycle is an error (finding class `cycle`).
+`@supersedes` edges, effective or not. A declaration on a cycle that
+carries no status tag is in force, even when an effective edge points
+at it. The cycle is an error (finding class `cycle`).
 
 ### 8.2 Retirement
 
 An item that is not in force is **retired**. Two triggers retire an
-item: a status tag, or a live `@supersedes` edge. Retirement does not
-cascade. A citation of a retired item is a finding (`retired`),
-never an automatic retirement of the citing item.
+item: a status tag, or an effective `@supersedes` edge. Retirement
+does not cascade. A citation of a retired item is a finding
+(`retired`), never an automatic retirement of the citing item.
 
 The **successors** of a retired declaration are the declarations in
-force that replace it. To find them, take the source of each live
-`@supersedes` edge that points at the declaration. A source that is
-in force is a successor. For a source that is retired, take the
+force that replace it. To find them, take the source of each effective
+`@supersedes` edge that points at the declaration. A source that is in
+force is a successor. For a source that is retired, take the
 successors of that source instead. Such a source carries no status
-tag, because it is the source of a live edge. It is retired all the
-same, so a live edge points at it, and it sits on no cycle (section
-8.1). The search therefore never comes back to a declaration, and it
-ends at declarations in force. In the chain of section 8.1, `c` is
-the successor of `a` and of `b`. A declaration that a live edge
-retires has at least one successor. A declaration that only a status
-tag retires has no successor.
+tag, because it is the source of an effective edge. It is retired all
+the same, so an effective edge points at it, and it sits on no cycle
+(section 8.1). The search therefore never comes back to a declaration,
+and it ends at declarations in force. In the chain of section 8.1, `c`
+is the successor of `a` and of `b`. A declaration that an effective
+edge retires has at least one successor. A declaration that only a
+status tag retires has no successor.
 
 The repair of a citation of a retired declaration depends on the
 successors of that declaration:

@@ -251,7 +251,7 @@ the span of the record is the first paragraph of the section.
 | `desc` | string | inline description, without the spaces and tabs at both ends; omitted when empty |
 | `suspect` `dangling` | bool | *derived* |
 | `rung` | string | `verifies` only, *derived*: `orphan`, `never-ran`, `failed`, `disconnected`, `unattributed`, or `passing` |
-| `live` | bool | `supersedes` only, *derived*: whether the edge is live ([vocabulary.md](vocabulary.md) section 8.1) |
+| `effective` | bool | `supersedes` only, *derived*: whether the edge is effective ([vocabulary.md](vocabulary.md) section 8.1) |
 
 Tags inside plan files never produce edge records. These tags produce
 promise records instead.
