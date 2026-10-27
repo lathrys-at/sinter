@@ -86,3 +86,10 @@
   retiring edge, for `retired`; the `@scope` lines and their globs,
   for `scope-outside-plan` and `promise-out-of-scope`; the edges of a
   `cycle`; and the parts of an `@ack`.
+- `Finding.escape` returns its argument when the text holds no
+  control character, instead of a copy. The brief did not ask for it.
+  The marks and the related places made the findings phase allocate
+  30 to 41 percent more words on the benchmark, and the copy of each
+  detail, fix, and label was the largest part of that. With the
+  change, the findings phase allocates fewer words than before the
+  step.
