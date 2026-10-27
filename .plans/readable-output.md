@@ -16,7 +16,7 @@ Rename 20 finding classes, for example `disendorsed` to `retired` and
 "residue" goes, and a `@supersedes` edge is "effective".
 
 ## Rename the settings of the manifest and the gates
-@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, plugins/**, sinter.toml, .github/workflows/**
+@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, plugins/**, .claude-plugin/**, sinter.toml, .github/workflows/**
 @decision manifest-names
 Give each setting of the manifest a name with one meaning: `spec`
 becomes `sinter-spec`, `target` becomes `default-branch`, `scan.refs`
