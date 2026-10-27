@@ -443,6 +443,69 @@ mutant that survived. The gap between 95 and 100 is there so that one
 mutant that nobody has got to yet does not stop a pull request that is
 sound in every other way; it is not room to leave survivors in.
 
+### Performance
+
+The benchmark measures the peak memory, the words that each phase
+allocates, and the instruction count of `sinter scan` and
+`sinter check`. It runs each command on Sinter's own checkout and on
+generated trees: git repositories of a given number of declarations,
+made from a fixed seed. The same seed and the same number give the
+same tree on every run. From the repository root:
+
+```
+dune build @bench
+dune build @bench-large
+```
+
+`@bench` measures Sinter itself and the trees of 1,000 and 10,000
+declarations. `@bench-large` adds the tree of 100,000 declarations,
+which takes several minutes. `dune test` runs neither. The trees go to
+a temporary folder outside `_build`, and the run removes them at its
+end. Each command runs once to warm up and then five times, three for
+`@bench-large`. The run prints a JSON object and a table of the
+medians and their spread, and checks the budgets.
+
+The executables are `bench/run.exe` and `bench/generate.exe`, and
+`--help` gives the options and the output of each. To compare two
+builds, give each build's `sinter` to `run.exe` with `--sinter`, and
+keep the trees between the runs with `--trees`. To check the budgets
+against the JSON object of an earlier run, such as the artifact of the
+CI job, give that file to `run.exe` with `--results`.
+
+On Linux, GNU `time` gives the peak memory, and `perf stat` counts the
+instructions when `perf` is installed and can count them. On macOS,
+`time -l` gives the peak memory, and the instruction count when the
+machine reports one. The two platforms count different processes, so
+compare numbers from one platform only. The instruction counts are
+information only; no budget reads them.
+
+When the environment variable `SINTER_PHASE_WORDS` names a file,
+`sinter scan` and `sinter check` write to it the words of memory that
+the OCaml runtime allocated in each phase of the command (a word is 8
+bytes on a 64-bit machine): `repository`, `read`, `parse`, `facts`,
+`records` (scan) or `findings` (check), and `output`. The runner sets
+the variable for each run. The count is the
+same on every run of one input at one path. The counts of `repository`
+and `read` also grow with the length of the path of the tree.
+
+`bench/budgets.toml` holds two budgets for each command
+(`docs/decisions/performance-budgets.md`):
+
+- **Memory:** the median peak memory on the tree of 10,000
+  declarations, on Linux, in KiB.
+- **Growth:** for each phase, the words on the tree of 10,000
+  declarations, divided by the words on the tree of 1,000
+  declarations. A step whose cost grows faster than the tree raises
+  the number of its phase. This budget applies on every platform.
+
+The CI job "Measure performance" makes the same measures as `@bench`
+on `ubuntu-26.04`, and fails when a measure exceeds its budget. It
+runs on each push to `main`, on the daily schedule of the workflow, and
+on a pull request that changes `lib/`, `bin/`, `bridge/`, `bench/`, or
+a dependency. It writes the numbers to the job summary. The job is not
+a required check. A budget changes only in the pull request that needs
+the change, so that the reviewer sees it.
+
 ## New files
 
 A new file under `lib/`, `bin/`, `bridge/`, `test/`, `spec/`,

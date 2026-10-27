@@ -18,7 +18,7 @@
 
 (rule
  (alias bench)
- (deps (universe) sinter-self.toml)
+ (deps (universe) sinter-self.toml budgets.toml)
  (action
   (run
    %{exe:run.exe}
@@ -30,12 +30,14 @@
    .
    --self-manifest
    sinter-self.toml
+   --budgets
+   budgets.toml
    --sizes
    1000,10000)))
 
 (rule
  (alias bench-large)
- (deps (universe) sinter-self.toml)
+ (deps (universe) sinter-self.toml budgets.toml)
  (action
   (run
    %{exe:run.exe}
@@ -47,6 +49,8 @@
    .
    --self-manifest
    sinter-self.toml
+   --budgets
+   budgets.toml
    --sizes
    1000,10000,100000
    --runs

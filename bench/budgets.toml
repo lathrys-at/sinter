@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 The Sinter Authors
+
+[scan]
+peak-memory-kib = 95232
+allocation-growth = 12.0
+
+[check]
+peak-memory-kib = 76800
+allocation-growth = 12.0

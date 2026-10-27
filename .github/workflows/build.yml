@@ -559,7 +559,7 @@ jobs:
       - name: Build
         if: steps.scope.outputs.measure == 'true'
         run: dune build bin/main.exe bench/run.exe bench/generate.exe
-      - name: Measure
+      - name: Measure and check the budgets
         if: steps.scope.outputs.measure == 'true'
         run: |
           set -eu
@@ -569,6 +569,7 @@ jobs:
             --generator _build/default/bench/generate.exe \
             --self . \
             --self-manifest bench/sinter-self.toml \
+            --budgets bench/budgets.toml \
             --json _performance/results.json \
             --markdown "$GITHUB_STEP_SUMMARY"
       - name: Upload the measures
