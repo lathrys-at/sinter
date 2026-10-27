@@ -530,7 +530,7 @@ successors of that declaration:
 A decision record must not be deleted. The allowed moves are:
 supersede it, reject it, or defer it. The old text stays, because the
 old reasoning is the record of why the new decision exists. An edit of
-a decision record is allowed: like every extent edit, it owes a
+a decision record is allowed: like every extent edit, it needs a
 revision bump (section 9).
 
 ### 8.4 Historical paths
@@ -548,7 +548,7 @@ A person writes every revision pin by hand. Sinter stores no hash of a
 declaration's text outside the repository. Sinter also never writes
 into a governed file. Two rules make hand-written pins work:
 
-1. **Every extent edit owes a bump.** When a declaration's extent
+1. **Every extent edit needs a bump.** When a declaration's extent
    changes relative to the diff base and its revision does not
    increase, that is an error (finding class `unbumped`). A writer
    cannot claim an exception: Sinter does not accept the claim "this
