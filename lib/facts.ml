@@ -144,6 +144,17 @@ type plan = {
   steps : step list;
 }
 
+type residue = { id : string; path : string; span : Markdown.span }
+
+module Pairs = Map.Make (struct
+  type t = string * string
+
+  let compare (a, b) (c, d) =
+    match String.compare a c with 0 -> String.compare b d | order -> order
+end)
+
+type lookups = { declared : int list Pairs.t; cited : edge list Pairs.t }
+
 type t = {
   manifest : Manifest.t;
   declarations : declaration array;
@@ -154,6 +165,7 @@ type t = {
   sites : site list;
   acks : ack list;
   plans : plan list;
+  lookups : lookups Lazy.t;
 }
 
 let site_id path (section : Markdown.section) =
@@ -500,6 +512,55 @@ let in_force ~retirers (declarations : declaration array) edges targets =
       Option.is_none declarations.(node).status
       && (retirers.(node) = [] || on_cycle node))
 
+let in_place_order (a : residue) (b : residue) =
+  compare
+    (a.path, a.span.start.line, a.span.start.column)
+    (b.path, b.span.start.line, b.span.start.column)
+
+let promised plans =
+  List.fold_left
+    (fun keys (plan : plan) ->
+      List.fold_left
+        (fun keys (step : step) ->
+          List.fold_left
+            (fun keys (promise : promise) ->
+              Pairs.add (promise.word, promise.target) [] keys)
+            keys step.promises)
+        keys plan.steps)
+    Pairs.empty plans
+
+let group keys add items =
+  List.fold_left
+    (fun groups item ->
+      match add item with
+      | Some (key, member) ->
+          Pairs.update key (Option.map (List.cons member)) groups
+      | None -> groups)
+    keys (List.rev items)
+
+let lookups (declarations : declaration array) edges targets plans =
+  let keys = promised plans in
+  {
+    declared =
+      group keys
+        (fun index ->
+          let d = declarations.(index) in
+          Some ((d.kind, d.slug), index))
+        (List.init (Array.length declarations) Fun.id);
+    cited =
+      group keys
+        (fun ((edge : edge), target) ->
+          let discharges =
+            match (target, edge.rev) with
+            | Declaration index, Some rev -> declarations.(index).rev = rev
+            | Declaration _, None | Ref _, _ -> true
+            | Unresolved _, _ -> false
+          in
+          if discharges then Some ((edge.word, edge.target_text), edge)
+          else None)
+        (List.combine edges targets);
+  }
+
 let make manifest files =
   let ordinary, plans =
     List.partition_map
@@ -524,6 +585,7 @@ let make manifest files =
   let edges = List.rev edges in
   let targets = resolve manifest declarations edges in
   let retirers = retirers manifest declarations edges targets in
+  let plans = List.filter_map Fun.id plans in
   {
     manifest;
     declarations;
@@ -533,7 +595,8 @@ let make manifest files =
     targets;
     sites = List.rev sites;
     acks = List.rev acks;
-    plans = List.filter_map Fun.id plans;
+    plans;
+    lookups = lazy (lookups declarations edges targets plans);
   }
 
 let needs_changes facts =
@@ -718,49 +781,37 @@ let ack_records facts =
         ])
     facts.acks
 
-type residue = { id : string; path : string; span : Markdown.span }
-
 let residue facts (promise : promise) =
-  let order (a : residue) (b : residue) =
-    compare
-      (a.path, a.span.start.line, a.span.start.column)
-      (b.path, b.span.start.line, b.span.start.column)
+  let lookups = Lazy.force facts.lookups in
+  let find groups =
+    Option.value
+      (Pairs.find_opt (promise.word, promise.target) groups)
+      ~default:[]
   in
   let found =
     if List.mem promise.word declaration_words then
-      List.filter_map
-        (fun (d : declaration) ->
-          if
-            String.equal d.kind promise.word
-            && String.equal d.slug promise.target
-          then Some { id = declaration_id d; path = d.path; span = d.span }
-          else None)
-        (Array.to_list facts.declarations)
+      List.map
+        (fun index ->
+          let d = facts.declarations.(index) in
+          { id = declaration_id d; path = d.path; span = d.span })
+        (find lookups.declared)
     else if String.equal promise.word "verifies" then []
     else
-      List.filter_map Fun.id
-        (List.map2
-           (fun (edge : edge) target ->
-             let discharges =
-               match (target, edge.rev) with
-               | Declaration index, Some rev ->
-                   facts.declarations.(index).rev = rev
-               | Declaration _, None | Ref _, _ -> true
-               | Unresolved _, _ -> false
-             in
-             if
-               String.equal edge.word promise.word
-               && String.equal edge.target_text promise.target
-               && discharges
-             then Some { id = edge_id edge; path = edge.path; span = edge.span }
-             else None)
-           facts.edges facts.targets)
+      List.map
+        (fun (edge : edge) ->
+          { id = edge_id edge; path = edge.path; span = edge.span })
+        (find lookups.cited)
   in
-  List.sort order found
+  List.sort in_place_order found
 
 type discharge = { by : residue option; residue : residue list }
 
 let discharge facts plan step (promise : promise) =
+  if
+    not
+      (List.memq plan facts.plans && List.memq step plan.steps
+      && List.memq promise step.promises)
+  then invalid_arg "Facts.discharge: the promise is not one of these facts";
   let in_scope = Path_set.mem (path_set (effective_scope plan step)) in
   let residue = residue facts promise in
   let location =

@@ -202,7 +202,11 @@ val discharge : t -> plan -> step -> promise -> discharge
     and its slug is the tag target of the promise. An edge would discharge it
     when its word and its tag target are those of the promise, its tag target
     resolves, and it is not suspect. No edge of the word [verifies] would
-    discharge it. *)
+    discharge it.
+
+    @raise Invalid_argument
+      if [plan] is not one of {!plans} [facts], [step] is not one of the steps
+      of [plan], or [promise] is not one of the promises of [step]. *)
 
 val index :
   tree:string ->
