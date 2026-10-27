@@ -2,7 +2,7 @@
 (* Copyright 2026 The Sinter Authors *)
 
 module Ids = Set.Make (String)
-module Slugs = Map.Make (String)
+module Names = Map.Make (String)
 
 type declared = { slug : string; rev : int; xh : string }
 
@@ -15,25 +15,44 @@ type tombstone = {
 
 let declaration_kinds = [ "req"; "design"; "decision" ]
 
-let by_id facts =
-  List.fold_left
-    (fun found (declaration : Facts.declaration) ->
-      let id = Facts.declaration_id declaration in
-      if Slugs.mem id found then found else Slugs.add id declaration found)
-    Slugs.empty (Facts.declarations facts)
+let is_declaration (declaration : Facts.declaration) =
+  List.mem declaration.kind declaration_kinds
 
-let tombstones ~base facts =
-  let present =
+let tombstones ?(same = fun _ -> false) ~base facts =
+  let candidates = ref [] in
+  Facts.iter_identities
+    ~within:(fun path -> not (same path))
+    base
+    (fun identity -> candidates := identity :: !candidates);
+  let candidates = List.rev !candidates in
+  let wanted =
     List.fold_left
       (fun ids (identity : Facts.identity) -> Ids.add identity.id ids)
-      Ids.empty (Facts.identities facts)
+      Ids.empty candidates
   in
-  let declarations = by_id base in
+  let present = ref Ids.empty in
+  Facts.iter_identities facts (fun identity ->
+      if Ids.mem identity.id wanted then present := Ids.add identity.id !present);
+  let declared =
+    List.fold_left
+      (fun found (declaration : Facts.declaration) ->
+        let id = Facts.declaration_id declaration in
+        if Ids.mem id wanted && not (Names.mem id found) then
+          Names.add id
+            {
+              slug = declaration.slug;
+              rev = declaration.rev;
+              xh = declaration.extent.hash;
+            }
+            found
+        else found)
+      Names.empty (Facts.declarations base)
+  in
   List.rev
     (snd
        (List.fold_left
           (fun (seen, found) (identity : Facts.identity) ->
-            if Ids.mem identity.id present || Ids.mem identity.id seen then
+            if Ids.mem identity.id !present || Ids.mem identity.id seen then
               (seen, found)
             else
               ( Ids.add identity.id seen,
@@ -42,23 +61,32 @@ let tombstones ~base facts =
                   was = identity.id;
                   place = identity.place;
                   declared =
-                    Option.map
-                      (fun (d : Facts.declaration) ->
-                        { slug = d.slug; rev = d.rev; xh = d.extent.hash })
-                      (Slugs.find_opt identity.id declarations);
+                    (if List.mem identity.kind declaration_kinds then
+                       Names.find_opt identity.id declared
+                     else None);
                 }
                 :: found ))
-          (Ids.empty, []) (Facts.identities base)))
+          (Ids.empty, []) candidates))
 
-let first_by_slug facts =
-  List.fold_left
-    (fun found (declaration : Facts.declaration) ->
-      if
-        List.mem declaration.kind declaration_kinds
-        && not (Slugs.mem declaration.slug found)
-      then Slugs.add declaration.slug declaration found
-      else found)
-    Slugs.empty (Facts.declarations facts)
+let in_place_order (a : Facts.declaration) (b : Facts.declaration) =
+  compare (a.path, a.span.start.line) (b.path, b.span.start.line)
+
+let by_slug ~same ~base facts slugs =
+  Names.map (List.sort in_place_order)
+  @@ List.fold_left
+       (fun found (declaration : Facts.declaration) ->
+         if is_declaration declaration && Ids.mem declaration.slug slugs then
+           Names.update declaration.slug
+             (fun earlier ->
+               Some (declaration :: Option.value earlier ~default:[]))
+             found
+         else found)
+       Names.empty
+       (List.rev
+          (Facts.declarations base
+          @ List.filter
+              (fun (declaration : Facts.declaration) -> same declaration.path)
+              (Facts.declarations facts)))
 
 let place (declaration : Facts.declaration) =
   { Finding.path = declaration.path; span = declaration.span }
@@ -67,55 +95,101 @@ let subject (declaration : Facts.declaration) =
   Finding.Fact
     { id = Facts.declaration_id declaration; ack_name = declaration.slug }
 
-let unbumped ~base facts =
-  let earlier = first_by_slug base in
+let unbumped ~base ~same facts =
+  let candidates =
+    List.filter
+      (fun (declaration : Facts.declaration) ->
+        is_declaration declaration && not (same declaration.path))
+      (Facts.declarations facts)
+  in
+  let earlier =
+    by_slug ~same ~base facts
+      (Ids.of_list
+         (List.map (fun (d : Facts.declaration) -> d.slug) candidates))
+  in
   List.filter_map
     (fun (declaration : Facts.declaration) ->
-      match Slugs.find_opt declaration.slug earlier with
-      | Some (old : Facts.declaration)
-        when List.mem declaration.kind declaration_kinds
-             && declaration.rev <= old.rev
-             && not
-                  (String.equal old.kind declaration.kind
-                  && String.equal old.extent.hash declaration.extent.hash) ->
+      let held =
+        Option.value (Names.find_opt declaration.slug earlier) ~default:[]
+      in
+      let same (old : Facts.declaration) =
+        String.equal old.kind declaration.kind
+        && String.equal old.extent.hash declaration.extent.hash
+      in
+      match
+        List.fold_left
+          (fun top (old : Facts.declaration) ->
+            match top with
+            | Some (kept : Facts.declaration) when kept.rev >= old.rev -> top
+            | _ -> Some old)
+          None held
+      with
+      | Some highest
+        when (not (List.exists same held))
+             && List.for_all
+                  (fun (old : Facts.declaration) -> old.rev >= declaration.rev)
+                  held ->
           let detail =
-            if String.equal old.kind declaration.kind then
-              Printf.sprintf
-                "the extent differs from the base, and the revision is not \
-                 above v%d"
-                old.rev
-            else
-              Printf.sprintf
-                "the base declares %s v%d, and a change of kind needs a higher \
-                 revision"
-                (Facts.declaration_id old) old.rev
+            match
+              List.find_opt
+                (fun (old : Facts.declaration) ->
+                  String.equal old.kind declaration.kind)
+                held
+            with
+            | Some _ ->
+                Printf.sprintf
+                  "the extent differs from the base, and the revision is not \
+                   above v%d"
+                  highest.rev
+            | None ->
+                Printf.sprintf
+                  "the base declares %s v%d, and a change of kind needs a \
+                   higher revision"
+                  (Facts.declaration_id highest)
+                  highest.rev
           in
           Some
             (Finding.make Finding_class.Unbumped (subject declaration)
                ~place:(place declaration) ~detail
                ~fix:
                  (Printf.sprintf "@%s %s v%d" declaration.kind declaration.slug
-                    (old.rev + 1))
+                    (highest.rev + 1))
                ())
       | Some _ | None -> None)
-    (Facts.declarations facts)
+    candidates
 
-let renamed ~base facts =
+let renamed ~base ~same ~tombstones facts =
   let gone =
     List.filter_map
       (fun (tombstone : tombstone) ->
         Option.map
           (fun declared -> (tombstone.kind, declared))
           tombstone.declared)
-      (tombstones ~base facts)
+      tombstones
   in
-  let earlier = by_id base in
   let fresh =
-    List.filter
-      (fun (declaration : Facts.declaration) ->
-        List.mem declaration.kind declaration_kinds
-        && not (Slugs.mem (Facts.declaration_id declaration) earlier))
-      (Facts.declarations facts)
+    lazy
+      (let candidates =
+         List.filter
+           (fun (declaration : Facts.declaration) ->
+             is_declaration declaration && not (same declaration.path))
+           (Facts.declarations facts)
+       in
+       let held =
+         by_slug ~same ~base facts
+           (Ids.of_list
+              (List.map (fun (d : Facts.declaration) -> d.slug) candidates))
+       in
+       List.filter
+         (fun (declaration : Facts.declaration) ->
+           not
+             (List.exists
+                (fun (old : Facts.declaration) ->
+                  String.equal old.kind declaration.kind)
+                (Option.value
+                   (Names.find_opt declaration.slug held)
+                   ~default:[])))
+         candidates)
   in
   let successor slug =
     match
@@ -131,7 +205,7 @@ let renamed ~base facts =
             List.filter
               (fun (d : Facts.declaration) ->
                 String.equal d.extent.hash declared.xh)
-              fresh )
+              (Lazy.force fresh) )
         with
         | [ _ ], [ (next : Facts.declaration) ] when String.equal next.kind kind
           ->
@@ -165,46 +239,69 @@ let renamed ~base facts =
           None)
     (Facts.edges facts)
 
-let promise_collisions ~base facts =
-  let earlier = first_by_slug base in
-  let promised =
-    List.fold_left
-      (fun ids (identity : Facts.identity) ->
-        if String.equal identity.kind "promise" then Ids.add identity.id ids
-        else ids)
-      Ids.empty (Facts.identities base)
+let promise_collisions ~base ~same facts =
+  let candidates =
+    List.concat_map
+      (fun (plan : Facts.plan) ->
+        if not (same plan.path) then
+          List.concat_map
+            (fun (step : Facts.step) ->
+              List.filter_map
+                (fun (promise : Facts.promise) ->
+                  if List.mem promise.word declaration_kinds then
+                    Some (plan, promise, Facts.promise_id plan step promise)
+                  else None)
+                step.promises)
+            plan.steps
+        else [])
+      (Facts.plans facts)
   in
-  List.concat_map
+  let wanted = Ids.of_list (List.map (fun (_, _, id) -> id) candidates) in
+  let promised = ref Ids.empty in
+  List.iter
     (fun (plan : Facts.plan) ->
-      List.concat_map
+      List.iter
         (fun (step : Facts.step) ->
-          List.filter_map
+          List.iter
             (fun (promise : Facts.promise) ->
               let id = Facts.promise_id plan step promise in
-              match Slugs.find_opt promise.target earlier with
-              | Some (declared : Facts.declaration)
-                when List.mem promise.word declaration_kinds
-                     && not (Ids.mem id promised) ->
-                  Some
-                    (Finding.make Finding_class.Promise_collision
-                       (Finding.Fact { id; ack_name = id })
-                       ~place:{ Finding.path = plan.path; span = promise.span }
-                       ~detail:
-                         (Printf.sprintf "the base already declares %s"
-                            (Facts.declaration_id declared))
-                       ())
-              | Some _ | None -> None)
+              if Ids.mem id wanted then promised := Ids.add id !promised)
             step.promises)
         plan.steps)
-    (Facts.plans facts)
+    (Facts.plans base
+    @ List.filter
+        (fun (plan : Facts.plan) -> same plan.path)
+        (Facts.plans facts));
+  let declared =
+    by_slug ~same ~base facts
+      (Ids.of_list
+         (List.map
+            (fun (_, (promise : Facts.promise), _) -> promise.target)
+            candidates))
+  in
+  List.filter_map
+    (fun ((plan : Facts.plan), (promise : Facts.promise), id) ->
+      match Names.find_opt promise.target declared with
+      | Some (first :: _) when not (Ids.mem id !promised) ->
+          Some
+            (Finding.make Finding_class.Promise_collision
+               (Finding.Fact { id; ack_name = id })
+               ~place:{ Finding.path = plan.path; span = promise.span }
+               ~detail:
+                 (Printf.sprintf "the base already declares %s"
+                    (Facts.declaration_id first))
+               ())
+      | Some _ | None -> None)
+    candidates
 
 let historical facts (finding : Finding.t) =
   match finding.place with
   | Some place -> Manifest.is_historical (Facts.manifest facts) place.path
   | None -> false
 
-let classes ~base facts findings =
-  let renamed = renamed ~base facts in
+let classes ?(same = fun _ -> false) ~base facts findings =
+  let tombstones = tombstones ~same ~base facts in
+  let renamed = renamed ~base ~same ~tombstones facts in
   let replaced =
     List.fold_left
       (fun ids (finding : Finding.t) ->
@@ -220,4 +317,5 @@ let classes ~base facts findings =
        findings
     @ List.filter
         (fun finding -> not (historical facts finding))
-        (unbumped ~base facts @ renamed @ promise_collisions ~base facts))
+        (unbumped ~base ~same facts @ renamed
+        @ promise_collisions ~base ~same facts))

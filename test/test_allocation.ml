@@ -165,12 +165,11 @@ let a_command_writes_the_words_of_its_phases () =
       ( "check",
         [
           "repository";
+          "base-read";
           "read";
           "parse";
-          "base-read";
           "facts";
           "findings";
-          "base-facts";
           "output";
         ] );
     ]

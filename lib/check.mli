@@ -102,8 +102,10 @@ val run :
 
     With [phases], it counts the phases of {!Scan.load_with_base}, [facts]
     ({!Facts.make}) and [findings] (the findings, their subtraction, the classes
-    that compare with the base, and their selection), [base-facts],
-    [base-findings] in the mode [Diff], the index record in [repository], and
-    the phase [output], the lines of the report.
+    that compare with the base, and their selection), the index record in
+    [repository], and the phase [output], the lines of the report. In the mode
+    [Diff], it counts the facts of the base in [base-facts] and their findings
+    in [base-findings]. In the mode [Tree], the facts of the files of the base
+    that differ from the working tree count in [findings].
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)

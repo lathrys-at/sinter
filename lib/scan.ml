@@ -381,12 +381,18 @@ let read_blobs reader repo wanted =
   in
   Result.map (fun (documents, not_text, _) -> (documents, not_text)) read
 
-let read_base reader ~repo ~commit ~read_by_markdown ~documents ~not_text =
+let base_files ~repo ~commit ~read_by_markdown =
   let* diff = repository (Git.diff repo ~base:commit) in
   let* files = repository (Git.base_tree repo commit) in
   let files, not_utf_8 =
     List.partition (fun (path, _) -> Sinter_bridge.Utf_8.is_valid path) files
   in
+  Ok
+    ( diff,
+      List.filter (fun (path, _) -> read_by_markdown path) files,
+      List.map fst not_utf_8 )
+
+let read_base reader ~repo ~diff ~files ~documents ~not_text =
   let changed =
     List.fold_left
       (fun changed (path, change) ->
@@ -407,31 +413,30 @@ let read_base reader ~repo ~commit ~read_by_markdown ~documents ~not_text =
         match Paths.find_opt path held with
         | Some found when not (Paths.mem path changed) -> Left (path, found)
         | Some _ | None -> Right (path, id))
-      (List.filter (fun (path, _) -> read_by_markdown path) files)
+      files
   in
   let* read_documents, read_not_text = read_blobs reader repo wanted in
   let by_path list = List.sort (fun (a, _) (b, _) -> String.compare a b) list in
   Ok
-    ( {
-        diff;
-        base_documents =
-          by_path
-            (read_documents
-            @ List.filter_map
-                (function
-                  | path, Document document -> Some (path, document)
-                  | _, Not_text _ -> None)
-                reused);
-        base_not_text =
-          by_path
-            (read_not_text
-            @ List.filter_map
-                (function
-                  | path, Not_text offset -> Some (path, offset)
-                  | _, Document _ -> None)
-                reused);
-      },
-      List.map fst not_utf_8 )
+    {
+      diff;
+      base_documents =
+        by_path
+          (read_documents
+          @ List.filter_map
+              (function
+                | path, Document document -> Some (path, document)
+                | _, Not_text _ -> None)
+              reused);
+      base_not_text =
+        by_path
+          (read_not_text
+          @ List.filter_map
+              (function
+                | path, Not_text offset -> Some (path, offset)
+                | _, Document _ -> None)
+              reused);
+    }
 
 let assemble ~repo ~manifest ~location ~base ~documents ~not_text ~not_utf_8 =
   {
@@ -462,15 +467,19 @@ let load_with_base ?phases ~env ~dir ~manifest ~base () =
     Allocation.measure phases "repository" (fun () ->
         prepare ~env ~dir ~manifest ~base)
   in
-  let* documents, not_text, compared, base_not_utf_8 =
+  let* diff, base_files, base_not_utf_8 =
+    Allocation.measure phases "base-read" (fun () ->
+        base_files ~repo ~commit:(base_commit base) ~read_by_markdown)
+  in
+  let* documents, not_text, compared =
     with_reader (fun reader ->
         let* documents, not_text = documents ?phases reader ~root files in
-        let* compared, base_not_utf_8 =
+        let* compared =
           Allocation.measure phases "base-read" (fun () ->
-              read_base reader ~repo ~commit:(base_commit base)
-                ~read_by_markdown ~documents ~not_text)
+              read_base reader ~repo ~diff ~files:base_files ~documents
+                ~not_text)
         in
-        Ok (documents, not_text, compared, base_not_utf_8))
+        Ok (documents, not_text, compared))
   in
   Ok
     ( assemble ~repo ~manifest ~location ~base ~documents ~not_text

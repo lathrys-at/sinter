@@ -109,11 +109,28 @@ let record ~mode { finding; tier } =
 type format = Text | Json
 type report = { messages : string list; lines : string list; code : int }
 
+module Paths = Map.Make (String)
+
 let compare_with_base ?phases ~mode (tree : Scan.tree)
     (compared : Scan.compared) facts findings =
+  let held = Paths.of_list tree.documents
+  and earlier = Paths.of_list compared.base_documents in
+  let same path =
+    match (Paths.find_opt path held, Paths.find_opt path earlier) with
+    | Some document, Some other -> document == other
+    | _ -> false
+  in
   let base =
-    Allocation.measure phases "base-facts" (fun () ->
-        Facts.make tree.manifest compared.base_documents)
+    match mode with
+    | Mode.Diff ->
+        Allocation.measure phases "base-facts" (fun () ->
+            Facts.make tree.manifest compared.base_documents)
+    | Mode.Tree ->
+        Allocation.measure phases "findings" (fun () ->
+            Facts.make tree.manifest
+              (List.filter
+                 (fun (path, _) -> not (same path))
+                 compared.base_documents))
   in
   let findings =
     match mode with
@@ -129,7 +146,7 @@ let compare_with_base ?phases ~mode (tree : Scan.tree)
               ~base:base_findings findings)
   in
   Allocation.measure phases "findings" (fun () ->
-      Adjudicator.classes ~base facts findings)
+      Adjudicator.classes ~same ~base facts findings)
 
 let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool () =
   let* tree, compared =

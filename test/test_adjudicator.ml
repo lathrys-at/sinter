@@ -210,6 +210,23 @@ let unbumped_holds_for_a_retired_declaration_and_not_under_a_historical_path ()
          ("old/b.md", "# B\n\n@req log v1 Now.\n");
        ])
 
+let unbumped_reads_every_declaration_of_the_slug_at_the_base () =
+  Alcotest.check strings "the findings"
+    [
+      "docs/c.md:3 | finding:unbumped:req:y | the extent differs from the \
+       base, and the revision is not above v4 | fix: @req y v5";
+    ]
+    (compared
+       [
+         ("docs/a.md", "# A\n\n@design x v3 Old.\n\n# Y\n\n@req y v4 Old.\n");
+         ("docs/b.md", "# B\n\n@req x v1 Old.\n\n# Y\n\n@req y v2 Old.\n");
+       ]
+       [
+         ("docs/a.md", "# A\n\n@design x v3 Old.\n\n# Y\n\n@req y v4 Old.\n");
+         ("docs/b.md", "# B\n\n@req x v2 New.\n");
+         ("docs/c.md", "# C\n\n@req y v2 New.\n");
+       ])
+
 let the_findings_keep_their_order_with_the_new_ones () =
   let finding path line =
     Finding.make Finding_class.Typo_tag
@@ -376,6 +393,104 @@ let a_tree_like_its_base_has_no_finding =
       let files = [ ("docs/a.md", text) ] in
       Adjudicator.classes ~base:(facts files) (facts files) [] = [])
 
+let section_gen =
+  Gen.(
+    let* kind = oneof_list [ "req"; "design" ] in
+    let* slug = oneof_list [ "a"; "b"; "c" ] in
+    let* rev = int_range 1 3 in
+    let* text = oneof_list [ "A."; "B." ] in
+    let+ cited = oneof_list [ "a"; "b"; "c"; "d" ] in
+    Printf.sprintf "# %s\n\n@%s %s v%d %s\n@cites %s v1\n\n" text kind slug rev
+      text cited)
+
+let file_gen =
+  Gen.(
+    let* sections = list_size (int_range 1 2) section_gen in
+    pure (String.concat "" sections))
+
+let plan_gen =
+  Gen.(
+    map
+      (fun slug ->
+        Printf.sprintf "# P\n\n@plan p\n@scope docs/**\n\n## S\n\n@req %s\n"
+          slug)
+      (oneof_list [ "a"; "b"; "c" ]))
+
+type version =
+  | Same of string
+  | Changed of string * string
+  | Base_only of string
+  | Tree_only of string
+
+let version_gen text =
+  Gen.(
+    oneof
+      [
+        map (fun t -> Same t) text;
+        map2 (fun a b -> Changed (a, b)) text text;
+        map (fun t -> Base_only t) text;
+        map (fun t -> Tree_only t) text;
+      ])
+
+let trees_gen =
+  Gen.(
+    triple (version_gen file_gen) (version_gen file_gen) (version_gen plan_gen))
+
+let print_version = function
+  | Same t -> Printf.sprintf "same %S" t
+  | Changed (a, b) -> Printf.sprintf "%S -> %S" a b
+  | Base_only t -> Printf.sprintf "base only %S" t
+  | Tree_only t -> Printf.sprintf "tree only %S" t
+
+let print_trees (a, b, p) =
+  Printf.sprintf "a: %s; b: %s; plan: %s" (print_version a) (print_version b)
+    (print_version p)
+
+let a_base_without_the_same_files_gives_the_same_classes =
+  property
+    ~name:"a base without the files that are the same gives the same classes"
+    ~print:print_trees trees_gen (fun (a, b, p) ->
+      let files =
+        List.map
+          (fun (path, version) ->
+            match version with
+            | Same text ->
+                let d = document text in
+                (path, Some d, Some d, true)
+            | Changed (x, y) ->
+                (path, Some (document x), Some (document y), false)
+            | Base_only text -> (path, Some (document text), None, false)
+            | Tree_only text -> (path, None, Some (document text), false))
+          [ ("docs/a.md", a); ("docs/b.md", b); (".plans/p.md", p) ]
+      in
+      let tree =
+        Facts.make manifest
+          (List.filter_map
+             (fun (path, _, t, _) -> Option.map (fun t -> (path, t)) t)
+             files)
+      in
+      let full =
+        Facts.make manifest
+          (List.filter_map
+             (fun (path, b, _, _) -> Option.map (fun b -> (path, b)) b)
+             files)
+      and part =
+        Facts.make manifest
+          (List.filter_map
+             (fun (path, b, _, same) ->
+               if same then None else Option.map (fun b -> (path, b)) b)
+             files)
+      in
+      let same path =
+        List.exists (fun (p, _, _, same) -> same && String.equal p path) files
+      in
+      let found = Findings.of_facts tree ~not_text:[] in
+      let tombstone (t : Adjudicator.tombstone) = t.was in
+      List.map show (Adjudicator.classes ~base:full tree found)
+      = List.map show (Adjudicator.classes ~same ~base:part tree found)
+      && List.map tombstone (Adjudicator.tombstones ~base:full tree)
+         = List.map tombstone (Adjudicator.tombstones ~same ~base:part tree))
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -394,6 +509,8 @@ let tests =
     case
       "unbumped holds for a retired declaration and not under a historical path"
       unbumped_holds_for_a_retired_declaration_and_not_under_a_historical_path;
+    case "unbumped reads every declaration of the slug at the base"
+      unbumped_reads_every_declaration_of_the_slug_at_the_base;
     case "the findings keep their order with the new ones"
       the_findings_keep_their_order_with_the_new_ones;
     case "renamed takes the place of dangling"
@@ -405,4 +522,5 @@ let tests =
     case "a new promise of a slug of the base collides"
       a_new_promise_of_a_slug_of_the_base_collides;
     a_tree_like_its_base_has_no_finding;
+    a_base_without_the_same_files_gives_the_same_classes;
   ]

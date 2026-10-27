@@ -588,12 +588,11 @@ let run_skips_every_budget_that_it_cannot_check () =
           else
             [
               "repository";
+              "base-read";
               "read";
               "parse";
-              "base-read";
               "facts";
               "findings";
-              "base-facts";
               "output";
             ])
         (List.map

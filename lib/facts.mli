@@ -43,7 +43,15 @@ type identity = private {
 val identities : t -> identity list
 (** [identities facts] is the identity of each fact that {!records} gives a
     record for: each declaration, edge, site, ack, plan, step, promise, and
-    external id. An external id that several edges name comes once. *)
+    external id, in this order of kinds. An external id that several edges name
+    comes once. *)
+
+val iter_identities :
+  ?within:(string -> bool) -> t -> (identity -> unit) -> unit
+(** [iter_identities ~within facts f] calls [f] on each identity of
+    {!identities} [facts], in its order, whose place has a path for which
+    [within] is [true], and on each external id that an edge of such a path
+    names. [within] is [true] for every path when absent. *)
 
 val needs_changes : t -> bool
 (** [needs_changes facts] is [true] when a step of a plan has no promise. Only
