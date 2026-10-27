@@ -276,7 +276,7 @@ jobs:
     # @cites mutation-job-scope
     env:
       # @cites mutation-testing
-      MUTAML_COMMIT: "40cf168bebe7392c01f17aa150d25499b9811d55"
+      MUTAML_COMMIT: "b41eaafd112350ec4d0e2ee9f2336eb37e7b8fd7"
       # @cites mutation-gate
       MUTATION_MINIMUM: "95"
     steps:
