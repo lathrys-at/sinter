@@ -117,9 +117,9 @@ stops with exit code 3 in each of these cases:
 The **configuration** of a repository is its manifest and its rule
 files (section 15).
 
-In diff mode, Sinter reads two trees: the working tree and the base
-tree ([algebra.md](algebra.md) section 8). Sinter reads both trees
-with one configuration: the configuration of the working tree. So
+Sinter reads two trees: the working tree and the base tree
+([algebra.md](algebra.md) section 8). Sinter reads both trees with one
+configuration: the configuration of the working tree. So
 Sinter reads the base tree with the manifest, the rule files, and the
 packs of the working tree. It reads the manifest of the base tree only
 to compare the two configurations (section 14.4).
@@ -887,9 +887,11 @@ repository root. Its facts are all unlocated.
 ### 14.4 `config-changed`
 
 `config-changed` is the finding class that reports a change to the
-configuration in diff mode. It is an *engine* class: the adjudicator
-emits it ([algebra.md](algebra.md) section 9). Its tier is `warn` at
-every gate. `check.tiers` cannot set it, and nothing turns it off.
+configuration between the base tree and the working tree. It is
+reported in both modes ([algebra.md](algebra.md) section 8.2). It is
+an *engine* class: the adjudicator emits it ([algebra.md](algebra.md)
+section 9). Its tier is `warn` at every gate. `check.tiers` cannot
+set it, and nothing turns it off.
 
 **The two sides.** The adjudicator compares the working manifest with
 the **base manifest**: the file at the same path, relative to the

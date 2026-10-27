@@ -554,7 +554,11 @@ into a governed file. Two rules make hand-written pins work:
    increase, that is an error (finding class `unbumped`). A writer
    cannot claim an exception: Sinter does not accept the claim "this
    edit did not change the meaning", because no tool can check that
-   claim.
+   claim. Sinter compares a declaration with the diff base by its
+   slug, across the kinds `req`, `design`, and `decision`, which share
+   one namespace (section 4.1). So a change of kind, for example from
+   `@req x` to `@design x`, is a change of the extent, and it needs a
+   higher revision.
 2. **A bump makes pinned citations suspect.** A citation pinned to
    `v2` becomes suspect when the declaration that it names moves to
    `v3`. Suspect citations are findings until they are re-pinned.
@@ -703,6 +707,7 @@ To rename a declared item, delete the old declaration and write a new
 one. The citations of the old slug then dangle. When the new
 declaration has an extent hash equal to the old one, the rename is
 mechanical: a tool can retarget the citations (finding class
-`renamed`, which carries a mechanical fix). A rename removes an item's
+`renamed`, which carries a mechanical fix; [algebra.md](algebra.md)
+section 9 gives its conditions). A rename removes an item's
 approval. A renamed item stays unapproved until it is approved again,
 even when its text is unchanged.

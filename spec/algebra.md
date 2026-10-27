@@ -230,7 +230,7 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 |---|---|---|
 | `inforce(S)` | any | For a declaration: `f` carries no status tag and no effective `@supersedes` edge points at `f` ([vocabulary.md](vocabulary.md) section 8.1). A member of a cycle of `@supersedes` edges that carries no status tag is in force, and the tool reports the `cycle` finding. For a plan, for its steps, and for its promises: the plan is open — the ledger holds no `completed` entry and no `abandoned` entry for it. The predicate keeps every fact of every other kind |
 | `approved(S)` | any | A kind needs approval when `ledger.approval-required` lists it ([manifest.md](manifest.md) section 11.1). The predicate keeps `f` when any one of these conditions holds: `f` is a declaration of a kind that needs approval, and the ledger holds an approval for `f`'s `(slug, rev, xh)`; `f` is a declaration of a kind that does not need approval; `f` is a plan, the kind `plan` needs approval, and `f`'s current commitment set is approved against the plan's latest approved set ([ledger.md](ledger.md) section 11); `f` is a plan, and the kind `plan` does not need approval; `f` is a step of an approved plan; `f` is a fact of any other kind |
-| `bumped(S)` | node | `f` is a declaration absent from the fact set of `B`, or present there with a smaller revision |
+| `bumped(S)` | node | `f` is a declaration, and the fact set of `B` holds no declaration with the slug of `f`, or holds one with a smaller revision. The compare is by slug, across the kinds that share the namespace ([vocabulary.md](vocabulary.md) section 9) |
 | `declined(S)` | node | `f` is a declaration or a plan with a live decline: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
 | `waiting(P)` | promise | The tag target of the promise is a slug that no declaration in `T` declares, and that some claim promises to declare. This case means that the current branch and the claim's branch are ordered, not that the promise is broken. The tool reports `waiting-on` for it, and not `dangling` |
 
@@ -361,7 +361,7 @@ The table below defines "touched" for each category:
 
 | category | `f ∈ changed(b)` iff |
 |---|---|
-| `req` `design` `decision` | `f` is absent from the fact set of `b`, or its normalized extent hash differs between `b` and `T` |
+| `req` `design` `decision` | the fact set of `b` holds no declaration with the slug of `f`, or holds one of another kind or with another normalized extent hash ([vocabulary.md](vocabulary.md) section 9) |
 | `plan` `step` `promise` | the plan's commitment set differs from the one in the fact set of `b`, or the fact is new |
 | other located facts | the fact is new, or its line span intersects a hunk's new-side span |
 | `hunk` | always |
@@ -409,8 +409,9 @@ A finding that exists at the base and still exists in the working tree
 is pre-existing; diff mode does not report it. A finding absent at the
 base is what the diff introduced. The diff-relative classes —
 `unbumped`, `unplanned-change`, `config-changed`, `code-drift`,
-`renamed` — have `F(b) = ∅` by construction and appear in both
-modes.
+`renamed`, `promise-collision` — have `F(b) = ∅` by construction and
+appear in both modes. So a check in tree mode also reads the base, and
+reports these classes.
 
 ## 9. Built-in finding classes
 
@@ -450,7 +451,9 @@ that column `F` does not mark can still give a `fix`
 ([jsonl.md](jsonl.md) section 8), such as the `@ack` line for a
 finding. The `tiers` column gives each class's built-in tier at the
 gates `(turn, review, merged)` ([manifest.md](manifest.md) section
-9.1). A `—` means that the class takes no tier at that gate.
+9.1). A `—` means that the class takes no tier at that gate. The `mode`
+column gives `diff` for the classes that compare the working tree with
+the base (section 8.2), and `tree` for every other class.
 While `check.warn-only` is `true`, Sinter lowers each `block` of the
 column to `warn`, at every gate. `sinter init` writes
 `warn-only = true`, so a new repository starts with it. A tier that
@@ -467,8 +470,8 @@ column to `warn`, at every gate. `sinter init` writes
 | `scope-outside-plan` | step | *engine*: a step whose `@scope` is not contained in its plan's `@scope`. The tool decides containment on the plain globs ([manifest.md](manifest.md) section 7.2), by the rule of glob containment of [ledger.md](ledger.md) section 11: each plain glob of the step must be contained in a plain glob of the plan. A `!` glob of the step only narrows the step's scope, so it never breaks containment | tree | · | · | block, block, — |
 | `misplaced-plan` | tag | *engine*: a `@plan` tag that does not stand in the first tag block of a file under `.plans/`: a `@plan` outside `.plans/**`, or a `@plan` in a later block of a file under `.plans/` ([vocabulary.md](vocabulary.md) section 10.1) | tree | · | · | block, block, block |
 | `unpinned` | edge | *engine*: a `satisfies`, `verifies`, `refines`, or `supersedes` edge without a revision | tree | · | F | block, block, block |
-| `dangling` | edge | `dangling(kind(edge))`, minus edges whose tag target a claim promises to declare — those surface as `waiting-on` instead (*engine* performs this subtraction). When the tag target differs from a declared slug only in case, the `fix` of the finding names the declared spelling | tree | · | · | block, block, block |
-| `renamed` | edge | *engine*: dangling edges whose slug has a tombstone in `B` and a new declaration in `T` with an equal extent hash | diff | · | F | block, block, block |
+| `dangling` | edge | `dangling(kind(edge))`, minus edges whose tag target a claim promises to declare — those surface as `waiting-on` instead — and minus the edges that `renamed` reports (*engine* performs these subtractions). When the tag target differs from a declared slug only in case, the `fix` of the finding names the declared spelling | tree | · | · | block, block, block |
+| `renamed` | edge | *engine*: a dangling edge whose slug has the tombstone of a declaration in `B`, when both of these conditions hold. First: exactly one tombstone of a declaration and exactly one new declaration have the extent hash of that tombstone. A new declaration is a declaration of `T` that the fact set of `B` does not hold. Second: the new declaration has the kind of the tombstone. When a condition fails, the edge is only `dangling`. `renamed` is reported in place of `dangling` on the edge. The `fix` is the citation with the slug of the new declaration, and with the revision of the new declaration when the edge carries a revision | diff | · | F | block, block, block |
 | `suspect` | edge | `suspect(kind(edge))` | tree | · | F | block, block, block |
 | `unbumped` | node | `kind(req\|design\|decision) ^ changed(base) - bumped(all)` | diff | · | F | block, block, block |
 | `cycle` | node | *engine*: a cycle of `supersedes` and `refines` edges. Two facts belong to one cycle when each reaches the other along these edges. A fact with such an edge to itself is a cycle by itself. Each cycle gives one finding. Its subject is the member of the cycle with the smallest id in byte order, and its `detail` names the other members, in the byte order of their ids | tree | · | · | block, block, block |
@@ -490,11 +493,11 @@ column to `warn`, at every gate. `sinter init` writes
 | `unmet-promise` | promise | `unmet(active)` where `unmet(p) = promises($p) - met(promises($p))` — incompleteness; enforced only by `status --done` | tree | · | · | off, off, — |
 | `promise-out-of-scope` | promise | *engine*: a promise met only by facts outside its step's scope | tree | · | · | warn, warn, — |
 | `unverified-promise` | promise | *engine*: a promised `req` or `design` with no promised `verifies` of it in the same plan | tree | · | · | warn, warn, — |
-| `promise-collision` | promise | *engine*: a promised declaration whose slug a claim promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise with the same plan, step, word, and target. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered | tree | · | · | block, block, — |
+| `promise-collision` | promise | *engine*: a promised declaration whose slug a claim promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise with the same plan, step, word, and target. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered. A tool that does not read the ledger has no claims, so it reports only the second case | diff | · | · | block, block, — |
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets. Two scopes intersect when a plain glob of one contains a plain glob of the other, or is contained in it, by the rule of glob containment of [ledger.md](ledger.md) section 11 | tree | · | · | warn, warn, — |
 | `waiting-on` | promise | `waiting(promises(kind(plan)))` — reported in place of `dangling`, with the claim and step named | tree | · | · | off, warn, — |
 | `branch-overlap` | step | *engine*: a step's scope intersects the scope of another branch's claim | tree | · | · | warn, warn, — |
-| `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - exempt`. The engine also exempts hunks that are wholly mechanical repairs — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
+| `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - exempt`. The engine also exempts each hunk that is a mechanical repair (section 9.1) | diff | · | · | block, block, — |
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's `expect` is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
 | `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 14.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
 | `merged-incomplete` | plan | *engine*: an open plan on the default branch that fails the completion condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |
@@ -508,6 +511,38 @@ that closes a plan (`status --done` and the completion condition in
 [ledger.md](ledger.md)) can read them. The turn report never lists
 them as violations. Every other class is a violation, or a signal
 about the health of the repository's checking machinery.
+
+### 9.1 Mechanical repairs
+
+A hunk is a **mechanical repair** when every change in it is an edit
+that one of the fixes of Sinter makes. `unplanned-change` does not
+report such a hunk. These are the edits:
+
+- a re-pin: a new revision on a citation (the fix of `suspect`);
+- an `@ack` line added or removed (the fix of `stale-ack`, and the
+  `@ack` line that the fix of an ackable finding gives);
+- a revision added to a citation that has none (the fix of
+  `unpinned`);
+- a higher revision on a declaration (the fix of `unbumped`);
+- a change of case of the tag target of a `dangling` edge to the
+  declared spelling (the fix of `dangling`);
+- the new tag target and revision of a citation that the fix of
+  `renamed` gives;
+- the citation of a successor in place of a citation of a retired
+  declaration (the fix of `retired`);
+- the corrected tag word of a `typo-tag` line (the fix of `typo-tag`).
+
+When Sinter adds a fix, the edit of that fix joins this list.
+
+The tool decides by tags, not by text. It reads the tags of the
+removed lines in the base tree, and the tags of the added lines in the
+working tree. Each removed line and each added line of the hunk must
+be a tag line. Each removed or added `@ack` line is one edit. The
+other removed lines and added lines must be equal in number. The first
+removed line pairs with the first added line, and so on. The two tags
+of each pair must differ only in the parts that one of the edits
+above changes. The rest of each line of the pair, the inline
+description, must be equal.
 
 ## 10. Evaluation, ordering, and errors
 
