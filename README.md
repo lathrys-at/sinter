@@ -36,6 +36,10 @@ dune test
 
 `CONTRIBUTING.md` has the full list of checks to run before a commit.
 
+Sinter runs the `git` program, and it needs git 2.43.7 or later. A
+distribution's build of an older version that carries the same
+security fixes also works, such as git 2.43.0 in Ubuntu 24.04.
+
 ## jj
 
 [jj (Jujutsu)](https://docs.jj-vcs.dev/latest/) is a version control
