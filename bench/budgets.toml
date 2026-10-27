@@ -10,4 +10,5 @@ peak-memory-kib = 76800
 allocation-growth = 12.0
 
 [check-diff]
+peak-memory-kib = 89088
 allocation-growth = 12.0
