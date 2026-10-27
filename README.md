@@ -1,11 +1,17 @@
 # Sinter
 
-Sinter is a development tool for projects where AI agents write code.
-Agents often forget plans and conventions when their context changes.
-Sinter records agreements as tags in the project's own text files. It
-then checks that the code, the tests, and the documents keep those
-agreements. It reads the state of the work from files and from test
-results. It never trusts what an agent reports about its own work.
+A linter for keeping your specs, plans, and code in sync.
+
+Sinter reads the tags in your repository's files: specs, plans,
+decision records, and the code and tests that refer to them. It
+reports where they have drifted apart, for example a test that checks
+an old version of a spec, or a plan step whose promised work never
+showed up.
+
+It is built for projects where coding agents write much of the code.
+Agents lose track of plans when their context changes, and sometimes
+they say work is done when it isn't. Sinter checks the files and the
+test results, never what an agent says about its own work.
 
 Sinter is new and under construction. The full design is in
 [docs/design-notes.md](docs/design-notes.md). The [spec/](spec/)
