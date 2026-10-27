@@ -70,3 +70,30 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
 - Left for later: `git diff` with Sinter's options rewrites a stale
   `.git/index` (found in the research). The benchmark of Sinter itself
   reads `bench/sinter-self.toml`, not the root `sinter.toml`.
+
+## Close the gaps of diff mode
+
+- The rulings left some details open. The lead ruled these:
+  - A hunk with no added line has `ecol = 1`.
+  - A binary hunk has `added = 0` and `removed = 0`.
+  - The mechanical repairs also hold the fixes of `retired` and
+    `typo-tag`, because each fix that Sinter prints is on the list.
+  - The fix of `renamed` writes a revision only when the edge carries
+    one.
+- Plain `check` reports `unplanned-change` and `config-changed`, so
+  hunk and tombstone facts exist in every run that reads the base, not
+  in diff mode only. `scan` does not print them yet.
+- Other details: an added empty file gives `hunk:<path>:1-1`.
+  `renamed` counts its one tombstone and its one new declaration
+  across all kinds, and then requires one kind. The spaces and tabs
+  after a section number go with it, and each heading inside an
+  extent loses its number.
+- The diff compares the file sets of manifest section 7.3, so a file
+  that git ignores is never an added file.
+- Left for later:
+  - Git reads `GIT_NO_LAZY_FETCH` only from version 2.44 on, by
+    memory and not checked, while the code needs 2.30.
+  - A clean filter or `core.autocrlf` can make a file on disk differ
+    from its blob when git shows no change.
+  - Outside sections 11.3 and 12.7, the design notes still use old
+    names of classes and gates, for example `law-touched` and `pr`.
