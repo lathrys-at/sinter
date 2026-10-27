@@ -160,6 +160,75 @@ let without_revision_keeps_the_target_and_the_description =
           && String.ends_with ~suffix:target (String.sub changed 0 length)
           && String.length changed < String.length rest)
 
+let ranges_give cases () =
+  List.iter
+    (fun (text, part, expected) ->
+      match Tag_line.read text with
+      | None -> Alcotest.fail text
+      | Some (_, line) ->
+          Alcotest.(check (option (pair int int)))
+            text expected
+            (Option.map
+               (fun (range : Tag_line.range) -> (range.start, range.stop))
+               (Tag_line.range line part)))
+    cases
+
+let gives_the_range_of_each_part =
+  ranges_give
+    [
+      ("@req auth v2 Lock it.", Tag_line.Word, Some (0, 4));
+      ("@req auth v2 Lock it.", Target, Some (5, 9));
+      ("@req auth v2 Lock it.", Revision, Some (10, 12));
+      ("@cites\t\xC3\xA9t\xC3\xA9 \t v10", Target, Some (7, 12));
+      ("@cites\t\xC3\xA9t\xC3\xA9 \t v10", Revision, Some (15, 18));
+      ("  @req x", Word, Some (0, 4));
+      ("@", Word, Some (0, 1));
+    ]
+
+let gives_no_range_for_a_missing_part =
+  ranges_give
+    [
+      ("@req", Tag_line.Target, None);
+      ("@req   ", Revision, None);
+      ("@req auth", Revision, None);
+      ("@req auth v0", Revision, None);
+      ("@req auth x v2", Revision, None);
+    ]
+
+let line =
+  Gen.map2
+    (fun blanks (word, rest) -> blanks ^ "@" ^ word ^ rest)
+    (Gen.oneof_list [ ""; " "; "\t "; "  " ])
+    (Gen.pair (Gen.oneof_list [ ""; "req"; "cites"; "foo-bar" ]) rest)
+
+let ranges_hold_the_parts =
+  property
+    ~name:"the text at the range of each part is the word, the target, or vN"
+    ~print:String.escaped line (fun text ->
+      match Tag_line.read text with
+      | None -> false
+      | Some (at, read) ->
+          let parts = Tag_line.parts read.rest in
+          let text_at part =
+            Option.map
+              (fun (range : Tag_line.range) ->
+                if
+                  0 <= range.start && range.start < range.stop
+                  && at + range.stop <= String.length text
+                then
+                  Some
+                    (String.sub text (at + range.start)
+                       (range.stop - range.start))
+                else None)
+              (Tag_line.range read part)
+          in
+          text_at Word = Some (Some ("@" ^ read.word))
+          && text_at Target = Option.map Option.some parts.target
+          && text_at Revision
+             = Option.map
+                 (fun value -> Some ("v" ^ string_of_int value))
+                 parts.revision)
+
 let tests =
   [
     Alcotest.test_case "reads the word and the rest" `Quick
@@ -178,4 +247,9 @@ let tests =
       drops_the_revision_and_the_blanks_before_it;
     parts_rebuild_the_rest;
     without_revision_keeps_the_target_and_the_description;
+    Alcotest.test_case "gives the range of each part" `Quick
+      gives_the_range_of_each_part;
+    Alcotest.test_case "gives no range for a missing part" `Quick
+      gives_no_range_for_a_missing_part;
+    ranges_hold_the_parts;
   ]

@@ -62,7 +62,7 @@ let tokens rest =
     Some
       ( start,
         stop,
-        Option.map (fun value -> (next_stop, value)) (revision second) )
+        Option.map (fun value -> (next, next_stop, value)) (revision second) )
 
 let tail text offset = String.sub text offset (String.length text - offset)
 
@@ -75,7 +75,7 @@ let parts rest =
         revision = None;
         description = tail rest stop;
       }
-  | Some (start, stop, Some (revision_stop, value)) ->
+  | Some (start, stop, Some (_, revision_stop, value)) ->
       {
         target = Some (String.sub rest start (stop - start));
         revision = Some value;
@@ -84,6 +84,22 @@ let parts rest =
 
 let without_revision rest =
   match tokens rest with
-  | Some (_, stop, Some (revision_stop, _)) ->
+  | Some (_, stop, Some (_, revision_stop, _)) ->
       String.sub rest 0 stop ^ tail rest revision_stop
   | Some (_, _, None) | None -> rest
+
+type part = Word | Target | Revision
+type range = { start : int; stop : int }
+
+let range line part =
+  let word_stop = 1 + String.length line.word in
+  let shifted start stop =
+    { start = word_stop + start; stop = word_stop + stop }
+  in
+  match part with
+  | Word -> Some { start = 0; stop = word_stop }
+  | Target ->
+      Option.map (fun (start, stop, _) -> shifted start stop) (tokens line.rest)
+  | Revision ->
+      Option.bind (tokens line.rest) (fun (_, _, revision) ->
+          Option.map (fun (start, stop, _) -> shifted start stop) revision)

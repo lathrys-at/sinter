@@ -39,3 +39,22 @@ val without_revision : string -> string
 (** [without_revision rest] is [rest] without its revision token and the spaces
     and tabs in front of that token. It is [rest] when {!parts} finds no
     revision in it. *)
+
+(** A part of a tag line. *)
+type part =
+  | Word  (** the tag word, from the [@] to the end of the word *)
+  | Target  (** the target, the first token after the tag word *)
+  | Revision  (** the revision token [vN] *)
+
+type range = private { start : int; stop : int }
+(** A run of bytes: the offset of its first byte, and the offset one past its
+    last byte. [stop] is always greater than [start]. *)
+
+val range : t -> part -> range option
+(** [range line part] is the bytes of [part] in the text [@], then the tag word
+    of [line], then the rest of [line]: the text of the tag line from its [@],
+    so that an offset of [read] plus an offset of the result is an offset of the
+    text that [read] took. The range of [Target] is that of the target of
+    {!parts}, and the range of [Revision] that of the token [vN] whose number is
+    the revision of {!parts}. [None] when {!parts} gives no target or no
+    revision. The range of [Word] is never [None]. *)
