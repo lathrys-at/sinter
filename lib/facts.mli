@@ -172,9 +172,22 @@ val edges : t -> (edge * target) list
 (** [edges facts] is every edge, with what its tag target resolves to, in the
     order of the files of {!make} and then of the lines. *)
 
+val block_hash : t -> string -> int -> string
+(** [block_hash facts path index] is the hash of the block at [index] in the
+    blocks of the document of [path] that {!make} took. When [path] occurs more
+    than once, the first document counts.
+
+    @raise Not_found if no file of {!make} has the path [path].
+    @raise Invalid_argument
+      if [index] is not an index of the blocks of that document. *)
+
 val acks : t -> ack list
 (** [acks facts] is every ack, in the order of the files and then of the lines.
 *)
+
+val block_acks : t -> string -> int -> ack list
+(** [block_acks facts path index] is each ack of {!acks} whose path is [path]
+    and whose block index is [index], in the order of {!acks}. *)
 
 val plans : t -> plan list
 (** [plans facts] is every plan, in the order of the files of {!make}. *)
@@ -202,7 +215,15 @@ val discharge : t -> plan -> step -> promise -> discharge
     and its slug is the tag target of the promise. An edge would discharge it
     when its word and its tag target are those of the promise, its tag target
     resolves, and it is not suspect. No edge of the word [verifies] would
-    discharge it. *)
+    discharge it.
+
+    [discharge facts plan step] reads the effective scope of [step] once, and
+    gives a function that each promise of [step] can share.
+
+    @raise Invalid_argument
+      if [plan] is not one of {!plans} [facts] or [step] is not one of the steps
+      of [plan], when it is applied to [step]; and if [promise] is not one of
+      the promises of [step], when it is applied to [promise]. *)
 
 val index :
   tree:string ->

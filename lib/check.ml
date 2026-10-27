@@ -109,11 +109,14 @@ let record { finding; tier } =
 type format = Text | Json
 type report = { messages : string list; lines : string list; code : int }
 
-let run ~env ~dir ~manifest ~base ~gate ~strict ~format ~tool =
-  let* tree = Scan.load ~env ~dir ~manifest ~base in
+let run ?phases ~env ~dir ~manifest ~base ~gate ~strict ~format ~tool () =
+  let* tree = Scan.load ?phases ~env ~dir ~manifest ~base () in
+  let findings =
+    Findings.tree ?phases tree.manifest tree.documents ~not_text:tree.not_text
+  in
   let entries =
-    select tree.manifest gate
-      (Findings.tree tree.manifest tree.documents ~not_text:tree.not_text)
+    Allocation.measure phases "findings" (fun () ->
+        select tree.manifest gate findings)
   in
   let code = exit_code ~strict entries in
   match format with
@@ -121,14 +124,20 @@ let run ~env ~dir ~manifest ~base ~gate ~strict ~format ~tool =
       Ok
         {
           messages = Scan.base_message tree.base :: tree.warnings;
-          lines = List.concat_map text entries;
+          lines =
+            Allocation.measure phases "output" (fun () ->
+                List.concat_map text entries);
           code;
         }
   | Json ->
-      let* index = Scan.index tree ~tool in
+      let* index =
+        Allocation.measure phases "repository" (fun () -> Scan.index tree ~tool)
+      in
       Ok
         {
           messages = tree.warnings;
-          lines = List.map Jsonl.to_string (index :: List.map record entries);
+          lines =
+            Allocation.measure phases "output" (fun () ->
+                List.map Jsonl.to_string (index :: List.map record entries));
           code;
         }

@@ -75,6 +75,7 @@ type report = {
 (** What a check gives. *)
 
 val run :
+  ?phases:Allocation.t ->
   env:string array ->
   dir:string ->
   manifest:string option ->
@@ -83,11 +84,16 @@ val run :
   strict:bool ->
   format:format ->
   tool:string ->
+  unit ->
   (report, Scan.error) result
-(** [run ~env ~dir ~manifest ~base ~gate ~strict ~format ~tool] checks the
+(** [run ~env ~dir ~manifest ~base ~gate ~strict ~format ~tool ()] checks the
     working tree that {!Scan.load} reads with [env], [dir], [manifest], and
     [base]. [gate] is the gate of the check, [strict] says whether every finding
     counts for the exit code, and [tool] is the version of the tool, for the
     index record.
+
+    With [phases], it counts the phases of {!Scan.load} and of {!Findings.tree},
+    adds the selection of the findings to [findings] and the index record to
+    [repository], and counts the phase [output], the lines of the report.
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)

@@ -1325,6 +1325,348 @@ let discharge_names_the_residue_and_the_one_in_scope () =
            step.promises)
   | _ -> Alcotest.fail "one plan with one step"
 
+let lookup_lines =
+  [
+    "@req a";
+    "@req a v2";
+    "@req A";
+    "@req b";
+    "@design a";
+    "@decision a";
+    "@decision c";
+    "@cites a";
+    "@cites a v1";
+    "@cites a v2";
+    "@cites gh/1";
+    "@cites x/y";
+    "@satisfies b";
+    "@satisfies b v1";
+    "@refines a";
+    "@verifies a";
+    "@verifies b";
+    "@deprecated";
+    "@ack disendorsed a 0123abcd";
+    "@ack disendorsed 89abcdef";
+    "@cites a\n@ack disendorsed a 0123abcd\n@ack disendorsed b 89abcdef";
+  ]
+
+let lookup_promises =
+  [
+    "@req a";
+    "@req A";
+    "@req b";
+    "@design a";
+    "@decision a";
+    "@decision c";
+    "@cites a";
+    "@cites gh/1";
+    "@satisfies b";
+    "@refines a";
+    "@verifies a";
+  ]
+
+let lookup_scopes =
+  [ "src/**"; "lib/**"; "**"; "docs/**"; "a.md"; "src/**, !src/b.md"; "" ]
+
+let lookup_tree =
+  let ordinary =
+    Gen.map2
+      (fun path sections ->
+        ( path,
+          "# T\n\n"
+          ^ String.concat ""
+              (List.mapi
+                 (fun n lines ->
+                   Printf.sprintf "## S%d\n\n%s\n\n" n
+                     (String.concat "\n" lines))
+                 sections) ))
+      (Gen.oneof_list [ "a.md"; "src/b.md"; "lib/c.md"; "docs/decisions/d.md" ])
+      (Gen.list_size (Gen.int_range 1 4)
+         (Gen.list_size (Gen.int_range 1 3) (Gen.oneof_list lookup_lines)))
+  in
+  let plan =
+    Gen.map2
+      (fun scope steps ->
+        ( ".plans/p.md",
+          Printf.sprintf "# P\n\n@plan p\n@scope %s\n\n" scope
+          ^ String.concat ""
+              (List.mapi
+                 (fun n (own, promises) ->
+                   Printf.sprintf "## Step %d\n\n%s%s\n\n" n
+                     (if String.equal own "" then "" else "@scope " ^ own ^ "\n")
+                     (String.concat "\n" promises))
+                 steps) ))
+      (Gen.oneof_list [ "**"; "src/**, lib/**, docs/**"; "src/**" ])
+      (Gen.list_size (Gen.int_range 1 4)
+         (Gen.pair
+            (Gen.oneof_list lookup_scopes)
+            (Gen.list_size (Gen.int_range 0 4) (Gen.oneof_list lookup_promises))))
+  in
+  Gen.map2
+    (fun files plan ->
+      List.sort_uniq (fun (a, _) (b, _) -> String.compare a b) (plan :: files))
+    (Gen.list_size (Gen.int_range 1 4) ordinary)
+    plan
+
+let lookup_extra = "[plan]\nlocations.decision = [\"docs/decisions/\"]\n"
+
+let lookup_property name check =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200 ~name ~print:print_tree lookup_tree
+       (fun files -> check (facts ~extra:lookup_extra files)))
+
+let place (span : Markdown.span) = (span.start.line, span.start.column)
+
+let scanned_residue facts (promise : Facts.promise) =
+  let declarations = Array.of_list (Facts.declarations facts) in
+  let found =
+    if List.mem promise.word [ "req"; "design"; "decision" ] then
+      List.filter_map
+        (fun (d : Facts.declaration) ->
+          if
+            String.equal d.kind promise.word
+            && String.equal d.slug promise.target
+          then Some (Facts.declaration_id d, d.path, place d.span)
+          else None)
+        (Facts.declarations facts)
+    else if String.equal promise.word "verifies" then []
+    else
+      List.filter_map
+        (fun ((edge : Facts.edge), target) ->
+          let discharges =
+            match (target, edge.rev) with
+            | Facts.Declaration index, Some rev ->
+                declarations.(index).rev = rev
+            | Facts.Declaration _, None | Facts.Ref _, _ -> true
+            | Facts.Unresolved _, _ -> false
+          in
+          if
+            String.equal edge.word promise.word
+            && String.equal edge.target_text promise.target
+            && discharges
+          then Some (Facts.edge_id edge, edge.path, place edge.span)
+          else None)
+        (Facts.edges facts)
+  in
+  List.stable_sort
+    (fun (_, path_a, place_a) (_, path_b, place_b) ->
+      compare (path_a, place_a) (path_b, place_b))
+    found
+
+let indexed_residue (discharge : Facts.discharge) =
+  List.map
+    (fun (residue : Facts.residue) ->
+      (residue.id, residue.path, place residue.span))
+    discharge.residue
+
+let the_residue_index_gives_the_list_scan =
+  lookup_property
+    "the residue of each promise is the list scan of the declarations and the \
+     edges" (fun facts ->
+      List.for_all
+        (fun (plan : Facts.plan) ->
+          List.for_all
+            (fun (step : Facts.step) ->
+              List.for_all
+                (fun promise ->
+                  indexed_residue (Facts.discharge facts plan step promise)
+                  = scanned_residue facts promise)
+                step.promises)
+            plan.steps)
+        (Facts.plans facts))
+
+let discharge_refuses_a_promise_of_other_facts () =
+  let plan_file =
+    ( ".plans/p.md",
+      "# P\n\n@plan p\n@scope **\n\n## One\n\n@req a\n\n## Two\n\n@req b\n" )
+  in
+  let facts = facts [ plan_file ] and others = facts [ plan_file ] in
+  match (Facts.plans facts, Facts.plans others) with
+  | ( [
+        ({
+           steps = [ ({ promises = [ a ]; _ } as one); { promises = [ b ]; _ } ];
+           _;
+         } as plan);
+      ],
+      [
+        ({ steps = [ ({ promises = [ other_a ]; _ } as other_one); _ ]; _ } as
+         other);
+      ] ) ->
+      List.iter
+        (fun (name, plan, step, promise) ->
+          match Facts.discharge facts plan step promise with
+          | (_ : Facts.discharge) -> Alcotest.failf "%s: no exception" name
+          | exception Invalid_argument _ -> ())
+        [
+          ("a plan of other facts", other, other_one, other_a);
+          ("a step of another plan", plan, other_one, other_a);
+          ("a promise of another step", plan, one, b);
+        ];
+      ignore (Facts.discharge facts plan one a)
+  | _ -> Alcotest.fail "one plan with two steps of one promise in each"
+
+let scope_set globs =
+  match Path_set.of_strings (List.sort_uniq String.compare globs) with
+  | Ok set -> set
+  | Error _ -> Alcotest.failf "a bad scope: %s" (String.concat ", " globs)
+
+let changed_paths =
+  Gen.list_size (Gen.int_bound 2)
+    (Gen.oneof_list [ "a.md"; "src/b.md"; "lib/c.md"; "src/z.md"; "z.md" ])
+
+let print_lookup_case = QCheck2.Print.(pair print_tree (list string))
+
+let a_step_is_done_by_the_list_scan_of_the_verifies_edges =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200
+       ~name:
+         "a step is done when no verifies edge is in its scope, by the list \
+          scan, and its promises are met or the diff changes its scope"
+       ~print:print_lookup_case (Gen.pair lookup_tree changed_paths)
+       (fun (files, changed) ->
+         let facts = facts ~extra:lookup_extra files in
+         let records = Facts.records facts ~changed in
+         List.for_all
+           (fun (plan : Facts.plan) ->
+             List.for_all
+               (fun (step : Facts.step) ->
+                 let in_scope =
+                   Path_set.mem (scope_set (Facts.effective_scope plan step))
+                 in
+                 let verified =
+                   not
+                     (List.exists
+                        (fun ((edge : Facts.edge), _) ->
+                          String.equal edge.word "verifies"
+                          && in_scope edge.path)
+                        (Facts.edges facts))
+                 in
+                 let met =
+                   List.length
+                     (List.filter
+                        (fun promise ->
+                          Option.is_some
+                            (Facts.discharge facts plan step promise).by)
+                        step.promises)
+                 in
+                 let total = List.length step.promises in
+                 let expected =
+                   verified
+                   &&
+                   if total = 0 then List.exists in_scope changed
+                   else met = total
+                 in
+                 check_field records (Facts.step_id plan step) "done"
+                   (bool expected);
+                 true)
+               plan.steps)
+           (Facts.plans facts)))
+
+let by_of_each_promise_is_the_first_residue_in_place =
+  lookup_property
+    "the by of each promise is the first member of the residue in the scope of \
+     its step or in the default location of its kind" (fun facts ->
+      let manifest = manifest ~extra:lookup_extra () in
+      List.for_all
+        (fun (plan : Facts.plan) ->
+          List.for_all
+            (fun (step : Facts.step) ->
+              let discharge = Facts.discharge facts plan step in
+              let in_scope =
+                Path_set.mem (scope_set (Facts.effective_scope plan step))
+              in
+              List.for_all
+                (fun (promise : Facts.promise) ->
+                  let location =
+                    Option.bind
+                      (match promise.word with
+                      | "req" -> Some Manifest.Req
+                      | "design" -> Some Manifest.Design
+                      | "decision" -> Some Manifest.Decision
+                      | _ -> None)
+                      (Manifest.location manifest)
+                  in
+                  let expected =
+                    List.find_opt
+                      (fun (_, path, _) ->
+                        in_scope path
+                        || Option.fold ~none:false
+                             ~some:(fun set -> Path_set.mem set path)
+                             location)
+                      (scanned_residue facts promise)
+                  in
+                  let discharge = discharge promise in
+                  Option.map
+                    (fun (residue : Facts.residue) ->
+                      (residue.id, residue.path, place residue.span))
+                    discharge.by
+                  = expected
+                  && indexed_residue discharge = scanned_residue facts promise)
+                step.promises)
+            plan.steps)
+        (Facts.plans facts))
+
+let block_hash_is_the_hash_of_the_listed_document =
+  property
+    "the block hash of each block of each file is the hash in the document \
+     that the list of files holds" (fun files ->
+      let documents =
+        List.map (fun (path, text) -> (path, document text)) files
+      in
+      let facts = Facts.make (manifest ()) documents in
+      List.for_all
+        (fun (path, _) ->
+          let listed : Markdown.t = List.assoc path documents in
+          Array.for_all Fun.id
+            (Array.mapi
+               (fun index (block : Markdown.block) ->
+                 String.equal block.hash (Facts.block_hash facts path index))
+               listed.blocks)
+          &&
+          match Facts.block_hash facts path (Array.length listed.blocks) with
+          | (_ : string) -> false
+          | exception Invalid_argument _ -> true)
+        documents
+      &&
+      match Facts.block_hash facts "missing.md" 0 with
+      | (_ : string) -> false
+      | exception Not_found -> true)
+
+let block_hash_reads_the_first_of_two_files_with_one_path () =
+  let first = document "# A\n\n@req a\nOne.\n" in
+  let second = document "# A\n\n@req a\nTwo.\n" in
+  let facts = Facts.make (manifest ()) [ ("a.md", first); ("a.md", second) ] in
+  Alcotest.(check string)
+    "the hash" first.blocks.(0).hash
+    (Facts.block_hash facts "a.md" 0);
+  Alcotest.(check bool)
+    "the two hashes differ" false
+    (String.equal first.blocks.(0).hash second.blocks.(0).hash)
+
+let block_acks_are_the_list_scan_of_the_acks =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200
+       ~name:
+         "the acks of each block are the acks of the list whose path and block \
+          index are those of the block, in the order of the list"
+       ~print:print_tree lookup_tree (fun files ->
+         let documents =
+           List.map (fun (path, text) -> (path, document text)) files
+         in
+         let facts = Facts.make (manifest ()) documents in
+         let acks = Facts.acks facts in
+         List.for_all
+           (fun (path, (document : Markdown.t)) ->
+             List.for_all
+               (fun index ->
+                 Facts.block_acks facts path index
+                 = List.filter
+                     (fun (ack : Facts.ack) ->
+                       String.equal ack.path path && ack.block_index = index)
+                     acks)
+               (List.init (Array.length document.blocks + 1) Fun.id))
+           (("missing.md", document "") :: documents)))
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -1478,6 +1820,15 @@ let tests =
       plans_give_their_steps_and_promises;
     case "discharge names the residue and the one in scope"
       discharge_names_the_residue_and_the_one_in_scope;
+    the_residue_index_gives_the_list_scan;
+    case "discharge refuses a promise of other facts"
+      discharge_refuses_a_promise_of_other_facts;
+    a_step_is_done_by_the_list_scan_of_the_verifies_edges;
+    by_of_each_promise_is_the_first_residue_in_place;
+    block_hash_is_the_hash_of_the_listed_document;
+    block_acks_are_the_list_scan_of_the_acks;
+    case "block hash reads the first of two files with one path"
+      block_hash_reads_the_first_of_two_files_with_one_path;
     records_come_in_their_order;
     every_reference_names_a_record;
     every_record_is_canonical;

@@ -1,13 +1,14 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(** Temporary git repositories for the tests of {!Sinter_core.Git}.
+(** Git repositories for the tests of {!Sinter_core.Git} and for the benchmark.
 
-    Every repository lives in a new directory under the temporary directory, and
-    the process removes that directory when it exits. Every git child gets the
-    environment {!env}, which reads no git configuration of the machine. A
-    function that runs git raises [Failure] with git's standard error when git
-    does not exit with the status 0. *)
+    A repository of {!init} lives in a new directory under the temporary
+    directory, and the process removes that directory when it exits. A
+    repository of {!init_in} lives in a directory that the caller gives and
+    owns. Every git child gets the environment {!env}, which reads no git
+    configuration of the machine. A function that runs git raises [Failure] with
+    git's standard error when git does not exit with the status 0. *)
 
 type t
 (** A repository with a working tree. *)
@@ -21,18 +22,28 @@ val init : ?object_format:string -> unit -> t
 (** [init ()] makes a new repository with no commit and no index, on the branch
     [main]. [object_format] is ["sha1"], the default, or ["sha256"]. *)
 
+val init_in : ?object_format:string -> string -> t
+(** [init_in dir] is {!init} in the directory [dir] and not in a new temporary
+    directory. [dir] must exist and hold no entry named [repo] or [home]. The
+    working tree is [dir/repo], and {!env} names [dir/home] as [HOME] and [dir]
+    as [GIT_CEILING_DIRECTORIES]. The process does not remove [dir].
+
+    @raise Invalid_argument
+      if [dir] is not a directory, or if it holds an entry named [repo] or
+      [home]. *)
+
 val root : t -> string
 (** [root repo] is the absolute path of the working tree, with no symbolic link
     in it, as git prints it. *)
 
 val env : t -> string array
-(** [env repo] is the environment of every git child of the tests of [repo]. It
-    is the environment of the test process without each variable whose name
-    starts with [GIT_], without [HOME], and without [XDG_CONFIG_HOME], with:
+(** [env repo] is the environment of every git child that runs in [repo]. It is
+    the environment of the process without each variable whose name starts with
+    [GIT_], without [HOME], and without [XDG_CONFIG_HOME], with:
 
     - [PATH] with the directory of the programs of git in front
-    - [GIT_CEILING_DIRECTORIES], the temporary directory of [repo]: git looks
-      for a repository in no directory above it
+    - [GIT_CEILING_DIRECTORIES], the directory that holds the working tree: git
+      looks for a repository in no directory above it
     - [GIT_CONFIG_GLOBAL=/dev/null] and [GIT_CONFIG_NOSYSTEM=1]
     - [HOME], a directory beside the working tree
     - fixed names, e-mail addresses, and dates of the author and the committer
@@ -141,61 +152,3 @@ val fake_git : string -> string array * string
 val break : t -> unit
 (** [break repo] removes the [.git] directory of [repo]. Each git command in the
     working tree then fails with the exit status 128. Break only a {!copy}. *)
-
-(** {1 The shared repository} *)
-
-val quoted_name : string
-(** The name of a file of the shared repository that git quotes in its diff
-    output: it holds a byte above 0x7F, a tab, and a space. *)
-
-val shared : unit -> t
-(** [shared ()] is one repository for every test that only reads a repository.
-    The first call makes it; later calls give the same one. A test must not
-    change it; a test that changes a repository works on a {!copy}.
-
-    The history:
-
-    + commit 1, on [refs/heads/main], with no parent: the files of commit 1
-      below
-    + commit 2, on [refs/heads/main], from commit 1: adds the files of commit 2
-      below
-    + commit 3, on [refs/remotes/origin/main], from commit 1: adds [origin.txt]
-    + commit 4, on [refs/heads/lonely], with no parent: holds only [lonely.txt]
-
-    The branches [loc], [both], [gone], and [deep/branch] point at commit 2. The
-    remote branches [origin/orig] and [origin/both] point at commit 3. The
-    upstream of [main] is [origin/main]. The upstream of [loc] is the local
-    branch [both]. The upstream of [gone] is [origin/missing], which does not
-    exist. [HEAD] is [main], commit 2.
-
-    Commit 1 holds:
-
-    - [.gitignore], which ignores [*.log] and [build/]
-    - [README.md], ["hello\n"]
-    - [src/main.ml]
-    - [tracked.log], which [.gitignore] matches
-    - [gone.txt]
-    - [bytes.bin], which holds NUL bytes
-    - [run.sh], with the mode [100755]
-    - [link] and [link-as-file], symbolic links to [README.md]
-    - [sub] and [sub-as-file], submodules at a commit that the repository does
-      not hold
-
-    Commit 2 adds [mod.txt] (the lines 1 to 10), [head.txt] and [tail.txt] (the
-    lines a, b, c), [bin.dat], which holds NUL bytes, [mode.sh], [removed.txt],
-    [old-name.txt], [unstaged.txt], [typed.txt], and the file {!quoted_name}.
-
-    The working tree is commit 2 with these changes: [gone.txt] is removed;
-    [link-as-file] and [sub-as-file] are regular files; [untracked.txt] is new;
-    [ignored.log] and [build/out.o] are new and ignored; [untracked-link] is a
-    new symbolic link; and [nested/] holds a repository of its own, whose [HEAD]
-    is the commit of the submodules, with the file [nested/inner.txt].
-
-    For the diff, the working tree also changes these files of commit 2:
-    [mod.txt] changes the line 3, loses the lines 6 and 7, and gains a line
-    after the line 9; [head.txt] loses its first two lines; [tail.txt] loses its
-    last two lines; [bin.dat] and {!quoted_name} change; [mode.sh] gets the mode
-    [100755]; [removed.txt] is removed from the disk and the index;
-    [old-name.txt] is renamed to [new-name.txt] in both; [unstaged.txt] is
-    removed from the index only; and [typed.txt] is a symbolic link. [added.txt]
-    is new, and the index holds it. *)

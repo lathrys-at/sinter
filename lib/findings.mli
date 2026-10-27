@@ -6,6 +6,7 @@
     absent. *)
 
 val tree :
+  ?phases:Allocation.t ->
   Manifest.t ->
   (string * Markdown.t) list ->
   not_text:(string * int) list ->
@@ -18,4 +19,7 @@ val tree :
 
     The result is sorted by {!Finding.compare}. It holds no finding whose place
     is under a historical path, and no finding that a live [@ack] discharges.
-    The tiers of the gates do not change it. *)
+    The tiers of the gates do not change it.
+
+    With [phases], it counts the phases [facts] ({!Facts.make}) and [findings]
+    (the rest). *)

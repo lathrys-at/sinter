@@ -416,7 +416,7 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
   let run format gate =
     match
       Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
-        ~manifest:None ~base:None ~gate ~strict:false ~format ~tool:"v1"
+        ~manifest:None ~base:None ~gate ~strict:false ~format ~tool:"v1" ()
     with
     | Ok report -> report
     | Error error ->

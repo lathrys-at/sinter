@@ -34,6 +34,22 @@ let exits =
 
 let parse_exits = [ clean_exit; usage_exit; environment_exit ]
 
+let with_phases run =
+  match Sys.getenv_opt Sinter_core.Allocation.variable with
+  | None | Some "" -> run None
+  | Some path -> (
+      let phases = Sinter_core.Allocation.create () in
+      let code = run (Some phases) in
+      try
+        Out_channel.with_open_bin path (fun channel ->
+            Out_channel.output_string channel
+              (Sinter_core.Allocation.to_string phases));
+        code
+      with Sys_error message ->
+        Printf.eprintf "sinter: cannot write the words of the phases: %s\n"
+          message;
+        environment_error)
+
 let parse_cmd =
   let doc = "Parse files with a tree-sitter grammar and print the captures" in
   let man =
@@ -221,22 +237,24 @@ let scan_cmd =
   in
   let report lines = List.iter (Printf.eprintf "sinter: %s\n") lines in
   let run manifest base =
-    match
-      Sinter_core.Scan.run ~env:(Unix.environment ()) ~dir:(Sys.getcwd ())
-        ~manifest ~base ~tool:version
-    with
-    | Error error ->
-        report (Sinter_core.Scan.messages error);
-        environment_error
-    | Ok { warnings; records } -> (
-        report warnings;
-        try
-          List.iter (Sinter_core.Jsonl.output stdout) records;
-          flush stdout;
-          clean
-        with Sys_error message ->
-          report [ Printf.sprintf "cannot write the output: %s" message ];
-          environment_error)
+    with_phases (fun phases ->
+        match
+          Sinter_core.Scan.run ?phases ~env:(Unix.environment ())
+            ~dir:(Sys.getcwd ()) ~manifest ~base ~tool:version ()
+        with
+        | Error error ->
+            report (Sinter_core.Scan.messages error);
+            environment_error
+        | Ok { warnings; records } -> (
+            report warnings;
+            try
+              Sinter_core.Allocation.measure phases "output" (fun () ->
+                  List.iter (Sinter_core.Jsonl.output stdout) records;
+                  flush stdout);
+              clean
+            with Sys_error message ->
+              report [ Printf.sprintf "cannot write the output: %s" message ];
+              environment_error))
   in
   Cmd.v info Term.(const run $ manifest $ base)
 
@@ -323,12 +341,13 @@ let check_cmd =
   in
   let report lines = List.iter (Printf.eprintf "sinter: %s\n") lines in
   let run manifest base gate strict json =
+    with_phases @@ fun phases ->
     match
-      Sinter_core.Check.run ~env:(Unix.environment ()) ~dir:(Sys.getcwd ())
-        ~manifest ~base ~gate ~strict
+      Sinter_core.Check.run ?phases ~env:(Unix.environment ())
+        ~dir:(Sys.getcwd ()) ~manifest ~base ~gate ~strict
         ~format:
           (if json then Sinter_core.Check.Json else Sinter_core.Check.Text)
-        ~tool:version
+        ~tool:version ()
     with
     | Error error ->
         report (Sinter_core.Scan.messages error);
@@ -336,12 +355,13 @@ let check_cmd =
     | Ok { messages; lines; code } -> (
         report messages;
         try
-          List.iter
-            (fun line ->
-              output_string stdout line;
-              output_char stdout '\n')
-            lines;
-          flush stdout;
+          Sinter_core.Allocation.measure phases "output" (fun () ->
+              List.iter
+                (fun line ->
+                  output_string stdout line;
+                  output_char stdout '\n')
+                lines;
+              flush stdout);
           code
         with Sys_error message ->
           report [ Printf.sprintf "cannot write the output: %s" message ];

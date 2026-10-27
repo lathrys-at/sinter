@@ -15,7 +15,7 @@ let repository files =
 let scan ?(dir = "") ?manifest ?base repo =
   Scan.run ~env:(Git_fixture.env repo)
     ~dir:(Filename.concat (Git_fixture.root repo) dir)
-    ~manifest ~base ~tool:"v1"
+    ~manifest ~base ~tool:"v1" ()
 
 let outcome = function
   | Ok outcome -> outcome
@@ -120,7 +120,7 @@ let a_file_that_is_not_utf_8_text_gives_no_fact () =
 let load ?base repo =
   match
     Scan.load ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
-      ~manifest:None ~base
+      ~manifest:None ~base ()
   with
   | Ok tree -> tree
   | Error error ->

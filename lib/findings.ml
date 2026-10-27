@@ -400,11 +400,7 @@ let cycles facts =
                ?detail ()))
     (components successors)
 
-let block_hash documents path index =
-  let document : Markdown.t = List.assoc path documents in
-  document.blocks.(index).hash
-
-let disendorsed facts documents =
+let disendorsed facts =
   let declarations = Array.of_list (Facts.declarations facts) in
   List.filter_map
     (fun ((edge : Facts.edge), target) ->
@@ -425,7 +421,9 @@ let disendorsed facts documents =
                   declaration.status )
               with
               | [], Some status ->
-                  let hash = block_hash documents edge.path edge.block_index in
+                  let hash =
+                    Facts.block_hash facts edge.path edge.block_index
+                  in
                   finding
                     ~detail:
                       (Printf.sprintf "%s is %s"
@@ -651,9 +649,10 @@ let promises_out_of_scope facts =
     (fun (plan : Facts.plan) ->
       List.concat_map
         (fun (step : Facts.step) ->
+          let discharge = Facts.discharge facts plan step in
           List.filter_map
             (fun (promise : Facts.promise) ->
-              match Facts.discharge facts plan step promise with
+              match discharge promise with
               | { by = None; residue = first :: _ } ->
                   Some
                     (Finding.make Finding_class.Promise_out_of_scope
@@ -692,26 +691,27 @@ let ack_target target =
     if start = length then None
     else Some (String.sub target start (length - start)) )
 
-let acked facts documents (edge : Facts.edge) =
-  let hash = block_hash documents edge.path edge.block_index in
+let acked facts (edge : Facts.edge) =
+  let hash = Facts.block_hash facts edge.path edge.block_index in
   List.exists
     (fun (ack : Facts.ack) ->
       let finding_class, subject = ack_target ack.target in
-      String.equal ack.path edge.path
-      && ack.block_index = edge.block_index
-      && String.length ack.hash >= 8
+      String.length ack.hash >= 8
       && String.starts_with ~prefix:ack.hash hash
       && String.equal finding_class "disendorsed"
       && Option.fold ~none:true ~some:(String.equal edge.target_text) subject)
-    (Facts.acks facts)
+    (Facts.block_acks facts edge.path edge.block_index)
 
 let historical manifest (finding : Finding.t) =
   List.exists
     (fun (place : Finding.place) -> Manifest.is_historical manifest place.path)
     (Option.to_list finding.place)
 
-let tree manifest documents ~not_text =
-  let facts = Facts.make manifest documents in
+let tree ?phases manifest documents ~not_text =
+  let facts =
+    Allocation.measure phases "facts" (fun () -> Facts.make manifest documents)
+  in
+  Allocation.measure phases "findings" @@ fun () ->
   List.sort Finding.compare
     (List.filter
        (fun finding -> not (historical manifest finding))
@@ -729,9 +729,9 @@ let tree manifest documents ~not_text =
             cycles facts;
             List.filter_map
               (fun (edge, (finding : Finding.t)) ->
-                if finding.ackable && acked facts documents edge then None
+                if finding.ackable && acked facts edge then None
                 else Some finding)
-              (disendorsed facts documents);
+              (disendorsed facts);
             orphans facts;
             uncovered facts;
             bad_scopes facts;
