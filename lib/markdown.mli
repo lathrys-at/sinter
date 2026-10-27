@@ -129,6 +129,13 @@ type tag = {
 }
 (** One tag line. *)
 
+val columns : tag -> Tag_line.part -> (int * int) option
+(** [columns tag part] is the place of [part] on the line of [tag]: the column
+    of its first character, and the column one past its last character. The tag
+    word runs from the [@] to the end of the word. The target and the revision
+    are those of [tag.target] and [tag.rev]. [None] when [tag] has no such part.
+    The columns lie within the columns of [tag.span]. *)
+
 type block = {
   tags : int list;
       (** the indices in {!field-tags} of the tag lines, in the order of the

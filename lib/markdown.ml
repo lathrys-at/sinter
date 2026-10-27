@@ -661,6 +661,20 @@ let assemble lines walk errors =
   in
   { sections; tags; blocks; unread = Dynarray.to_list walk.unread; errors }
 
+let columns (tag : tag) part =
+  let start = tag.span.start.column in
+  let word_stop = 1 + String.length tag.word in
+  match part with
+  | Tag_line.Word -> Some (start, start + word_stop)
+  | Tag_line.Target | Tag_line.Revision ->
+      let column offset =
+        start + word_stop + Line_index.characters tag.rest 0 (offset - word_stop)
+      in
+      Option.map
+        (fun (range : Tag_line.range) ->
+          (column range.start, column range.stop))
+        (Tag_line.range { Tag_line.word = tag.word; rest = tag.rest } part)
+
 let read reader content =
   match Sinter_bridge.Utf_8.first_invalid content with
   | Some offset -> Error (Not_utf_8 offset)

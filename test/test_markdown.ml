@@ -788,6 +788,8 @@ let markdown_line =
       "x\r";
       "\xf0\x9f\x98\x80 @cites z";
       "@supersedes a v1";
+      "- [ ] @cites \xc3\xa9t\xc3\xa9 \t v2 caf\xc3\xa9";
+      "  * @req x\xc3\xa9 v3";
     ]
 
 let markdown_text =
@@ -880,6 +882,62 @@ let spans_stay_inside_the_text =
                 (span.start.column - 1)
               = Some expected)
         (spans (file text)))
+
+let parts_sit_at_their_columns =
+  property ~name:"the characters at the columns of each part are the part"
+    ~print:String.escaped markdown_text (fun text ->
+      let lines = Line_index.make (Text_file.with_final_line_feed text) in
+      List.for_all
+        (fun (tag : Markdown.tag) ->
+          let characters =
+            Array.of_list
+              (characters_of (Line_index.content lines tag.span.start.line))
+          in
+          let at part =
+            Option.map
+              (fun (start, stop) ->
+                if
+                  tag.span.start.column <= start
+                  && start < stop
+                  && stop <= tag.span.stop.column
+                then
+                  Some
+                    (String.concat ""
+                       (Array.to_list
+                          (Array.sub characters (start - 1) (stop - start))))
+                else None)
+              (Markdown.columns tag part)
+          in
+          at Tag_line.Word = Some (Some ("@" ^ tag.word))
+          && at Tag_line.Target = Option.map Option.some tag.target
+          && at Tag_line.Revision
+             = Option.map (fun rev -> Some ("v" ^ string_of_int rev)) tag.rev)
+        (Array.to_list (file text).tags))
+
+let columns_of text part = Markdown.columns (file text).tags.(0) part
+
+let columns_count_characters_after_a_marker () =
+  let text = "- [ ] @cites \xc3\xa9t\xc3\xa9 \t v2 caf\xc3\xa9\n" in
+  Alcotest.(check (option (pair int int)))
+    "the word"
+    (Some (7, 13))
+    (columns_of text Tag_line.Word);
+  Alcotest.(check (option (pair int int)))
+    "the target"
+    (Some (14, 17))
+    (columns_of text Tag_line.Target);
+  Alcotest.(check (option (pair int int)))
+    "the revision"
+    (Some (20, 22))
+    (columns_of text Tag_line.Revision)
+
+let columns_of_a_missing_part_are_none () =
+  Alcotest.(check (option (pair int int)))
+    "no revision" None
+    (columns_of "@req a\n" Tag_line.Revision);
+  Alcotest.(check (option (pair int int)))
+    "no target" None
+    (columns_of "@req\n" Tag_line.Target)
 
 let is_declaration (tag : Markdown.tag) =
   List.mem tag.word [ "req"; "design"; "decision"; "rule" ]
@@ -1187,8 +1245,13 @@ let tests =
       missing_node_gives_an_empty_span;
     Alcotest.test_case "a change of prose changes the extent hash" `Quick
       prose_change_changes_the_extent_hash;
+    Alcotest.test_case "columns count characters after a list marker" `Quick
+      columns_count_characters_after_a_marker;
+    Alcotest.test_case "a missing part has no columns" `Quick
+      columns_of_a_missing_part_are_none;
     read_answers_any_bytes;
     spans_stay_inside_the_text;
+    parts_sit_at_their_columns;
     structure_holds_together;
     edits_keep_the_hashes;
   ]

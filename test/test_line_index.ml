@@ -104,6 +104,19 @@ let columns_count_characters () =
   Alcotest.check position "after the x" (at 1 4) (Line_index.after index 7);
   Alcotest.check position "after the emoji" (at 1 3) (Line_index.after index 6)
 
+let characters_counts_the_starts_of_characters () =
+  let text = "a\xC3\xA9\xF0\x9F\x98\x80b" in
+  Alcotest.(check (list int))
+    "the counts" [ 0; 1; 2; 3; 1; 0 ]
+    [
+      Line_index.characters text 0 0;
+      Line_index.characters text 0 1;
+      Line_index.characters text 0 3;
+      Line_index.characters text 0 7;
+      Line_index.characters text 2 4;
+      Line_index.characters text 8 8;
+    ]
+
 let line_ending_is_after_the_last_character () =
   let index = Line_index.make "ab\r\nc\n" in
   Alcotest.check position "the carriage return" (at 1 3)
@@ -125,6 +138,16 @@ let refuses_a_line_out_of_range () =
       Line_index.content_end index 2);
   refuses "line 2 of content" "Line_index: no line 2" (fun () ->
       Line_index.content index 2)
+
+let characters_refuses_a_run_out_of_range () =
+  let refuses_run start stop =
+    refuses (Printf.sprintf "%d to %d" start stop)
+      (Printf.sprintf "Line_index: no bytes from offset %d to offset %d" start
+         stop) (fun () -> Line_index.characters "ab" start stop)
+  in
+  refuses_run (-1) 1;
+  refuses_run 2 1;
+  refuses_run 0 3
 
 let refuses_an_offset_out_of_range () =
   let index = Line_index.make "a\n" in
@@ -257,6 +280,10 @@ let tests =
       line_ending_is_after_the_last_character;
     Alcotest.test_case "refuses a line out of range" `Quick
       refuses_a_line_out_of_range;
+    Alcotest.test_case "characters counts the starts of characters" `Quick
+      characters_counts_the_starts_of_characters;
+    Alcotest.test_case "characters refuses a run out of range" `Quick
+      characters_refuses_a_run_out_of_range;
     Alcotest.test_case "refuses an offset out of range" `Quick
       refuses_an_offset_out_of_range;
     Alcotest.test_case "puts the end of the text after the last character"

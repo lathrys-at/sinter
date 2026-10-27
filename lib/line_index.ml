@@ -64,7 +64,7 @@ let line_of index offset =
 
 let is_character_start byte = Char.code byte land 0xC0 <> 0x80
 
-let characters text start stop =
+let count_characters text start stop =
   let rec go offset total =
     if offset >= stop then total
     else
@@ -73,13 +73,20 @@ let characters text start stop =
   in
   go start 0
 
+let characters text start stop =
+  if start < 0 || stop < start || stop > String.length text then
+    invalid_arg
+      (Printf.sprintf "Line_index: no bytes from offset %d to offset %d" start
+         stop);
+  count_characters text start stop
+
 let position index offset =
   let line = line_of index offset in
   let start = index.starts.(line - 1) in
   let stop = content_end index line in
   let column =
-    if offset >= stop then 1 + characters index.text start stop
-    else max 1 (characters index.text start (offset + 1))
+    if offset >= stop then 1 + count_characters index.text start stop
+    else max 1 (count_characters index.text start (offset + 1))
   in
   { line; column }
 
