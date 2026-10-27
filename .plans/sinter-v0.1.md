@@ -1,6 +1,6 @@
 # Sinter v0.1
 @plan sinter-v0.1
-@scope spec/**, docs/**, CLAUDE.md, README.md, CONTRIBUTING.md, THIRD_PARTY.md, REUSE.toml, LICENSES/**, lib/**, bin/**, bridge/**, test/**, dune-project, sinter.opam, sinter.opam.locked, sinter.toml, .github/workflows/**, .plans/**, plugins/**, .claude-plugin/**
+@scope spec/**, docs/**, CLAUDE.md, README.md, CONTRIBUTING.md, THIRD_PARTY.md, REUSE.toml, LICENSES/**, lib/**, bin/**, bridge/**, test/**, bench/**, dune-project, sinter.opam, sinter.opam.locked, sinter.toml, .github/workflows/**, .plans/**, plugins/**, .claude-plugin/**
 Deliver the first useful version of Sinter: the tag graph of a
 repository, checked with test evidence. It reads markdown with a
 built-in pack and TypeScript, Rust, and OCaml with fetched packs.
@@ -133,7 +133,7 @@ or the rules that it adds. Change the rules in `CONTRIBUTING.md` to
 match.
 
 ## Measure and improve the performance of scan and check
-@scope lib/**, bin/**, bridge/**, test/**, docs/**
+@scope lib/**, bin/**, bridge/**, test/**, bench/**, docs/**, .github/workflows/**, CONTRIBUTING.md
 Add a benchmark that measures the time and the peak memory of
 `sinter scan` and `sinter check` on Sinter itself and on generated
 trees of 1,000, 10,000, and 100,000 declarations. Profile them, fix the
