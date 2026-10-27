@@ -102,3 +102,9 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
   every line changed in a checkout with CRLF line ends, and every Git
   LFS file changed on every run. The cost is wrong positions in a file
   whose filter changes its number of lines.
+- Details of `unplanned-change` and `config-changed`, fixed before
+  their steps: a hunk with no line is not a mechanical repair; plan
+  files of either tree are exempt; the detail of `unplanned-change`;
+  `config-changed` ignores historical paths; what counts on the base
+  side; the line of an entry; the form of a tier change. Runner
+  settings wait for packs with descriptors.
