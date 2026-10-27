@@ -19,26 +19,44 @@ ledger judges are defined in [vocabulary.md](vocabulary.md).
 
 ## 2. Storage
 
+### 2.1 The file and the ref
+
+@req ledger-storage
+
 The ledger is a JSONL file, `ledger.jsonl`, in the tree of a dedicated
 git ref: `refs/sinter/ledger`. This ref is not a checkout path. No
 editor and no file tool reaches the ledger without a git plumbing
 command. Sinter imposes this restriction on purpose, so that only a
 deliberate act writes the ledger.
 
+### 2.2 Append only
+
+@req ledger-append-only
+
 Each write appends lines to the file and commits, with the previous
 tip as the parent. The ref moves by fast-forward only. Every commit's
 ledger file must be a byte-prefix extension of its parent's: old lines
 never change and never move.
+
+### 2.3 History, not a derivation
 
 Unlike the derived JSONL of a scan, ledger entries carry timestamps
 and authorship. The ledger is history, not a derivation.
 
 ## 3. Entry identity
 
+### 3.1 The id of an entry
+
+@req ledger-entry-id
+
 An entry's id is `e-` plus the first twelve hex digits of a SHA-256
 hash. The hash covers the entry's canonical bytes with the `id` key
 absent. Two writers can never produce one id for two different
 entries.
+
+### 3.2 Recovery from a failed push
+
+@req ledger-push-recovery
 
 Two writers can push to the ledger ref at the same time, and one of
 the two pushes then fails. Ids come from the entry's content, so
@@ -50,11 +68,25 @@ these three actions in order:
    hold, in timestamp order.
 3. Push again.
 
-Ids never repeat within the ledger. Where order matters — for example
-a decline superseded by a later stamp — the `ts` field decides the
-order, and not the position in the file.
+### 3.3 Unique ids
+
+@req ledger-unique-ids
+
+Ids never repeat within the ledger.
+
+### 3.4 The order of entries
+
+@req ledger-entry-order
+
+Where order matters — for example a decline superseded by a later
+stamp — the `ts` field decides the order, and not the position in the
+file.
 
 ## 4. Common fields
+
+### 4.1 The fields of every entry
+
+@req ledger-common-fields
 
 Every entry carries:
 
@@ -69,6 +101,10 @@ Every entry carries:
 | `branch` | the branch the writer stood on |
 | `tool` | tool version |
 
+### 4.2 The writers
+
+@req ledger-writers
+
 Four writers exist. The approval command writes `stamp` entries, with
 their `stamped-scope` and `stamped-promise` lines. The decline command
 writes `decline`. The abandon command writes `abandoned`. A person
@@ -76,6 +112,10 @@ runs these three commands. The fourth writer is the CI job on the
 target branch, which writes `discharged` (section 8).
 
 ## 5. `stamp`
+
+### 5.1 The fields of a stamp
+
+@req ledger-stamp
 
 A stamp records an approval.
 
@@ -86,6 +126,10 @@ A stamp records an approval.
 | `csh` | plans only: the commitment-set hash ([jsonl.md](jsonl.md) section 4) |
 | `note` | omitted when none |
 
+### 5.2 Approval
+
+@req ledger-approval
+
 Approval attaches to the `(slug, rev, xh)` triple, never to a
 document. A declaration of a kind that needs approval
 ([manifest.md](manifest.md) section 11.1) is **approved** if and only
@@ -94,15 +138,21 @@ revision bump therefore removes approval until the item is stamped
 again. A declaration of a kind that does not need approval counts as
 approved.
 
-**Revision reservation.** A writer must refuse to write a stamp for
-`(slug, rev)` when the ledger already holds a stamp for that pair with
-a different `xh`. The refusal message names the earlier entry and the
-branch that entry was written from. To resolve the refusal, the author
-must increase the declaration's revision again. When the ledger
-already holds a stamp for the same `(slug, rev)` with the same `xh`,
-the writer writes no new entry.
+### 5.3 Revision reservation
+
+@req ledger-revision-reservation
+
+A writer must refuse to write a stamp for `(slug, rev)` when the
+ledger already holds a stamp for that pair with a different `xh`. The
+refusal message names the earlier entry and the branch that entry was
+written from. To resolve the refusal, the author must increase the
+declaration's revision again. When the ledger already holds a stamp
+for the same `(slug, rev)` with the same `xh`, the writer writes no
+new entry.
 
 ## 6. `stamped-scope` and `stamped-promise`
+
+@req ledger-stamped-commitment-set
 
 A plan stamp holds the approved commitment set as entries, not only as
 a hash. A hash shows only that two sets differ. It does not show which
@@ -128,6 +178,10 @@ plan-level.
 
 ## 7. `decline`
 
+### 7.1 The fields of a decline
+
+@req ledger-decline
+
 A decline records a refusal by a person, bound to the exact text
 refused.
 
@@ -137,6 +191,10 @@ refused.
 | `hash` | the subject's extent hash (`xh`) or commitment-set hash (`csh`) at the moment of refusal |
 | `reason` | required |
 
+### 7.2 A live decline
+
+@req ledger-live-decline
+
 A decline is **live** while the subject's current hash equals `hash`
 and no later stamp of the subject exists. A decline is never deleted.
 A later stamp of the subject ends the decline's effect. That later
@@ -144,6 +202,10 @@ stamp can be at a different hash. It can also be at the same hash,
 when the person overrides their own earlier refusal.
 
 ## 8. `discharged`
+
+### 8.1 The entry and its writer
+
+@req ledger-discharged
 
 A `discharged` entry closes a plan whose promises all produced their
 residue ([vocabulary.md](vocabulary.md) section 10.2).
@@ -161,8 +223,11 @@ condition.
 | `merge` | the merge commit |
 | `report` | SHA-256 of the report compiled at discharge |
 
-**The discharge condition.** A plan meets the condition when all of
-these statements are true:
+### 8.2 The discharge condition
+
+@req ledger-discharge-condition
+
+A plan meets the condition when all of these statements are true:
 
 - Every promised declaration exists.
 - Every promised edge exists, its tag target resolves, and it is not
@@ -180,12 +245,20 @@ complete. Two corrections remove the finding. The first is a smaller
 commitment set for the plan, with a new stamp when the kind `plan`
 needs approval. The second is a revert of the merge commit.
 
+### 8.3 A repeated run
+
+@req ledger-discharge-idempotent
+
 The job's write is idempotent: a second run for the same plan adds no
 second entry. The plan's stamps and the repository tree hold the facts
 that prove discharge. A lost CI run therefore costs one repeat run and
 loses no facts.
 
 ## 9. `abandoned`
+
+### 9.1 The fields of an abandoned entry
+
+@req ledger-abandoned
 
 An `abandoned` entry closes a plan that will never merge. A person
 runs the abandon command; the tool never writes this entry on its own.
@@ -195,10 +268,18 @@ runs the abandon command; the tool never writes this entry on its own.
 | `subject` | `plan:<slug>` |
 | `reason` | required |
 
+### 9.2 The end of the lease
+
+@req ledger-abandoned-lease
+
 An `abandoned` entry ends the plan's lease. It also releases every
 `blocked-on` promise that depended on that lease.
 
 ## 10. Open and closed plans
+
+### 10.1 Open and closed
+
+@req ledger-open-plans
 
 A plan is **open** until the ledger holds a `discharged` or an
 `abandoned` entry for it. A plan with such an entry is **closed**.
@@ -210,12 +291,20 @@ A closed plan generates no findings, holds no lease, contributes no
 scope, and is not a candidate for the active plan. Plan slugs are
 permanent; a successor plan needs a new slug.
 
+### 10.2 An absent ledger ref
+
+@req ledger-absent-ref
+
 When the ledger ref is absent, a tool sees no `discharged` and no
 `abandoned` entries, so it treats every plan as open. A tool in this
 state must warn the user that the ledger ref is absent, and must tell
 the user to fetch it.
 
 ## 11. Plan approval: commitment-set comparison
+
+### 11.1 The comparison of commitment sets
+
+@req ledger-plan-approval
 
 A plan's **commitment set** is the set of canonical facts about the
 plan: the promises of each step, the scope of each step, and the plan
@@ -235,6 +324,10 @@ if and only if all three clauses hold:
    sides. For each matched pair, the effective scope of the step in
    `C` must be contained in the effective scope of the step in `C₀`.
 
+### 11.2 Glob containment
+
+@req ledger-glob-containment
+
 **Glob containment** `G' ⊆ G` is decided structurally and
 conservatively. Every glob in `G'` must satisfy one of these three
 cases:
@@ -249,6 +342,8 @@ cases, the checker treats the new scope as wider than the stamped
 scope. The rule is decidable and deterministic. When the checker
 cannot prove containment, the checker asks a person for a new stamp,
 which is the safe result for approval.
+
+### 11.3 Free amendments
 
 An amendment is **free** when the plan stays approved after it and no
 new stamp is needed. The consequences of the three clauses:
@@ -275,6 +370,8 @@ and `hash`. The example shows only the fields of the entry's own:
 It is designed but deferred, together with the `@pin` directive.
 
 ## 13. Verification
+
+@req ledger-verification
 
 A verifier must check:
 
