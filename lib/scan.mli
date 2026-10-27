@@ -37,6 +37,9 @@ type error =
       (** a file of the pack [markdown] does not read *)
   | Unparsed_file of { file : string; error : Sinter_bridge.Tree.error }
       (** the parse of a file of the pack [markdown] gives no tree *)
+  | Unparsed_base_file of { file : string; error : Sinter_bridge.Tree.error }
+      (** the parse of the content that the base holds for a file of the pack
+          [markdown] gives no tree *)
   | Reader of Markdown.load_error  (** the built-in grammar does not load *)
 
 val messages : error -> string list
@@ -85,7 +88,8 @@ type tree = private {
   warnings : string list;
       (** one line for each file of the file set whose path is not UTF-8, in the
           order of the paths, and then one line that says that the ledger ref is
-          absent *)
+          absent. After {!load_with_base}, the file set of the base counts too,
+          and a path of both file sets has one line. *)
 }
 (** The working tree of a repository as a scan reads it. *)
 
@@ -109,6 +113,47 @@ val load :
     With [phases], it counts the words of the phases [repository] (the
     repository, the manifest, the list of files, and the base), [read] (the
     reading of each file), and [parse] (the parse of each file).
+
+    @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
+
+(** {1 The base} *)
+
+type compared = private {
+  diff : (string * Git.change) list;
+      (** the change of each path between the base and the working tree, as
+          {!Git.diff} gives it *)
+  base_documents : (string * Markdown.t) list;
+      (** each file of the file set of the base that the pack [markdown] reads
+          and whose content at the base is UTF-8 text, with its document, in the
+          order of the paths *)
+  base_not_text : (string * int) list;
+      (** each file of the file set of the base that the pack [markdown] reads
+          and whose content at the base is not UTF-8 text, in the order of the
+          paths, with the byte offset of its first sequence that is not
+          well-formed *)
+}
+(** The base tree as a scan reads it, and the diff between the base and the
+    working tree. The base tree is read with the manifest of the working tree.
+
+    A file that {!field-diff} does not list with a change of content, and that
+    the working tree reads, takes the document of the working tree, the same
+    value. Every other file is read from the blob of the base commit. A change
+    of the mode alone is no change of content. *)
+
+val load_with_base :
+  ?phases:Allocation.t ->
+  env:string array ->
+  dir:string ->
+  manifest:string option ->
+  base:string option ->
+  unit ->
+  (tree * compared, error) result
+(** [load_with_base ~env ~dir ~manifest ~base ()] is {!load} with the same
+    arguments, and the base tree that it compares the working tree with.
+
+    The error is [Unparsed_base_file] when the parse of a blob gives no tree.
+    With [phases], it counts the phases of {!load}, and the phase [base-read]
+    (the diff, the files of the base, and the read and the parse of each blob).
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
 

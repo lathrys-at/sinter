@@ -444,6 +444,10 @@ let each_error_says_what_is_wrong () =
         "a.md: " ^ Sinter_bridge.Tree.message Sinter_bridge.Tree.Did_not_finish;
       ];
       [
+        "b.md at the base: "
+        ^ Sinter_bridge.Tree.message Sinter_bridge.Tree.Too_long;
+      ];
+      [
         "the built-in grammar of markdown does not load: "
         ^ Sinter_bridge.Language.message (Sinter_bridge.Language.Version 9);
       ];
@@ -488,14 +492,145 @@ let each_error_says_what_is_wrong () =
            };
          Scan.Unparsed_file
            { file = "a.md"; error = Sinter_bridge.Tree.Did_not_finish };
+         Scan.Unparsed_base_file
+           { file = "b.md"; error = Sinter_bridge.Tree.Too_long };
          Scan.Reader (Markdown.Grammar (Sinter_bridge.Language.Version 9));
          Scan.Reader (Markdown.Query (Sinter_bridge.Query.Not_utf_8 3));
        ])
+
+let with_base ?(manifest = manifest) files =
+  repository (("sinter.toml", manifest) :: files)
+
+let load_with_base repo =
+  match
+    Scan.load_with_base ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+      ~manifest:None ~base:(Some "HEAD") ()
+  with
+  | Ok loaded -> loaded
+  | Error error ->
+      Alcotest.failf "the load fails: %s"
+        (String.concat "; " (Scan.messages error))
+
+let declared (document : Markdown.t) =
+  List.filter_map
+    (fun (tag : Markdown.tag) ->
+      Option.map (fun target -> tag.word ^ " " ^ target) tag.target)
+    (Array.to_list document.tags)
+
+let the_base_reuses_each_document_that_the_diff_does_not_change () =
+  let repo =
+    with_base
+      [
+        ("same.md", "# S\n\n@req same\n");
+        ("untracked.md", "# U\n\n@req untracked\n");
+        ("mode.md", "# M\n\n@req mode\n");
+      ]
+  in
+  ignore (Git_fixture.git repo [ "rm"; "-q"; "--cached"; "untracked.md" ]);
+  Git_fixture.make_executable repo "mode.md";
+  let tree, compared = load_with_base repo in
+  Alcotest.(check (list string))
+    "the paths of the base"
+    [ "mode.md"; "same.md"; "untracked.md" ]
+    (List.map fst compared.base_documents);
+  List.iter
+    (fun (path, document) ->
+      Alcotest.(check bool)
+        (path ^ " is the document of the working tree")
+        true
+        (List.assq_opt document (List.map (fun (p, d) -> (d, p)) tree.documents)
+        = Some path))
+    compared.base_documents
+
+let the_base_reads_each_changed_file_from_its_blob () =
+  let repo =
+    with_base
+      [
+        ("changed.md", "# C\n\n@req old-slug\n");
+        ("deleted.md", "# D\n\n@req deleted\n");
+        ("notes.txt", "@req not-markdown\n");
+      ]
+  in
+  Git_fixture.write repo "changed.md" "# C\n\n@req new-slug\n";
+  Git_fixture.remove repo "deleted.md";
+  Git_fixture.write repo "added.md" "# A\n\n@req added\n";
+  let _, compared = load_with_base repo in
+  Alcotest.(check (list (pair string (list string))))
+    "the tags of the base"
+    [ ("changed.md", [ "req old-slug" ]); ("deleted.md", [ "req deleted" ]) ]
+    (List.map
+       (fun (path, document) -> (path, declared document))
+       compared.base_documents);
+  Alcotest.(check (list string))
+    "the paths of the diff"
+    [ "added.md"; "changed.md"; "deleted.md" ]
+    (List.map fst compared.diff)
+
+let a_blob_that_is_not_utf_8_is_not_text_at_the_base () =
+  let repo =
+    with_base [ ("was-bad.md", "# B\n\xff\n"); ("still-bad.md", "# S\n\xfe\n") ]
+  in
+  Git_fixture.write repo "was-bad.md" "# B\n\n@req good\n";
+  let tree, compared = load_with_base repo in
+  Alcotest.(check (list (pair string int)))
+    "the files of the base that are not text"
+    [ ("still-bad.md", 4); ("was-bad.md", 4) ]
+    compared.base_not_text;
+  Alcotest.(check (list (pair string int)))
+    "the files of the working tree that are not text"
+    [ ("still-bad.md", 4) ]
+    tree.not_text;
+  Alcotest.(check (list string))
+    "the documents of the base" []
+    (List.map fst compared.base_documents)
+
+let a_conversion_alone_reuses_the_document () =
+  let repo = with_base [ ("crlf.md", "# C\n\n@req crlf\n") ] in
+  Git_fixture.append_config repo "[core]\n\tautocrlf = true\n";
+  Git_fixture.write repo "crlf.md" "# C\r\n\r\n@req crlf\r\n";
+  let tree, compared = load_with_base repo in
+  Alcotest.(check int) "no change" 0 (List.length compared.diff);
+  Alcotest.(check bool)
+    "the same document" true
+    (match (tree.documents, compared.base_documents) with
+    | [ (_, a) ], [ (_, b) ] -> a == b
+    | _ -> false)
+
+let a_base_path_that_is_not_utf_8_gives_one_warning () =
+  let repo = Git_fixture.init () in
+  Git_fixture.import repo
+    [
+      Git_fixture.commit ~ref:"refs/heads/main" ~mark:1 ~message:"base"
+        [
+          Git_fixture.File ("sinter.toml", manifest);
+          Git_fixture.File ("gone\xff.md", "# G\n");
+        ];
+    ];
+  Git_fixture.write repo "sinter.toml" manifest;
+  let tree, _ = load_with_base repo in
+  Alcotest.(check (list string))
+    "the warnings"
+    [
+      "warning: the path gone\\xff.md is not UTF-8, so sinter does not read \
+       the file";
+      ledger;
+    ]
+    tree.warnings
 
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
   [
+    case "the base reuses each document that the diff does not change"
+      the_base_reuses_each_document_that_the_diff_does_not_change;
+    case "the base reads each changed file from its blob"
+      the_base_reads_each_changed_file_from_its_blob;
+    case "a blob that is not UTF-8 is not text at the base"
+      a_blob_that_is_not_utf_8_is_not_text_at_the_base;
+    case "a conversion alone reuses the document"
+      a_conversion_alone_reuses_the_document;
+    case "a base path that is not UTF-8 gives one warning"
+      a_base_path_that_is_not_utf_8_gives_one_warning;
     case "a scan starts with the index of the tree and the base"
       a_scan_starts_with_the_index_of_the_tree_and_the_base;
     case "a path that is not UTF-8 gives a warning and no fact"
