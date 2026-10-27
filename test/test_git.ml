@@ -956,9 +956,16 @@ let fold_blobs_refuses_a_sha1_id_in_a_sha256_repository () =
 let open_descriptors () = Array.length (Sys.readdir "/dev/fd")
 
 let no_child_left () =
-  match Unix.waitpid [ Unix.WNOHANG ] (-1) with
-  | exception Unix.Unix_error (Unix.ECHILD, _, _) -> true
-  | _ -> false
+  let deadline = Unix.gettimeofday () +. 1. in
+  let rec check () =
+    match Unix.waitpid [ Unix.WNOHANG ] (-1) with
+    | exception Unix.Unix_error (Unix.ECHILD, _, _) -> true
+    | 0, _ when Unix.gettimeofday () < deadline ->
+        Unix.sleepf 0.001;
+        check ()
+    | _ -> false
+  in
+  check ()
 
 let too_long = String.make 2_000_000 'a'
 
