@@ -2,7 +2,7 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Name the plan step and its promises in each commit message
-@decision commit-messages v2
+@decision commit-messages v3
 @cites pull-request-descriptions
 @cites plain-names
 Each commit message ends with git trailers that name the plan step, the record, or the issue that allows the change, and each promise of the step that the commit meets.
@@ -30,8 +30,8 @@ order:
    - `Record: <slug>`: a decision record that allows the change with
      no plan step. Example: `Record: current-dependencies` for the
      move of a dependency.
-   - `Issue: <ns>/<id>`: an issue, as a ref (`spec/vocabulary.md`
-     section 4.2). Example: `Issue: gh/12`.
+   - `Issue: <ns>/<id>`: an issue, as an external id
+     (`spec/vocabulary.md` section 4.2). Example: `Issue: gh/12`.
 
    A commit that does work of a plan step names the step.
 2. One `Meets: <tag> <slug>` line for each promise of the step
