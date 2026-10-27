@@ -271,6 +271,209 @@ let compare_orders_by_path_line_column_and_id () =
   Alcotest.(check (list string))
     "the order" (List.map print findings) (List.map print sorted)
 
+let mark ?(label = "here") start stop = { Finding.start; stop; label }
+let related ?place label = { Finding.label; place }
+
+let make_with ?place ?mark ?related () =
+  Finding.make Finding_class.Suspect fact ?place ?mark ?related ()
+
+let refuses name message make =
+  Alcotest.check_raises name (Invalid_argument message) (fun () ->
+      ignore (make () : Finding.t))
+
+let make_keeps_the_mark_and_the_related_places () =
+  let finding =
+    make_with ~place:(place ())
+      ~mark:(mark ~label:"a\tb\nc" 2 4)
+      ~related:[ related "x"; related ~place:(place ()) "y\r" ]
+      ()
+  in
+  Alcotest.(check (option (triple int int string)))
+    "the mark"
+    (Some (2, 4, "a\tb\\nc"))
+    (Option.map
+       (fun ({ start; stop; label } : Finding.mark) -> (start, stop, label))
+       finding.mark);
+  Alcotest.(check (list (pair string bool)))
+    "the related places"
+    [ ("y\\r", true); ("x", false) ]
+    (List.map
+       (fun ({ label; place } : Finding.related) ->
+         (label, Option.is_some place))
+       finding.related);
+  let bare = make_with () in
+  Alcotest.(check bool) "no mark" true (Option.is_none bare.mark);
+  Alcotest.(check int) "no related place" 0 (List.length bare.related)
+
+let make_takes_a_mark_at_the_ends_of_the_place () =
+  let at_ends =
+    make_with ~place:(place ~column:3 ~stop:9 ()) ~mark:(mark 3 9) ()
+  in
+  Alcotest.(check bool)
+    "a mark of the whole line" true
+    (Option.is_some at_ends.mark);
+  let longer =
+    {
+      Finding.path = "docs/a.md";
+      span = { Markdown.start = at 3 5; stop = at 4 2 };
+    }
+  in
+  let past = make_with ~place:longer ~mark:(mark 5 40) () in
+  Alcotest.(check bool)
+    "a mark past the stop column of a longer place" true
+    (Option.is_some past.mark)
+
+let make_refuses_a_bad_mark () =
+  refuses "a mark with no place" "Finding.make: the mark has no place"
+    (fun () -> make_with ~mark:(mark 1 2) ());
+  refuses "a mark before the place"
+    "Finding.make: the mark starts before the place" (fun () ->
+      make_with ~place:(place ~column:3 ()) ~mark:(mark 2 4) ());
+  refuses "a mark after the place"
+    "Finding.make: the mark stops after the place" (fun () ->
+      make_with ~place:(place ~stop:9 ()) ~mark:(mark 2 10) ());
+  refuses "a mark of no character" "Finding.make: the mark holds no character"
+    (fun () -> make_with ~place:(place ()) ~mark:(mark 4 4) ());
+  refuses "a mark that stops before it starts"
+    "Finding.make: the mark holds no character" (fun () ->
+      make_with ~place:(place ()) ~mark:(mark 5 4) ());
+  refuses "a mark with an empty label"
+    "Finding.make: the label of the mark is empty" (fun () ->
+      make_with ~place:(place ()) ~mark:(mark ~label:"" 2 4) ())
+
+let make_refuses_a_bad_related_place () =
+  refuses "an empty label" "Finding.make: the label of a related place is empty"
+    (fun () ->
+      make_with ~related:[ related "a"; related ~place:(place ()) "" ] ());
+  refuses "two equal places" "Finding.make: the related place \"a\" comes twice"
+    (fun () ->
+      make_with
+        ~related:
+          [
+            related ~place:(place ()) "a";
+            related "b";
+            related ~place:(place ()) "a";
+          ]
+        ());
+  refuses "two equal places in no file"
+    "Finding.make: the related place \"a\" comes twice" (fun () ->
+      make_with ~related:[ related "a"; related "a" ] ());
+  refuses "two labels that are equal once escaped"
+    "Finding.make: the related place \"a\\\\nb\" comes twice" (fun () ->
+      make_with ~related:[ related "a\nb"; related "a\\nb" ] ())
+
+let make_sorts_the_related_places () =
+  let at_place ?path ?line ?column ?stop label =
+    related ~place:(place ?path ?line ?column ?stop ()) label
+  in
+  let expected =
+    [
+      at_place ~path:"a.md" ~line:1 ~column:1 ~stop:2 "b";
+      at_place ~path:"a.md" ~line:1 ~column:1 ~stop:3 "a";
+      at_place ~path:"a.md" ~line:1 ~column:2 ~stop:3 "a";
+      at_place ~path:"a.md" ~line:2 ~column:1 ~stop:2 "a";
+      at_place ~path:"a.md" ~line:10 ~column:1 ~stop:2 "a";
+      at_place ~path:"a/b.md" ~line:1 ~column:1 ~stop:2 "a";
+      at_place ~path:"a/b.md" ~line:1 ~column:1 ~stop:2 "b";
+      at_place ~path:"b.md" ~line:1 ~column:1 ~stop:2 "a";
+      related "A";
+      related "a";
+      related "b";
+    ]
+  in
+  let print ({ label; place } : Finding.related) =
+    match place with
+    | None -> label
+    | Some { path; span } ->
+        Printf.sprintf "%s:%d:%d-%d:%d %s" path span.start.line
+          span.start.column span.stop.line span.stop.column label
+  in
+  Alcotest.(check (list string))
+    "the order" (List.map print expected)
+    (List.map print (make_with ~related:(List.rev expected) ()).related)
+
+let related_place =
+  Gen.map2
+    (fun label place -> { Finding.label; place })
+    (Gen.oneof_list [ "a"; "b"; "a\nb"; "a\\nb"; "\xc3\xa9"; "\x00" ])
+    (Gen.option
+       (Gen.map
+          (fun (path, line, (column, stop)) ->
+            place ~path ~line ~column ~stop ())
+          (Gen.triple
+             (Gen.oneof_list [ "a.md"; "a/b.md"; "b.md" ])
+             (Gen.int_range 1 2)
+             (Gen.pair (Gen.int_range 1 2) (Gen.int_range 3 4)))))
+
+let print_related related =
+  String.concat "; "
+    (List.map
+       (fun ({ label; place } : Finding.related) ->
+         Printf.sprintf "%S%s" label
+           (match place with
+           | None -> ""
+           | Some { path; span } ->
+               Printf.sprintf " %s:%d:%d-%d" path span.start.line
+                 span.start.column span.stop.column))
+       related)
+
+let key ({ label; place } : Finding.related) =
+  ( Option.is_none place,
+    Option.map
+      (fun ({ path; span } : Finding.place) ->
+        ( path,
+          span.start.line,
+          span.start.column,
+          span.stop.line,
+          span.stop.column ))
+      place,
+    label )
+
+let escaped ({ label; place } : Finding.related) =
+  { Finding.label = Finding.escape label; place }
+
+let make_gives_the_related_places_sorted_and_once =
+  property ~name:"make gives the related places sorted, each once, or raises"
+    ~print:print_related
+    (Gen.list_size (Gen.int_range 0 6) related_place)
+    (fun related ->
+      let keys = List.map (fun r -> key (escaped r)) related in
+      let distinct = List.sort_uniq compare keys in
+      match make_with ~related () with
+      | finding ->
+          let given = List.map key finding.related in
+          List.length distinct = List.length keys && given = distinct
+      | exception Invalid_argument _ -> List.length distinct < List.length keys)
+
+let neither_the_id_nor_the_order_reads_the_related_places =
+  property ~name:"the id and compare do not read the mark or the related places"
+    ~print:print_related
+    (Gen.list_size (Gen.int_range 0 4) related_place)
+    (fun related ->
+      let plain = make_with ~place:(place ()) () in
+      match make_with ~place:(place ()) ~mark:(mark 2 4) ~related () with
+      | finding ->
+          String.equal (Finding.id finding) (Finding.id plain)
+          && Finding.compare finding plain = 0
+      | exception Invalid_argument _ -> true)
+
+let every_label_is_one_line =
+  property ~name:"every label is one line with no control character but the tab"
+    ~print:String.escaped any_text (fun text ->
+      String.equal text ""
+      ||
+      let finding =
+        make_with ~place:(place ()) ~mark:(mark ~label:text 2 4)
+          ~related:[ related text; related ~place:(place ()) text ]
+          ()
+      in
+      List.for_all
+        (fun label -> not (String.exists control label))
+        (Option.fold ~none:[]
+           ~some:(fun (m : Finding.mark) -> [ m.label ])
+           finding.mark
+        @ List.map (fun (r : Finding.related) -> r.label) finding.related))
+
 let case name test = Alcotest.test_case name `Quick test
 
 let tests =
@@ -298,4 +501,14 @@ let tests =
     compare_is_transitive;
     compare_is_zero_only_on_equal_keys;
     compare_puts_a_place_before_none;
+    case "make keeps the mark and the related places"
+      make_keeps_the_mark_and_the_related_places;
+    case "make takes a mark at the ends of the place"
+      make_takes_a_mark_at_the_ends_of_the_place;
+    case "make refuses a bad mark" make_refuses_a_bad_mark;
+    case "make refuses a bad related place" make_refuses_a_bad_related_place;
+    case "make sorts the related places" make_sorts_the_related_places;
+    make_gives_the_related_places_sorted_and_once;
+    neither_the_id_nor_the_order_reads_the_related_places;
+    every_label_is_one_line;
   ]

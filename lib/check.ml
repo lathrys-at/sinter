@@ -84,6 +84,40 @@ let record ~mode { finding; tier } =
           ("ecol", Jsonl.int span.stop.column);
         ]
   in
+  let mark =
+    match finding.mark with
+    | None -> []
+    | Some { start; stop; label } ->
+        [
+          ("mcol", Jsonl.int start);
+          ("mecol", Jsonl.int stop);
+          ("label", Jsonl.string label);
+        ]
+  in
+  let related =
+    match finding.related with
+    | [] -> []
+    | related ->
+        [
+          ( "related",
+            Jsonl.objects
+              (List.map
+                 (fun ({ label; place } : Finding.related) ->
+                   ("label", Jsonl.String label)
+                   ::
+                   (match place with
+                   | None -> []
+                   | Some { path; span } ->
+                       [
+                         ("path", Jsonl.String path);
+                         ("line", Jsonl.Int span.start.line);
+                         ("col", Jsonl.Int span.start.column);
+                         ("eline", Jsonl.Int span.stop.line);
+                         ("ecol", Jsonl.Int span.stop.column);
+                       ]))
+                 related) );
+        ]
+  in
   let gate =
     match tier with
     | None -> []
@@ -104,7 +138,7 @@ let record ~mode { finding; tier } =
     ("mode", Jsonl.string (Mode.name mode));
   ]
   @ optional "detail" finding.detail
-  @ optional "fix" finding.fix @ place @ gate
+  @ optional "fix" finding.fix @ place @ mark @ related @ gate
 
 type format = Text | Json
 type report = { messages : string list; lines : string list; code : int }

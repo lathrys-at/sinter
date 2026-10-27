@@ -23,6 +23,9 @@ let ack_subject = function
   | Fact { ack_name; _ } -> ack_name
   | (File _ | Error_node _ | Line _ | Tag _) as subject -> subject_id subject
 
+type mark = { start : int; stop : int; label : string }
+type related = { label : string; place : place option }
+
 type t = {
   finding_class : Finding_class.t;
   subject : subject;
@@ -30,6 +33,8 @@ type t = {
   detail : string option;
   fix : string option;
   ackable : bool;
+  mark : mark option;
+  related : related list;
 }
 
 let is_control c = (c < ' ' && c <> '\t') || c = '\x7f'
@@ -44,14 +49,68 @@ let escape text =
          | c -> String.make 1 c)
        (List.of_seq (String.to_seq text)))
 
-let one_line name = function
-  | Some text when String.equal text "" ->
-      invalid_arg (Printf.sprintf "Finding.make: the %s is empty" name)
-  | text -> Option.map escape text
+let checked name text =
+  if String.equal text "" then
+    invalid_arg (Printf.sprintf "Finding.make: the %s is empty" name)
+  else escape text
 
-let make finding_class subject ?place ?detail ?fix ?ackable () =
+let one_line name = Option.map (checked name)
+
+let checked_mark place (mark : mark) =
+  let fail reason =
+    invalid_arg (Printf.sprintf "Finding.make: the mark %s" reason)
+  in
+  match place with
+  | None -> fail "has no place"
+  | Some { span; _ } ->
+      if mark.start < span.start.column then fail "starts before the place"
+      else if span.stop.line = span.start.line && mark.stop > span.stop.column
+      then fail "stops after the place"
+      else if mark.stop <= mark.start then fail "holds no character"
+      else { mark with label = checked "label of the mark" mark.label }
+
+let place_key { path; span } =
+  (path, span.start.line, span.start.column, span.stop.line, span.stop.column)
+
+let compare_related (a : related) (b : related) =
+  match (a.place, b.place) with
+  | Some first, Some second -> (
+      match Stdlib.compare (place_key first) (place_key second) with
+      | 0 -> String.compare a.label b.label
+      | order -> order)
+  | Some _, None -> -1
+  | None, Some _ -> 1
+  | None, None -> String.compare a.label b.label
+
+let sorted_related related =
+  let sorted =
+    List.sort compare_related
+      (List.map
+         (fun (related : related) ->
+           {
+             related with
+             label = checked "label of a related place" related.label;
+           })
+         related)
+  in
+  let rec check_unique = function
+    | first :: (second :: _ as rest) ->
+        if compare_related first second = 0 then
+          invalid_arg
+            (Printf.sprintf "Finding.make: the related place %S comes twice"
+               first.label);
+        check_unique rest
+    | [ _ ] | [] -> ()
+  in
+  check_unique sorted;
+  sorted
+
+let make finding_class subject ?place ?detail ?fix ?ackable ?mark
+    ?(related = []) () =
   let detail = one_line "detail" detail in
   let fix = one_line "fix" fix in
+  let mark = Option.map (checked_mark place) mark in
+  let related = sorted_related related in
   let ackable =
     match (finding_class, ackable) with
     | (Finding_class.Retired | Finding_class.Unmet_rule), ackable ->
@@ -65,7 +124,7 @@ let make finding_class subject ?place ?detail ?fix ?ackable () =
               a finding"
              (Finding_class.name finding_class))
   in
-  { finding_class; subject; place; detail; fix; ackable }
+  { finding_class; subject; place; detail; fix; ackable; mark; related }
 
 let id_of finding_class subject =
   "finding:" ^ Finding_class.name finding_class ^ ":" ^ subject_id subject

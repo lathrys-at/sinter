@@ -98,6 +98,16 @@ span ends at its last character that is not part of a line ending
 The span of a tag line starts at its `@`. On the first line of a list
 item, the list marker and the task marker are no part of the span.
 
+A tag line has three **parts**, each a span on the line of the tag.
+The tag word runs from the `@` to the end of the word
+([vocabulary.md](vocabulary.md) section 3.1). The target is the tag
+target, the first token after the tag word. The revision is the
+second token after the tag word, when that token is a revision `vN`
+([vocabulary.md](vocabulary.md) section 5). A token is a run of
+characters that are neither a space nor a tab. The span of a part
+starts at its first character and ends one column past its last
+character, by the rule of the columns above.
+
 For a declaration in markdown, this span is the tag line only. The
 record carries the extent separately, in `xline` and `xeline`: the
 first and the last line of the extent ([vocabulary.md](vocabulary.md)
@@ -464,6 +474,26 @@ the position that [manifest.md](manifest.md) section 14.4 gives.
 | `acked` | bool | present only when acked findings are requested |
 | `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3); present only when the command runs with `--gate` |
 | `mode` | string | the mode of the run, as in the `index` record (section 10). A finding of a class that compares with the base ([algebra.md](algebra.md) section 8.2) has `tree` in a run of tree mode |
+| `mcol` `mecol` | int | the **mark**: the start column and the exclusive end column of the part of the tag line at fault (section 3), on the first line of the finding; present only with `label` |
+| `label` | string | one line, human-facing: what is wrong at the mark; present only with the mark |
+| `related` | array of flat objects | the **related places**: the places that explain the finding. Present only when the finding has one related place or more, never empty |
+
+Each object of `related` holds these fields:
+
+| field | type | meaning |
+|---|---|---|
+| `label` | string | one line, human-facing: what the place shows |
+| `path` | string | file |
+| `line` `col` | int | start |
+| `eline` `ecol` | int | inclusive end line; exclusive end column |
+
+The five fields `path`, `line`, `col`, `eline`, and `ecol` are present
+together or absent together. They are absent for a place in no file,
+such as a claim on another branch. The objects are sorted by
+`(path, line, col, eline, ecol, label)`, each string in byte order.
+The objects with no `path` come after the others, sorted by `label`.
+No two objects are equal. A related place under a historical path
+([manifest.md](manifest.md) section 9.4) stays.
 
 ## 9. Identity
 
@@ -506,6 +536,8 @@ path can contain `@`.
 | an error node of a markdown file | `file:<path>@L<line>C<column>`, from the position where the node starts | `parse-error` in a markdown file ([packs.md](packs.md) section 5.2) |
 | a line | `line:<path>@L<line>` | `typo-tag` and `ignored-tag`, at the tag line; `duplicate` of a step, at the line of the step's heading |
 | a tag | `tag:<path>@L<line>C<column>`, from the position of the `@` of the tag | `invalid-target`; `misplaced-plan`; `duplicate` of a declaration or a plan |
+
+The mark and the related places of a finding never enter its id.
 
 Diff mode moves each position in an id of the base through the hunks
 of the diff before it compares ids ([algebra.md](algebra.md) section
