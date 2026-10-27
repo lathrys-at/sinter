@@ -99,16 +99,16 @@ let typo_tag_takes_the_first_word_in_byte_order_of_two_equally_near () =
        tag word of sinter | fix: @ack";
     ]
 
-let unread_tag_sits_at_a_later_paragraph () =
-  check Finding_class.Unread_tag
+let ignored_tag_sits_at_a_later_paragraph () =
+  check Finding_class.Ignored_tag
     [ ("docs/a.md", "# A\n\nText.\n\n@req a v1\n\n> @req b v1\n") ]
     [
-      "docs/a.md:5:1-5:10 | finding:unread-tag:line:docs/a.md@L5 | sinter \
+      "docs/a.md:5:1-5:10 | finding:ignored-tag:line:docs/a.md@L5 | sinter \
        reads tags only in the first paragraph of a section or a list item";
     ]
 
-let bad_target_names_why_the_target_fails () =
-  check Finding_class.Bad_target
+let invalid_target_names_why_the_target_fails () =
+  check Finding_class.Invalid_target
     [
       ( "docs/a.md",
         "# A\n\n\
@@ -117,23 +117,23 @@ let bad_target_names_why_the_target_fails () =
          @cites gh/0\n\
          @cites gh/12\n\
          @satisfies b_ v1\n\
-         @ack disendorsed x 1234abcd\n\
+         @ack retired x 1234abcd\n\
          @deprecated now\n" );
       (".plans/p.md", "# P\n\n@plan p/q\n\n## S\n\n@scope lib/**\n@req Q!\n");
     ]
     [
-      ".plans/p.md:3:1-3:10 | finding:bad-target:tag:.plans/p.md@L3C1 | p/q is \
+      ".plans/p.md:3:1-3:10 | finding:invalid-target:tag:.plans/p.md@L3C1 | \
+       p/q is not a valid slug";
+      ".plans/p.md:8:1-8:8 | finding:invalid-target:tag:.plans/p.md@L8C1 | Q! \
+       is not a valid slug";
+      "docs/a.md:3:1-3:11 | finding:invalid-target:tag:docs/a.md@L3C1 | a! is \
        not a valid slug";
-      ".plans/p.md:8:1-8:8 | finding:bad-target:tag:.plans/p.md@L8C1 | Q! is \
-       not a valid slug";
-      "docs/a.md:3:1-3:11 | finding:bad-target:tag:docs/a.md@L3C1 | a! is not \
-       a valid slug";
-      "docs/a.md:4:1-4:12 | finding:bad-target:tag:docs/a.md@L4C1 | the \
+      "docs/a.md:4:1-4:12 | finding:invalid-target:tag:docs/a.md@L4C1 | the \
        manifest declares no ref namespace xy";
-      "docs/a.md:5:1-5:12 | finding:bad-target:tag:docs/a.md@L5C1 | 0 does not \
-       match the id pattern of the ref namespace gh";
-      "docs/a.md:7:1-7:17 | finding:bad-target:tag:docs/a.md@L7C1 | b_ is not \
-       a valid slug";
+      "docs/a.md:5:1-5:12 | finding:invalid-target:tag:docs/a.md@L5C1 | 0 does \
+       not match the id pattern of the ref namespace gh";
+      "docs/a.md:7:1-7:17 | finding:invalid-target:tag:docs/a.md@L7C1 | b_ is \
+       not a valid slug";
     ]
 
 let misplaced_plan_sits_outside_the_first_block_of_a_plan_file () =
@@ -271,16 +271,16 @@ let cycle_names_its_smallest_member_and_the_others () =
       "docs/a.md:18:1-18:12 | finding:cycle:decision:d";
     ]
 
-let disendorsed_of_a_status_pastes_the_ack_of_its_block () =
-  check Finding_class.Disendorsed
+let retired_of_a_status_pastes_the_ack_of_its_block () =
+  check Finding_class.Retired
     [
       ( "docs/a.md",
         "# A\n\n@decision old\n@deprecated\n\n## B\n\n@decision new\n" );
       ("docs/b.md", "# B\n\n@cites old\n@cites new\n@refines old v1\n");
     ]
     [
-      "docs/b.md:3:1-3:11 | finding:disendorsed:cites:site:docs/b.md#b->old | \
-       decision:old is deprecated | fix: @ack disendorsed old 393d3530";
+      "docs/b.md:3:1-3:11 | finding:retired:cites:site:docs/b.md#b->old | \
+       decision:old is deprecated | fix: @ack retired old 393d3530";
     ]
 
 let superseded =
@@ -299,26 +299,26 @@ let superseded =
      ## X\n\n\
      @decision x\n" )
 
-let disendorsed_of_a_superseded_item_names_its_successor () =
-  check Finding_class.Disendorsed
+let retired_of_a_superseded_item_names_its_successor () =
+  check Finding_class.Retired
     [
       superseded;
       ( "docs/b.md",
         "# B\n\n@cites gone\n@cites gone v1\n@cites x v1\n@cites y\n" );
     ]
     [
-      "docs/b.md:3:1-3:12 | finding:disendorsed:cites:site:docs/b.md#b->gone | \
+      "docs/b.md:3:1-3:12 | finding:retired:cites:site:docs/b.md#b->gone | \
        decision:gone is superseded by decision:new | fix: @cites new";
-      "docs/b.md:4:1-4:15 | finding:disendorsed:cites:site:docs/b.md#b->gone | \
+      "docs/b.md:4:1-4:15 | finding:retired:cites:site:docs/b.md#b->gone | \
        decision:gone is superseded by decision:new | fix: @cites new v3";
-      "docs/b.md:5:1-5:12 | finding:disendorsed:cites:site:docs/b.md#b->x | \
+      "docs/b.md:5:1-5:12 | finding:retired:cites:site:docs/b.md#b->x | \
        decision:x is superseded by decision:z | fix: @cites z v1";
-      "docs/b.md:6:1-6:9 | finding:disendorsed:cites:site:docs/b.md#b->y | \
+      "docs/b.md:6:1-6:9 | finding:retired:cites:site:docs/b.md#b->y | \
        decision:y is superseded by decision:z | fix: @cites z";
     ]
 
-let disendorsed_names_each_successor_in_the_order_of_their_ids () =
-  check Finding_class.Disendorsed
+let retired_names_each_successor_in_the_order_of_their_ids () =
+  check Finding_class.Retired
     [
       ( "docs/a.md",
         "# A\n\n\
@@ -333,29 +333,30 @@ let disendorsed_names_each_successor_in_the_order_of_their_ids () =
       ("docs/b.md", "# B\n\n@cites a v1\n");
     ]
     [
-      "docs/b.md:3:1-3:12 | finding:disendorsed:cites:site:docs/b.md#b->a | \
+      "docs/b.md:3:1-3:12 | finding:retired:cites:site:docs/b.md#b->a | \
        decision:a is superseded by decision:b, decision:c | fix: @cites b v2 \
        or @cites c v1";
     ]
 
-let orphan_sits_at_a_citation_without_its_source () =
-  check Finding_class.Orphan
+let wrong_source_sits_at_a_citation_without_its_source () =
+  check Finding_class.Wrong_source
     [
       ("docs/a.md", "# A\n\n@req a v1\n@verifies a v1\n@refines a v1\n");
       ( "docs/b.md",
         "# B\n\nText.\n\n- @refines a v1\n- @supersedes a v1\n- @cites a\n" );
     ]
     [
-      "docs/a.md:4:1-4:15 | finding:orphan:verifies:req:a->a | a @verifies \
-       needs a test as its source";
-      "docs/b.md:5:3-5:16 | finding:orphan:refines:site:docs/b.md#b->a | a \
-       @refines needs a declaration that holds it";
-      "docs/b.md:6:3-6:19 | finding:orphan:supersedes:site:docs/b.md#b->a | a \
-       @supersedes needs a declaration that holds it";
+      "docs/a.md:4:1-4:15 | finding:wrong-source:verifies:req:a->a | a \
+       @verifies needs a test as its source";
+      "docs/b.md:5:3-5:16 | finding:wrong-source:refines:site:docs/b.md#b->a | \
+       a @refines needs a declaration that holds it";
+      "docs/b.md:6:3-6:19 | \
+       finding:wrong-source:supersedes:site:docs/b.md#b->a | a @supersedes \
+       needs a declaration that holds it";
     ]
 
-let uncovered_names_what_is_missing () =
-  check Finding_class.Uncovered
+let untraced_names_what_is_missing () =
+  check Finding_class.Untraced
     [
       ( "docs/a.md",
         "# A\n\n\
@@ -380,24 +381,24 @@ let uncovered_names_what_is_missing () =
          - @verifies nothing v1\n" );
     ]
     [
-      "docs/a.md:3:1-3:7 | finding:uncovered:req:a | nothing satisfies it, and \
+      "docs/a.md:3:1-3:7 | finding:untraced:req:a | nothing satisfies it, and \
        nothing verifies it";
-      "docs/a.md:7:1-7:10 | finding:uncovered:design:b | nothing verifies it";
+      "docs/a.md:7:1-7:10 | finding:untraced:design:b | nothing verifies it";
     ];
-  check Finding_class.Uncovered
+  check Finding_class.Untraced
     [
       ("docs/a.md", "# A\n\n@req a\n");
       ("docs/b.md", "# B\n\nText.\n\n- @verifies a v1\n");
     ]
-    [ "docs/a.md:3:1-3:7 | finding:uncovered:req:a | nothing satisfies it" ]
+    [ "docs/a.md:3:1-3:7 | finding:untraced:req:a | nothing satisfies it" ]
 
 let plan steps =
   ( ".plans/p.md",
     "# P\n\n@plan p\n@scope lib/**, docs/, bin/main.ml, src/*/**, !lib/x/**\n"
     ^ steps )
 
-let bad_scope_names_the_globs_outside_the_plan () =
-  check Finding_class.Bad_scope
+let scope_outside_plan_names_the_globs_outside_the_plan () =
+  check Finding_class.Scope_outside_plan
     [
       plan
         "\n\
@@ -412,10 +413,11 @@ let bad_scope_names_the_globs_outside_the_plan () =
          @req c\n";
     ]
     [
-      ".plans/p.md:11:1-11:7 | finding:bad-scope:step:p/out | the scope of the \
-       plan does not hold bin/**, bin/, lib, test/a.ml, src/a/*.ml, lib/?";
+      ".plans/p.md:11:1-11:7 | finding:scope-outside-plan:step:p/out | the \
+       scope of the plan does not hold bin/**, bin/, lib, test/a.ml, \
+       src/a/*.ml, lib/?";
     ];
-  check Finding_class.Bad_scope
+  check Finding_class.Scope_outside_plan
     [
       (".plans/p.md", "# P\n\n@plan p\n\n## S\n\n@scope a/**\n@req a\n");
       ( ".plans/q.md",
@@ -425,12 +427,12 @@ let bad_scope_names_the_globs_outside_the_plan () =
       );
     ]
     [
-      ".plans/p.md:5:1-5:5 | finding:bad-scope:step:p/s | the scope of the \
-       plan does not hold a/**";
-      ".plans/q.md:6:1-6:5 | finding:bad-scope:step:q/s | the scope of the \
-       plan does not hold x/?";
-      ".plans/r.md:6:1-6:5 | finding:bad-scope:step:r/s | the scope of the \
-       plan does not hold a/b, pkg/";
+      ".plans/p.md:5:1-5:5 | finding:scope-outside-plan:step:p/s | the scope \
+       of the plan does not hold a/**";
+      ".plans/q.md:6:1-6:5 | finding:scope-outside-plan:step:q/s | the scope \
+       of the plan does not hold x/?";
+      ".plans/r.md:6:1-6:5 | finding:scope-outside-plan:step:r/s | the scope \
+       of the plan does not hold a/b, pkg/";
     ]
 
 let scope_overlap_sits_at_the_later_step () =
@@ -527,21 +529,21 @@ let a_live_ack_discharges_its_finding () =
       ("docs/c.md", "# C\n\n@decision x\n@deprecated\n");
     ]
   in
-  check Finding_class.Disendorsed (files "")
+  check Finding_class.Retired (files "")
     [
-      "docs/b.md:3:1-3:11 | finding:disendorsed:cites:site:docs/b.md#b->old | \
-       decision:old is deprecated | fix: @ack disendorsed old c55c7593";
-      "docs/b.md:4:1-4:9 | finding:disendorsed:cites:site:docs/b.md#b->x | \
-       decision:x is deprecated | fix: @ack disendorsed x c55c7593";
+      "docs/b.md:3:1-3:11 | finding:retired:cites:site:docs/b.md#b->old | \
+       decision:old is deprecated | fix: @ack retired old c55c7593";
+      "docs/b.md:4:1-4:9 | finding:retired:cites:site:docs/b.md#b->x | \
+       decision:x is deprecated | fix: @ack retired x c55c7593";
     ];
-  check Finding_class.Disendorsed
-    (files "@ack disendorsed old c55c7593\n")
+  check Finding_class.Retired
+    (files "@ack retired old c55c7593\n")
     [
-      "docs/b.md:4:1-4:9 | finding:disendorsed:cites:site:docs/b.md#b->x | \
-       decision:x is deprecated | fix: @ack disendorsed x c55c7593";
+      "docs/b.md:4:1-4:9 | finding:retired:cites:site:docs/b.md#b->x | \
+       decision:x is deprecated | fix: @ack retired x c55c7593";
     ];
-  check Finding_class.Disendorsed (files "@ack disendorsed c55c7593d\n") [];
-  check Finding_class.Disendorsed (files "@ack disendorsed\tc55c7593\n") []
+  check Finding_class.Retired (files "@ack retired c55c7593d\n") [];
+  check Finding_class.Retired (files "@ack retired\tc55c7593\n") []
 
 let a_void_ack_discharges_nothing () =
   let files ack =
@@ -552,44 +554,39 @@ let a_void_ack_discharges_nothing () =
   in
   let finding hash =
     [
-      "docs/b.md:3:1-3:11 | finding:disendorsed:cites:site:docs/b.md#b->old | \
-       decision:old is deprecated | fix: @ack disendorsed old " ^ hash;
+      "docs/b.md:3:1-3:11 | finding:retired:cites:site:docs/b.md#b->old | \
+       decision:old is deprecated | fix: @ack retired old " ^ hash;
     ]
   in
-  check Finding_class.Disendorsed (files "") (finding "ba974016");
+  check Finding_class.Retired (files "") (finding "ba974016");
   List.iter
-    (fun ack ->
-      check Finding_class.Disendorsed (files ack) (finding "ba974016"))
+    (fun ack -> check Finding_class.Retired (files ack) (finding "ba974016"))
     [
-      "@ack disendorsed old 00000000\n";
-      "@ack disendorsed old ba97401\n";
-      "@ack disendorsed other ba974016\n";
+      "@ack retired old 00000000\n";
+      "@ack retired old ba97401\n";
+      "@ack retired other ba974016\n";
       "@ack dangling old ba974016\n";
-      "@ack disendorsedx ba974016\n";
-      "@ack disendorsed old BA974016\n";
+      "@ack retiredx ba974016\n";
+      "@ack retired old BA974016\n";
     ]
 
 let an_ack_discharges_only_the_findings_of_its_block () =
-  check Finding_class.Disendorsed
+  check Finding_class.Retired
     [
       ("docs/a.md", "# A\n\n@decision old\n@deprecated\n");
       ( "docs/b.md",
-        "# B\n\n\
-         @cites old\n\n\
-         ## C\n\n\
-         @cites zz\n\
-         @ack disendorsed old ba974016\n" );
-      ("docs/c.md", "# C\n\n@cites old\n@ack disendorsed old ba974016\n");
+        "# B\n\n@cites old\n\n## C\n\n@cites zz\n@ack retired old ba974016\n" );
+      ("docs/c.md", "# C\n\n@cites old\n@ack retired old ba974016\n");
     ]
     [
-      "docs/b.md:3:1-3:11 | finding:disendorsed:cites:site:docs/b.md#b->old | \
-       decision:old is deprecated | fix: @ack disendorsed old ba974016";
+      "docs/b.md:3:1-3:11 | finding:retired:cites:site:docs/b.md#b->old | \
+       decision:old is deprecated | fix: @ack retired old ba974016";
     ]
 
-let disendorsed_ackable files =
+let retired_ackable files =
   List.filter_map
     (fun (finding : Finding.t) ->
-      if finding.finding_class = Finding_class.Disendorsed then
+      if finding.finding_class = Finding_class.Retired then
         Some (show finding, finding.ackable)
       else None)
     (findings files)
@@ -598,26 +595,23 @@ let an_ack_does_not_discharge_the_finding_of_a_superseded_item () =
   let files records ack =
     [ records; ("docs/b.md", "# B\n\n@cites gone\n" ^ ack) ]
   in
-  let acks =
-    [ "@ack disendorsed gone 62671b3a\n"; "@ack disendorsed 62671b3a\n" ]
-  in
+  let acks = [ "@ack retired gone 62671b3a\n"; "@ack retired 62671b3a\n" ] in
   List.iter
     (fun ack ->
       Alcotest.(check (list (pair string bool)))
         ack
         [
-          ( "docs/b.md:3:1-3:12 | \
-             finding:disendorsed:cites:site:docs/b.md#b->gone | decision:gone \
-             is superseded by decision:new | fix: @cites new",
+          ( "docs/b.md:3:1-3:12 | finding:retired:cites:site:docs/b.md#b->gone \
+             | decision:gone is superseded by decision:new | fix: @cites new",
             false );
         ]
-        (disendorsed_ackable (files superseded ack)))
+        (retired_ackable (files superseded ack)))
     ("" :: acks);
   List.iter
     (fun ack ->
       Alcotest.(check (list (pair string bool)))
         ("a status tag, " ^ ack) []
-        (disendorsed_ackable
+        (retired_ackable
            (files ("docs/a.md", "# A\n\n@decision gone\n@deprecated\n") ack)))
     acks
 
@@ -632,22 +626,22 @@ let an_ack_still_discharges_the_finding_of_an_item_that_a_status_retires () =
   Alcotest.(check (list (pair string bool)))
     "both findings"
     [
-      ( "docs/b.md:3:1-3:11 | finding:disendorsed:cites:site:docs/b.md#b->old \
-         | decision:old is deprecated | fix: @ack disendorsed old 0fda7530",
+      ( "docs/b.md:3:1-3:11 | finding:retired:cites:site:docs/b.md#b->old | \
+         decision:old is deprecated | fix: @ack retired old 0fda7530",
         true );
-      ( "docs/b.md:4:1-4:12 | finding:disendorsed:cites:site:docs/b.md#b->gone \
-         | decision:gone is superseded by decision:new | fix: @cites new",
+      ( "docs/b.md:4:1-4:12 | finding:retired:cites:site:docs/b.md#b->gone | \
+         decision:gone is superseded by decision:new | fix: @cites new",
         false );
     ]
-    (disendorsed_ackable (files ""));
+    (retired_ackable (files ""));
   Alcotest.(check (list (pair string bool)))
     "the finding of gone"
     [
-      ( "docs/b.md:4:1-4:12 | finding:disendorsed:cites:site:docs/b.md#b->gone \
-         | decision:gone is superseded by decision:new | fix: @cites new",
+      ( "docs/b.md:4:1-4:12 | finding:retired:cites:site:docs/b.md#b->gone | \
+         decision:gone is superseded by decision:new | fix: @cites new",
         false );
     ]
-    (disendorsed_ackable (files "@ack disendorsed 0fda7530\n"))
+    (retired_ackable (files "@ack retired 0fda7530\n"))
 
 let all ?extra files = List.map show (findings ?extra files)
 
@@ -655,16 +649,16 @@ let a_lone_carriage_return_stays_in_one_line () =
   Alcotest.(check (list string))
     "the findings"
     [
-      "docs/guide.md:3:1-3:15 | finding:bad-target:tag:docs/guide.md@L3C1 | \
-       foo\\rbar is not a valid slug";
+      "docs/guide.md:3:1-3:15 | finding:invalid-target:tag:docs/guide.md@L3C1 \
+       | foo\\rbar is not a valid slug";
     ]
     (all [ ("docs/guide.md", "# Guide\n\n@cites foo\rbar\n") ]);
   Alcotest.(check (list string))
     "the findings of a file with carriage returns for line endings"
     [
-      "docs/a.md:1:6-1:32 | finding:bad-target:tag:docs/a.md@L1C6 | x.\\r\\r## \
-       is not a valid slug";
-      "docs/a.md:1:23-1:32 | finding:uncovered:req:b | nothing satisfies it, \
+      "docs/a.md:1:6-1:32 | finding:invalid-target:tag:docs/a.md@L1C6 | \
+       x.\\r\\r## is not a valid slug";
+      "docs/a.md:1:23-1:32 | finding:untraced:req:b | nothing satisfies it, \
        and nothing verifies it";
     ]
     (all [ ("docs/a.md", "# A\r\r@cites x.\r\r## B\r\r@req b v1\r") ])
@@ -674,12 +668,12 @@ let a_line_feed_in_a_path_stays_in_one_line () =
     "the findings"
     [
       "docs/a\n\
-       b.md:3:1-3:10 | finding:uncovered:req:x | nothing satisfies it, and \
+       b.md:3:1-3:10 | finding:untraced:req:x | nothing satisfies it, and \
        nothing verifies it";
       "docs/c.md:3:1-3:10 | finding:duplicate:tag:docs/c.md@L3C1 | the slug x \
        comes first at docs/a\\nb.md:3";
-      "docs/c.md:3:1-3:10 | finding:uncovered:req:x | nothing satisfies it, \
-       and nothing verifies it";
+      "docs/c.md:3:1-3:10 | finding:untraced:req:x | nothing satisfies it, and \
+       nothing verifies it";
     ]
     (all
        [
@@ -691,9 +685,9 @@ let a_control_character_of_a_plan_stays_in_one_line () =
   Alcotest.(check (list string))
     "the findings"
     [
-      ".plans/p.md:6:1-6:5 | finding:bad-scope:step:p/a | the scope of the \
-       plan does not hold src/**\\r";
-      ".plans/p.md:12:1-12:9 | finding:bad-target:tag:.plans/p.md@L12C1 | \
+      ".plans/p.md:6:1-6:5 | finding:scope-outside-plan:step:p/a | the scope \
+       of the plan does not hold src/**\\r";
+      ".plans/p.md:12:1-12:9 | finding:invalid-target:tag:.plans/p.md@L12C1 | \
        x\\ry is not a valid slug";
       ".plans/p.md:12:1-12:9 | \
        finding:unverified-promise:promise:step:p/b:req:x\ry | the plan \
@@ -722,14 +716,14 @@ let a_control_character_of_a_plan_stays_in_one_line () =
           ]))
 
 let a_ref_with_no_namespace_or_no_id_says_so () =
-  check Finding_class.Bad_target
+  check Finding_class.Invalid_target
     [ ("docs/a.md", "# A\n\n@cites /x\n@cites gh/\n@cites zz/\n") ]
     [
-      "docs/a.md:3:1-3:10 | finding:bad-target:tag:docs/a.md@L3C1 | the ref /x \
-       names no namespace";
-      "docs/a.md:4:1-4:11 | finding:bad-target:tag:docs/a.md@L4C1 | the ref \
-       gh/ names no id";
-      "docs/a.md:5:1-5:11 | finding:bad-target:tag:docs/a.md@L5C1 | the \
+      "docs/a.md:3:1-3:10 | finding:invalid-target:tag:docs/a.md@L3C1 | the \
+       ref /x names no namespace";
+      "docs/a.md:4:1-4:11 | finding:invalid-target:tag:docs/a.md@L4C1 | the \
+       ref gh/ names no id";
+      "docs/a.md:5:1-5:11 | finding:invalid-target:tag:docs/a.md@L5C1 | the \
        manifest declares no ref namespace zz";
     ]
 
@@ -821,10 +815,10 @@ let tests =
     case "typo-tag names the nearest word" typo_tag_names_the_nearest_word;
     case "typo-tag takes the first word in byte order of two equally near"
       typo_tag_takes_the_first_word_in_byte_order_of_two_equally_near;
-    case "unread-tag sits at a later paragraph"
-      unread_tag_sits_at_a_later_paragraph;
-    case "bad-target names why the target fails"
-      bad_target_names_why_the_target_fails;
+    case "ignored-tag sits at a later paragraph"
+      ignored_tag_sits_at_a_later_paragraph;
+    case "invalid-target names why the target fails"
+      invalid_target_names_why_the_target_fails;
     case "misplaced-plan sits outside the first block of a plan file"
       misplaced_plan_sits_outside_the_first_block_of_a_plan_file;
     case "duplicate sits at each later member of a group"
@@ -837,17 +831,17 @@ let tests =
       suspect_pastes_the_current_revision;
     case "cycle names its smallest member and the others"
       cycle_names_its_smallest_member_and_the_others;
-    case "disendorsed of a status pastes the ack of its block"
-      disendorsed_of_a_status_pastes_the_ack_of_its_block;
-    case "disendorsed of a superseded item names its successor"
-      disendorsed_of_a_superseded_item_names_its_successor;
-    case "disendorsed names each successor in the order of their ids"
-      disendorsed_names_each_successor_in_the_order_of_their_ids;
-    case "orphan sits at a citation without its source"
-      orphan_sits_at_a_citation_without_its_source;
-    case "uncovered names what is missing" uncovered_names_what_is_missing;
-    case "bad-scope names the globs outside the plan"
-      bad_scope_names_the_globs_outside_the_plan;
+    case "retired of a status pastes the ack of its block"
+      retired_of_a_status_pastes_the_ack_of_its_block;
+    case "retired of a superseded item names its successor"
+      retired_of_a_superseded_item_names_its_successor;
+    case "retired names each successor in the order of their ids"
+      retired_names_each_successor_in_the_order_of_their_ids;
+    case "wrong-source sits at a citation without its source"
+      wrong_source_sits_at_a_citation_without_its_source;
+    case "untraced names what is missing" untraced_names_what_is_missing;
+    case "scope-outside-plan names the globs outside the plan"
+      scope_outside_plan_names_the_globs_outside_the_plan;
     case "scope-overlap sits at the later step"
       scope_overlap_sits_at_the_later_step;
     case "unverified-promise sits at a promise with no verifies"

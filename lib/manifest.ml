@@ -241,7 +241,7 @@ let problem_message = function
         (Toml.quote (Finding_class.gate_name gate))
   | Never_blocks ->
       "'config-changed' takes no tier; it always reports and never blocks"
-  | No_tier_at_any_gate -> "'pack-drift' takes no tier at any gate"
+  | No_tier_at_any_gate -> "'pack-mismatch' takes no tier at any gate"
   | Unknown_kind { name; nearest } ->
       Printf.sprintf "unknown kind %s in [plan.locations]%s" (Toml.quote name)
         (match nearest with
@@ -593,7 +593,7 @@ let tier_place reading gate =
     (fun key ->
       match Finding_class.of_name key.name with
       | Some Finding_class.Config_changed -> Error Never_blocks
-      | Some Finding_class.Pack_drift -> Error No_tier_at_any_gate
+      | Some Finding_class.Pack_mismatch -> Error No_tier_at_any_gate
       | Some finding_class -> (
           match Finding_class.builtin_tier finding_class gate with
           | None -> Error (No_tier_at_gate { finding_class; gate })

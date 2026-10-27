@@ -486,7 +486,7 @@ let an_ack_names_the_fact_of_its_block () =
         ( "a.md",
           "# A\n\n\
            @req a\n\
-           @ack disendorsed  cache-ttl 1a2b3c4d\n\n\
+           @ack retired  cache-ttl 1a2b3c4d\n\n\
            # B\n\n\
            @cites a\n\
            @ack stale 0123abcd\n" );
@@ -494,10 +494,10 @@ let an_ack_names_the_fact_of_its_block () =
   in
   Alcotest.(check string)
     "the ack of a declaration"
-    "{\"block\":\"req:a\",\"col\":1,\"ecol\":37,\"eline\":4,\"hash\":\"1a2b3c4d\",\"id\":\"ack:req:a:disendorsed  \
-     cache-ttl\",\"kind\":\"ack\",\"line\":4,\"pack\":\"markdown\",\"path\":\"a.md\",\"target\":\"disendorsed  \
+    "{\"block\":\"req:a\",\"col\":1,\"ecol\":33,\"eline\":4,\"hash\":\"1a2b3c4d\",\"id\":\"ack:req:a:retired  \
+     cache-ttl\",\"kind\":\"ack\",\"line\":4,\"pack\":\"markdown\",\"path\":\"a.md\",\"target\":\"retired  \
      cache-ttl\",\"v\":1}"
-    (Jsonl.to_string (find "ack:req:a:disendorsed  cache-ttl" records));
+    (Jsonl.to_string (find "ack:req:a:retired  cache-ttl" records));
   check_field records "ack:site:a.md#b:stale" "block" (str "site:a.md#b")
 
 let the_hash_of_an_ack_follows_its_last_blank () =
@@ -1190,17 +1190,16 @@ let acks_give_their_block () =
     facts
       [
         ( "docs/a.md",
-          "# A\n\n@req a v1\n\n## B\n\n@cites a\n@ack disendorsed a 1234abcd\n"
-        );
+          "# A\n\n@req a v1\n\n## B\n\n@cites a\n@ack retired a 1234abcd\n" );
         ( "docs/b.md",
-          "# B\n\nText.\n\n## C\n\n@cites a\n@ack disendorsed 89abcdef\n" );
+          "# B\n\nText.\n\n## C\n\n@cites a\n@ack retired 89abcdef\n" );
       ]
   in
   Alcotest.(check (list string))
     "path, span, block, target, hash, block index"
     [
-      "docs/a.md 8:1-8:28 req:a disendorsed a 1234abcd 1";
-      "docs/b.md 8:1-8:26 site:docs/b.md#c disendorsed 89abcdef 0";
+      "docs/a.md 8:1-8:24 req:a retired a 1234abcd 1";
+      "docs/b.md 8:1-8:22 site:docs/b.md#c retired 89abcdef 0";
     ]
     (List.map
        (fun (ack : Facts.ack) ->
@@ -1345,9 +1344,9 @@ let lookup_lines =
     "@verifies a";
     "@verifies b";
     "@deprecated";
-    "@ack disendorsed a 0123abcd";
-    "@ack disendorsed 89abcdef";
-    "@cites a\n@ack disendorsed a 0123abcd\n@ack disendorsed b 89abcdef";
+    "@ack retired a 0123abcd";
+    "@ack retired 89abcdef";
+    "@cites a\n@ack retired a 0123abcd\n@ack retired b 89abcdef";
   ]
 
 let lookup_promises =

@@ -216,11 +216,11 @@ let the_tier_that_applies_follows_the_three_rules () =
   check "the cap leaves a built-in warn" (Some Finding_class.Warn)
     Finding_class.Turn Finding_class.Typo_tag;
   check "the cap leaves a built-in off" (Some Finding_class.Off)
-    Finding_class.Turn Finding_class.Unstamped;
+    Finding_class.Turn Finding_class.Awaiting_approval;
   check "a class with no tier at the gate" None Finding_class.Target
-    Finding_class.Bad_scope;
-  check "pack-drift takes no tier" None Finding_class.Merge
-    Finding_class.Pack_drift
+    Finding_class.Scope_outside_plan;
+  check "pack-mismatch takes no tier" None Finding_class.Merge
+    Finding_class.Pack_mismatch
 
 let without_the_cap_the_built_in_tier_applies () =
   let manifest = read (markdown ^ "[check]\ntiers.turn.dangling = \"off\"\n") in
@@ -554,17 +554,19 @@ let names_that_vary () =
        'turn', 'merge', or 'target'";
     ];
   reports "a class with no tier at the gate"
-    "[check.tiers.target]\nbad-scope = \"warn\"\n"
-    [ "sinter.toml:2:1: 'bad-scope' takes no tier at the gate 'target'" ];
-  reports "config-changed, pack-drift, and an unknown class"
+    "[check.tiers.target]\nscope-outside-plan = \"warn\"\n"
+    [
+      "sinter.toml:2:1: 'scope-outside-plan' takes no tier at the gate 'target'";
+    ];
+  reports "config-changed, pack-mismatch, and an unknown class"
     "[check.tiers.merge]\n\
      config-changed = \"warn\"\n\
-     pack-drift = \"warn\"\n\
+     pack-mismatch = \"warn\"\n\
      xyz = \"warn\"\n"
     [
       "sinter.toml:2:1: 'config-changed' takes no tier; it always reports and \
        never blocks";
-      "sinter.toml:3:1: 'pack-drift' takes no tier at any gate";
+      "sinter.toml:3:1: 'pack-mismatch' takes no tier at any gate";
       "sinter.toml:4:1: unknown finding class 'xyz' in [check.tiers.merge]; \
        'tiers' names built-in finding classes only";
     ];
@@ -831,8 +833,8 @@ let the_example_messages_of_the_specification () =
     "the pack markdown is built into sinter and takes no version";
   check "[check.tiers.merge]\nconfig-changed = \"warn\"\n"
     "'config-changed' takes no tier; it always reports and never blocks";
-  check "[check.tiers.target]\nbad-scope = \"warn\"\n"
-    "'bad-scope' takes no tier at the gate 'target'";
+  check "[check.tiers.target]\nscope-outside-plan = \"warn\"\n"
+    "'scope-outside-plan' takes no tier at the gate 'target'";
   check
     (markdown ^ "refs.gh = \".\"\n")
     "'.' is not in the id pattern language; put it in a class, for example [.]";
@@ -1220,7 +1222,7 @@ let newer_keys_names_each_key_newer_than_spec () =
 
 let render_names_the_path_and_the_place () =
   Alcotest.(check string)
-    "a place" "conf/s.toml:3:14: 'pack-drift' takes no tier at any gate"
+    "a place" "conf/s.toml:3:14: 'pack-mismatch' takes no tier at any gate"
     (Manifest.render ~path:"conf/s.toml"
        (Manifest.At
           ({ Toml.line = 3; column = 14 }, Manifest.No_tier_at_any_gate)))

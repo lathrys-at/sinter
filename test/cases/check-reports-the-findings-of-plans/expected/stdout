@@ -1,8 +1,8 @@
-.plans/work.md:12:1: bad-scope step:work/write-the-logout-req the scope of the plan does not hold src/**
+.plans/work.md:12:1: scope-outside-plan step:work/write-the-logout-req the scope of the plan does not hold src/**
 .plans/work.md:15:1: promise-out-of-scope promise:step:work/write-the-logout-req:req:logout req:logout at docs/reqs.md:8 is outside the scope of the step
 .plans/work.md:15:1: unverified-promise promise:step:work/write-the-logout-req:req:logout the plan promises no @verifies logout
 .plans/work.md:17:1: scope-overlap step:work/overlap this step shares promises and scope with step:work/write-the-login-req
 .plans/work.md:22:1: duplicate line:.plans/work.md@L22 the slug overlap comes first at .plans/work.md:17
 .plans/work.md:25:1: misplaced-plan tag:.plans/work.md@L25C1 a @plan tag stands only in the first tag block of its file
-docs/reqs.md:3:1: uncovered req:login nothing satisfies it, and nothing verifies it
-docs/reqs.md:8:1: uncovered req:logout nothing satisfies it, and nothing verifies it
+docs/reqs.md:3:1: untraced req:login nothing satisfies it, and nothing verifies it
+docs/reqs.md:8:1: untraced req:logout nothing satisfies it, and nothing verifies it

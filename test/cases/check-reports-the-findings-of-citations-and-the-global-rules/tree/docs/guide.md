@@ -7,4 +7,4 @@
 @cites logout
 @verifies store v1
 @refines store v1
-@ack disendorsed logout 00000000
+@ack retired logout 00000000

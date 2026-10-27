@@ -54,9 +54,9 @@ let make finding_class subject ?place ?detail ?fix ?ackable () =
   let fix = one_line "fix" fix in
   let ackable =
     match (finding_class, ackable) with
-    | (Finding_class.Disendorsed | Finding_class.Rule_owed), ackable ->
+    | (Finding_class.Retired | Finding_class.Unmet_rule), ackable ->
         Option.value ackable ~default:false
-    | Finding_class.Disconnected, None -> true
+    | Finding_class.Unexercised, None -> true
     | _, None -> false
     | _, Some _ ->
         invalid_arg

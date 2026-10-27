@@ -151,7 +151,7 @@ Slugs name declared items. There are three separate slug namespaces:
 Two declarations in one namespace are an error (finding class
 `duplicate`) when their slugs are equal, or when their slugs differ
 only in case. A slug that fails the pattern is an error (finding class
-`bad-target`).
+`invalid-target`).
 
 A citation whose tag target differs from a declared slug only in case
 does not resolve, so the citation is dangling (section 7.2). The `fix`
@@ -179,7 +179,7 @@ namespace declares ([manifest.md](manifest.md) section 8.3). Example:
 A ref is a pointer, not a declared item. It has no revision, no
 extent, and no approval. A ref whose namespace is not declared, or
 whose id fails the namespace's pattern, is an error (finding class
-`bad-target`).
+`invalid-target`).
 
 ## 5. Revisions
 
@@ -318,8 +318,8 @@ A declaration says: this text defines a thing.
 `@design` and `@req` differ in two ways only. They differ in purpose:
 a design item describes architecture between the requirements and the
 code. They also differ in the default strictness of their approval
-checks — see the finding classes `unratified-req` and
-`unratified-design` in [algebra.md](algebra.md) section 9. The kind
+checks — see the finding classes `unapproved-req` and
+`unapproved-design` in [algebra.md](algebra.md) section 9. The kind
 lives on the tag, not on a file path, so these documents can live
 anywhere in the repository.
 
@@ -366,15 +366,15 @@ same slug, the first heading keeps the slug. Each later heading adds
 anchors of headings. Example: `example`, `example-1`. Only a heading
 that opens a section counts (section 2).
 
-A citation is an **orphan** (finding class `orphan`) when its kind
-needs a certain source and the citation does not have one. A
-`@verifies` needs a test. A `@refines` or a `@supersedes` needs an
-enclosing declaration.
+A citation has the **wrong source** (finding class `wrong-source`)
+when its kind needs a certain source and the citation does not have
+one. A `@verifies` needs a test. A `@refines` or a `@supersedes` needs
+an enclosing declaration.
 
 A citation is **dangling** when its tag target is well formed and does
 not resolve: no declaration has the slug. A tag target that fails its
 pattern, or a ref whose namespace is not declared, is not dangling. It
-is the finding `bad-target` only (sections 4.1 and 4.2).
+is the finding `invalid-target` only (sections 4.1 and 4.2).
 
 A `@supersedes` edge whose source and tag target have different kinds
 is an error. A live `@supersedes` edge retires the declaration that
@@ -408,7 +408,7 @@ that person read it. In the grammar, `<hash>` is the last token, and
 is one of:
 
 - a finding class, with an optional subject — for example
-  `disendorsed cache-ttl` or `disconnected`;
+  `retired cache-ttl` or `unexercised`;
 - a rule name — for example `ste-docs`.
 
 The **subject** of a finding is what the finding is about: a fact, or
@@ -493,7 +493,7 @@ The cycle is an error (finding class `cycle`).
 
 An item that is not in force is **retired**. Two triggers retire an
 item: a status tag, or a live `@supersedes` edge. Retirement does not
-cascade. A citation of a retired item is a finding (`disendorsed`),
+cascade. A citation of a retired item is a finding (`retired`),
 never an automatic retirement of the citing item.
 
 The **successors** of a retired declaration are the declarations in
@@ -550,7 +550,7 @@ into a governed file. Two rules make hand-written pins work:
 
 1. **Every extent edit owes a bump.** When a declaration's extent
    changes relative to the diff base and its revision does not
-   increase, that is an error (finding class `rev-owed`). A writer
+   increase, that is an error (finding class `unbumped`). A writer
    cannot claim an exception: Sinter does not accept the claim "this
    edit did not change the meaning", because no tool can check that
    claim.
@@ -643,8 +643,8 @@ section 7.2): a glob that starts with `!` leaves paths out.
 A step with no `@scope` inherits the plan's scope. A step's `@scope`
 must be contained in its plan's scope, by the rule that
 [algebra.md](algebra.md) section 9 gives for the finding class
-`bad-scope`. A step's **effective scope** is its own scope when it has
-one, and otherwise the plan's scope.
+`scope-outside-plan`. A step's **effective scope** is its own scope
+when it has one, and otherwise the plan's scope.
 
 The manifest key `plan.shared` ([manifest.md](manifest.md) section
 10.3) names paths that every step of every plan can change, for

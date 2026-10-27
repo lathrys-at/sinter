@@ -20,10 +20,9 @@
       declare nothing
     - acks: [n / 20] sections under [docs/acks/], 25 to a file, when the tree
       has a retired decision. Each [@cites] a retired decision. About a quarter
-      carry an [@ack disendorsed] of the citation whose hash is the first 8
-      digits of the hash of their block; a quarter carry one whose first digit
-      differs; a quarter carry both, the wrong one first; and a quarter carry
-      none
+      carry an [@ack retired] of the citation whose hash is the first 8 digits
+      of the hash of their block; a quarter carry one whose first digit differs;
+      a quarter carry both, the wrong one first; and a quarter carry none
     - plans: one plan for each 1,000 declarations, and at least one, under
       [.plans/]; each has 20 steps with a [@scope], and each step but the last
       makes two to four promises

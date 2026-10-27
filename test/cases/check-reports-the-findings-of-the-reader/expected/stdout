@@ -1,11 +1,11 @@
 docs/a.md:4:1: typo-tag line:docs/a.md@L4 @decisoin is not a tag word of sinter
   fix: @decision
 docs/a.md:8:1: duplicate tag:docs/a.md@L8C1 the slug login comes first at docs/a.md:3
-docs/a.md:12:1: unread-tag line:docs/a.md@L12 sinter reads tags only in the first paragraph of a section or a list item
-docs/a.md:16:1: bad-target tag:docs/a.md@L16C1 bad..slug is not a valid slug
-docs/a.md:17:1: bad-target tag:docs/a.md@L17C1 the manifest declares no ref namespace jira
-docs/a.md:18:1: bad-target tag:docs/a.md@L18C1 x does not match the id pattern of the ref namespace gh
+docs/a.md:12:1: ignored-tag line:docs/a.md@L12 sinter reads tags only in the first paragraph of a section or a list item
+docs/a.md:16:1: invalid-target tag:docs/a.md@L16C1 bad..slug is not a valid slug
+docs/a.md:17:1: invalid-target tag:docs/a.md@L17C1 the manifest declares no ref namespace jira
+docs/a.md:18:1: invalid-target tag:docs/a.md@L18C1 x does not match the id pattern of the ref namespace gh
 docs/binary.md:1:1: parse-error file:docs/binary.md the file is not UTF-8 text at byte 15
-docs/cr.md:3:1: bad-target tag:docs/cr.md@L3C1 foo\rbar is not a valid slug
+docs/cr.md:3:1: invalid-target tag:docs/cr.md@L3C1 foo\rbar is not a valid slug
 docs/notes.md:3:1: misplaced-plan tag:docs/notes.md@L3C1 a @plan tag stands only in a file under .plans/
 docs/table.md:5:1: parse-error file:docs/table.md@L5C1 the markdown parser cannot read the text here

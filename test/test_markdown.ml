@@ -500,7 +500,7 @@ let hash_normalizes_each_line () =
     file
       "# A\n\
        @req a v3 Text.  \n\
-       @ack disendorsed x 01ba4719\n\
+       @ack retired x 01ba4719\n\
        @cites x v2 because\n\
        @satisfies y\t v1\n\
        @cites gh/4 v0\n"
@@ -916,7 +916,7 @@ let render_part edit = function
              rev)
           (if desc = "" then "" else " " ^ desc);
       ]
-      @ if edit.acks then [ "@ack disendorsed t 0123abcd" ] else []
+      @ if edit.acks then [ "@ack retired t 0123abcd" ] else []
   | Citation { word; target; rev; desc } ->
       [
         Printf.sprintf "@%s %s%s%s" word target

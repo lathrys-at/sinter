@@ -59,14 +59,14 @@ val make :
     of [finding_class] about [subject]. Its detail and its fix are [detail] and
     [fix] as {!escape} writes them, so each is one line.
 
-    A finding of [disconnected] is ackable. A finding of [disendorsed] or
-    [rule-owed] is ackable only under a condition of its class: when [ackable]
+    A finding of [unexercised] is ackable. A finding of [retired] or
+    [unmet-rule] is ackable only under a condition of its class: when [ackable]
     is [true]. [ackable] is [false] when absent. A finding of any other class is
     not ackable.
 
     @raise Invalid_argument
       if [detail] or [fix] is empty, or if [ackable] is given for a class other
-      than [disendorsed] and [rule-owed]. *)
+      than [retired] and [unmet-rule]. *)
 
 val escape : string -> string
 (** [escape text] is [text] with each ASCII control character other than the tab

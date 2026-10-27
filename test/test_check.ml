@@ -109,14 +109,14 @@ let a_parse_error_at_an_error_node_warns_where_its_class_blocks () =
 
 let a_finding_takes_the_tier_of_its_class () =
   Alcotest.(check (list (option tier)))
-    "dangling under the cap, suspect turned off, bad-scope at target"
+    "dangling under the cap, suspect turned off, scope-outside-plan at target"
     [ Some Finding_class.Block; Some Finding_class.Off; None ]
     [
       Check.tier capped Finding_class.Merge
         (finding Finding_class.Dangling edge);
       Check.tier capped Finding_class.Merge (finding Finding_class.Suspect edge);
       Check.tier plain Finding_class.Target
-        (finding Finding_class.Bad_scope edge);
+        (finding Finding_class.Scope_outside_plan edge);
     ]
 
 let only_a_parse_error_at_an_error_node_changes_its_tier =
@@ -141,7 +141,8 @@ let entries_of = List.map (fun (entry : Check.entry) -> entry.finding)
 let with_no_gate_every_finding_counts_with_no_tier () =
   let findings =
     [
-      finding Finding_class.Uncovered edge; finding Finding_class.Bad_scope edge;
+      finding Finding_class.Untraced edge;
+      finding Finding_class.Scope_outside_plan edge;
     ]
   in
   let entries = Check.select plain None findings in
@@ -163,14 +164,14 @@ let tiers_of entries =
 let a_gate_leaves_out_a_class_that_is_off_or_has_no_tier () =
   let findings =
     [
-      finding Finding_class.Uncovered edge;
+      finding Finding_class.Untraced edge;
       finding Finding_class.Dangling edge;
       finding Finding_class.Unverified_promise edge;
       finding Finding_class.Parse_error error_node;
     ]
   in
   let tiers = Alcotest.(list (pair string (option (pair string string)))) in
-  Alcotest.check tiers "the entries at turn, where uncovered is off"
+  Alcotest.check tiers "the entries at turn, where untraced is off"
     [
       ("dangling", Some ("turn", "block"));
       ("unverified-promise", Some ("turn", "warn"));
@@ -180,7 +181,7 @@ let a_gate_leaves_out_a_class_that_is_off_or_has_no_tier () =
   Alcotest.check tiers
     "the entries at target, where unverified-promise takes no tier"
     [
-      ("uncovered", Some ("target", "warn"));
+      ("untraced", Some ("target", "warn"));
       ("dangling", Some ("target", "block"));
       ("parse-error", Some ("target", "warn"));
     ]
@@ -241,7 +242,7 @@ let a_finding_blocks_at_its_tier_or_under_strict =
       Printf.sprintf "strict %b, %d entries" strict (List.length tiers))
     (fun (strict, tiers) ->
       let entries =
-        List.map (fun tier -> entry ?tier Finding_class.Orphan) tiers
+        List.map (fun tier -> entry ?tier Finding_class.Wrong_source) tiers
       in
       Check.exit_code ~strict entries
       =
@@ -271,19 +272,19 @@ let a_finding_prints_its_place_tier_class_subject_and_detail () =
        });
   Alcotest.(check (list string))
     "with no tier, no detail, and no fix"
-    [ "docs/a.md:3:2: orphan cites:site:docs/a.md->x" ]
+    [ "docs/a.md:3:2: wrong-source cites:site:docs/a.md->x" ]
     (Check.text
        {
-         finding = finding ~place:(place ()) Finding_class.Orphan edge;
+         finding = finding ~place:(place ()) Finding_class.Wrong_source edge;
          tier = None;
        })
 
 let a_finding_with_no_place_prints_dashes () =
   Alcotest.(check (list string))
     "the line"
-    [ "-:-:-: warn orphan cites:site:docs/a.md->x" ]
+    [ "-:-:-: warn wrong-source cites:site:docs/a.md->x" ]
     (Check.text
-       { finding = finding Finding_class.Orphan edge; tier = Some warn })
+       { finding = finding Finding_class.Wrong_source edge; tier = Some warn })
 
 let a_subject_with_a_space_stands_in_quotes () =
   Alcotest.(check (list string))
@@ -314,9 +315,9 @@ let a_control_character_in_a_path_or_a_subject_is_escaped () =
   Alcotest.(check (list string))
     "the lines"
     [
-      "docs/a\\nb.md:1:1: unread-tag line:docs/a\\nb.md@L1";
-      "-:-:-: unread-tag line:my\\rdocs/\\x.md@L2";
-      "-:-:-: unread-tag \"line:my docs\\r/\\\\x.md@L3\"";
+      "docs/a\\nb.md:1:1: ignored-tag line:docs/a\\nb.md@L1";
+      "-:-:-: ignored-tag line:my\\rdocs/\\x.md@L2";
+      "-:-:-: ignored-tag \"line:my docs\\r/\\\\x.md@L3\"";
     ]
     (List.concat_map Check.text
        [
@@ -324,19 +325,19 @@ let a_control_character_in_a_path_or_a_subject_is_escaped () =
            Check.finding =
              finding
                ~place:(place ~path:"docs/a\nb.md" ~line:1 ~column:1 ())
-               Finding_class.Unread_tag
+               Finding_class.Ignored_tag
                (Finding.Line { path = "docs/a\nb.md"; line = 1 });
            tier = None;
          };
          {
            finding =
-             finding Finding_class.Unread_tag
+             finding Finding_class.Ignored_tag
                (Finding.Line { path = "my\rdocs/\\x.md"; line = 2 });
            tier = None;
          };
          {
            finding =
-             finding Finding_class.Unread_tag
+             finding Finding_class.Ignored_tag
                (Finding.Line { path = "my docs\r/\\x.md"; line = 3 });
            tier = None;
          };
@@ -370,13 +371,13 @@ let a_finding_gives_one_line_and_one_more_for_a_fix =
 let a_record_holds_every_field_of_a_finding () =
   Alcotest.(check string)
     "the record"
-    "{\"ack_subject\":\"x\",\"ackable\":true,\"class\":\"disendorsed\",\"col\":2,\"detail\":\"d\",\"ecol\":9,\"eline\":4,\"fix\":\"f\",\"gate\":\"merge\",\"id\":\"finding:disendorsed:cites:site:docs/a.md->x\",\"kind\":\"finding\",\"line\":3,\"mode\":\"tree\",\"path\":\"docs/a.md\",\"subject\":\"cites:site:docs/a.md->x\",\"tier\":\"block\",\"v\":1}"
+    "{\"ack_subject\":\"x\",\"ackable\":true,\"class\":\"retired\",\"col\":2,\"detail\":\"d\",\"ecol\":9,\"eline\":4,\"fix\":\"f\",\"gate\":\"merge\",\"id\":\"finding:retired:cites:site:docs/a.md->x\",\"kind\":\"finding\",\"line\":3,\"mode\":\"tree\",\"path\":\"docs/a.md\",\"subject\":\"cites:site:docs/a.md->x\",\"tier\":\"block\",\"v\":1}"
     (Jsonl.to_string
        (Check.record
           {
             finding =
               finding ~place:(place ()) ~detail:"d" ~fix:"f" ~ackable:true
-                Finding_class.Disendorsed edge;
+                Finding_class.Retired edge;
             tier = Some (Finding_class.Merge, Finding_class.Block);
           }))
 

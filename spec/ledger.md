@@ -225,7 +225,7 @@ condition.
 
 ### 8.2 The discharge condition
 
-@req ledger-discharge-condition
+@req ledger-discharge-condition v2
 
 A plan meets the condition when all of these statements are true:
 
@@ -240,7 +240,7 @@ A plan meets the condition when all of these statements are true:
   at any rung. Rung enforcement happened earlier, at the gate `merge`.
 
 An open plan on the target branch that fails this condition is the
-finding `undischarged-plan`: a person merged a plan whose work is not
+finding `merged-incomplete`: a person merged a plan whose work is not
 complete. Two corrections remove the finding. The first is a smaller
 commitment set for the plan, with a new stamp when the kind `plan`
 needs approval. The second is a revert of the merge commit.
@@ -270,10 +270,10 @@ runs the abandon command; the tool never writes this entry on its own.
 
 ### 9.2 The end of the lease
 
-@req ledger-abandoned-lease
+@req ledger-abandoned-lease v2
 
 An `abandoned` entry ends the plan's lease. It also releases every
-`blocked-on` promise that depended on that lease.
+`waiting-on` promise that depended on that lease.
 
 ## 10. Open and closed plans
 

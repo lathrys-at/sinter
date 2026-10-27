@@ -145,7 +145,7 @@ tables, and each table holds the settings of one part of Sinter:
 | `[evidence]` | test evidence | which rung of a `@verifies` edge completes a promise |
 
 The **plan check** compares the hunks of a diff with the scopes of the
-open plans. It reports each hunk outside them as `unmapped-work`
+open plans. It reports each hunk outside them as `unplanned-change`
 ([algebra.md](algebra.md) section 9). **Promise discharge** decides
 when a promise of a plan step is met
 ([vocabulary.md](vocabulary.md) section 10.5).
@@ -271,7 +271,7 @@ sinter: sinter.toml:1:8: this manifest needs specification 1.2, and this sinter 
 sinter: sinter.toml:5:1: the pack markdown is built into sinter and takes no version
 sinter: sinter.toml:7:29: the pack typescript has no runner 'jest'; its runners are vitest
 sinter: sinter.toml:12:1: 'config-changed' takes no tier; it always reports and never blocks
-sinter: sinter.toml:13:1: 'bad-scope' takes no tier at the gate 'target'
+sinter: sinter.toml:13:1: 'scope-outside-plan' takes no tier at the gate 'target'
 sinter: sinter.toml:6:12: '.' is not in the id pattern language; put it in a class, for example [.]
 sinter: sinter.toml:6:12: the pattern matches an empty id
 sinter: no branch 'main' exists here or on origin; fetch it with git fetch origin main:refs/remotes/origin/main, or set 'target' in sinter.toml to the name of the main branch
@@ -618,7 +618,7 @@ These are errors:
 - `<class>` is not a built-in finding class;
 - `<class>` takes no tier at `<gate>`;
 - `<class>` is `config-changed`, which always reports and never blocks;
-- `<class>` is `pack-drift`, which takes no tier at any gate.
+- `<class>` is `pack-mismatch`, which takes no tier at any gate.
 
 ### 9.3 The rollout cap and the tier that applies
 
@@ -668,7 +668,7 @@ generated documentation can be in `plan.ambient` and in
 ### 10.2 Ambient paths
 
 `plan.ambient` is a path set. A hunk under an **ambient** path needs
-no plan step: `unmapped-work` does not report it
+no plan step: `unplanned-change` does not report it
 ([algebra.md](algebra.md) section 9). Use the key for files that tools
 write, such as lock files and generated code.
 
@@ -687,8 +687,8 @@ a built-in member.
 `plan.shared` is a path set. A **shared** path is a path that every
 step of every plan can change, such as the dependency and license
 files at the repository root. A hunk under a shared path is never work
-outside a plan: `unmapped-work` does not report it. A shared path does
-not widen the place where a promise can be met
+outside a plan: `unplanned-change` does not report it. A shared path
+does not widen the place where a promise can be met
 ([vocabulary.md](vocabulary.md) section 10.4).
 
 ### 10.4 Default locations
@@ -764,7 +764,7 @@ The rule applies in three places:
 - when a plan meets the discharge condition ([ledger.md](ledger.md)
   section 8).
 
-The tier of the class `unattributed` is a separate setting. It decides
+The tier of the class `unmeasured` is a separate setting. It decides
 how hard an edge at rung `unattributed` bites as a finding.
 
 ## 13. Built-ins

@@ -4,7 +4,7 @@
 
 @design store v1
 @cites cache-ttl v1
-@ack disendorsed cache-ttl 0123abcd
+@ack retired cache-ttl 0123abcd
 
 ## Notes
 

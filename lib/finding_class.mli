@@ -36,45 +36,45 @@ val tier_of_name : string -> tier option
 type t =
   | Parse_error
   | Typo_tag
-  | Unread_tag
-  | Bad_target
+  | Ignored_tag
+  | Invalid_target
   | Duplicate
-  | Bad_scope
+  | Scope_outside_plan
   | Misplaced_plan
   | Unpinned
   | Dangling
   | Renamed
   | Suspect
-  | Rev_owed
+  | Unbumped
   | Cycle
   | Code_drift
   | Declined
-  | Unratified_req
-  | Unratified_design
-  | Unstamped
-  | Amendment
-  | Disendorsed
+  | Unapproved_req
+  | Unapproved_design
+  | Awaiting_approval
+  | Unapproved_plan
+  | Retired
   | Stale_ack
-  | Orphan
+  | Wrong_source
   | Never_ran
   | Failed
-  | Disconnected
-  | Unattributed
+  | Unexercised
+  | Unmeasured
   | Ambiguous_result
-  | Uncovered
-  | Unmet
+  | Untraced
+  | Unmet_promise
   | Promise_out_of_scope
   | Unverified_promise
   | Promise_collision
   | Scope_overlap
-  | Blocked_on
-  | Lease_overlap
-  | Unmapped_work
-  | Rule_owed
+  | Waiting_on
+  | Branch_overlap
+  | Unplanned_change
+  | Unmet_rule
   | Config_changed
-  | Undischarged_plan
+  | Merged_incomplete
   | Ledger_broken
-  | Pack_drift
+  | Pack_mismatch
 
 val all : t list
 (** Every built-in finding class, each once, in the order in which [t] declares
@@ -91,4 +91,4 @@ val of_name : string -> t option
 val builtin_tier : t -> gate -> tier option
 (** [builtin_tier finding_class gate] is the tier that the class has at the gate
     when nothing sets another. It is [None] when the class takes no tier at that
-    gate. [Pack_drift] takes no tier at any gate. *)
+    gate. [Pack_mismatch] takes no tier at any gate. *)

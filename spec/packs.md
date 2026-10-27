@@ -62,7 +62,7 @@ Trust in a fetched pack comes from the hash in the lock file. Before
 Sinter loads a fetched pack, it computes the pack hash of the files in
 the cache. It compares that hash with the hash that the lock file fixes
 for the pack. When the two differ, the command stops with exit code 3
-(finding class `pack-drift`, [algebra.md](algebra.md) section 9).
+(finding class `pack-mismatch`, [algebra.md](algebra.md) section 9).
 
 ### 2.3 The files of a pack
 
@@ -236,7 +236,7 @@ each of these cases, the pack does not load, and the command stops
 with exit code 3:
 
 - the pack hash of the files in the cache differs from the hash that
-  the lock file fixes (`pack-drift`);
+  the lock file fixes (`pack-mismatch`);
 - the descriptor holds an error (section 3.1);
 - the `name` of the descriptor differs from the name that the manifest
   gives the pack;
@@ -523,7 +523,7 @@ section 7.2):
 
 | tag | attached to a test or a group | attached to a definition only | unattached |
 |---|---|---|---|
-| `@verifies` | the source is the test or the group | an orphan (finding class `orphan`) | an orphan |
+| `@verifies` | the source is the test or the group | a citation with the wrong source (finding class `wrong-source`) | a citation with the wrong source |
 | `@satisfies`, `@cites` | the source is a code site attached to `T` | the source is a code site attached to `T` | the source is a code site with no attachment target |
 
 ### 6.5 Sites
@@ -586,8 +586,8 @@ holds a paragraph **directly** when no list item and no block quote
 inside it holds the paragraph. Take a paragraph that a section or a
 list item holds directly, and that is not its first paragraph. When
 the first line of that paragraph is a tag line, Sinter reports one
-finding of the class `unread-tag` at that line
-([algebra.md](algebra.md) section 9). Sinter reports no `unread-tag`
+finding of the class `ignored-tag` at that line
+([algebra.md](algebra.md) section 9). Sinter reports no `ignored-tag`
 inside a block quote.
 
 ### 7.3 Tag lines

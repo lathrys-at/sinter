@@ -29,4 +29,4 @@ The store keeps the sessions.
 
 @decision uses v1
 @cites logout
-@ack disendorsed logout e4c168f2
+@ack retired logout e4c168f2
