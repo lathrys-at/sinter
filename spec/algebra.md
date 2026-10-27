@@ -389,6 +389,22 @@ evidence predicate is `never-ran`. A test that was already
 first change that measures it. This cost happens once for each such
 test, and Sinter accepts it.
 
+Before the compare, the tool moves each finding of `F(b)` whose id
+holds a position in a file: a line, or a line and a column
+([jsonl.md](jsonl.md) section 9). The tool moves each such position
+through the hunks of the diff to the position that its line has in the
+working tree. A line that no hunk changed keeps its column. Take the
+hunks that lie before the line in the base. The line number in the
+working tree is the line number in the base, plus the lines that these
+hunks added, minus the lines that they removed. A finding on a line
+that the diff changed has no position in the working tree, so it
+matches no finding of `F(T)`. An id that holds a path compares as it
+is. So when a file moves, each of its findings is reported again.
+
+The subtraction removes each finding of `F(T)` whose id is the id of a
+finding of `F(b)` after the move. When two findings of `F(T)` have one
+id, it removes both.
+
 A finding that exists at the base and still exists in the working tree
 is pre-existing; diff mode does not report it. A finding absent at the
 base is what the diff introduced. The diff-relative classes —

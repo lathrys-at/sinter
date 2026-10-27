@@ -492,6 +492,10 @@ path can contain `@`.
 | a line | `line:<path>@L<line>` | `typo-tag` and `ignored-tag`, at the tag line; `duplicate` of a step, at the line of the step's heading |
 | a tag | `tag:<path>@L<line>C<column>`, from the position of the `@` of the tag | `invalid-target`; `misplaced-plan`; `duplicate` of a declaration or a plan |
 
+Diff mode moves each position in an id of the base through the hunks
+of the diff before it compares ids ([algebra.md](algebra.md) section
+8.2).
+
 An id that is not positional is stable under re-indentation,
 reformatting, line shifts, and re-pinning. It changes under a slug
 rename (rename is deletion plus declaration), under moving a site to a
