@@ -262,8 +262,9 @@ let changed_paths repo commit =
     (List.filter_map
        (fun (path, change) ->
          match change with
-         | Git.Modified [] -> None
-         | Git.Added | Git.Deleted | Git.Binary | Git.Modified (_ :: _) ->
+         | Git.Modified (Git.Text []) -> None
+         | Git.Added _ | Git.Deleted _
+         | Git.Modified (Git.Binary | Git.Text (_ :: _)) ->
              Some path)
        changes)
 

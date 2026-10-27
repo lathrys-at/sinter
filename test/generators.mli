@@ -255,8 +255,10 @@ val damaged_hunk_header : string QCheck2.Gen.t
     written over it, or any bytes. *)
 
 val diff_output :
-  (string * (string * Sinter_core.Git.change) list) QCheck2.Gen.t
-(** The output of [git diff -U0] with up to five sections, and the changes that
+  (string
+  * (string * (Sinter_core.Git.Decode.side * Sinter_core.Git.content) list) list)
+  QCheck2.Gen.t
+(** The output of [git diff -U0] with up to five sections, and the sections that
     {!Sinter_core.Git.Decode.diff} gives for it. A path can need quotes, and a
     path can have two sections, as git writes for a file whose type changed. A
     section is binary or holds up to four hunks. *)
@@ -269,6 +271,14 @@ val diff_output_with_context :
 val damaged_diff_output : string QCheck2.Gen.t
 (** An output of {!diff_output} cut short, with one line removed or repeated, or
     with a few bytes written over it; or any bytes. *)
+
+val print_content : Sinter_core.Git.content -> string
+(** [print_content content] is [content] in a short form for a test message. *)
+
+val print_sections :
+  (string * (Sinter_core.Git.Decode.side * Sinter_core.Git.content) list) list
+  QCheck2.Print.t
+(** The printer for the result of {!Sinter_core.Git.Decode.diff}. *)
 
 val print_change : Sinter_core.Git.change -> string
 (** [print_change change] is [change] in a short form for a test message. *)

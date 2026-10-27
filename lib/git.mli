@@ -73,10 +73,15 @@ val open_repo : env:string array -> string -> (t, error) result
 
     Every git child process gets [env] with these changes:
 
-    - [GIT_DIR], [GIT_WORK_TREE], [GIT_INDEX_FILE], [GIT_DIFF_OPTS], and
-      [GIT_EXTERNAL_DIFF] are removed
+    - [GIT_DIR], [GIT_WORK_TREE], [GIT_INDEX_FILE], [GIT_DIFF_OPTS],
+      [GIT_EXTERNAL_DIFF], [GIT_GLOB_PATHSPECS], [GIT_NOGLOB_PATHSPECS], and
+      [GIT_ICASE_PATHSPECS] are removed
     - [GIT_OPTIONAL_LOCKS] is [0]: a read does not write the index
     - [GIT_TERMINAL_PROMPT] is [0]: git asks no question
+    - [GIT_NO_REPLACE_OBJECTS] is [1]: git reads each object as the repository
+      holds it, and no replacement of it
+    - [GIT_LITERAL_PATHSPECS] is [1]: a path that git takes is the path itself,
+      and no pattern
 
     Each child runs in the root of the working tree.
 
@@ -208,45 +213,76 @@ val commit_of : t -> string -> (string, error) result
 type hunk = {
   line : int;  (** the first line of the change in the working tree, from 1 *)
   eline : int;  (** the last line of the change in the working tree *)
+  ecol : int;
+      (** one column past the last character of the line [eline], counted in
+          characters as {!Line_index} counts them; [1] when [added] is [0] *)
+  old_line : int;
+      (** the first line of the change in the base. A run with no line of the
+          base has the line of the base right after the place of the change. *)
   added : int;  (** the number of lines of the run in the working tree *)
   removed : int;  (** the number of lines of the base that the run replaces *)
 }
-(** One run of changed lines, in the coordinates of the working tree. A run with
-    lines added spans them: [eline] is [line + added - 1]. A pure deletion has
-    [added = 0] and [line = eline =] the line after the deleted lines. A
-    deletion at the end of a file has [line = eline =] the number of lines of
-    the file plus 1, a line that the file does not hold. *)
+(** One run of changed lines. A run with lines added spans them: [eline] is
+    [line + added - 1]. A pure deletion has [added = 0] and [line = eline =] the
+    line after the deleted lines. A deletion at the end of a file has
+    [line = eline =] the number of lines of the file plus 1, a line that the
+    file does not hold. The base side has the same form: the run removes the
+    lines [old_line] to [old_line + removed - 1] of the base.
+
+    The lines are the lines of the content as git stores it: after the clean
+    filter and the end-of-line conversion of the file. *)
+
+(** The content of one path in the diff. *)
+type content =
+  | Text of hunk list
+      (** git compared the content as text; the runs of changed lines, in the
+          order of their lines *)
+  | Binary  (** git found the content of a side to be binary *)
 
 (** How one path differs between the base and the working tree. *)
 type change =
-  | Added  (** the base does not hold the path, or git does not track it *)
-  | Deleted  (** the working tree does not hold the path *)
-  | Modified of hunk list
-      (** both hold the path, and the content or the mode differs. The hunks are
-          in the order of their lines. A change of the mode alone gives no hunk.
-      *)
-  | Binary  (** both hold the path, and git found the content to be binary *)
+  | Added of content  (** only the working tree holds the path *)
+  | Deleted of content  (** only the base holds the path *)
+  | Modified of content
+      (** both hold the path, and the content or the mode differs. A change of
+          the mode alone is [Modified (Text [])]. *)
 
 val diff : t -> base:string -> ((string * change) list, error) result
 (** [diff repo ~base] is the change of each path that differs between the commit
     that the revision [base] names and the working tree as it is on disk. The
-    two sets of files are {!base_tree} of [base] and {!files} of [repo]; a path
-    that is in neither set is not in the result. The rules, in order:
+    two sets of files are {!base_tree} of [base] and {!files} of [repo], each
+    without the paths that are not valid UTF-8; a path that is in neither set is
+    not in the result.
 
-    + A path that only the base holds is [Deleted].
-    + A path that only the working tree holds is [Added].
-    + A path that git does not track is [Added], also when the base holds it.
-    + A path that both hold and that git tracks is [Binary] or [Modified] with
-      the hunks of [git diff], or is not in the result when its content and its
-      mode are the same.
+    A path in both sets is compared by its content as git stores it: git applies
+    the clean filter and the end-of-line conversion of the file on disk, as
+    [git add] does. So a file that differs from its blob only by such a
+    conversion is not in the result. The comparison is the same whether git
+    tracks the path or not, and whatever flags the index of git holds:
+    [assume-unchanged] and [skip-worktree] do not count.
 
-    So a file that git does not track, or a new binary file, is [Added], and a
-    rename is a deletion and an addition. The pairs are sorted by path, in byte
-    order, with no path twice. The hunks do not depend on the git configuration
-    of the repository or of the user.
+    An added text file gives one run over all its lines, and a deleted text file
+    one run of all its lines at line 1. An empty file gives no run. A rename is
+    a deletion and an addition. The pairs are sorted by path, in byte order,
+    with no path twice. The runs do not depend on the git configuration of the
+    repository or of the user: git compares with no rename detection, the Myers
+    algorithm, the indent heuristic, and no context lines.
+
+    The function writes no file under the git directory of [repo]. It works on a
+    copy of the index, in a temporary file, and keeps the objects that it makes
+    in a temporary folder; it removes both before it returns. In a repository
+    with a split index, git still sets the time of the shared index file, as it
+    does on each read of the index. The objects of the folders that
+    [GIT_ALTERNATE_OBJECT_DIRECTORIES] of the environment names stay readable.
 
     The error is [Bad_revision base] when [base] names no commit, is empty,
     starts with [-], or holds a NUL byte. *)
+
+val hunks : change -> hunk list
+(** [hunks change] is the hunks of [change]: its runs, with one hunk in place of
+    none for a whole file. A binary file, added, deleted, or modified, gives one
+    hunk at line 1 with [added = 0] and [removed = 0]. An empty file that is
+    added or deleted gives the same hunk. A mode change alone gives no hunk. *)
 
 (** {1 Tree key} *)
 
@@ -364,14 +400,23 @@ module Decode : sig
       number of more than 15 digits, and for a side that has lines and starts at
       line 0. *)
 
-  val diff : string -> ((string * change) list, string) result
+  (** Which side of a section of [git diff] holds the path. *)
+  type side =
+    | Created  (** the section has the header [new file mode] *)
+    | Removed  (** the section has the header [deleted file mode] *)
+    | Changed  (** the section has neither *)
+
+  val diff : string -> ((string * (side * content) list) list, string) result
   (** [diff output] decodes the output of [git diff] with the options
-      [--no-renames], [--src-prefix=a/], and [--dst-prefix=b/]. Each value is
-      [Binary] for a path whose section says that the files are binary, and
-      [Modified] with the runs of changed lines of the path's hunks otherwise. A
-      context line in a hunk ends a run. Git writes two sections for a file
-      whose type changed; such a path comes once, with the hunks of both
-      sections, and is [Binary] when either section is. A quoted path is
-      unquoted. The pairs are sorted by path, in byte order, with no path twice.
-  *)
+      [--no-renames], [--src-prefix=a/], and [--dst-prefix=b/]: each path, with
+      the side and the content of each of its sections, in the order of the
+      output. The content is [Binary] for a section that says that the files are
+      binary, and [Text] with the runs of changed lines of its hunks otherwise.
+      A context line in a hunk ends a run. Git writes two sections for a file
+      whose type changed. A quoted path is unquoted. The pairs are sorted by
+      path, in byte order, with no path twice.
+
+      The [ecol] of a run counts the characters of the last added line without
+      its line ending: a carriage return at its end is part of the line ending,
+      unless git says that the line has no line feed. *)
 end

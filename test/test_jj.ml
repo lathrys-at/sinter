@@ -237,43 +237,32 @@ let a_jj_state_takes_the_local_branch_as_the_default_branch () =
     ( (ok (Git.resolve_default_branch (opened plain) "main")).refname,
       (ok (Git.resolve_default_branch (opened jj) "main")).refname )
 
-let print_change = function
-  | Git.Added -> "added"
-  | Git.Deleted -> "deleted"
-  | Git.Binary -> "binary"
-  | Git.Modified hunks ->
-      "modified"
-      ^ String.concat ""
-          (List.map
-             (fun (hunk : Git.hunk) ->
-               Printf.sprintf " %d-%d+%d-%d" hunk.line hunk.eline hunk.added
-                 hunk.removed)
-             hunks)
-
 let diff repo =
   List.map
-    (fun (path, change) -> path ^ " " ^ print_change change)
+    (fun (path, change) -> path ^ " " ^ Generators.print_change change)
     (ok (Git.diff (opened repo) ~base:(trunk repo)))
 
 let brought_back = "lib/back.ml"
 
 let a_jj_state_gives_the_same_diff () =
-  same "the diff against the trunk, without the file brought back" strings
-    (fun repo ->
-      List.filter
-        (fun line -> not (String.starts_with ~prefix:(brought_back ^ " ") line))
-        (diff repo))
+  same "the diff against the trunk" strings diff
 
-let a_file_brought_back_is_modified_in_jj_and_added_in_plain_git () =
-  let changes repo =
-    List.filter
-      (fun line -> String.starts_with ~prefix:(brought_back ^ " ") line)
-      (diff repo)
+let a_file_brought_back_is_modified_in_jj_and_in_plain_git () =
+  let change repo =
+    match
+      List.assoc_opt brought_back
+        (ok (Git.diff (opened repo) ~base:(trunk repo)))
+    with
+    | Some (Git.Modified (Git.Text [ { line = 1; added = 1; removed = 1; _ } ]))
+      ->
+        "one line replaced"
+    | Some change -> Generators.print_change change
+    | None -> "absent"
   in
-  Alcotest.(check (pair strings strings))
+  Alcotest.(check (pair string string))
     "the change of the file in plain git and in the jj state"
-    ([ "lib/back.ml added" ], [ "lib/back.ml modified 1-1+1-1" ])
-    (both changes)
+    ("one line replaced", "one line replaced")
+    (both change)
 
 let a_jj_state_gives_the_same_tree_key () =
   same "the tree key" Alcotest.string (fun repo ->
@@ -458,8 +447,8 @@ let tests =
     case "a jj state gives the same diff" a_jj_state_gives_the_same_diff;
     case
       "a file that the parent deleted and the working copy brings back is \
-       Modified in the jj state and Added in plain git"
-      a_file_brought_back_is_modified_in_jj_and_added_in_plain_git;
+       Modified in the jj state and in plain git"
+      a_file_brought_back_is_modified_in_jj_and_in_plain_git;
     case "a jj state gives the same tree key" a_jj_state_gives_the_same_tree_key;
     case "a tree key leaves the intent-to-add entries in the index"
       a_tree_key_leaves_the_intent_to_add_entries_in_the_index;

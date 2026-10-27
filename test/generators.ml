@@ -769,7 +769,19 @@ let changed_lines sign count =
     oneof_weighted
       [ (5, pure []); (1, pure [ "\\ No newline at end of file" ]) ]
   in
-  if count > 0 then lines @ marker else lines
+  if count > 0 then (lines @ marker, marker <> []) else (lines, false)
+
+let end_column lines ~ended =
+  match List.rev lines with
+  | [] -> 1
+  | last :: _ ->
+      let text = String.sub last 1 (String.length last - 1) in
+      let text =
+        if ended && String.ends_with ~suffix:"\r" text then
+          String.sub text 0 (String.length text - 1)
+        else text
+      in
+      1 + String.length text
 
 let u0_hunk =
   let open Gen in
@@ -785,10 +797,18 @@ let u0_hunk =
   let* old_side = header_range ~sign:'-' ~start:old_start ~count:removed in
   let* new_side = header_range ~sign:'+' ~start:new_start ~count:added in
   let* tail = function_text in
-  let* minus = changed_lines '-' removed in
-  let+ plus = changed_lines '+' added in
+  let* minus, _ = changed_lines '-' removed in
+  let+ plus, unended = changed_lines '+' added in
+  let ecol =
+    if added = 0 then 1
+    else
+      end_column
+        (List.filter (fun l -> not (String.starts_with ~prefix:"\\" l)) plus)
+        ~ended:(not unended)
+  in
+  let old_line = if removed > 0 then old_start else old_start + 1 in
   ( (Printf.sprintf "@@ %s %s @@%s" old_side new_side tail :: minus) @ plus,
-    Git.{ line; eline; added; removed } )
+    Git.{ line; eline; ecol; old_line; added; removed } )
 
 let section_headers path ~binary =
   let open Gen in
@@ -802,6 +822,12 @@ let section_headers path ~binary =
         [ "deleted file mode 100644" ];
       ]
   in
+  let side =
+    match modes with
+    | [ "new file mode 100644" ] -> Git.Decode.Created
+    | [ "deleted file mode 100644" ] -> Git.Decode.Removed
+    | _ -> Git.Decode.Changed
+  in
   let index = "index 0123abc..4567def" in
   let+ names =
     oneof_list
@@ -810,34 +836,36 @@ let section_headers path ~binary =
       ]
   in
   let first = Printf.sprintf "diff --git %s %s" named other in
-  if binary then
-    (first :: modes)
-    @ [ index; Printf.sprintf "Binary files %s and %s differ" named other ]
-  else (first :: modes) @ (index :: names)
+  ( side,
+    if binary then
+      (first :: modes)
+      @ [ index; Printf.sprintf "Binary files %s and %s differ" named other ]
+    else (first :: modes) @ (index :: names) )
 
 let section path =
   let open Gen in
   let* binary = oneof_weighted [ (4, pure false); (1, pure true) ] in
-  let* headers = section_headers path ~binary in
+  let* side, headers = section_headers path ~binary in
   let+ hunks = if binary then pure [] else list_size (int_bound 4) u0_hunk in
-  (headers @ List.concat_map fst hunks, path, binary, List.map snd hunks)
+  ( headers @ List.concat_map fst hunks,
+    path,
+    (side, if binary then Git.Binary else Git.Text (List.map snd hunks)) )
 
 let diff_output =
   let open Gen in
   let* paths = list_size (int_bound 5) diff_path in
   let* sections = flatten_list (List.map section paths) in
-  let lines = List.concat_map (fun (lines, _, _, _) -> lines) sections in
+  let lines = List.concat_map (fun (lines, _, _) -> lines) sections in
   let output = String.concat "" (List.map (fun line -> line ^ "\n") lines) in
   let paths = List.sort_uniq String.compare paths in
   let expected =
     List.map
       (fun path ->
-        let mine =
-          List.filter (fun (_, p, _, _) -> String.equal p path) sections
-        in
-        if List.exists (fun (_, _, binary, _) -> binary) mine then
-          (path, Git.Binary)
-        else (path, Git.Modified (List.concat_map (fun (_, _, _, h) -> h) mine)))
+        ( path,
+          List.filter_map
+            (fun (_, p, section) ->
+              if String.equal p path then Some section else None)
+            sections ))
       paths
   in
   pure (output, expected)
@@ -863,9 +891,11 @@ let diff_output_with_context =
         let changed =
           List.init removed (fun _ -> "-x") @ List.init added (fun _ -> "+y")
         in
+        let ecol = if added > 0 then 2 else 1 in
+        let old_line = start + old_count + gap in
         build
           (lines @ context @ changed)
-          (Git.{ line; eline; added; removed } :: runs_found)
+          (Git.{ line; eline; ecol; old_line; added; removed } :: runs_found)
           (line + added)
           (old_count + gap + removed)
           (new_count + gap + added)
@@ -920,18 +950,38 @@ let damaged_diff_output =
       string_size (int_range 0 40);
     ]
 
-let print_change = function
-  | Git.Added -> "Added"
-  | Git.Deleted -> "Deleted"
+let print_hunk (h : Git.hunk) =
+  Printf.sprintf "%d-%d:%d old %d +%d -%d" h.line h.eline h.ecol h.old_line
+    h.added h.removed
+
+let print_content = function
   | Git.Binary -> "Binary"
-  | Git.Modified hunks ->
-      "Modified ["
-      ^ String.concat "; "
-          (List.map
-             (fun (h : Git.hunk) ->
-               Printf.sprintf "%d-%d +%d -%d" h.line h.eline h.added h.removed)
-             hunks)
-      ^ "]"
+  | Git.Text hunks ->
+      "Text [" ^ String.concat "; " (List.map print_hunk hunks) ^ "]"
+
+let print_change = function
+  | Git.Added content -> "Added " ^ print_content content
+  | Git.Deleted content -> "Deleted " ^ print_content content
+  | Git.Modified content -> "Modified " ^ print_content content
+
+let print_side = function
+  | Git.Decode.Created -> "Created"
+  | Git.Decode.Removed -> "Removed"
+  | Git.Decode.Changed -> "Changed"
+
+let print_sections sections =
+  "["
+  ^ String.concat "; "
+      (List.map
+         (fun (path, sections) ->
+           Printf.sprintf "%S: %s" path
+             (String.concat ", "
+                (List.map
+                   (fun (side, content) ->
+                     print_side side ^ " " ^ print_content content)
+                   sections)))
+         sections)
+  ^ "]"
 
 let print_changes changes =
   "["

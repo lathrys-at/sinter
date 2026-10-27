@@ -414,7 +414,8 @@ let id_of digit = String.make 40 digit
 
 let faking_script =
   Printf.sprintf
-    "case \"$1\" in\n\
+    "while [ \"$1\" = -c ]; do shift 2; done\n\
+     case \"$1\" in\n\
      rev-parse) printf 'sha1\\n%%s\\n' \"$0\" ;;\n\
      ls-files) printf 'junk' ;;\n\
      cat-file)\n\

@@ -28,8 +28,17 @@ let root t = t.root
 let object_format t = t.format
 let ( let* ) = Result.bind
 
-type hunk = { line : int; eline : int; added : int; removed : int }
-type change = Added | Deleted | Modified of hunk list | Binary
+type hunk = {
+  line : int;
+  eline : int;
+  ecol : int;
+  old_line : int;
+  added : int;
+  removed : int;
+}
+
+type content = Text of hunk list | Binary
+type change = Added of content | Deleted of content | Modified of content
 
 module Decode = struct
   type kind = Blob | Tree | Commit | Tag
@@ -321,16 +330,49 @@ module Decode = struct
         if String.equal rest ("a/" ^ path ^ " b/" ^ path) then Ok path
         else twice ()
 
-  type section = { binary : bool; runs : hunk list }
+  type side = Created | Removed | Changed
+
+  type run = {
+    first : int;
+    old_first : int;
+    added : int;
+    removed : int;
+    last : string;
+    ended : bool;
+  }
+
+  let is_continuation byte = Char.code byte land 0xC0 = 0x80
+
+  let columns ~line text =
+    let text =
+      if line = 1 && String.starts_with ~prefix:"\xEF\xBB\xBF" text then
+        String.sub text 3 (String.length text - 3)
+      else text
+    in
+    String.fold_left
+      (fun count byte -> if is_continuation byte then count else count + 1)
+      0 text
 
   let add_run run runs =
     match run with
     | None -> runs
-    | Some (line, added, removed) ->
-        let eline = if added = 0 then line else line + added - 1 in
-        { line; eline; added; removed } :: runs
+    | Some { first; old_first; added; removed; last; ended } ->
+        let eline = if added = 0 then first else first + added - 1 in
+        let ecol =
+          if added = 0 then 1
+          else
+            let last =
+              if ended && String.ends_with ~suffix:"\r" last then
+                String.sub last 0 (String.length last - 1)
+              else last
+            in
+            1 + columns ~line:eline last
+        in
+        { line = first; eline; ecol; old_line = old_first; added; removed }
+        :: runs
 
   let starts prefix line = String.starts_with ~prefix line
+  let without_mark line = String.sub line 1 (String.length line - 1)
 
   let hunk_lines header runs lines =
     let misfit line =
@@ -338,66 +380,95 @@ module Decode = struct
         (Printf.sprintf "the line %S does not fit the hunk -%d,%d +%d,%d" line
            header.old_start header.old_count header.new_start header.new_count)
     in
-    let rec go old_left new_left cursor run runs = function
+    let rec go ?(after_added = false) old_left new_left cursor old_cursor run
+        runs = function
       | line :: rest when starts "\\" line ->
-          go old_left new_left cursor run runs rest
+          let run =
+            if after_added then
+              Option.map (fun run -> { run with ended = false }) run
+            else run
+          in
+          go old_left new_left cursor old_cursor run runs rest
       | lines when old_left = 0 && new_left = 0 -> Ok (add_run run runs, lines)
       | [] -> Error "the output ends inside a hunk"
       | line :: rest when line = "" || starts " " line ->
           if old_left > 0 && new_left > 0 then
-            go (old_left - 1) (new_left - 1) (cursor + 1) None
+            go (old_left - 1) (new_left - 1) (cursor + 1) (old_cursor + 1) None
               (add_run run runs) rest
           else misfit line
       | line :: rest when starts "-" line ->
           if old_left > 0 then
             let run =
               match run with
-              | None -> (cursor, 0, 1)
-              | Some (start, added, removed) -> (start, added, removed + 1)
+              | None ->
+                  {
+                    first = cursor;
+                    old_first = old_cursor;
+                    added = 0;
+                    removed = 1;
+                    last = "";
+                    ended = true;
+                  }
+              | Some run -> { run with removed = run.removed + 1 }
             in
-            go (old_left - 1) new_left cursor (Some run) runs rest
+            go (old_left - 1) new_left cursor (old_cursor + 1) (Some run) runs
+              rest
           else misfit line
       | line :: rest when starts "+" line ->
           if new_left > 0 then
+            let last = without_mark line in
             let run =
               match run with
-              | None -> (cursor, 1, 0)
-              | Some (start, added, removed) -> (start, added + 1, removed)
+              | None ->
+                  {
+                    first = cursor;
+                    old_first = old_cursor;
+                    added = 1;
+                    removed = 0;
+                    last;
+                    ended = true;
+                  }
+              | Some run -> { run with added = run.added + 1; last }
             in
-            go old_left (new_left - 1) (cursor + 1) (Some run) runs rest
+            go ~after_added:true old_left (new_left - 1) (cursor + 1) old_cursor
+              (Some run) runs rest
           else misfit line
       | line :: _ -> misfit line
     in
     let cursor =
       if header.new_count = 0 then header.new_start + 1 else header.new_start
     in
-    go header.old_count header.new_count cursor None runs lines
+    let old_cursor =
+      if header.old_count = 0 then header.old_start + 1 else header.old_start
+    in
+    go header.old_count header.new_count cursor old_cursor None runs lines
+
+  type section = { side : side; binary : bool; runs : hunk list }
 
   let section lines =
-    let rec headers binary = function
-      | line :: rest when starts "@@" line -> hunks binary [] (line :: rest)
+    let rec headers side binary = function
+      | line :: rest when starts "@@" line -> hunks side binary [] (line :: rest)
       | line :: rest when not (starts "diff --git " line) ->
-          headers (binary || starts "Binary files " line) rest
-      | lines -> Ok ({ binary; runs = [] }, lines)
-    and hunks binary runs = function
+          let side =
+            if starts "new file mode " line then Created
+            else if starts "deleted file mode " line then Removed
+            else side
+          in
+          headers side (binary || starts "Binary files " line) rest
+      | lines -> Ok ({ side; binary; runs = [] }, lines)
+    and hunks side binary runs = function
       | line :: rest when starts "@@" line ->
           let* header = hunk_header line in
           let* runs, rest = hunk_lines header runs rest in
-          hunks binary runs rest
+          hunks side binary runs rest
       | line :: _ when not (starts "diff --git " line) ->
           Error (Printf.sprintf "the line %S follows a hunk" line)
-      | lines -> Ok ({ binary; runs }, lines)
+      | lines -> Ok ({ side; binary; runs }, lines)
     in
-    headers false lines
+    headers Changed false lines
 
-  let change_of_section { binary; runs } =
-    if binary then Binary else Modified (List.rev runs)
-
-  let join later earlier =
-    {
-      binary = later.binary || earlier.binary;
-      runs = later.runs @ earlier.runs;
-    }
+  let content_of_section { binary; runs; _ } =
+    if binary then Binary else Text (List.rev runs)
 
   let diff output =
     let n = String.length output in
@@ -412,20 +483,25 @@ module Decode = struct
       | line :: rest ->
           let* path = path_of_git_line line in
           let* section, rest = section rest in
-          read ((path, section) :: found) rest
+          read
+            ((path, (section.side, content_of_section section)) :: found)
+            rest
     in
     let* found = read [] lines in
     let rec group done_ = function
-      | (path, later) :: (other, earlier) :: rest when String.equal path other
-        ->
-          group done_ ((path, join later earlier) :: rest)
-      | (path, section) :: rest ->
-          group ((path, change_of_section section) :: done_) rest
-      | [] -> List.rev done_
+      | (path, section) :: rest -> (
+          match done_ with
+          | (other, sections) :: earlier when String.equal path other ->
+              group ((path, section :: sections) :: earlier) rest
+          | _ -> group ((path, [ section ]) :: done_) rest)
+      | [] ->
+          List.rev_map (fun (path, sections) -> (path, List.rev sections)) done_
     in
     Ok
       (group []
-         (List.stable_sort (fun (a, _) (b, _) -> String.compare a b) found))
+         (List.stable_sort
+            (fun (a, _) (b, _) -> String.compare a b)
+            (List.rev found)))
 end
 
 let file_error path error =
@@ -556,6 +632,11 @@ let removed_variables =
     "GIT_EXTERNAL_DIFF";
     "GIT_OPTIONAL_LOCKS";
     "GIT_TERMINAL_PROMPT";
+    "GIT_NO_REPLACE_OBJECTS";
+    "GIT_LITERAL_PATHSPECS";
+    "GIT_GLOB_PATHSPECS";
+    "GIT_NOGLOB_PATHSPECS";
+    "GIT_ICASE_PATHSPECS";
   ]
 
 let variable_name entry =
@@ -569,7 +650,14 @@ let child_env env =
       (fun entry -> not (List.mem (variable_name entry) removed_variables))
       (Array.to_list env)
   in
-  Array.of_list (kept @ [ "GIT_OPTIONAL_LOCKS=0"; "GIT_TERMINAL_PROMPT=0" ])
+  Array.of_list
+    (kept
+    @ [
+        "GIT_OPTIONAL_LOCKS=0";
+        "GIT_TERMINAL_PROMPT=0";
+        "GIT_NO_REPLACE_OBJECTS=1";
+        "GIT_LITERAL_PATHSPECS=1";
+      ])
 
 let is_executable_file path =
   match Unix.stat path with
@@ -608,10 +696,10 @@ let decoded args decode output =
     (fun detail -> Malformed_output { args; detail })
     (decode output)
 
-let run ?env t args decode =
+let run ?env ?input t args decode =
   let args = "-C" :: t.root :: args in
   let env = Option.value env ~default:t.env in
-  let* status, output, stderr = exec ~git:t.git ~env args read_all in
+  let* status, output, stderr = exec ~git:t.git ~env ?input args read_all in
   match status with
   | Unix.WEXITED 0 ->
       let* output = output in
@@ -675,12 +763,19 @@ let is_regular_file t path =
   | exception Unix.Unix_error ((Unix.ENOENT | Unix.ENOTDIR), _, _) -> Ok false
   | exception Unix.Unix_error (error, _, _) -> Error (file_error full error)
 
+let view_options =
+  [ "-c"; "core.fsmonitor=false"; "-c"; "core.splitIndex=false" ]
+
 let file_set t =
   let* staged =
-    run t [ "ls-files"; "-z"; "--cached"; "-s" ] Decode.ls_files_stage
+    run t
+      (view_options @ [ "ls-files"; "-z"; "--cached"; "-s" ])
+      Decode.ls_files_stage
   in
   let* others =
-    run t [ "ls-files"; "-z"; "--others"; "--exclude-standard" ] Decode.nul_list
+    run t
+      (view_options @ [ "ls-files"; "-z"; "--others"; "--exclude-standard" ])
+      Decode.nul_list
   in
   let special =
     List.fold_left
@@ -832,6 +927,14 @@ let fold_blobs t ids ~init ~f =
 
 let diff_options =
   [
+    "-c";
+    "core.quotePath=true";
+    "-c";
+    "core.bigFileThreshold=512m";
+    "-c";
+    "core.fsmonitor=false";
+    "-c";
+    "core.splitIndex=false";
     "diff";
     "--no-ext-diff";
     "--no-textconv";
@@ -843,39 +946,12 @@ let diff_options =
     "--indent-heuristic";
     "--src-prefix=a/";
     "--dst-prefix=b/";
+    "-O/dev/null";
     "--submodule=short";
     "--ignore-submodules=all";
   ]
 
 module Path_map = Map.Make (String)
-
-let diff t ~base =
-  let* commit = commit_of t base in
-  let* sections = run t (diff_options @ [ commit; "--" ]) Decode.diff in
-  let* old_files = base_tree_of_commit t commit in
-  let* new_files = file_set t in
-  let changes = Path_map.of_list sections in
-  let in_base = Path_map.of_list old_files in
-  let tracked =
-    Path_map.of_list
-      (List.map (fun entry -> (entry.path, entry.tracked)) new_files)
-  in
-  let change path =
-    match Path_map.find_opt path tracked with
-    | None -> Some Deleted
-    | Some false -> Some Added
-    | Some true ->
-        if Path_map.mem path in_base then Path_map.find_opt path changes
-        else Some Added
-  in
-  let paths =
-    List.sort_uniq String.compare
-      (List.map fst old_files @ List.map (fun entry -> entry.path) new_files)
-  in
-  Ok
-    (List.filter_map
-       (fun path -> Option.map (fun change -> (path, change)) (change path))
-       paths)
 
 let copy_index ~index ~copy =
   if Sys.file_exists index then
@@ -896,16 +972,210 @@ let copy_index ~index ~copy =
     remove_quietly copy;
     Ok ())
 
-let tree_key t =
-  let* index = run t [ "rev-parse"; "--git-path"; "index" ] Decode.line in
-  let index =
-    if Filename.is_relative index then Filename.concat t.root index else index
-  in
+let git_path t name =
+  let* path = run t [ "rev-parse"; "--git-path"; name ] Decode.line in
+  Ok (if Filename.is_relative path then Filename.concat t.root path else path)
+
+let with_variables env variables =
+  let names = List.map fst variables in
+  Array.append
+    (Array.of_list
+       (List.filter
+          (fun entry -> not (List.mem (variable_name entry) names))
+          (Array.to_list env)))
+    (Array.of_list
+       (List.map (fun (name, value) -> name ^ "=" ^ value) variables))
+
+let variable env name =
+  Array.to_list env
+  |> List.find_map (fun entry ->
+      if String.equal (variable_name entry) name then
+        Some
+          (String.sub entry
+             (String.length name + 1)
+             (String.length entry - String.length name - 1))
+      else None)
+
+let with_index_copy t f =
+  let* index = git_path t "index" in
   with_temp_file ".index" (fun copy ->
       Fun.protect
         ~finally:(fun () -> remove_quietly (copy ^ ".lock"))
         (fun () ->
           let* () = copy_index ~index ~copy in
-          let env = Array.append t.env [| "GIT_INDEX_FILE=" ^ copy |] in
-          let* _ = run ~env t [ "add"; "-A" ] Result.ok in
-          run ~env t [ "write-tree" ] Decode.object_id))
+          f (with_variables t.env [ ("GIT_INDEX_FILE", copy) ])))
+
+let rec remove_tree path =
+  match Unix.lstat path with
+  | { Unix.st_kind = Unix.S_DIR; _ } -> (
+      Array.iter
+        (fun name -> remove_tree (Filename.concat path name))
+        (try Sys.readdir path with Sys_error _ -> [||]);
+      try Unix.rmdir path with Unix.Unix_error _ -> ())
+  | _ -> remove_quietly path
+  | exception Unix.Unix_error _ -> ()
+
+let with_temp_dir f =
+  match Filename.temp_dir "sinter-git" ".objects" with
+  | exception Sys_error message -> Error (File_error message)
+  | dir -> Fun.protect ~finally:(fun () -> remove_tree dir) (fun () -> f dir)
+
+let flagged output =
+  let* records = Decode.nul_list output in
+  Decode.all
+    (fun record ->
+      if String.length record > 2 && record.[1] = ' ' then
+        let path = String.sub record 2 (String.length record - 2) in
+        match record.[0] with
+        | 'a' .. 'z' as tag -> Ok (Some (path, true, Char.equal tag 's'))
+        | 'S' -> Ok (Some (path, false, true))
+        | 'A' .. 'Z' -> Ok None
+        | _ ->
+            Error
+              (Printf.sprintf "%S is not an entry of git ls-files -v" record)
+      else Error (Printf.sprintf "%S is not an entry of git ls-files -v" record))
+    records
+  |> Result.map (List.filter_map Fun.id)
+
+let nul_input paths =
+  String.concat "" (List.map (fun path -> path ^ "\000") paths)
+
+let clear_flag t ~env flag paths =
+  match paths with
+  | [] -> Ok ()
+  | _ ->
+      run ~env ~input:(nul_input paths) t
+        (view_options @ [ "update-index"; flag; "-z"; "--stdin" ])
+        Result.ok
+      |> Result.map ignore
+
+let with_view t ~untracked f =
+  let* objects = git_path t "objects" in
+  with_temp_dir (fun dir ->
+      let store = Filename.concat dir "objects" in
+      match Unix.mkdir store 0o700 with
+      | exception Unix.Unix_error (error, _, _) ->
+          Error (file_error store error)
+      | () ->
+          let alternates =
+            match variable t.env "GIT_ALTERNATE_OBJECT_DIRECTORIES" with
+            | Some more when more <> "" -> objects ^ ":" ^ more
+            | _ -> objects
+          in
+          let* _ =
+            run
+              ~env:
+                (with_variables t.env
+                   [
+                     ("GIT_OBJECT_DIRECTORY", store);
+                     ("GIT_ALTERNATE_OBJECT_DIRECTORIES", "");
+                   ])
+              t
+              [ "hash-object"; "-w"; "--stdin" ]
+              Decode.object_id
+          in
+          with_index_copy t (fun env ->
+              let env =
+                with_variables env
+                  [
+                    ("GIT_OBJECT_DIRECTORY", store);
+                    ("GIT_ALTERNATE_OBJECT_DIRECTORIES", alternates);
+                  ]
+              in
+              let* flags =
+                run ~env t (view_options @ [ "ls-files"; "-z"; "-v" ]) flagged
+              in
+              let* () =
+                clear_flag t ~env "--no-assume-unchanged"
+                  (List.filter_map
+                     (fun (path, assumed, _) ->
+                       if assumed then Some path else None)
+                     flags)
+              in
+              let* () =
+                clear_flag t ~env "--no-skip-worktree"
+                  (List.filter_map
+                     (fun (path, _, skipped) ->
+                       if skipped then Some path else None)
+                     flags)
+              in
+              let* () =
+                match untracked with
+                | [] -> Ok ()
+                | paths ->
+                    run ~env ~input:(nul_input paths) t
+                      (view_options
+                      @ [
+                          "add";
+                          "--intent-to-add";
+                          "--pathspec-from-file=-";
+                          "--pathspec-file-nul";
+                        ])
+                      Result.ok
+                    |> Result.map ignore
+              in
+              f env))
+
+let content_of side sections =
+  match List.assoc_opt side sections with
+  | Some content -> content
+  | None -> (
+      match sections with (_, content) :: _ -> content | [] -> Text [])
+
+let diff t ~base =
+  let* commit = commit_of t base in
+  let* old_files = base_tree_of_commit t commit in
+  let* new_files = file_set t in
+  let old_files =
+    List.filter (fun (path, _) -> Sinter_bridge.Utf_8.is_valid path) old_files
+  and new_files =
+    List.filter (fun entry -> Sinter_bridge.Utf_8.is_valid entry.path) new_files
+  in
+  let untracked =
+    List.filter_map
+      (fun entry -> if entry.tracked then None else Some entry.path)
+      new_files
+  in
+  let* sections =
+    with_view t ~untracked (fun env ->
+        run ~env t (diff_options @ [ commit; "--" ]) Decode.diff)
+  in
+  let sections = Path_map.of_list sections in
+  let in_base = Path_map.of_list old_files in
+  let in_tree =
+    Path_map.of_list (List.map (fun entry -> (entry.path, ())) new_files)
+  in
+  let change path =
+    let found = Path_map.find_opt path sections in
+    match (Path_map.mem path in_base, Path_map.mem path in_tree, found) with
+    | true, true, None -> None
+    | true, true, Some sections ->
+        Some (Modified (content_of Decode.Changed sections))
+    | false, _, found ->
+        Some
+          (Added (content_of Decode.Created (Option.value found ~default:[])))
+    | true, false, found ->
+        Some
+          (Deleted (content_of Decode.Removed (Option.value found ~default:[])))
+  in
+  let paths =
+    List.sort_uniq String.compare
+      (List.map fst old_files @ List.map (fun entry -> entry.path) new_files)
+  in
+  Ok
+    (List.filter_map
+       (fun path -> Option.map (fun change -> (path, change)) (change path))
+       paths)
+
+let whole =
+  { line = 1; eline = 1; ecol = 1; old_line = 1; added = 0; removed = 0 }
+
+let hunks = function
+  | Added Binary | Deleted Binary | Modified Binary -> [ whole ]
+  | Added (Text []) | Deleted (Text []) -> [ whole ]
+  | Added (Text runs) | Deleted (Text runs) | Modified (Text runs) -> runs
+
+let tree_key t =
+  with_index_copy t (fun env ->
+      let* _ = run ~env t (view_options @ [ "add"; "-A" ]) Result.ok in
+      run ~env t (view_options @ [ "write-tree" ]) Decode.object_id)

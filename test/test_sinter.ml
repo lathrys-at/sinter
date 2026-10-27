@@ -57,6 +57,7 @@ let () =
       ("cli", Test_cli.tests);
       ("git", Test_git.tests);
       ("git diff", Test_git_diff.tests);
+      ("git view", Test_git_view.tests);
       ("fixture", Test_fixture.tests);
       ("allocation", Test_allocation.tests);
       ("generated tree", Test_generated_tree.tests);
