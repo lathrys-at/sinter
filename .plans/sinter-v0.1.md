@@ -182,6 +182,13 @@ test suite.
 @scope lib/**, bin/**, test/**, docs/decisions/**
 Write the findings of `sinter check` as SARIF.
 
+## Give each plan an id
+@scope spec/**, docs/**, lib/**, test/**, plugins/**, .claude-plugin/**
+Carry out the record `plan-ids`: specify the form `slug@id`, the
+slugs that a closed plan frees, and the ids of claims; read the form
+in the scanner, with a finding whose fix supplies a missing id; and
+let the plan skill write the id.
+
 ## Release the binaries
 @scope .github/workflows/**, README.md, docs/**, THIRD_PARTY.md, REUSE.toml, LICENSES/**
 Build release binaries for Linux x86-64 and macOS arm64 on a version
