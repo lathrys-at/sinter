@@ -1068,7 +1068,7 @@ recognise = ["testsuites@name=vitest tests"]
 
 `recognise` is a runner setting. A repository that gives its reports
 another name, with the vitest option `suiteName`, sets
-`scan.packs.typescript.vitest.recognise` in its manifest.
+`scan.packs.typescript.runners.vitest.recognise` in its manifest.
 
 vitest writes a test of the file `src/math.test.ts` in this form:
 
