@@ -143,7 +143,7 @@ not load (section 3.6).
 
 | key | type | required | meaning |
 |---|---|---|---|
-| `spec` | string | yes | the oldest version of the specifications that the pack needs, in the form of [manifest.md](manifest.md) section 5 |
+| `sinter-spec` | string | yes | the oldest version of the specifications that the pack needs, in the form of [manifest.md](manifest.md) section 5 |
 | `name` | string | yes | the name of the pack. It matches the pattern of a pack's name ([manifest.md](manifest.md) section 8.1) |
 | `version` | string | yes | the release of the pack (section 2.5) |
 | `license` | string | yes | an SPDX license expression for the descriptor and the query files |
@@ -243,7 +243,7 @@ with exit code 3:
   lock file fixes, or the release does not meet
   `scan.packs.<name>.version`;
 - the tool implements an older version of the specifications than
-  `spec`, by the comparison of [manifest.md](manifest.md) section 5;
+  `sinter-spec`, by the comparison of [manifest.md](manifest.md) section 5;
 - a file that section 2.3 requires is missing, or the SHA-256 of a
   grammar or an adapter differs from the descriptor;
 - a grammar does not load, or its ABI version lies outside the range
@@ -1237,7 +1237,7 @@ This example is informative. It is the descriptor of a TypeScript pack
 with two grammars and one runner:
 
 ```toml
-spec = "1.0"
+sinter-spec = "1.0"
 name = "typescript"
 version = "1.0.0"
 license = "Apache-2.0"
