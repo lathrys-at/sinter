@@ -52,7 +52,7 @@ kind or a category.
 |---|---|---|
 | `node` | `req` `design` `decision` `plan` `step` `test` `site` | yes |
 | `edge` | `satisfies` `verifies` `refines` `cites` `supersedes` | yes |
-| `ref` | `ref` | no |
+| `external` | `external` | no |
 | `promise` | `promise` | yes |
 | `evidence` | `run` `cov` `judgment` | no |
 | `config` | `rule` `gate` `setting` | see below |
@@ -78,9 +78,9 @@ Notes on individual kinds:
   fact that the manifest writes is located in the manifest. A default,
   a built-in member, and every fact of a manifest outside the
   repository are unlocated.
-- An edge's `src` is a node or a rule. An edge's `dst` is a node, a
-  ref, or unresolved. A rule's origin is a `cites` edge whose `src` is
-  the rule.
+- An edge's `src` is a node or a rule. An edge's `dst` is a node, an
+  external id, or unresolved. A rule's origin is a `cites` edge whose
+  `src` is the rule.
 - A `hunk` is one hunk of `git diff B`, in new-side coordinates.
 - A `tombstone` is a fact that is present in the fact set of `B` and
   absent from the fact set of `T`. It carries the old id, kind, and
@@ -149,8 +149,8 @@ evaluation:
   category, tombstones and hunks included. `active` → `{node}`.
   `findings` → `{finding}`.
 - `out`, `in` → `{edge}`. `src`, `dst`, `deps`, `rdeps`, `paths` →
-  `{node, ref, config}` (the `src` of a rule's origin edge is a rule).
-  `subject` → every category a finding can be about. `scope` → the
+  `{node, external, config}` (the `src` of a rule's origin edge is a
+  rule). `subject` → every category a finding can be about. `scope` → the
   located categories plus `hunk`; its argument also accepts `claim`.
   `promises`, `met` → `{promise}`. `done` → `{node}`. A predicate →
   the category set of its argument, intersected with what it accepts.
@@ -182,7 +182,7 @@ declaration. "Declaration" means a `req`, `design`, or `decision`.
 | `req(n)` `design(n)` `decision(n)` `plan(n)` `rule(n)` | facts of that kind whose slug or name matches `n` |
 | `step(p/s)` | steps whose plan slug matches `p` and step slug matches `s` |
 | `test(n)` | test nodes whose full name matches `n` ([packs.md](packs.md) section 8.3) |
-| `ref(ns/id)` | ref facts matching |
+| `external(ns/id)` | external facts matching |
 | `path(g)` | located facts whose `path` matches `g` |
 | `changed(b)` | see section 8; `b` is `base` or a revision |
 | `active` | the active plan and, when the session declares one, the active step; only open plans are candidates; `∅` when no plan is active |
@@ -197,7 +197,7 @@ declaration. "Declaration" means a `req`, `design`, or `decision`.
 | function | accepts | denotes |
 |---|---|---|
 | `out(K, S)` | `S`: node, config | edges `e` with `kind(e) ∈ K` and `src(e) ∈ S` |
-| `in(K, S)` | `S`: node, ref | edges `e` with `kind(e) ∈ K` and `dst(e) ∈ S` |
+| `in(K, S)` | `S`: node, external | edges `e` with `kind(e) ∈ K` and `dst(e) ∈ S` |
 | `src(E)` | edge | the sources of the edges in `E` |
 | `dst(E)` | edge | the facts that the tag targets of the edges in `E` resolve to; an edge whose tag target resolves to nothing contributes nothing |
 | `subject(F)` | finding | the subjects of the findings in `F`; a subject that is no fact ([jsonl.md](jsonl.md) section 9) contributes nothing |
@@ -211,8 +211,8 @@ citation is still a citation.
 | function | accepts | denotes |
 |---|---|---|
 | `deps(K, S)` | node, config | the least `X ⊇ S` with `dst(out(K, X)) ⊆ X` |
-| `rdeps(K, S)` | node, ref | the least `X ⊇ S` with `src(in(K, X)) ⊆ X` |
-| `paths(S, T)` | node, ref, config | `deps(edge, S) ^ rdeps(edge, T)`: every node on some path from `S` to `T` over any edge kind |
+| `rdeps(K, S)` | node, external | the least `X ⊇ S` with `src(in(K, X)) ⊆ X` |
+| `paths(S, T)` | node, external, config | `deps(edge, S) ^ rdeps(edge, T)`: every node on some path from `S` to `T` over any edge kind |
 
 ### 6.4 Plan functions
 
@@ -240,7 +240,7 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 | function | keeps `e ∈ E` iff |
 |---|---|
 | `suspect(E)` | `rev(e) ≠ ⊥`, `dst(e) ≠ ⊥`, `dst(e)` is a declaration, and `rev(dst(e)) ≠ rev(e)` |
-| `dangling(E)` | `dst(e) = ⊥`, and the tag target of `e` is well formed: no declaration has the slug. A tag target that fails its pattern, or a ref whose namespace is undeclared, is not dangling: it is `invalid-target` only ([vocabulary.md](vocabulary.md) section 4) |
+| `dangling(E)` | `dst(e) = ⊥`, and the tag target of `e` is well formed: no declaration has the slug. A tag target that fails its pattern, or an external id whose namespace is undeclared, is not dangling: it is `invalid-target` only ([vocabulary.md](vocabulary.md) section 4) |
 
 ### 6.7 Evidence predicates
 
@@ -347,7 +347,7 @@ defines "touched" for each category:
 | `hunk` | always |
 | `tombstone` | always |
 | `edge` | the edge is new, or its line intersects a hunk, or `dst(e)` is a tombstone — a citation of a declaration that vanished is changed even when its bytes are not |
-| `evidence` `ref` | never |
+| `evidence` `external` | never |
 
 `b` can be `base` (the `--base` value) or a git revision. To evaluate
 `changed(x)` for another revision, the tool needs a second fact set
@@ -425,7 +425,7 @@ passes the cap ([manifest.md](manifest.md) section 9.3).
 | `parse-error` | file | *engine*: a governed file with a parse failure ([packs.md](packs.md) section 5.2). In a file of a fetched pack, the file's facts are absent. In a markdown file, the facts stay, one finding sits at each error, and the tier of such a finding is `warn` where the class's tier is `block` | tree | · | · | warn, block, block |
 | `typo-tag` | line | *engine*: a tag line whose tag word ([vocabulary.md](vocabulary.md) section 3.1) is not in the vocabulary and lies within Damerau–Levenshtein distance 2 of a word of the vocabulary. The pack's foreign vocabulary is exempt. The `fix` names the nearest word of the vocabulary. When two words are equally near, it names the first in byte order, as [manifest.md](manifest.md) section 4.2 does for keys | tree | · | F | warn, warn, warn |
 | `ignored-tag` | line | *engine*: in markdown, a paragraph that a section or a list item holds directly, that is not the first paragraph of that section or list item, that no block quote holds, and whose first line is a tag line. The scanner reads no tag in it ([packs.md](packs.md) section 7.2) | tree | · | · | warn, warn, warn |
-| `invalid-target` | tag | *engine*: a tag target that fails its pattern: a slug that fails the slug pattern, or a ref whose namespace is undeclared or whose id fails the pattern of its namespace ([vocabulary.md](vocabulary.md) sections 4.1 and 4.2). Such a tag target is never `dangling` | tree | · | · | block, block, block |
+| `invalid-target` | tag | *engine*: a tag target that fails its pattern: a slug that fails the slug pattern, or an external id whose namespace is undeclared or whose id fails the pattern of its namespace ([vocabulary.md](vocabulary.md) sections 4.1 and 4.2). Such a tag target is never `dangling` | tree | · | · | block, block, block |
 | `duplicate` | tag or line | *engine*: two slugs in one namespace that are equal, or that differ only in case ([vocabulary.md](vocabulary.md) section 4.1): two declarations; two plans (closed plans included); or two steps of one plan. Order the facts of one such group by the byte order of their paths, and then by their lines. Each fact after the first gives one finding. Its subject is the tag of that fact or, for a step, the line of the step's heading ([jsonl.md](jsonl.md) section 9) | tree | · | · | block, block, block |
 | `scope-outside-plan` | step | *engine*: a step whose `@scope` is not contained in its plan's `@scope`. The tool decides containment on the plain globs ([manifest.md](manifest.md) section 7.2), by the rule of glob containment of [ledger.md](ledger.md) section 11: each plain glob of the step must be contained in a plain glob of the plan. A `!` glob of the step only narrows the step's scope, so it never breaks containment | tree | · | · | block, block, — |
 | `misplaced-plan` | tag | *engine*: a `@plan` tag that does not stand in the first tag block of a file under `.plans/`: a `@plan` outside `.plans/**`, or a `@plan` in a later block of a file under `.plans/` ([vocabulary.md](vocabulary.md) section 10.1) | tree | · | · | block, block, block |

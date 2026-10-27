@@ -125,7 +125,7 @@ machine meaning.
 
 ## 4. Tag targets
 
-A tag target is a **slug** or a **ref**.
+A tag target is a **slug** or an **external id**.
 
 ### 4.1 Slugs
 
@@ -168,18 +168,18 @@ deleted. The new declaration then continues the old item. Its revision
 must be higher than every revision of the slug that the ledger holds,
 and the ledger's entries for the slug apply to the new declaration.
 
-### 4.2 Refs
+### 4.2 External ids
 
-A ref points at something outside the repository, for example an issue.
-A ref must match `<ns>/<id>`, where `ns` is a namespace that the
-repository's manifest declares, and `id` matches the pattern that the
-namespace declares ([manifest.md](manifest.md) section 8.3). Example:
-`gh/42`.
+An external id points at something outside the repository, for example
+an issue. An external id must match `<ns>/<id>`, where `ns` is a
+namespace that the repository's manifest declares, and `id` matches
+the pattern that the namespace declares ([manifest.md](manifest.md)
+section 8.3). Example: `gh/42`.
 
-A ref is a pointer, not a declared item. It has no revision, no
-extent, and no approval. A ref whose namespace is not declared, or
-whose id fails the namespace's pattern, is an error (finding class
-`invalid-target`).
+An external id is a pointer, not a declared item. It has no revision,
+no extent, and no approval. An external id whose namespace is not
+declared, or whose id fails the namespace's pattern, is an error
+(finding class `invalid-target`).
 
 ## 5. Revisions
 
@@ -332,7 +332,7 @@ A citation says: this relates to that.
 | `@satisfies <slug> vN` | a site → a `req` or `design` |
 | `@verifies <slug> vN` | a test → a `req` or `design` |
 | `@refines <slug> vN` | a `req` or `design` → a `req` or `design` |
-| `@cites <slug or ref> [vN]` | anything → any declaration or ref |
+| `@cites <slug or external id> [vN]` | anything → any declaration or external id |
 | `@supersedes <slug> vN` | a declaration → a declaration of the same kind |
 
 The source of a citation depends on its kind and on its place:
@@ -373,8 +373,9 @@ an enclosing declaration.
 
 A citation is **dangling** when its tag target is well formed and does
 not resolve: no declaration has the slug. A tag target that fails its
-pattern, or a ref whose namespace is not declared, is not dangling. It
-is the finding `invalid-target` only (sections 4.1 and 4.2).
+pattern, or an external id whose namespace is not declared, is not
+dangling. It is the finding `invalid-target` only (sections 4.1 and
+4.2).
 
 A `@supersedes` edge whose source and tag target have different kinds
 is an error. An effective `@supersedes` edge retires the declaration
@@ -448,11 +449,11 @@ section 9 marks the classes whose findings are ackable, and it states
 the condition when only some findings of a class are ackable. An ack
 that names only findings that are not ackable is void by condition 2.
 
-**`@pin <ref>`** is deferred. A future version will use it to watch
-external content for changes. A person endorses the content's current
-hash through the approval flow. The tool then reports a finding
-whenever the content's hash differs from the endorsed hash. The
-finding stays until a person endorses the new hash.
+**`@pin <external id>`** is deferred. A future version will use it to
+watch external content for changes. A person endorses the content's
+current hash through the approval flow. The tool then reports a
+finding whenever the content's hash differs from the endorsed hash.
+The finding stays until a person endorses the new hash.
 
 ### 7.5 Plan-only tags
 

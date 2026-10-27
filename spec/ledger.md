@@ -360,11 +360,12 @@ new approval is needed. The consequences of the three clauses:
 ## 12. `pin` (deferred)
 
 A `pin` entry will endorse the current hash of external content. It
-adds three fields to the common fields of section 4: `approval`, `ref`,
-and `hash`. The example shows only the fields of the entry's own:
+adds three fields to the common fields of section 4: `approval`,
+`external`, and `hash`. The example shows only the fields of the
+entry's own:
 
 ```json
-{"approval":"…","hash":"…","kind":"pin","ref":"gh/42"}
+{"approval":"…","external":"gh/42","hash":"…","kind":"pin"}
 ```
 
 It is designed but deferred, together with the `@pin` directive.

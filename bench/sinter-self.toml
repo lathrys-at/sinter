@@ -3,4 +3,4 @@
 
 [scan]
 packs.markdown.files = ["**/*.md", "!test/**"]
-refs.gh = "[1-9][0-9]*"
+namespaces.gh = "[1-9][0-9]*"

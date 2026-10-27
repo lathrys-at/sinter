@@ -9,9 +9,9 @@ Status: draft. The six specifications share one version; see [docs/versioning.md
 
 The **manifest** is a TOML file that holds the settings of one
 repository for Sinter. Its settings say which files Sinter reads and
-which refs resolve. They set how hard each finding class bites. They
-say which changes need a plan step, which kinds need approval, and
-which test evidence meets a promise.
+which external ids resolve. They set how hard each finding class
+bites. They say which changes need a plan step, which kinds need
+approval, and which test evidence meets a promise.
 
 This document defines the file, its tables, and its keys. It says how
 a tool reads the file, and which errors a manifest can hold. It also
@@ -138,7 +138,7 @@ tables, and each table holds the settings of one part of Sinter:
 | table | part of Sinter | what its settings decide |
 |---|---|---|
 | top level | every part | the version of the specifications; the default branch |
-| `[scan]` | the scanner | which files each pack reads; which test runners write the reports for its tests; which refs resolve |
+| `[scan]` | the scanner | which files each pack reads; which test runners write the reports for its tests; which external ids resolve |
 | `[check]` | findings | which facts can make findings; the tier of each built-in finding class |
 | `[plan]` | the plan check and promises | which changes need a plan step; where a promised declaration can be met |
 | `[ledger]` | approval and the ledger | which kinds need approval; where the commands that write the ledger refuse |
@@ -159,7 +159,7 @@ key path.
 
 This document fixes some names in a key path: the names of the tables,
 and keys such as `rollout-cap`. Each fixed name occurs at one place in
-the layout. Other names vary: the name of a pack, a ref namespace, a
+the layout. Other names vary: the name of a pack, a namespace, a
 gate, a finding class, or a kind. This document writes a name that
 varies in angle brackets, for example `<name>`.
 
@@ -176,7 +176,7 @@ the key (section 5).
 | `scan.packs.<name>.version` | string | none: required for each fetched pack; an error on `markdown` | the scanner: the release of pack `<name>` | 8.1 | 1.0 |
 | `scan.packs.<name>.runners` | array of strings: runner names | empty: the pack has no runner; an error on `markdown` | test evidence: the runners whose reports bind to the tests of pack `<name>` | 8.1 | 1.0 |
 | `scan.packs.<name>.<runner>.<key>` | the type that the descriptor of pack `<name>` gives the runner setting `<key>` | the default that the descriptor gives | test evidence: the runner setting `<key>` of the runner `<runner>` | 8.1 | 1.0 |
-| `scan.refs.<ns>` | string: an id pattern | absent: the namespace `<ns>` does not exist | the scanner and findings: which refs resolve | 8.3 | 1.0 |
+| `scan.namespaces.<ns>` | string: an id pattern | absent: the namespace `<ns>` does not exist | the scanner and findings: which external ids resolve | 8.3 | 1.0 |
 | `check.rollout-cap` | boolean | `false` | findings: tiers | 9.3 | 1.0 |
 | `check.historical` | path set | empty, with one built-in member | findings: which facts can make findings | 9.4 | 1.0 |
 | `check.tiers.<gate>.<class>` | string: a tier | the tier in algebra.md section 9 | findings: tiers | 9.2 | 1.0 |
@@ -448,7 +448,7 @@ files of a pack (section 8.1). A `!` glob in the files of a pack is
 the only way to leave a file of the file set out of reading. The
 manifest holds no other list of paths to leave out.
 
-## 8. `[scan]`: packs and refs
+## 8. `[scan]`: packs and namespaces
 
 ### 8.1 Packs
 
@@ -519,25 +519,27 @@ command reads. When a check fails, the command stops with exit code 3.
    grammar of the pack ([packs.md](packs.md) section 3.3). The message
    names the file and the pack.
 
-### 8.3 Ref namespaces
+### 8.3 Namespaces
 
-A **ref** is a tag target that points outside the repository, written
-`<ns>/<id>` ([vocabulary.md](vocabulary.md) section 4.2). `<ns>` is a
-**ref namespace**, and `<id>` is the id inside it.
+An **external id** is a tag target that points outside the repository,
+written `<ns>/<id>` ([vocabulary.md](vocabulary.md) section 4.2).
+`<ns>` is a **namespace**, and `<id>` is the id inside it.
 
-`scan.refs.<ns>` declares the ref namespace `<ns>`. Its value is an id
-pattern (section 8.4). A ref `<ns>/<id>` resolves when the manifest
-declares `<ns>` and `<id>` matches the pattern of `<ns>`. Otherwise the
-ref does not resolve ([vocabulary.md](vocabulary.md) section 4.2).
+`scan.namespaces.<ns>` declares the namespace `<ns>`. Its value is an
+id pattern (section 8.4). An external id `<ns>/<id>` resolves when the
+manifest declares `<ns>` and `<id>` matches the pattern of `<ns>`.
+Otherwise the external id does not resolve
+([vocabulary.md](vocabulary.md) section 4.2).
 
 The name of a namespace matches `[a-z][a-z0-9]*(-[a-z0-9]+)*`. No
 namespace is built in. For the issues and the pull requests of a
-project on GitHub, write `refs.gh = "[1-9][0-9]*"` under `[scan]`.
+project on GitHub, write `namespaces.gh = "[1-9][0-9]*"` under
+`[scan]`.
 
 ### 8.4 The id pattern language
 
 An **id pattern** is a small regular expression that matches the whole
-id of a ref. A pattern is built from these parts:
+`<id>` of an external id. A pattern is built from these parts:
 
 | part | form | matches |
 |---|---|---|
@@ -954,7 +956,7 @@ does not mean "reports more findings".
 | `scan.packs.<name>.version` | | | each change |
 | `scan.packs.<name>.runners` | | | each change |
 | `scan.packs.<name>.<runner>.<key>` | | | each change |
-| `scan.refs.<ns>` | a namespace removed | a namespace added | a pattern changed |
+| `scan.namespaces.<ns>` | a namespace removed | a namespace added | a pattern changed |
 | `check.rollout-cap` | `true` to `false` | `false` to `true` | |
 | `check.tiers.<gate>.<class>` | the tier that applies rises | the tier that applies falls | the tier that applies stays the same |
 | `check.historical`, `plan.ambient`, `plan.shared`, `plan.locations.<kind>` | a plain glob removed; a `!` glob added | a plain glob added; a `!` glob removed | |
@@ -970,7 +972,7 @@ Examples of details:
 check.rollout-cap: false -> true (weakens)
 check.historical: added "docs/devlog/" (weakens)
 check.tiers.review.dangling: "block" -> "warn" (weakens)
-scan.refs.jira: added "[A-Z]+-[1-9][0-9]*" (weakens)
+scan.namespaces.jira: added "[A-Z]+-[1-9][0-9]*" (weakens)
 ledger.approval-required: added "req" (strengthens)
 ```
 
@@ -1035,7 +1037,7 @@ packs.ocaml.files = ["**/*.ml", "**/*.mli"]
 packs.ocaml.version = "1.0"
 packs.rust.files = ["**/*.rs"]
 packs.rust.version = "1.0"
-refs.gh = "[1-9][0-9]*"
+namespaces.gh = "[1-9][0-9]*"
 
 [check]
 rollout-cap = true
@@ -1067,8 +1069,8 @@ packs.markdown.files = ["**/*.md", "!test/fixtures/"]
 packs.typescript.files = ["**/*.ts", "!**/*.d.ts"]
 packs.typescript.version = "1.0"
 packs.typescript.runners = ["vitest"]
-refs.gh = "[1-9][0-9]*"
-refs.jira = "[A-Z]+-[1-9][0-9]*"
+namespaces.gh = "[1-9][0-9]*"
+namespaces.jira = "[A-Z]+-[1-9][0-9]*"
 
 [check]
 rollout-cap = true

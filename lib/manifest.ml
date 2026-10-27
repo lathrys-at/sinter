@@ -14,7 +14,7 @@ let settings =
       ("scan.packs.<name>.version", 1, 0);
       ("scan.packs.<name>.runners", 1, 0);
       ("scan.packs.<name>.<runner>.<key>", 1, 0);
-      ("scan.refs.<ns>", 1, 0);
+      ("scan.namespaces.<ns>", 1, 0);
       ("check.rollout-cap", 1, 0);
       ("check.historical", 1, 0);
       ("check.tiers.<gate>.<class>", 1, 0);
@@ -215,7 +215,7 @@ let problem_message = function
         (Toml.quote name)
         (name_rule ~examples:"'ocaml' or 'tree-sitter'")
   | Bad_namespace name ->
-      Printf.sprintf "%s is not a ref namespace; a namespace is %s"
+      Printf.sprintf "%s is not a namespace; a namespace is %s"
         (Toml.quote name)
         (name_rule ~examples:"'gh' or 'jira'")
   | Unknown_gate { name; nearest } ->
@@ -345,7 +345,7 @@ type t = {
   spec : Major_minor.t option;
   default_branch : string;
   packs : pack list;
-  refs : (string * Id_pattern.t) list;
+  namespaces : (string * Id_pattern.t) list;
   rollout_cap : bool;
   tiers : (Finding_class.gate * Finding_class.t * Finding_class.tier) list;
   historical : Path_set.t;
@@ -366,7 +366,7 @@ type reading = {
   mutable versions : (string * Major_minor.t option) list;
   mutable runners : (string * (Toml.node * string) list) list;
   mutable runner_settings : ((string * string) * Toml.table) list;
-  mutable refs : (string * Id_pattern.t) list;
+  mutable namespaces : (string * Id_pattern.t) list;
   mutable rollout_cap : bool;
   mutable tiers :
     (Finding_class.gate * Finding_class.t * Finding_class.tier) list;
@@ -653,7 +653,7 @@ let layout reading =
                   Ok (pack_place reading key)
                 end
                 else Error (Bad_pack_name key.name)) );
-          ( "refs",
+          ( "namespaces",
             Varying
               (fun key ->
                 if is_layout_name key.name then
@@ -662,7 +662,8 @@ let layout reading =
                        (fun node value ->
                          match Id_pattern.of_string value with
                          | Ok pattern ->
-                             reading.refs <- (key.name, pattern) :: reading.refs
+                             reading.namespaces <-
+                               (key.name, pattern) :: reading.namespaces
                          | Error error ->
                              value_error reading
                                (inside node (Id_pattern.error_offset error))
@@ -889,7 +890,7 @@ let new_reading () =
     versions = [];
     runners = [];
     runner_settings = [];
-    refs = [];
+    namespaces = [];
     rollout_cap = false;
     tiers = [];
     historical = Path_set.empty;
@@ -983,7 +984,7 @@ let of_string text =
                     default_branch =
                       Option.value reading.default_branch ~default:"main";
                     packs;
-                    refs = List.sort compare reading.refs;
+                    namespaces = List.sort compare reading.namespaces;
                     rollout_cap = reading.rollout_cap;
                     tiers = List.sort compare reading.tiers;
                     historical = reading.historical;
@@ -1015,7 +1016,7 @@ let load path =
 let spec (manifest : t) = manifest.spec
 let default_branch (manifest : t) = manifest.default_branch
 let packs (manifest : t) = manifest.packs
-let ref_namespaces (manifest : t) = manifest.refs
+let namespaces (manifest : t) = manifest.namespaces
 let rollout_cap (manifest : t) = manifest.rollout_cap
 let written_tiers (manifest : t) = manifest.tiers
 

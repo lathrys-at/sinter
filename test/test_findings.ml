@@ -15,7 +15,9 @@ let document text =
   | Error _ -> Alcotest.fail "the text gives no document"
 
 let markdown =
-  "[scan]\npacks.markdown.files = [\"**/*.md\"]\nrefs.gh = \"[1-9][0-9]*\"\n"
+  "[scan]\n\
+   packs.markdown.files = [\"**/*.md\"]\n\
+   namespaces.gh = \"[1-9][0-9]*\"\n"
 
 let manifest extra =
   match Manifest.of_string (markdown ^ extra) with
@@ -129,9 +131,9 @@ let invalid_target_names_why_the_target_fails () =
       "docs/a.md:3:1-3:11 | finding:invalid-target:tag:docs/a.md@L3C1 | a! is \
        not a valid slug";
       "docs/a.md:4:1-4:12 | finding:invalid-target:tag:docs/a.md@L4C1 | the \
-       manifest declares no ref namespace xy";
+       manifest declares no namespace xy";
       "docs/a.md:5:1-5:12 | finding:invalid-target:tag:docs/a.md@L5C1 | 0 does \
-       not match the id pattern of the ref namespace gh";
+       not match the id pattern of the namespace gh";
       "docs/a.md:7:1-7:17 | finding:invalid-target:tag:docs/a.md@L7C1 | b_ is \
        not a valid slug";
     ]
@@ -715,16 +717,16 @@ let a_control_character_of_a_plan_stays_in_one_line () =
             ("docs/z\001q.md", "# Z\n\n@req z v1\n");
           ]))
 
-let a_ref_with_no_namespace_or_no_id_says_so () =
+let an_external_id_with_no_namespace_or_no_id_says_so () =
   check Finding_class.Invalid_target
     [ ("docs/a.md", "# A\n\n@cites /x\n@cites gh/\n@cites zz/\n") ]
     [
       "docs/a.md:3:1-3:10 | finding:invalid-target:tag:docs/a.md@L3C1 | the \
-       ref /x names no namespace";
+       external id /x names no namespace";
       "docs/a.md:4:1-4:11 | finding:invalid-target:tag:docs/a.md@L4C1 | the \
-       ref gh/ names no id";
+       external id gh/ names no id";
       "docs/a.md:5:1-5:11 | finding:invalid-target:tag:docs/a.md@L5C1 | the \
-       manifest declares no ref namespace zz";
+       manifest declares no namespace zz";
     ]
 
 let cycle_finds_each_component_once () =
@@ -862,8 +864,8 @@ let tests =
       a_line_feed_in_a_path_stays_in_one_line;
     case "a control character of a plan stays in one line"
       a_control_character_of_a_plan_stays_in_one_line;
-    case "a ref with no namespace or no id says so"
-      a_ref_with_no_namespace_or_no_id_says_so;
+    case "an external id with no namespace or no id says so"
+      an_external_id_with_no_namespace_or_no_id_says_so;
     case "cycle finds each component once" cycle_finds_each_component_once;
     case "cycle takes its subject by id, not by place"
       cycle_takes_its_subject_by_id_not_by_place;

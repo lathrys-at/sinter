@@ -146,7 +146,7 @@ Rules for the tag block:
   record is `v1`.
 - Add one `@cites <slug>` line for each existing record, requirement,
   or design item that the decision rests on. Add one
-  `@cites <ns>/<id>` line for each external ref, such as an issue.
+  `@cites <ns>/<id>` line for each external id, such as an issue.
   Add no line for an item that the decision does not rest on.
 - Add `@supersedes <slug> vN` only in the case from step 2.
 - The one-sentence description follows the tag lines, on its own
@@ -162,7 +162,7 @@ forward lends the decision a weight it did not earn; do not add one.
 ### 4. Show the result
 
 Print the record. Tell the user the slug. List the records and the
-refs that the record cites.
+external ids that the record cites.
 
 When you quote the record, or any of its tag lines, on GitHub (in an
 issue, a pull request, or a comment), put the text in a fenced code
@@ -201,7 +201,7 @@ follow them too.
 - The record holds no table of fields, no wire format, no interface,
   and no account of how the thing is built. It fits on one screen.
 - Every `@cites` target exists in the repository or is a declared
-  ref.
+  external id.
 - When the record supersedes an old record, no `@cites` line names
   the old slug outside the historical paths. Each declaration that
   held such a citation has a higher revision, and no new `@ack` line

@@ -237,7 +237,7 @@ the span of the record is the first paragraph of the section.
 | `ch` | string | code only: code hash ([vocabulary.md](vocabulary.md) section 6.2); omitted when the block attaches to nothing |
 | `xline` `xeline` | int | markdown only: the first and the last line of the extent of the section ([vocabulary.md](vocabulary.md) section 6) |
 
-## 5. Edge, ref, and promise records
+## 5. Edge, external, and promise records
 
 **edge** — `kind` is `satisfies`, `verifies`, `refines`, `cites`, or
 `supersedes`.
@@ -262,12 +262,12 @@ Example:
 {"col":5,"dst":"req:auth-lockout","ecol":31,"eline":40,"id":"verifies:test:src/auth/lockout.rs#tests::locks_after_five_failures->auth-lockout","kind":"verifies","line":40,"pack":"rust","path":"src/auth/lockout.rs","rev":2,"rung":"passing","src":"test:src/auth/lockout.rs#tests::locks_after_five_failures","target":"auth-lockout","v":1}
 ```
 
-**`ref`** — unlocated; one record per distinct ref.
+**`external`** — unlocated; one record per distinct external id.
 
 | field | type | meaning |
 |---|---|---|
 | `ns` | string | namespace |
-| `ref` | string | id within the namespace |
+| `name` | string | the id inside the namespace, for example `42` for `gh/42` |
 
 **`promise`**
 
@@ -451,7 +451,7 @@ uses a position in the file only when no content can name the fact.
 | `test` | `test:<path>#<full name>` | the full name joins the names of the test's name path with the pack's name separator ([packs.md](packs.md) section 8.3). When two tests of one file have one full name, each later one in the order of the file adds `#2`, `#3`, and so on. The full name can contain spaces |
 | `site` | `site:<path>#<name>` | code: `<name>` is the name path of the attached definition; when two sites of one file have one name, each later one in the order of the file adds `#2`, `#3`, and so on ([packs.md](packs.md) section 6.5). A code site with no name has the positional id `site:<path>@L<line>C<column>`, from the position where its run starts, and its record carries `"positional":true`. Markdown: `<name>` is the slug of the section's heading; the section of level 0 has the id `site:<path>` |
 | edges | `<kind>:<src-id>-><target>` | `<target>` is the tag target. Parse from the right: a tag target cannot contain `->` |
-| `ref` | `ref:<ns>/<id>` | |
+| `external` | `external:<ns>/<id>` | |
 | `promise` | `promise:<step-id>:<word>:<target>` | parse from the right |
 | `run` | `run:<test-id>@<tree>` | |
 | `cov` | `cov:<test-id or *>@<site-id>` | |

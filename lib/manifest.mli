@@ -215,8 +215,8 @@ val packs : t -> pack list
 (** [packs manifest] is the packs, sorted by name in byte order. The list is
     never empty. *)
 
-val ref_namespaces : t -> (string * Id_pattern.t) list
-(** [ref_namespaces manifest] is each declared ref namespace with its id
+val namespaces : t -> (string * Id_pattern.t) list
+(** [namespaces manifest] is each declared namespace of external ids with its id
     pattern, sorted by namespace in byte order. *)
 
 val rollout_cap : t -> bool

@@ -7,8 +7,8 @@
     block holds a tag of the word [plan]. A plan file gives a [plan] record, a
     [step] record for each step, and a [promise] record for each promise. Every
     other file gives a record for each declaration of the kinds [req], [design],
-    and [decision], each edge, each site, and each ack. Each distinct ref that
-    an edge names and that resolves gives one [ref] record.
+    and [decision], each edge, each site, and each ack. Each distinct external
+    id that an edge names and that resolves gives one [external] record.
 
     The records take the values that hold when the ledger, the evidence, and the
     session are absent: every plan is open, no plan and no step is active,
@@ -22,8 +22,8 @@ val make : Manifest.t -> (string * Markdown.t) list -> t
 (** [make manifest files] is the facts of [files]. Each pair is the path of one
     file, relative to the repository root, and the document that
     {!Markdown.read} gave for the file. No path occurs twice. The manifest gives
-    the ref namespaces, the kinds that need approval, and the default locations
-    of the kinds. *)
+    the namespaces, the kinds that need approval, and the default locations of
+    the kinds. *)
 
 val needs_changes : t -> bool
 (** [needs_changes facts] is [true] when a step of a plan has no promise. Only
@@ -66,9 +66,9 @@ type target = private
       (** the declaration at this index of {!declarations}: the first of the
           declarations of the kinds [req], [design], and [decision] that have
           the slug, in the order of the records *)
-  | Ref of { ns : string; id : string }
-      (** a ref whose namespace the manifest declares and whose id matches the
-          pattern of the namespace *)
+  | External of { ns : string; id : string }
+      (** an external id whose namespace the manifest declares and whose id
+          matches the pattern of the namespace *)
   | Unresolved of { dangling : bool }
       (** nothing; [dangling] is [true] when the tag target is a valid slug *)
 

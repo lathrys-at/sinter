@@ -12,10 +12,10 @@
       3 in 10 pin [v1], and about 1 in 100 name a slug that no file declares
     - decisions: the rest of the [n], one to a file under [docs/decisions/],
       each with up to two [@cites] of an earlier decision and at times a
-      [@cites] of a ref [gh/<id>]; each decision from the third on whose number
-      is 1 or 2 above a multiple of 30 [@supersedes] the decision before it;
-      each decision whose number is 7, 17, or 27 above a multiple of 50 carries
-      [@deprecated], [@rejected], or [@deferred]: a retired decision
+      [@cites] of an external id [gh/<id>]; each decision from the third on
+      whose number is 1 or 2 above a multiple of 30 [@supersedes] the decision
+      before it; each decision whose number is 7, 17, or 27 above a multiple of
+      50 carries [@deprecated], [@rejected], or [@deferred]: a retired decision
     - notes: sections under [docs/notes/] that [@cites] a requirement and
       declare nothing
     - acks: [n / 20] sections under [docs/acks/], 25 to a file, when the tree
@@ -27,7 +27,7 @@
       [.plans/]; each has 20 steps with a [@scope], and each step but the last
       makes two to four promises
     - [README.md], and the manifest [sinter.toml], which reads every markdown
-      file and declares the ref namespace [gh]
+      file and declares the namespace [gh]
 
     Every count and every text comes from the seed alone, through
     [Random.State], so one seed and one [n] give the same tree on every run of

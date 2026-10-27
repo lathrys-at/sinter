@@ -35,8 +35,8 @@ let the_smallest_manifest_takes_every_default () =
     "coverage-attribution" true
     (Manifest.coverage_attribution manifest = Manifest.Optional);
   Alcotest.(check int)
-    "no ref namespace" 0
-    (List.length (Manifest.ref_namespaces manifest));
+    "no namespace" 0
+    (List.length (Manifest.namespaces manifest));
   Alcotest.(check int)
     "no written tier" 0
     (List.length (Manifest.written_tiers manifest));
@@ -79,7 +79,7 @@ packs.ocaml.files = ["**/*.ml", "**/*.mli"]
 packs.ocaml.version = "1.0"
 packs.rust.files = ["**/*.rs"]
 packs.rust.version = "1.0"
-refs.gh = "[1-9][0-9]*"
+namespaces.gh = "[1-9][0-9]*"
 
 [check]
 rollout-cap = true
@@ -111,11 +111,11 @@ let the_example_of_sinter_reads () =
     [ "markdown **/*.md -"; "ocaml **/*.ml,**/*.mli 1.0"; "rust **/*.rs 1.0" ]
     (List.map pack_summary (Manifest.packs manifest));
   Alcotest.(check (list (pair string string)))
-    "refs"
+    "namespaces"
     [ ("gh", "[1-9][0-9]*") ]
     (List.map
        (fun (ns, pattern) -> (ns, Id_pattern.to_string pattern))
-       (Manifest.ref_namespaces manifest));
+       (Manifest.namespaces manifest));
   Alcotest.(check bool) "rollout-cap" true (Manifest.rollout_cap manifest);
   Alcotest.(check (list string))
     "ambient"
@@ -147,8 +147,8 @@ packs.markdown.files = ["**/*.md", "!test/fixtures/"]
 packs.typescript.files = ["**/*.ts", "!**/*.d.ts"]
 packs.typescript.version = "1.0"
 packs.typescript.runners = ["vitest"]
-refs.gh = "[1-9][0-9]*"
-refs.jira = "[A-Z]+-[1-9][0-9]*"
+namespaces.gh = "[1-9][0-9]*"
+namespaces.jira = "[A-Z]+-[1-9][0-9]*"
 
 [check]
 rollout-cap = true
@@ -184,7 +184,7 @@ let the_example_of_a_typescript_project_reads () =
        (Manifest.packs manifest));
   Alcotest.(check (list string))
     "the namespaces, sorted" [ "gh"; "jira" ]
-    (List.map fst (Manifest.ref_namespaces manifest));
+    (List.map fst (Manifest.namespaces manifest));
   Alcotest.(check (list string))
     "historical" [ "docs/devlog/" ]
     (members (Manifest.historical manifest));
@@ -489,7 +489,9 @@ let an_old_name_is_an_unknown_name () =
     [
       "sinter.toml:1:14: unknown gate 'target' in [check.tiers]; the gates are \
        'turn', 'review', or 'merged'";
-    ]
+    ];
+  reports "scan.refs" "[scan]\nrefs.gh = \"[1-9][0-9]*\"\n"
+    [ "sinter.toml:2:1: unknown key 'refs' in [scan]" ]
 
 let a_name_with_a_control_character_is_escaped () =
   reports "an unknown key" "\"a\\nb\" = 1\n"
@@ -616,7 +618,7 @@ let names_that_vary () =
   reports "pack names and namespaces"
     "[scan.packs.Markdown]\n\
      files = [\"a\"]\n\
-     [scan.refs]\n\
+     [scan.namespaces]\n\
      GH = \"x\"\n\
      \"a-\" = \"x\"\n\
      \"-a\" = \"x\"\n\
@@ -628,29 +630,28 @@ let names_that_vary () =
       "sinter.toml:1:13: 'Markdown' is not a pack name; a pack name is \
        lower-case letters and digits, in words joined by '-', such as 'ocaml' \
        or 'tree-sitter'";
-      "sinter.toml:4:1: 'GH' is not a ref namespace; a namespace is lower-case \
+      "sinter.toml:4:1: 'GH' is not a namespace; a namespace is lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:5:1: 'a-' is not a ref namespace; a namespace is lower-case \
+      "sinter.toml:5:1: 'a-' is not a namespace; a namespace is lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:6:1: '-a' is not a ref namespace; a namespace is lower-case \
+      "sinter.toml:6:1: '-a' is not a namespace; a namespace is lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:7:1: '' is not a ref namespace; a namespace is lower-case \
+      "sinter.toml:7:1: '' is not a namespace; a namespace is lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:8:1: '1a' is not a ref namespace; a namespace is lower-case \
+      "sinter.toml:8:1: '1a' is not a namespace; a namespace is lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:9:1: 'aB' is not a ref namespace; a namespace is lower-case \
+      "sinter.toml:9:1: 'aB' is not a namespace; a namespace is lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:10:1: 'a_b' is not a ref namespace; a namespace is \
-       lower-case letters and digits, in words joined by '-', such as 'gh' or \
-       'jira'";
+      "sinter.toml:10:1: 'a_b' is not a namespace; a namespace is lower-case \
+       letters and digits, in words joined by '-', such as 'gh' or 'jira'";
     ];
   reports "names with words and digits"
     (markdown
    ^ "packs.tree-sitter2.files = [\"a\"]\n\
       packs.tree-sitter2.version = \"1.0\"\n\
-      refs.a1-b2 = \"x\"\n\
-      refs.z9-a0 = \"x\"\n\
-      refs.z = \"x\"\n")
+      namespaces.a1-b2 = \"x\"\n\
+      namespaces.z9-a0 = \"x\"\n\
+      namespaces.z = \"x\"\n")
     [ "no error" ];
   reports "a version for markdown"
     "[scan.packs.markdown]\nfiles = [\"**/*.md\"]\nversion = \"1.0\"\n"
@@ -685,8 +686,8 @@ let values () =
      packs.y.version = \"1\"\n\
      packs.z.files = []\n\
      packs.w.files = [\"a\"]\n\
-     refs.gh = \".x\"\n\
-     refs.jira = \"[0-9]*\"\n"
+     namespaces.gh = \".x\"\n\
+     namespaces.jira = \"[0-9]*\"\n"
     [
       "sinter.toml:2:30: \"src/**.ts\" is not a glob: the segment '**.ts' \
        holds '**' and other characters; write '**/*.ts'";
@@ -705,9 +706,9 @@ let values () =
        repository uses, such as \"1.0\"";
       "sinter.toml:6:7: the pack w needs 'version', the release that the \
        repository uses, such as \"1.0\"";
-      "sinter.toml:7:12: '.' is not in the id pattern language; put it in a \
+      "sinter.toml:7:18: '.' is not in the id pattern language; put it in a \
        class, for example [.]";
-      "sinter.toml:8:14: the pattern matches an empty id";
+      "sinter.toml:8:20: the pattern matches an empty id";
     ];
   reports "a pack with files and a bad version"
     (markdown
@@ -857,9 +858,11 @@ let the_example_messages_of_the_specification () =
   check "[check.tiers.merged]\nscope-outside-plan = \"warn\"\n"
     "'scope-outside-plan' takes no tier at the gate 'merged'";
   check
-    (markdown ^ "refs.gh = \".\"\n")
+    (markdown ^ "namespaces.gh = \".\"\n")
     "'.' is not in the id pattern language; put it in a class, for example [.]";
-  check (markdown ^ "refs.gh = \"[0-9]*\"\n") "the pattern matches an empty id"
+  check
+    (markdown ^ "namespaces.gh = \"[0-9]*\"\n")
+    "the pattern matches an empty id"
 
 let rec value_text node =
   match Toml.value node with
@@ -1422,8 +1425,8 @@ let line =
       "dune-test = 2";
       "files = [\"a\", \"!b\"]";
       "version = \"1\"";
-      "refs.gh = \"[1-9][0-9]*\"";
-      "refs.x = \".\"";
+      "namespaces.gh = \"[1-9][0-9]*\"";
+      "namespaces.x = \".\"";
       "rollout-cap = true";
       "rollout-cap = 1";
       "historical = [\"docs/\"]";
@@ -1520,7 +1523,7 @@ let settings =
           | [] -> []
           | pair ->
               pair @ [ ([ "scan"; "packs"; "ocaml"; "version" ], "\"1.2\"") ] );
-        optional [ "scan"; "refs"; "gh" ] "\"[1-9][0-9]*\"";
+        optional [ "scan"; "namespaces"; "gh" ] "\"[1-9][0-9]*\"";
         map (fun b -> [ ([ "check"; "rollout-cap" ], string_of_bool b) ]) bool;
         map
           (fun g ->
@@ -1639,7 +1642,7 @@ let summary manifest =
     @ List.map pack_summary (Manifest.packs manifest)
     @ List.map
         (fun (ns, p) -> ns ^ "=" ^ Id_pattern.to_string p)
-        (Manifest.ref_namespaces manifest)
+        (Manifest.namespaces manifest)
     @ List.map
         (fun (g, c, t) ->
           String.concat " "

@@ -91,7 +91,7 @@ let declaration_id (declaration : declaration) =
 
 type target =
   | Declaration of int
-  | Ref of { ns : string; id : string }
+  | External of { ns : string; id : string }
   | Unresolved of { dangling : bool }
 
 type edge = {
@@ -462,7 +462,7 @@ let resolve manifest (declarations : declaration array) edges =
             (fun index -> List.mem declarations.(index).kind declaration_words)
             (List.init (Array.length declarations) Fun.id)))
   in
-  let namespaces = Manifest.ref_namespaces manifest in
+  let namespaces = Manifest.namespaces manifest in
   List.map
     (fun edge ->
       let text = edge.target_text in
@@ -473,7 +473,8 @@ let resolve manifest (declarations : declaration array) edges =
             String.sub text (slash + 1) (String.length text - slash - 1)
           in
           match List.assoc_opt ns namespaces with
-          | Some pattern when Id_pattern.matches pattern id -> Ref { ns; id }
+          | Some pattern when Id_pattern.matches pattern id ->
+              External { ns; id }
           | Some _ | None -> Unresolved { dangling = false })
       | None -> (
           match Slugs.find_opt text by_slug with
@@ -568,7 +569,7 @@ let lookups (declarations : declaration array) edges targets plans =
           let meets =
             match (target, edge.rev) with
             | Declaration index, Some rev -> declarations.(index).rev = rev
-            | Declaration _, None | Ref _, _ -> true
+            | Declaration _, None | External _, _ -> true
             | Unresolved _, _ -> false
           in
           if meets then Some ((edge.word, edge.target_text), edge) else None)
@@ -749,7 +750,7 @@ let edge_records facts =
         match target with
         | Declaration index ->
             (Some (declaration_id facts.declarations.(index)), false)
-        | Ref { ns; id } -> (Some ("ref:" ^ ns ^ "/" ^ id), false)
+        | External { ns; id } -> (Some ("external:" ^ ns ^ "/" ^ id), false)
         | Unresolved { dangling } -> (None, dangling)
       in
       let suspect =
@@ -781,22 +782,22 @@ let edge_records facts =
         else []))
     facts.edges facts.targets
 
-let ref_records facts =
+let external_records facts =
   List.map
-    (fun (id, (ns, ref_id)) ->
+    (fun (id, (ns, name)) ->
       [
         ("v", Jsonl.int 1);
-        ("kind", Jsonl.string "ref");
+        ("kind", Jsonl.string "external");
         ("id", Jsonl.string id);
         ("pack", Jsonl.string "markdown");
         ("ns", Jsonl.string ns);
-        ("ref", Jsonl.string ref_id);
+        ("name", Jsonl.string name);
       ])
     (List.sort_uniq
        (fun (a, _) (b, _) -> String.compare a b)
        (List.filter_map
           (function
-            | Ref { ns; id } -> Some ("ref:" ^ ns ^ "/" ^ id, (ns, id))
+            | External { ns; id } -> Some ("external:" ^ ns ^ "/" ^ id, (ns, id))
             | _ -> None)
           facts.targets))
 
@@ -964,7 +965,7 @@ let records facts ~changed =
             ack_records facts;
             List.concat_map (plan_records facts ~changed) facts.plans;
           ]))
-  @ ref_records facts
+  @ external_records facts
 
 let declarations facts = Array.to_list facts.declarations
 let is_in_force facts index = facts.inforce.(index)

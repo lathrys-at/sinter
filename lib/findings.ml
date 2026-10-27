@@ -83,20 +83,20 @@ let target_problem manifest ~word target =
         let id =
           String.sub target (slash + 1) (String.length target - slash - 1)
         in
-        match List.assoc_opt ns (Manifest.ref_namespaces manifest) with
+        match List.assoc_opt ns (Manifest.namespaces manifest) with
         | None when String.equal ns "" ->
-            Some (Printf.sprintf "the ref %s names no namespace" target)
+            Some (Printf.sprintf "the external id %s names no namespace" target)
         | None ->
-            Some (Printf.sprintf "the manifest declares no ref namespace %s" ns)
+            Some (Printf.sprintf "the manifest declares no namespace %s" ns)
         | Some _ when String.equal id "" ->
-            Some (Printf.sprintf "the ref %s names no id" target)
+            Some (Printf.sprintf "the external id %s names no id" target)
         | Some pattern ->
             if Id_pattern.matches pattern id then None
             else
               Some
                 (Printf.sprintf
-                   "%s does not match the id pattern of the ref namespace %s" id
-                   ns))
+                   "%s does not match the id pattern of the namespace %s" id ns)
+        )
   else if List.mem word ("plan" :: declaration_words) then slug ()
   else None
 
@@ -225,7 +225,7 @@ let unpinned facts =
               Some
                 (citation ~word:edge.word ~target:edge.target_text
                    (Some declarations.(index).Facts.rev))
-          | Facts.Ref _ | Facts.Unresolved _ -> None
+          | Facts.External _ | Facts.Unresolved _ -> None
         in
         Some
           (Finding.make Finding_class.Unpinned (edge_subject edge)
@@ -269,7 +269,7 @@ let dangling facts =
                     edge.target_text)
                ?fix ())
       | Facts.Unresolved { dangling = false }
-      | Facts.Declaration _ | Facts.Ref _ ->
+      | Facts.Declaration _ | Facts.External _ ->
           None)
     (Facts.edges facts)
 
