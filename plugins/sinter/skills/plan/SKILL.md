@@ -104,7 +104,7 @@ commas. They use gitignore style:
 - A trailing `/` means the directory and everything under it.
 
 Derive scopes from the files the plan names. Where the plan is not
-explicit, confirm the globs with the user. An item discharges a
+explicit, confirm the globs with the user. An item meets a
 promise of a step only when the item sits inside the step's scope, or
 inside the default location that the manifest's `[locations]` table
 gives for the item's kind. When the manifest has no default location

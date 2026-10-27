@@ -61,8 +61,8 @@ let make finding_class subject ?place ?detail ?fix ?ackable () =
     | _, Some _ ->
         invalid_arg
           (Printf.sprintf
-             "Finding.make: the class %s alone decides whether an ack \
-              discharges a finding"
+             "Finding.make: the class %s alone decides whether an ack accepts \
+              a finding"
              (Finding_class.name finding_class))
   in
   { finding_class; subject; place; detail; fix; ackable }

@@ -42,7 +42,7 @@ type t = private {
   fix : string option;
       (** one line, with no control character but the tab: the text to paste, or
           an instruction for a person *)
-  ackable : bool;  (** [true] when an [@ack] can discharge the finding *)
+  ackable : bool;  (** [true] when an [@ack] can accept the finding *)
 }
 (** One finding. *)
 

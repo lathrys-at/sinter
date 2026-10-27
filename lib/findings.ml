@@ -649,10 +649,10 @@ let promises_out_of_scope facts =
     (fun (plan : Facts.plan) ->
       List.concat_map
         (fun (step : Facts.step) ->
-          let discharge = Facts.discharge facts plan step in
+          let standing = Facts.standing facts plan step in
           List.filter_map
             (fun (promise : Facts.promise) ->
-              match discharge promise with
+              match standing promise with
               | { by = None; residue = first :: _ } ->
                   Some
                     (Finding.make Finding_class.Promise_out_of_scope

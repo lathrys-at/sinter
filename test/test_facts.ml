@@ -1277,7 +1277,7 @@ let plans_give_their_steps_and_promises () =
               plan.steps)
        (Facts.plans facts))
 
-let discharge_names_the_residue_and_the_one_in_scope () =
+let standing_names_the_residue_and_the_one_in_scope () =
   let facts =
     facts ~extra:"[plan]\nlocations.decision = [\"docs/decisions/\"]\n"
       [
@@ -1315,12 +1315,12 @@ let discharge_names_the_residue_and_the_one_in_scope () =
         ]
         (List.map
            (fun (promise : Facts.promise) ->
-             let discharge = Facts.discharge facts plan step promise in
+             let standing = Facts.standing facts plan step promise in
              Printf.sprintf "%s %s: %s | %s" promise.word promise.target
                (Option.fold ~none:"-"
                   ~some:(fun (by : Facts.residue) -> by.path)
-                  discharge.by)
-               (String.concat ", " (List.map residue discharge.residue)))
+                  standing.by)
+               (String.concat ", " (List.map residue standing.residue)))
            step.promises)
   | _ -> Alcotest.fail "one plan with one step"
 
@@ -1432,7 +1432,7 @@ let scanned_residue facts (promise : Facts.promise) =
     else
       List.filter_map
         (fun ((edge : Facts.edge), target) ->
-          let discharges =
+          let meets =
             match (target, edge.rev) with
             | Facts.Declaration index, Some rev ->
                 declarations.(index).rev = rev
@@ -1442,7 +1442,7 @@ let scanned_residue facts (promise : Facts.promise) =
           if
             String.equal edge.word promise.word
             && String.equal edge.target_text promise.target
-            && discharges
+            && meets
           then Some (Facts.edge_id edge, edge.path, place edge.span)
           else None)
         (Facts.edges facts)
@@ -1452,11 +1452,11 @@ let scanned_residue facts (promise : Facts.promise) =
       compare (path_a, place_a) (path_b, place_b))
     found
 
-let indexed_residue (discharge : Facts.discharge) =
+let indexed_residue (standing : Facts.standing) =
   List.map
     (fun (residue : Facts.residue) ->
       (residue.id, residue.path, place residue.span))
-    discharge.residue
+    standing.residue
 
 let the_residue_index_gives_the_list_scan =
   lookup_property
@@ -1468,13 +1468,13 @@ let the_residue_index_gives_the_list_scan =
             (fun (step : Facts.step) ->
               List.for_all
                 (fun promise ->
-                  indexed_residue (Facts.discharge facts plan step promise)
+                  indexed_residue (Facts.standing facts plan step promise)
                   = scanned_residue facts promise)
                 step.promises)
             plan.steps)
         (Facts.plans facts))
 
-let discharge_refuses_a_promise_of_other_facts () =
+let standing_refuses_a_promise_of_other_facts () =
   let plan_file =
     ( ".plans/p.md",
       "# P\n\n@plan p\n@scope **\n\n## One\n\n@req a\n\n## Two\n\n@req b\n" )
@@ -1493,15 +1493,15 @@ let discharge_refuses_a_promise_of_other_facts () =
       ] ) ->
       List.iter
         (fun (name, plan, step, promise) ->
-          match Facts.discharge facts plan step promise with
-          | (_ : Facts.discharge) -> Alcotest.failf "%s: no exception" name
+          match Facts.standing facts plan step promise with
+          | (_ : Facts.standing) -> Alcotest.failf "%s: no exception" name
           | exception Invalid_argument _ -> ())
         [
           ("a plan of other facts", other, other_one, other_a);
           ("a step of another plan", plan, other_one, other_a);
           ("a promise of another step", plan, one, b);
         ];
-      ignore (Facts.discharge facts plan one a)
+      ignore (Facts.standing facts plan one a)
   | _ -> Alcotest.fail "one plan with two steps of one promise in each"
 
 let scope_set globs =
@@ -1545,7 +1545,7 @@ let a_step_is_done_by_the_list_scan_of_the_verifies_edges =
                      (List.filter
                         (fun promise ->
                           Option.is_some
-                            (Facts.discharge facts plan step promise).by)
+                            (Facts.standing facts plan step promise).by)
                         step.promises)
                  in
                  let total = List.length step.promises in
@@ -1570,7 +1570,7 @@ let by_of_each_promise_is_the_first_residue_in_place =
         (fun (plan : Facts.plan) ->
           List.for_all
             (fun (step : Facts.step) ->
-              let discharge = Facts.discharge facts plan step in
+              let standing = Facts.standing facts plan step in
               let in_scope =
                 Path_set.mem (scope_set (Facts.effective_scope plan step))
               in
@@ -1594,13 +1594,13 @@ let by_of_each_promise_is_the_first_residue_in_place =
                              location)
                       (scanned_residue facts promise)
                   in
-                  let discharge = discharge promise in
+                  let standing = standing promise in
                   Option.map
                     (fun (residue : Facts.residue) ->
                       (residue.id, residue.path, place residue.span))
-                    discharge.by
+                    standing.by
                   = expected
-                  && indexed_residue discharge = scanned_residue facts promise)
+                  && indexed_residue standing = scanned_residue facts promise)
                 step.promises)
             plan.steps)
         (Facts.plans facts))
@@ -1817,11 +1817,11 @@ let tests =
     case "acks give their block" acks_give_their_block;
     case "plans give their steps and promises"
       plans_give_their_steps_and_promises;
-    case "discharge names the residue and the one in scope"
-      discharge_names_the_residue_and_the_one_in_scope;
+    case "standing names the residue and the one in scope"
+      standing_names_the_residue_and_the_one_in_scope;
     the_residue_index_gives_the_list_scan;
-    case "discharge refuses a promise of other facts"
-      discharge_refuses_a_promise_of_other_facts;
+    case "standing refuses a promise of other facts"
+      standing_refuses_a_promise_of_other_facts;
     a_step_is_done_by_the_list_scan_of_the_verifies_edges;
     by_of_each_promise_is_the_first_residue_in_place;
     block_hash_is_the_hash_of_the_listed_document;

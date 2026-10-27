@@ -521,7 +521,7 @@ let promise_out_of_scope_names_the_residue_outside () =
        cites:req:a->a at docs/a.md:4 is outside the scope of the step";
     ]
 
-let a_live_ack_discharges_its_finding () =
+let a_live_ack_accepts_its_finding () =
   let files ack =
     [
       ("docs/a.md", "# A\n\n@decision old\n@deprecated\n");
@@ -545,7 +545,7 @@ let a_live_ack_discharges_its_finding () =
   check Finding_class.Retired (files "@ack retired c55c7593d\n") [];
   check Finding_class.Retired (files "@ack retired\tc55c7593\n") []
 
-let a_void_ack_discharges_nothing () =
+let a_void_ack_accepts_nothing () =
   let files ack =
     [
       ("docs/a.md", "# A\n\n@decision old\n@deprecated\n");
@@ -570,7 +570,7 @@ let a_void_ack_discharges_nothing () =
       "@ack retired old BA974016\n";
     ]
 
-let an_ack_discharges_only_the_findings_of_its_block () =
+let an_ack_accepts_only_the_findings_of_its_block () =
   check Finding_class.Retired
     [
       ("docs/a.md", "# A\n\n@decision old\n@deprecated\n");
@@ -591,7 +591,7 @@ let retired_ackable files =
       else None)
     (findings files)
 
-let an_ack_does_not_discharge_the_finding_of_a_superseded_item () =
+let an_ack_does_not_accept_the_finding_of_a_superseded_item () =
   let files records ack =
     [ records; ("docs/b.md", "# B\n\n@cites gone\n" ^ ack) ]
   in
@@ -615,7 +615,7 @@ let an_ack_does_not_discharge_the_finding_of_a_superseded_item () =
            (files ("docs/a.md", "# A\n\n@decision gone\n@deprecated\n") ack)))
     acks
 
-let an_ack_still_discharges_the_finding_of_an_item_that_a_status_retires () =
+let an_ack_still_accepts_the_finding_of_an_item_that_a_status_retires () =
   let files ack =
     [
       superseded;
@@ -848,14 +848,14 @@ let tests =
       unverified_promise_sits_at_a_promise_with_no_verifies;
     case "promise-out-of-scope names the residue outside"
       promise_out_of_scope_names_the_residue_outside;
-    case "a live ack discharges its finding" a_live_ack_discharges_its_finding;
-    case "a void ack discharges nothing" a_void_ack_discharges_nothing;
-    case "an ack discharges only the findings of its block"
-      an_ack_discharges_only_the_findings_of_its_block;
-    case "an ack does not discharge the finding of a superseded item"
-      an_ack_does_not_discharge_the_finding_of_a_superseded_item;
-    case "an ack still discharges the finding of an item that a status retires"
-      an_ack_still_discharges_the_finding_of_an_item_that_a_status_retires;
+    case "a live ack accepts its finding" a_live_ack_accepts_its_finding;
+    case "a void ack accepts nothing" a_void_ack_accepts_nothing;
+    case "an ack accepts only the findings of its block"
+      an_ack_accepts_only_the_findings_of_its_block;
+    case "an ack does not accept the finding of a superseded item"
+      an_ack_does_not_accept_the_finding_of_a_superseded_item;
+    case "an ack still accepts the finding of an item that a status retires"
+      an_ack_still_accepts_the_finding_of_an_item_that_a_status_retires;
     case "a lone carriage return stays in one line"
       a_lone_carriage_return_stays_in_one_line;
     case "a line feed in a path stays in one line"

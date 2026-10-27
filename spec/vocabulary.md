@@ -430,7 +430,7 @@ An ack is **live** if and only if both conditions hold:
 
 1. The hash matches the block's current block hash.
 2. The tag target of the ack still names something in this block: a
-   finding of that class that accepts an ack, or an obligation of that
+   finding of that class that is ackable, or an obligation of that
    rule. When the ack gives a subject, the finding must also have that
    subject.
 
@@ -442,11 +442,11 @@ definition. An ack therefore cannot make itself void by removing the
 finding it names.
 
 When either condition fails, the ack is **void**. A void ack is itself
-a finding (`stale-ack`). Only some findings accept an ack. The
-finding-class table in [algebra.md](algebra.md) section 9 marks the
-classes whose findings accept one, and it states the condition when
-only some findings of a class accept one. An ack that names only
-findings that accept no ack is void by condition 2.
+a finding (`stale-ack`). Only some findings are **ackable**: a live
+ack can accept them. The finding-class table in [algebra.md](algebra.md)
+section 9 marks the classes whose findings are ackable, and it states
+the condition when only some findings of a class are ackable. An ack
+that names only findings that are not ackable is void by condition 2.
 
 **`@pin <ref>`** is deferred. A future version will use it to watch
 external content for changes. A person endorses the content's current
@@ -518,7 +518,7 @@ successors of that declaration:
   person writes the current revision of the successor. When the
   citation stands in the extent of a declaration, that extent changes,
   so the revision of that declaration must increase (section 9). The
-  finding accepts no ack. When the cited declaration has several
+  finding is not ackable. When the cited declaration has several
   successors, a person chooses one of them.
 - When the declaration has no successor, only a person can decide
   whether the citing item is still correct for other reasons. The
@@ -571,7 +571,7 @@ repository when the step is done.
 
 A plan file is a markdown file under `.plans/`, committed on its
 branch, and never deleted. A plan is **open** until the ledger holds a
-`discharged` or `abandoned` entry for it; then it is **closed**. Only
+`completed` or `abandoned` entry for it; then it is **closed**. Only
 a ledger entry closes a plan. No change to the plan file — an edit, a
 move, or a deletion — closes a plan. See [ledger.md](ledger.md).
 
@@ -589,10 +589,10 @@ Inside a plan file, the scanner reads tags as promises, not as facts:
   that section 10.5 requires.
 
 **Residue** is the set of facts in the tree that a promise asked for:
-the declarations and the edges that discharge it. Tags in plan files
+the declarations and the edges that meet it. Tags in plan files
 never produce declarations or edges themselves. Revisions are absent
 on promises; a promise is checked against the revision that is current
-when it is discharged.
+when it is met.
 
 ### 10.3 Steps
 
@@ -650,11 +650,11 @@ The manifest key `plan.shared` ([manifest.md](manifest.md) section
 10.3) names paths that every step of every plan can change, for
 example the dependency and license files at the repository root. A
 change under a shared path is never work outside the plan. A shared
-path does not widen the discharge location of any promise: a promised
+path does not widen the place where a promise can be met: a promised
 item is met only inside the step's effective scope or inside the
 default location of its kind (section 10.5).
 
-### 10.5 Discharge
+### 10.5 Met promises
 
 A promise is **met** as follows:
 
@@ -676,9 +676,9 @@ A promise is **met** as follows:
   ([manifest.md](manifest.md) section 12). Rungs are defined in
   [algebra.md](algebra.md) section 6.7.
 
-Residue that would discharge a promise, but that sits outside both
+Residue that would meet a promise, but that sits outside both
 the step's scope and the default location of its kind, does not
-discharge that promise. The scanner reports this case as a finding
+meet that promise. The scanner reports this case as a finding
 (`promise-out-of-scope`).
 
 A step is **done** if and only if all its promises are met and all

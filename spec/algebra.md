@@ -220,7 +220,7 @@ citation is still a citation.
 |---|---|---|
 | `scope(S)` | plan, step, rule, lease | located facts and hunks whose `path` matches the effective scope of some member of `S`. A step's effective scope is the step's own `@scope` when the step declares one; otherwise it is the plan's scope. A plan's effective scope is the union of the effective scopes of its steps. A rule's scope is its `scope` field. `∅` when `S` holds no scope-bearing fact |
 | `promises(S)` | plan, step | promise facts whose step or plan is in `S` |
-| `met(P)` | promise | the promises in `P` that are discharged, as defined in [vocabulary.md](vocabulary.md) section 10.5 |
+| `met(P)` | promise | the promises in `P` that are met, as defined in [vocabulary.md](vocabulary.md) section 10.5 |
 | `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met; for a step with no promises, the first condition is instead that the step's scope intersects `changed(base)`. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unattributed` when `evidence.coverage-attribution` is `"optional"` ([manifest.md](manifest.md) section 12). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
 
 ### 6.5 Status predicates
@@ -229,7 +229,7 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 
 | function | accepts | keeps `f ∈ S` iff |
 |---|---|---|
-| `inforce(S)` | any | For a declaration: `f` carries no status tag and no live `@supersedes` edge points at `f` ([vocabulary.md](vocabulary.md) section 8.1). A member of a cycle of `@supersedes` edges that carries no status tag is in force, and the tool reports the `cycle` finding. For a plan, for its steps, and for its promises: the plan is open — the ledger holds no `discharged` entry and no `abandoned` entry for it. The predicate keeps every fact of every other kind |
+| `inforce(S)` | any | For a declaration: `f` carries no status tag and no live `@supersedes` edge points at `f` ([vocabulary.md](vocabulary.md) section 8.1). A member of a cycle of `@supersedes` edges that carries no status tag is in force, and the tool reports the `cycle` finding. For a plan, for its steps, and for its promises: the plan is open — the ledger holds no `completed` entry and no `abandoned` entry for it. The predicate keeps every fact of every other kind |
 | `approved(S)` | any | A kind needs approval when `ledger.approval-required` lists it ([manifest.md](manifest.md) section 11.1). The predicate keeps `f` when any one of these conditions holds: `f` is a declaration of a kind that needs approval, and the ledger holds an approval for `f`'s `(slug, rev, xh)`; `f` is a declaration of a kind that does not need approval; `f` is a plan, the kind `plan` needs approval, and `f`'s current commitment set is approved against the plan's latest approved set ([ledger.md](ledger.md) section 11); `f` is a plan, and the kind `plan` does not need approval; `f` is a step of an approved plan; `f` is a fact of any other kind |
 | `bumped(S)` | node | `f` is a declaration absent from the fact set of `B`, or present there with a smaller revision |
 | `declined(S)` | node | `f` is a declaration or a plan with a live decline: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
@@ -285,12 +285,12 @@ set holds an attributed coverage fact for some `u ∈ tests(t)`.
 
 | function | accepts | denotes |
 |---|---|---|
-| `obligations(R)` | config | `⋃` over `r ∈ R` of `eval(trigger(r)) - eval(discharge(r))`: the obligation subjects of each rule. Rule expressions are evaluated in the same universe. A rule whose trigger or discharge mentions `obligations` is an error in its rule file ([manifest.md](manifest.md) section 15); no rule depends on another rule through `obligations` |
+| `obligations(R)` | config | `⋃` over `r ∈ R` of `eval(trigger(r)) - eval(expect(r))`: the obligation subjects of each rule. Rule expressions are evaluated in the same universe. A rule whose trigger or `expect` mentions `obligations` is an error in its rule file ([manifest.md](manifest.md) section 15); no rule depends on another rule through `obligations` |
 | `triggered(R)` | config | the rules in `R` whose trigger evaluates to a non-empty set |
 | `judged(n)` | — | subjects with a `judgment` evidence fact for rule `n` whose verdict is `pass` and whose recorded hash matches the subject's current extent hash (or commitment-set hash) |
 
-For a rule whose discharge is `acked(<rule>)`, an ack is live when
-`subject ∈ eval(trigger)`. The discharge expression never evaluates
+For a rule whose `expect` is `acked(<rule>)`, an ack is live when
+`subject ∈ eval(trigger)`. The `expect` expression never evaluates
 the trigger a second time, so the rule has no circular definition.
 
 ### 6.9 Set operators
@@ -392,7 +392,7 @@ Four global rules apply after evaluation. They are never written into
 definitions:
 
 1. Historical facts generate no findings of any class.
-2. A live `@ack` discharges the findings that accept an ack: the
+2. A live `@ack` accepts the ackable findings that it names: the
    findings of a class that column `A` marks, and the findings of a
    class that column `A*` marks when the condition of its row holds.
    The tool judges liveness before it removes the acked findings.
@@ -406,13 +406,13 @@ definitions:
    promises — generate no findings. A closed plan is a record, not an
    agreement.
 
-A finding is **ackable**, or accepts an ack, when a live `@ack` can
-discharge it. Column `A` marks the classes whose findings are all
-ackable. `A*` means that a finding of the class is ackable only when
-the condition that the row states holds. Column `F` marks classes with
-a mechanical fix. A class that column `F` does not mark can still give
-a `fix` ([jsonl.md](jsonl.md) section 8), such as the `@ack` line for
-a finding. The `tiers` column gives each class's built-in tier at the
+A finding is **ackable** when a live `@ack` can accept it. Column `A`
+marks the classes whose findings are all ackable. `A*` means that a
+finding of the class is ackable only when the condition that the row
+states holds. Column `F` marks classes with a mechanical fix. A class
+that column `F` does not mark can still give a `fix`
+([jsonl.md](jsonl.md) section 8), such as the `@ack` line for a
+finding. The `tiers` column gives each class's built-in tier at the
 gates `(turn, merge, target)` ([manifest.md](manifest.md) section
 9.1). A `—` means that the class takes no tier at that gate.
 The **rollout cap** (`check.rollout-cap`) lowers each `block` of the
@@ -458,16 +458,16 @@ passes the cap ([manifest.md](manifest.md) section 9.3).
 | `waiting-on` | promise | `blocked(promises(kind(plan)))` — reported in place of `dangling`, with the lease and step named | tree | · | · | off, warn, — |
 | `branch-overlap` | step | *engine*: a step's scope intersects the scope of another branch's lease | tree | · | · | warn, warn, — |
 | `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient - shared`. The engine also exempts hunks that are wholly mechanical repairs — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
-| `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's discharge is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
+| `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's `expect` is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
 | `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 14.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
-| `merged-incomplete` | plan | *engine*: an open plan on the target branch that fails the discharge condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |
+| `merged-incomplete` | plan | *engine*: an open plan on the target branch that fails the completion condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |
 | `ledger-broken` | ledger | *engine*: ledger verification fails | tree | · | · | —, —, block |
 | `pack-mismatch` | pack | *engine*: the hash of a fetched pack in the cache does not match the hash that the lock file `sinter.lock` fixes for it. The built-in pack `markdown` is not in the lock file. The class takes no tier at any gate: the tool stops with exit code 3 | tree | · | · | — |
 
 `untraced`, `unmet-promise`, and `awaiting-approval` are the
 incompleteness classes. They exist so that `status` can report
 them, and so that the check
-that closes a plan (`status --done` and the discharge condition in
+that closes a plan (`status --done` and the completion condition in
 [ledger.md](ledger.md)) can read them. The turn report never lists
 them as violations. Every other class is a violation, or a signal
 about the health of the repository's checking machinery.

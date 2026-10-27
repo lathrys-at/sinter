@@ -149,7 +149,7 @@ Example:
 | `approved` | bool | *derived*: the plan is approved ([algebra.md](algebra.md) section 6.5) |
 | `approval` | string | *derived* |
 | `active` | bool | *derived* from the session; `false` when there is no session |
-| `open` | bool | *derived*: the plan is open — the ledger holds no `discharged` entry and no `abandoned` entry for it ([ledger.md](ledger.md) section 10) |
+| `open` | bool | *derived*: the plan is open — the ledger holds no `completed` entry and no `abandoned` entry for it ([ledger.md](ledger.md) section 10) |
 | `csh` | string | the commitment-set hash, as the text after this table gives it |
 | `declined` | bool | *derived* |
 
@@ -277,8 +277,8 @@ Example:
 | `word` | string | `req`, `design`, `decision`, `satisfies`, `verifies`, `refines`, `cites`, or `supersedes` |
 | `target` | string | the tag target, as written |
 | `met` | bool | *derived* |
-| `by` | string | *derived*: id of the discharging fact, when met |
-| `out_of_scope` | bool | *derived*: `true` when residue that would discharge the promise exists, but every such fact sits outside the step's scope. In this case `met` stays `false`. Residue is defined in [vocabulary.md](vocabulary.md) section 10.2 |
+| `by` | string | *derived*: id of the fact that meets the promise, when met |
+| `out_of_scope` | bool | *derived*: `true` when residue that would meet the promise exists, but every such fact sits outside the step's scope. In this case `met` stays `false`. Residue is defined in [vocabulary.md](vocabulary.md) section 10.2 |
 
 Duplicate promissory tags within one step collapse into one promise
 record.
@@ -354,8 +354,8 @@ section 15).
 
 | field | type | meaning |
 |---|---|---|
-| `name` `origin` `trigger` `discharge` | string | as declared |
-| `via` | string | `checked`, `judged`, or `acked` — inferred from the discharge expression |
+| `name` `origin` `trigger` `expect` | string | as declared |
+| `via` | string | `checked`, `judged`, or `acked` — inferred from the `expect` expression |
 | `scope` | array of string | |
 | `triggered` | bool | *derived* |
 | `obligations` | int | *derived* obligation count |
@@ -398,7 +398,7 @@ the repository is unlocated.
 | `hash` | string | as written |
 | `live` | bool | *derived* |
 | `void` | string | *derived*: `hash` or `target`, naming the failed condition ([vocabulary.md](vocabulary.md) section 7.4); omitted when live |
-| `for` | string | *derived*: id of the finding discharged, or of the rule, when live |
+| `for` | string | *derived*: id of the finding accepted, or of the rule, when live |
 
 **`hunk`** — diff mode only; new-side coordinates. A pure deletion has
 `line = eline =` the line after the deletion, and `added = 0`.
@@ -431,7 +431,7 @@ the position that [manifest.md](manifest.md) section 14.4 gives.
 | `rule` | string | `unmet-rule` findings only |
 | `detail` | string | one line, human-facing, deterministic |
 | `fix` | string | the repair of the finding, on one line; omitted when none. It is a line to paste, or an instruction. A line to paste is, for example, an `@ack` line, a tag line with a corrected word or revision, or, for a `retired` finding, the citation of a successor that replaces the edge. With several successors, the fix gives the citation of each, and a person chooses one ([algebra.md](algebra.md) section 9) |
-| `ackable` | bool | whether a live `@ack` can discharge this finding ([algebra.md](algebra.md) section 9, column `A`). For a class that the column marks `A*`, the value depends on the finding |
+| `ackable` | bool | whether a live `@ack` can accept this finding ([algebra.md](algebra.md) section 9, column `A`). For a class that the column marks `A*`, the value depends on the finding |
 | `acked` | bool | present only when acked findings are requested |
 | `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3); present only when the command runs with `--gate` |
 | `mode` | string | `tree` or `diff` |

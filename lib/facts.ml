@@ -565,14 +565,13 @@ let lookups (declarations : declaration array) edges targets plans =
     cited =
       group keys
         (fun ((edge : edge), target) ->
-          let discharges =
+          let meets =
             match (target, edge.rev) with
             | Declaration index, Some rev -> declarations.(index).rev = rev
             | Declaration _, None | Ref _, _ -> true
             | Unresolved _, _ -> false
           in
-          if discharges then Some ((edge.word, edge.target_text), edge)
-          else None)
+          if meets then Some ((edge.word, edge.target_text), edge) else None)
         (List.combine edges targets);
     verifies =
       List.sort_uniq String.compare
@@ -849,9 +848,9 @@ let residue facts (promise : promise) =
   in
   List.sort in_place_order found
 
-type discharge = { by : residue option; residue : residue list }
+type standing = { by : residue option; residue : residue list }
 
-let discharge_within facts ~in_scope (promise : promise) =
+let standing_within facts ~in_scope (promise : promise) =
   let residue = residue facts promise in
   let location =
     Option.bind (manifest_kind promise.word) (Manifest.location facts.manifest)
@@ -864,14 +863,14 @@ let discharge_within facts ~in_scope (promise : promise) =
   in
   { by = List.find_opt inside residue; residue }
 
-let discharge facts plan step =
+let standing facts plan step =
   if not (List.memq plan facts.plans && List.memq step plan.steps) then
-    invalid_arg "Facts.discharge: the step is not one of these facts";
+    invalid_arg "Facts.standing: the step is not one of these facts";
   let in_scope = Path_set.mem (path_set (effective_scope plan step)) in
   fun (promise : promise) ->
     if not (List.memq promise step.promises) then
-      invalid_arg "Facts.discharge: the promise is not one of this step";
-    discharge_within facts ~in_scope promise
+      invalid_arg "Facts.standing: the promise is not one of this step";
+    standing_within facts ~in_scope promise
 
 let step_id (plan : plan) (step : step) = "step:" ^ plan.slug ^ "/" ^ step.slug
 
@@ -902,7 +901,7 @@ let plan_records facts ~changed plan =
     let promises =
       List.map
         (fun (promise : promise) ->
-          let { by; residue } = discharge_within facts ~in_scope promise in
+          let { by; residue } = standing_within facts ~in_scope promise in
           (promise, by, residue <> [] && Option.is_none by))
         step.promises
     in

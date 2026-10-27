@@ -18,8 +18,8 @@ val tree :
     path occurs twice in [documents] and [not_text] together.
 
     The result is sorted by {!Finding.compare}. It holds no finding whose place
-    is under a historical path, and no finding that a live [@ack] discharges.
-    The tiers of the gates do not change it.
+    is under a historical path, and no finding that a live [@ack] accepts. The
+    tiers of the gates do not change it.
 
     With [phases], it counts the phases [facts] ({!Facts.make}) and [findings]
     (the rest). *)

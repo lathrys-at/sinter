@@ -11,7 +11,7 @@ The **manifest** is a TOML file that holds the settings of one
 repository for Sinter. Its settings say which files Sinter reads and
 which refs resolve. They set how hard each finding class bites. They
 say which changes need a plan step, which kinds need approval, and
-which test evidence completes a promise.
+which test evidence meets a promise.
 
 This document defines the file, its tables, and its keys. It says how
 a tool reads the file, and which errors a manifest can hold. It also
@@ -140,15 +140,15 @@ tables, and each table holds the settings of one part of Sinter:
 | top level | every part | the version of the specifications; the target branch |
 | `[scan]` | the scanner | which files each pack reads; which test runners write the reports for its tests; which refs resolve |
 | `[check]` | findings | which facts can make findings; the tier of each built-in finding class |
-| `[plan]` | the plan check and promise discharge | which changes need a plan step; where a promised declaration can be met |
+| `[plan]` | the plan check and promises | which changes need a plan step; where a promised declaration can be met |
 | `[ledger]` | approval and the ledger | which kinds need approval; where the commands that write the ledger refuse |
-| `[evidence]` | test evidence | which rung of a `@verifies` edge completes a promise |
+| `[evidence]` | test evidence | which rung of a `@verifies` edge meets a promise |
 
 The **plan check** compares the hunks of a diff with the scopes of the
 open plans. It reports each hunk outside them as `unplanned-change`
-([algebra.md](algebra.md) section 9). **Promise discharge** decides
-when a promise of a plan step is met
-([vocabulary.md](vocabulary.md) section 10.5).
+([algebra.md](algebra.md) section 9). The keys of `[plan]` also decide
+where a promised declaration can be met ([vocabulary.md](vocabulary.md)
+section 10.5).
 
 No other top-level key and no other table exists.
 
@@ -182,10 +182,10 @@ the key (section 5).
 | `check.tiers.<gate>.<class>` | string: a tier | the tier in algebra.md section 9 | findings: tiers | 9.2 | 1.0 |
 | `plan.ambient` | path set | empty, with built-in members | the plan check | 10.2 | 1.0 |
 | `plan.shared` | path set | empty | the plan check | 10.3 | 1.0 |
-| `plan.locations.<kind>` | path set | absent: the kind has no default location | promise discharge | 10.4 | 1.0 |
+| `plan.locations.<kind>` | path set | absent: the kind has no default location | promises | 10.4 | 1.0 |
 | `ledger.approval-required` | array of strings: kinds | empty: no kind needs approval | approval | 11.1 | 1.0 |
 | `ledger.harness-markers` | array of strings | empty: the tool's built-in list only | the commands that write the ledger | 11.2 | 1.0 |
-| `evidence.coverage-attribution` | string: `"optional"` or `"required"` | `"optional"` | promise discharge | 12 | 1.0 |
+| `evidence.coverage-attribution` | string: `"optional"` or `"required"` | `"optional"` | promises | 12 | 1.0 |
 
 ### 3.3 The canonical form
 
@@ -654,7 +654,7 @@ journals of plans. The members of the manifest add to it. A `!` glob
 of the manifest leaves out paths of the manifest's own members only.
 It never removes the built-in member.
 
-## 10. `[plan]`: the plan check and promise discharge
+## 10. `[plan]`: the plan check and promises
 
 ### 10.1 Path roles
 
@@ -744,13 +744,13 @@ already in that list is valid, and it changes nothing.
 
 `evidence.coverage-attribution` is `"optional"` or `"required"`. The
 default is `"optional"`. The value decides which rungs of a
-`@verifies` edge complete a promise. [algebra.md](algebra.md) section
+`@verifies` edge meet a promise. [algebra.md](algebra.md) section
 6.7 defines the rungs. **Attributed coverage** is coverage that
 Sinter measures for each test on its own. An edge is at rung
 `unattributed` when its tests pass and the run covered its sites, but
 no attributed coverage shows that the test ran them.
 
-| value | rungs that complete a promise |
+| value | rungs that meet a promise |
 |---|---|
 | `"required"` | `passing` |
 | `"optional"` | `passing` and `unattributed` |
@@ -761,7 +761,7 @@ The rule applies in three places:
   section 10.5);
 - when a step or a plan is done (`done()`,
   [algebra.md](algebra.md) section 6.4);
-- when a plan meets the discharge condition ([ledger.md](ledger.md)
+- when a plan passes the completion condition ([ledger.md](ledger.md)
   section 8).
 
 The tier of the class `unmeasured` is a separate setting. It decides

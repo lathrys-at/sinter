@@ -27,12 +27,12 @@ So agreements cannot be enforced by instructions in context. They must be enforc
 
 The system has exactly one dynamic object — the **plan** — and everything else is either the static residue plans deposit or machinery policing the conversion.
 
-A **plan** is a branch-scoped agreement between user and agent: steps, each promising graph deltas. It is born on its branch and its entire purpose is to convert itself into **residue**: requirement and decision declarations in prose, `@satisfies` and `@verifies` citations at implementation and test sites, test evidence, ledger entries. **A plan dies by ledger entry, never by file event — `discharged` at merge, and only when everything it promised has become static fact, or `abandoned` by a human (§6.3)** — and its file never moves: a dead plan stays in the tree as inert record beside the residue it produced. Nothing is archived elsewhere because nothing is deleted; the ledger, not the filesystem, says when scaffolding stopped being an agreement.
+A **plan** is a branch-scoped agreement between user and agent: steps, each promising graph deltas. It is born on its branch and its entire purpose is to convert itself into **residue**: requirement and decision declarations in prose, `@satisfies` and `@verifies` citations at implementation and test sites, test evidence, ledger entries. **A plan dies by ledger entry, never by file event — `completed` at merge, and only when everything it promised has become static fact, or `abandoned` by a human (§6.3)** — and its file never moves: a dead plan stays in the tree as inert record beside the residue it produced. Nothing is archived elsewhere because nothing is deleted; the ledger, not the filesystem, says when scaffolding stopped being an agreement.
 
 - The **graph** (§3) is accumulated residue: tags in the repo's own text.
 - **Evidence** (§4) binds `@verifies` citations to real test runs and coverage.
 - **Specifications** (§6.4) are approved projections of the graph, outliving every plan that fed them.
-- **The ledger** (§6.4) is the record of every judgment — approvals, declines, discharges, abandonments — on a git ref outside the tree; a plan's death is one of its facts (§6.3).
+- **The ledger** (§6.4) is the record of every judgment — approvals, declines, completions, abandonments — on a git ref outside the tree; a plan's death is one of its facts (§6.3).
 - **Obligations** (§7) are the computed difference between what agreements demand and what residue exists — never stored, recomputed at every gate.
 - **Rules** (§7) are standing law: checked-in query expressions that generate obligations forever.
 - **Gates** (§8) police the conversion.
@@ -120,7 +120,7 @@ An item is **in force** iff it carries no status tag and no live `@supersedes` t
 | `@ack <finding> <hash>` | a judgment recorded at this site: the named finding is accepted, or the named rule is satisfied, for the text as hashed |
 | `@pin <ref>` *(deferred)* | arms an upstream-drift check on external content, endorsed through the approval flow |
 
-`@ack` is one mechanism for two jobs. Its grammar is `@ack <target> <hash>` where `<hash>` is the last token and `<target>` is everything between: a finding class with an optional subject (`retired cache-ttl`, `unexercised`) or a rule name (`ste-docs`) — exactly what `check` reported. The hash is the first eight or more hex digits of the block hash (§3.4). An ack is *live* iff the hash matches the block's current hash **and** the target still names something: an obligation of that rule at this site, or a finding of that class (with that subject, if given) at this site. It is void the moment either goes stale: the text changes, or the finding it names no longer exists. Liveness is judged against the *pre-ack* result — a rule's obligations are its trigger alone, a finding class its raw definition before ack subtraction, which is an engine step (§12.8) — so an ack cannot void itself by succeeding. Either way the void ack is itself a finding, so a judgment can never outlive what it judged. `check` prints the exact line to paste, so the ceremony is a copy, and the report lists every ack next to what it accepted or discharged. It is a *targeted* judgment, never a generic ignore: in Luria's first propagation wave, 42 of 70 findings were correct citations of retired records; without a way to say so, the only path to green is un-retiring things — the record lying to quiet a linter. A finding is ackable iff its honest resolution can be a judgment rather than an edit: retired citations, rule obligations whose discharge is an `@ack`, and disconnected tests (an integration test may exercise a site through a path coverage cannot see) are; suspect and dangling citations are not, because their resolution is a mechanical edit the tool already emits.
+`@ack` is one mechanism for two jobs. Its grammar is `@ack <target> <hash>` where `<hash>` is the last token and `<target>` is everything between: a finding class with an optional subject (`retired cache-ttl`, `unexercised`) or a rule name (`ste-docs`) — exactly what `check` reported. The hash is the first eight or more hex digits of the block hash (§3.4). An ack is *live* iff the hash matches the block's current hash **and** the target still names something: an obligation of that rule at this site, or a finding of that class (with that subject, if given) at this site. It is void the moment either goes stale: the text changes, or the finding it names no longer exists. Liveness is judged against the *pre-ack* result — a rule's obligations are its trigger alone, a finding class its raw definition before ack subtraction, which is an engine step (§12.8) — so an ack cannot void itself by succeeding. Either way the void ack is itself a finding, so a judgment can never outlive what it judged. `check` prints the exact line to paste, so the ceremony is a copy, and the report lists every ack next to what it accepted or cleared. It is a *targeted* judgment, never a generic ignore: in Luria's first propagation wave, 42 of 70 findings were correct citations of retired records; without a way to say so, the only path to green is un-retiring things — the record lying to quiet a linter. A finding is ackable iff its honest resolution can be a judgment rather than an edit: retired citations, rule obligations whose `expect` is an `@ack`, and disconnected tests (an integration test may exercise a site through a path coverage cannot see) are; suspect and dangling citations are not, because their resolution is a mechanical edit the tool already emits.
 
 **Plan-only:** `@scope <globs>`. Headings are steps (§6.1).
 
@@ -140,7 +140,7 @@ One collision statelessness cannot see locally: two branches each bump `v2`→`v
 
 ### 3.6 Retirement & Propagation
 
-Two orthogonal propagation triggers share machinery and differ in what discharges them:
+Two orthogonal propagation triggers share machinery and differ in what clears them:
 
 - **Rev bump** — *the meaning changed*: pinned citations go suspect until re-pinned.
 - **Retirement** — *we no longer stand behind this*: via a status tag or a live `@supersedes`. Every `@cites` of a retired item becomes a finding: "this argues from something the record no longer endorses."
@@ -171,9 +171,9 @@ This is the section the rest exists to make possible. A `@verifies` citation is 
 
 1. **Orphan** — `@verifies` attached to something `tests.scm` doesn't capture. Structural, deterministic.
 2. **Never ran** — the test's ID appears in no evidence artifact for this tree.
-3. **Failed or skipped** — present, not passing. The promise is not discharged.
+3. **Failed or skipped** — present, not passing. The promise is not met.
 4. **Disconnected** — passed, but attributed coverage shows it executes zero lines inside any site that `@satisfies` the same requirement. The closest deterministic proxy for a fraudulent verification. Both endpoints of the join already exist; what costs is attribution (above). When only aggregate coverage is present the rung reports **unattributed** instead — unless the aggregate shows zero hits on every site, which proves disconnection without attribution.
-5. **Vacuous** — passed, connected, doesn't actually test the property. Reachable only by a judged discharge (§7). This is the ceiling for structural checks, and it is worth saying plainly.
+5. **Vacuous** — passed, connected, doesn't actually test the property. Reachable only by a judged rule (§7). This is the ceiling for structural checks, and it is worth saying plainly.
 
 A `@verifies` edge is at exactly one rung at any time: `orphan`, `never-ran`, `failed`, `disconnected`, `unattributed`, or `passing` (rung 5 is a sampled judgment, not a rung the tool assigns). The rung is a field on the edge fact and a family of predicates in the algebra (§12.5). Rungs 1–4 are what tree-sitter and standard artifacts buy. Rung 4 also gives `@satisfies` citations a job beyond coverage bookkeeping. The pack's conformance fixtures include a real runner run with attributed coverage, so the join is verified end-to-end per language, not assumed.
 
@@ -208,7 +208,7 @@ Refs recover the original motivating example ("close issues when done") without 
 
 ### 6.1 The Plan File
 
-A markdown file under `.plans/`, e.g. `.plans/auth-lockout.md`, **committed on the branch and never deleted: a plan is *live* until the ledger says otherwise.** Death is a `discharged` or `abandoned` entry (§6.3), and a dead plan is inert record — no findings, no lease, no scope, readable beside its journal forever. A file is a plan iff it lives under `.plans/` and its first tag block carries `@plan` — which is also what flips every tag in the file into promissory mood; a `@plan` anywhere else is a block-tier `misplaced-plan` finding, so plan discovery and death bookkeeping need only look there. Branch-committed because a gitignored plan doesn't travel across worktrees and is invisible to CI, leaving the anti-invention gate with no authoritative tier.
+A markdown file under `.plans/`, e.g. `.plans/auth-lockout.md`, **committed on the branch and never deleted: a plan is *live* until the ledger says otherwise.** Death is a `completed` or `abandoned` entry (§6.3), and a dead plan is inert record — no findings, no lease, no scope, readable beside its journal forever. A file is a plan iff it lives under `.plans/` and its first tag block carries `@plan` — which is also what flips every tag in the file into promissory mood; a `@plan` anywhere else is a block-tier `misplaced-plan` finding, so plan discovery and death bookkeeping need only look there. Branch-committed because a gitignored plan doesn't travel across worktrees and is invisible to CI, leaving the anti-invention gate with no authoritative tier.
 
 ```markdown
 # Account lockout after failed logins
@@ -235,14 +235,14 @@ A markdown file under `.plans/`, e.g. `.plans/auth-lockout.md`, **committed on t
 
 **A plan is a set of promised residue.** Same tags, one semantic rule: inside a plan, tags are read in *promissory mood* — `@req auth-lockout` means this step will declare it; `@verifies auth-lockout` means this step will produce a passing, connected test carrying that citation. Every `##` heading carrying at least one plan tag — `@scope` or a promise — is a step (a bare section is prose: context, notes, nothing derived); a step's slug is the heading text lowercased, non-alphanumerics collapsed to single hyphens, trimmed (`## Verify against the reqs` → `verify-against-the-reqs`); two steps slugifying identically is a `duplicate` finding. Steps are unordered facts; document order is advice.
 
-**What discharges a promise.** A promised declaration (`@req`, `@design`, `@decision`) is met iff a declaration with that slug exists, located within the step's scope. A promised `@satisfies`/`@refines`/`@cites`/`@supersedes` is met iff at least one such edge exists within the step's scope that is neither dangling nor suspect. A promised `@verifies` is met iff such an edge exists within scope at rung `passing` — or at rung `unattributed`, when the manifest sets `evidence.require_attribution = false` (the default until a repo opts in). Residue that discharges a promise from *outside* the step's scope is a warn-tier finding (`promise-out-of-scope`), not a discharge: the scope is part of the agreement.
+**What meets a promise.** A promised declaration (`@req`, `@design`, `@decision`) is met iff a declaration with that slug exists, located within the step's scope. A promised `@satisfies`/`@refines`/`@cites`/`@supersedes` is met iff at least one such edge exists within the step's scope that is neither dangling nor suspect. A promised `@verifies` is met iff such an edge exists within scope at rung `passing` — or at rung `unattributed`, when the manifest sets `evidence.require_attribution = false` (the default until a repo opts in). Residue that meets a promise from *outside* the step's scope is a warn-tier finding (`promise-out-of-scope`), and it does not meet the promise: the scope is part of the agreement.
 
-**Scope globs** are gitignore-style patterns relative to the repo root, comma-separated on the `@scope` line: `*` within a segment, `**` across segments, `!` negation, a trailing `/` meaning "directory and everything under it." A step with no `@scope` inherits the plan's. A step's effective scope is what out-of-scope surfacing measures against and what promise discharge is located against.
+**Scope globs** are gitignore-style patterns relative to the repo root, comma-separated on the `@scope` line: `*` within a segment, `**` across segments, `!` negation, a trailing `/` meaning "directory and everything under it." A step with no `@scope` inherits the plan's. A step's effective scope is what out-of-scope surfacing measures against and where a promise is met.
 
 **Active plan.** If exactly one *in-force* plan exists on the branch it is active by default — dead plans, however many, are not candidates; with several live ones, `sinter declare <plan>` is required before the brief and out-of-scope surfacing have a plan to anchor on (until then `status` says why).
 
 - **Step status is derived, never ticked.** A step is done iff its promises hold as residue with evidence. The plan is done iff all steps are and all existing evidence is still green. Only then may the branch merge.
-- **Forward references resolve within the plan.** Promises float and are checked against the revision current at discharge.
+- **Forward references resolve within the plan.** Promises float and are checked against the revision current when they are met.
 - **The active step is a declared claim — the rare claim safe to accept, because it is purely self-limiting:** it only narrows what the brief compiles for and what out-of-scope surfacing measures against; misdeclaring makes the reports noisier, never quieter. The claim lives in `.sinter/session.json`, beside the index cache and the evidence directory, all gitignored — session state, never truth — keyed by the harness's session id where one exists (§11.18), so parallel sessions in one worktree fight over nothing. Absent a step declaration, scope attribution falls back to plan-level scope.
 - **A step with scope and no promises is a refactor:** done when its scope was touched and existing evidence stays green. Weaker, and visibly so.
 - **Plan files are exempt from rev discipline** — they are judged by commitment-set diff, never text (§6.2). The plan's revision is the count of approved amendments.
@@ -253,18 +253,18 @@ A markdown file under `.plans/`, e.g. `.plans/auth-lockout.md`, **committed on t
 
 Plans must be refactorable on the fly *and* harder to loosen than code — otherwise the agent legitimizes invented work by amending the plan first. "What was approved" is the **commitment set** — the canonical facts for promises and scope per step — and the adjudicator diffs sets, never text:
 
-- **Free:** narrowing scope; renaming and reordering steps; splitting a step; merging steps whose effective scopes are equal — all so long as the commitment multiset is preserved. Merging steps with *different* scopes widens where each merged promise may be discharged and is approved; §13.7 states the comparison exactly.
+- **Free:** narrowing scope; renaming and reordering steps; splitting a step; merging steps whose effective scopes are equal — all so long as the commitment multiset is preserved. Merging steps with *different* scopes widens where each merged promise may be met and is approved; §13.7 states the comparison exactly.
 - **Needs a new approval:** widening scope; promise-set changes in *both* directions — additions launder invented work, removals welch on the agreement.
 
 "Still approved" is a set comparison, not a path reconstruction, which is why the ledger stores the approved set itself (a hash cannot be diffed against). The rationale is defensive both ways: **approval fatigue is the real adversary.** Reflexively-granted approvals are worth nothing; maximizing the free region is what keeps the gated region meaningful.
 
-**Cutting work early is the amendment machinery working.** Merging partway is an approved promise-set shrink. The shrunk plan must then be residue-complete against the tree it ships — half-done hunks from a cut step map to no remaining step, so anti-invention fires until they are reverted or honestly covered. Anything that reached declared residue survives as visible debt in `untraced()`. `compile residual-plan` emits the undischarged remainder as a plan skeleton for a later branch.
+**Cutting work early is the amendment machinery working.** Merging partway is an approved promise-set shrink. The shrunk plan must then be residue-complete against the tree it ships — half-done hunks from a cut step map to no remaining step, so anti-invention fires until they are reverted or honestly covered. Anything that reached declared residue survives as visible debt in `untraced()`. `compile residual-plan` emits the unmet remainder as a plan skeleton for a later branch.
 
 ### 6.3 Death Mechanics
 
-Death is a **ledger fact, never a file event.** A plan dies `discharged` or `abandoned` (§6.7); the file stays where it is. There is no deletion to orchestrate, no merge commit to edit, no host-specific machinery — this used to be the hardest section in the document and is now bookkeeping.
+Death is a **ledger fact, never a file event.** A plan dies `completed` or `abandoned` (§6.7); the file stays where it is. There is no deletion to orchestrate, no merge commit to edit, no host-specific machinery — this used to be the hardest section in the document and is now bookkeeping.
 
-The **death gate** is unchanged in substance: a plan may only be discharged when everything it promised has become static fact. Enforcement sits at the merge gate — `status --done`, run where evidence exists (PR CI, the merge queue, or whoever merges). What *writes* the entry is main CI: on every push to the target branch it finds in-force plans now on main — merged, in other words — checks each against the **discharge condition** — every promise has its residue: declarations present, edges present and neither dangling nor suspect, `@verifies` edges at `passing` (or allowed `unattributed`) when main's job measures, at any rung when it does not (§12.8; rung enforcement already happened at the merge gate) — and appends its `discharged` entry, recording the merge commit and the hash of the report compiled at discharge. An in-force plan on main that *fails* the condition is the `merged-incomplete` finding, blocking: someone merged half a plan, and the honest exits are an approved shrink (§6.2) or reverting the merge. The writer is idempotent bookkeeping — the plan's approvals and the tree are the evidence — so a lost CI run costs a retry, not truth. (The job needs push rights to `refs/sinter/ledger`.)
+The **death gate** is unchanged in substance: a plan may only be completed when everything it promised has become static fact. Enforcement sits at the merge gate — `status --done`, run where evidence exists (PR CI, the merge queue, or whoever merges). What *writes* the entry is main CI: on every push to the target branch it finds in-force plans now on main — merged, in other words — checks each against the **completion condition** — every promise has its residue: declarations present, edges present and neither dangling nor suspect, `@verifies` edges at `passing` (or allowed `unattributed`) when main's job measures, at any rung when it does not (§12.8; rung enforcement already happened at the merge gate) — and appends its `completed` entry, recording the merge commit and the hash of the report compiled at completion. An in-force plan on main that *fails* the condition is the `merged-incomplete` finding, blocking: someone merged half a plan, and the honest exits are an approved shrink (§6.2) or reverting the merge. The writer is idempotent bookkeeping — the plan's approvals and the tree are the evidence — so a lost CI run costs a retry, not truth. (The job needs push rights to `refs/sinter/ledger`.)
 
 A plan **not in force** — dead — is exempt from everything: its facts generate no findings (§12.8), it holds no lease, contributes no scope, and is skipped by the active-plan rule. Plan slugs are permanent, like decision slugs — reuse is a `duplicate` — so `compile residual-plan` emits its skeleton under a successor slug. Liveness is a ledger read: without the ledger ref every plan reads live, which `status` flags loudly (fetch the ledger). What this leaves on main is deliberate: the plan and its journal beside the residue they produced, with the ledger saying who approved it, what it promised, and when it stopped being an agreement.
 
@@ -278,9 +278,9 @@ Because it is an append-only, timestamped, shared record, the ledger does more t
 
 - **Declines.** A human who reads a delta and thinks "no, not like that" has, in v13, nowhere durable to say so; the thought goes into chat and decays. A `decline` entry — `(subject, xh, reason)` — is the human's voice bound to the exact text it was about. `status` and the brief (§8.1) surface it until the extent's hash changes — void, like an ack — or until a later approval of the subject supersedes it, the human overriding their own refusal (`approve` prompts before approving over a live decline). It is an instruction that cannot fall out of context, because it is attached to an artifact, not a context — the thesis's own mechanism, pointed the other way.
 - **Revision reservation.** Approving `auth-lockout v3` when the ledger already holds a `v3` for that slug with a different hash is a refusal: "v3 is taken; rebase to v4." The §3.5 collision on approved items moves from *detected at PR CI* to *prevented at approve*. The residual exposure on unapproved items remains the price of statelessness.
-- **The plan archive.** The plan's file is now its own record, and the ledger holds the judgment layer over it: every promise every approved plan ever made, each amendment, and the death. Main CI (§6.3) appends the `discharged` entry — the one machine writer — recording the merge commit and the report hash at discharge. A plan's whole life is closed in the ledger: approved, amended, discharged or abandoned. "Which plan promised this requirement, who approved it, when did it land" is answerable from the ledger alone, without reading a tree.
+- **The plan archive.** The plan's file is now its own record, and the ledger holds the judgment layer over it: every promise every approved plan ever made, each amendment, and the death. Main CI (§6.3) appends the `completed` entry — the one machine writer — recording the merge commit and the report hash at completion. A plan's whole life is closed in the ledger: approved, amended, completed or abandoned. "Which plan promised this requirement, who approved it, when did it land" is answerable from the ledger alone, without reading a tree.
 - **Signing for free.** Ledger commits are git commits. `commit.gpgsign` on the ref makes every approval non-repudiable; `ledger verify --signers` makes that checkable. The §10.1 hardening path attaches with zero design change. Deployments that want the "no approval path from an agent's shell" property enforced *server-side* place the ref under `refs/heads/sinter/ledger`, where hosting platforms' push restrictions apply.
-- **As-of, release notes, and metrics.** With `HEAD` and a timestamp on every entry, `compile spec --as-of <ledger-commit>` reconstructs exactly what was approved at any moment; the delta between two ledger points, rendered with extents, is release notes for the requirements layer, derived rather than written. And the §8 health signals gain a time axis: revision churn per item (a req on `v9` is unstable or mis-scoped), amendments per plan (six means it was underspecified), approval-to-discharge time, and approvals per approval session with seconds per approval — a direct measurement of the fatigue this design names as its real adversary.
+- **As-of, release notes, and metrics.** With `HEAD` and a timestamp on every entry, `compile spec --as-of <ledger-commit>` reconstructs exactly what was approved at any moment; the delta between two ledger points, rendered with extents, is release notes for the requirements layer, derived rather than written. And the §8 health signals gain a time axis: revision churn per item (a req on `v9` is unstable or mis-scoped), amendments per plan (six means it was underspecified), approval-to-completion time, and approvals per approval session with seconds per approval — a direct measurement of the fatigue this design names as its real adversary.
 
 The ledger unifies with revision machinery: editing an approved item bumps its rev, and `auth-lockout v3` is simply unapproved until approved — exactly as its citations are suspect until re-pinned. Retirement composes for free: a status tag is an extent edit (owes a bump, bump un-approves, routes through the approval); supersession routes through the successor's approval. Retirement of contract items reaches the human on every path, with no additional rule.
 
@@ -297,7 +297,7 @@ Session scratch — the agent's running todo — belongs to the agent's own mach
 Plans are the one dynamic object and, in v13, the one governed file nothing helps you write. Plan files are scanned like everything else, so plan-level findings are ordinary findings:
 
 - `unverified-promise` — a promised `@req` or `@design` with no promised `@verifies` of it anywhere in the plan. The plan is agreeing, up front, to ship an unverified requirement. Warn by default; a repo can make it block.
-- `promise-collision` — a promised declaration of a slug that already existed at the base or is promised by another branch's approved lease (§6.7). The step would produce a `duplicate`. (The current tree is never consulted: a discharged promise is precisely a slug that now exists in the tree.)
+- `promise-collision` — a promised declaration of a slug that already existed at the base or is promised by another branch's approved lease (§6.7). The step would produce a `duplicate`. (The current tree is never consulted: a met promise is precisely a slug that now exists in the tree.)
 - `scope-overlap` — two steps in one plan with intersecting scopes *and* intersecting promise sets; document order is advice, but two steps racing for one edge is a plan that has not decided.
 
 **Preview** (`compile plan-preview`) renders the graph *after* the plan as if every promise were met: the declarations that will exist, the edges they will carry, what becomes suspect or retired if a step promises a `@supersedes`, which `untraced` gaps close and which open. The human approves a plan with foresight instead of trust, and the preview is the document the plan approval is taken against.
@@ -306,9 +306,9 @@ Plans are the one dynamic object and, in v13, the one governed file nothing help
 
 Plans are branch-scoped, and v13 is silently single-plan. A team lead running several worker agents on several branches needs three things the ledger can already supply.
 
-**Scope leases.** Every approved plan's step scopes are in the ledger. `status` reads the last-fetched ledger ref — never the network; `sinter ledger fetch` or `inbox --fetch` refreshes it — and materializes each other branch's approved, still-leased plan as a `lease` fact, and reports overlap: "plan `session-store` on branch `feat/store`, approved Tuesday, also claims `src/auth/**`." Overlap is a warn-tier `branch-overlap` finding, not a block — two plans may legitimately touch one directory — but it is the earliest possible moment to learn that two agents are about to conflict, days before the merge does. A lease dies three ways: its plan is discharged; its plan is **abandoned** — `sinter ledger abandon plan:<slug> --reason …`, a human verb sharing `approve`'s refusal set, for the branch that will never merge; or its branch no longer existed on the remote at the last fetch — deleting a branch releases its claims, and the inbox names leases released that way since the last visit.
+**Scope leases.** Every approved plan's step scopes are in the ledger. `status` reads the last-fetched ledger ref — never the network; `sinter ledger fetch` or `inbox --fetch` refreshes it — and materializes each other branch's approved, still-leased plan as a `lease` fact, and reports overlap: "plan `session-store` on branch `feat/store`, approved Tuesday, also claims `src/auth/**`." Overlap is a warn-tier `branch-overlap` finding, not a block — two plans may legitimately touch one directory — but it is the earliest possible moment to learn that two agents are about to conflict, days before the merge does. A lease dies three ways: its plan is completed; its plan is **abandoned** — `sinter ledger abandon plan:<slug> --reason …`, a human verb sharing `approve`'s refusal set, for the branch that will never merge; or its branch no longer existed on the remote at the last fetch — deleting a branch releases its claims, and the inbox names leases released that way since the last visit.
 
-**Cross-plan promises.** Plan B's `@satisfies auth-lockout` where `auth-lockout` exists nowhere on B's branch is, in v13, a dangling citation until A merges. With leases, the resolver sees that plan A promises to declare `auth-lockout` and reports `waiting-on A/write-the-requirements` instead — an ordering fact, not an error. Discharge of B's promise still requires the real declaration (after A merges and B rebases), but B's status is honest in the meantime and its turn report does not misfire.
+**Cross-plan promises.** Plan B's `@satisfies auth-lockout` where `auth-lockout` exists nowhere on B's branch is, in v13, a dangling citation until A merges. With leases, the resolver sees that plan A promises to declare `auth-lockout` and reports `waiting-on A/write-the-requirements` instead — an ordering fact, not an error. Meeting B's promise still requires the real declaration (after A merges and B rebases), but B's status is honest in the meantime and its turn report does not misfire.
 
 **Merge order.** Cross-plan promises form a dependency graph over leases. `compile merge-order` prints a topological order — or names the cycle — and `status` on any branch says which leases it waits on and which wait on it. This is the team lead's decomposition, derived from what the plans actually promise rather than tracked in a separate list.
 
@@ -324,31 +324,31 @@ Plans do not model time, effort, priority, or assignment. Those belong to the tr
 
 ## 7. Standing Law: Rules & Derived Obligations
 
-Process conventions ("all drafted prose gets rewritten into Simplified Technical English") are neither derivable from the graph nor tasks. They are **rules**: *(origin, trigger, discharge)* triples in the manifest, where trigger and discharge are expressions in the query algebra (§9.2) and an obligation is literally `trigger − discharge`:
+Process conventions ("all drafted prose gets rewritten into Simplified Technical English") are neither derivable from the graph nor tasks. They are **rules**: *(origin, trigger, expect)* triples in the manifest, where trigger and expect are expressions in the query algebra (§9.2) and an obligation is literally `trigger − expect`:
 
 ```toml
 [rules.ste-docs]
 origin    = "ste-adoption"                                   # a @decision slug
 trigger   = "kind(req|design) ^ path(docs/**) ^ changed(base)"
-discharge = "acked(ste-docs)"
-scope     = ["docs/**"]                                      # where discharge edits are expected
+expect    = "acked(ste-docs)"
+scope     = ["docs/**"]                                      # where the edits that clear the obligation are expected
 ```
 
 The rules engine *is* the query engine — no second predicate language, and the exhaustive-match property OCaml buys covers rules for free. Because obligations attach to **artifacts, not contexts**, rules are immune to §1's decay: the turn report re-derives the obligation from the diff no matter what fell out of whose window. Rules are themselves facts in the universe (kind `rule`, §13.5), which is what lets the report and the algebra reason about the law the same way they reason about everything else.
 
-**Every rule cites its origin** — the `decision` that earned it — because a law whose evidence is missing reads as taste, and taste gets re-litigated by the next agent. The origin is modeled as a `cites` edge whose source is the rule fact, so retiring the origin makes the rule surface as *law resting on withdrawn reasoning* through the ordinary `retired` finding — this system's own decay mode, caught by its own machinery with no special case. A rule's `scope` declares where its discharge edits land, so that work done to satisfy a triggered rule outside the plan's scope is not reported as invented (§12.8, `unplanned-change`). Promotion heuristic: one instance is a decision; write the rule on the second re-derivation.
+**Every rule cites its origin** — the `decision` that earned it — because a law whose evidence is missing reads as taste, and taste gets re-litigated by the next agent. The origin is modeled as a `cites` edge whose source is the rule fact, so retiring the origin makes the rule surface as *law resting on withdrawn reasoning* through the ordinary `retired` finding — this system's own decay mode, caught by its own machinery with no special case. A rule's `scope` declares where the edits that clear its obligations land, so that work done to satisfy a triggered rule outside the plan's scope is not reported as invented (§12.8, `unplanned-change`). Promotion heuristic: one instance is a decision; write the rule on the second re-derivation.
 
 **The why reaches the block.** Rules cite origins, and origins have extents with an *alternatives considered* section. In v13 that reasoning existed but never reached the moment it would change behavior. Now every `unmet-rule` finding carries its origin decision's extent (byte-budgeted by `[brief].why_budget`) in the turn report and in `sinter explain`. An agent told "obligation: rule `ste-docs`; its origin decision says *three users misread the lockout docs; alternatives considered: glossary (rejected, nobody reads it), reviewer checklist (rejected, decays)*" reframes; an agent told only "obligation: rule `ste-docs`" routes around.
 
-**Three kinds of discharge**, in descending trust. A rule does not declare which; the tool reads it off the discharge expression and labels the rule with it in every report, so it is always explicit which laws are enforced and which merely witnessed:
+**Three kinds of `expect`**, in descending trust. A rule does not declare which; the tool reads it off the `expect` expression and labels the rule with it in every report, so it is always explicit which laws are enforced and which merely witnessed:
 
-- **Checked** — the discharge is a structural expression: the obligation is gone when the graph says so (`issue-linked` above is discharged by a `@cites gh/*` edge existing). Also the home for external linters: a checker writes `judgment` facts like the judge does, and the discharge is `judged(<rule>)` with a program, not a model, as the judge. Use whenever one exists.
-- **Judged** — the discharge is `judged(<rule>)`: an independent LLM call, never the working agent, against a rubric; a fresh context cannot be motivated by wanting to finish. Deferred with `sinter judge`.
-- **Acknowledged** — the discharge is `acked(<rule>)`: `@ack <rule> <hash>` (§3.3). Self-report with a liveness mechanism: the text changes, the ack is void, the obligation is back. Known soft spot: an agent under completion pressure will eventually ack text it merely glanced at. Mitigations: every discharge surfaced in the report and the inbox; later, a sampled fraction routed to the judge. No new grammar — acknowledgment arrives with rules, not after them.
+- **Checked** — the `expect` is a structural expression: the obligation is gone when the graph says so (`issue-linked` above is cleared by a `@cites gh/*` edge existing). Also the home for external linters: a checker writes `judgment` facts like the judge does, and the `expect` is `judged(<rule>)` with a program, not a model, as the judge. Use whenever one exists.
+- **Judged** — the `expect` is `judged(<rule>)`: an independent LLM call, never the working agent, against a rubric; a fresh context cannot be motivated by wanting to finish. Deferred with `sinter judge`.
+- **Acknowledged** — the `expect` is `acked(<rule>)`: `@ack <rule> <hash>` (§3.3). Self-report with a liveness mechanism: the text changes, the ack is void, the obligation is back. Known soft spot: an agent under completion pressure will eventually ack text it merely glanced at. Mitigations: every cleared obligation surfaced in the report and the inbox; later, a sampled fraction routed to the judge. No new grammar — acknowledgment arrives with rules, not after them.
 
-How hard a rule's obligations bite is a separate question from how they are discharged, and it is answered the way it is for every other finding: the `unmet-rule` class has a tier per gate, and a rule may override it with its own `tiers`.
+How hard a rule's obligations bite is a separate question from how they are cleared, and it is answered the way it is for every other finding: the `unmet-rule` class has a tier per gate, and a rule may override it with its own `tiers`.
 
-The system does not model pipelines and does not care whether an obligation is discharged inline or by a subagent: it publishes the obligations; orchestration stays the agent's problem.
+The system does not model pipelines and does not care whether an obligation is cleared inline or by a subagent: it publishes the obligations; orchestration stays the agent's problem.
 
 ## 8. Gates, and the Brief
 
@@ -359,11 +359,11 @@ The system does not model pipelines and does not care whether an obligation is d
 - **PostToolUse** (surfaces): parse and validation failures on the just-edited file, seconds after writing, plus a note when the edit landed outside the active step's scope. Parse errors degrade toward *stricter* findings, never silent holes — an unparsed `@verifies` is an absent edge — which makes fast parse feedback load-bearing. Only file-path-bearing tools (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`) yield a just-edited file; shell writes surface at the next turn report, which re-derives everything from the actual diff.
 - **The turn report** (`check --diff --gate turn`) is the hand-back contract: what an orchestrator runs before accepting a worker's turn, a human before walking away, an agent before calling itself done — its exit code is what a workflow gates on. Its block tier marks **violations, never incompleteness.** Violations are states the tree must never be *left* in: a missing rev bump, dangling citations, out-of-plan work (every hunk maps onto a step or a triggered rule's scope), rule obligations triggered by artifacts touched this turn, claims-vs-evidence divergence. Incompleteness — unmet promises, untraced items — is never a violation; it is enforced solely by the death gate. An agent that cannot honestly hand back "not done yet" is an agent being trained to fabricate doneness — which is why nothing mechanical seizes the turn: the report is addressed to whoever accepts it.
 - **Fresh-context verification** (merge-request time and on demand): an independent agent re-derives expected work from the approved spec and plan, reporting drift both ways — missing *and invented*. It exists because the turn report is path-granular; only a semantic reading catches unrequested work inside a legitimate scope. Also the tier that samples rung 5 of the evidence ladder.
-- **CI, two tiers — the only mechanical blocks**: PR CI recomputes the full adjudication and evidence binding against the branch-committed plan — the authoritative backstop. Main CI recomputes residue checks on the merged result, appends `discharged` entries for merged complete plans (§6.3), runs networked checks, and enforces the evidence ladder iff its job imports evidence (§12.8).
+- **CI, two tiers — the only mechanical blocks**: PR CI recomputes the full adjudication and evidence binding against the branch-committed plan — the authoritative backstop. Main CI recomputes residue checks on the merged result, appends `completed` entries for merged complete plans (§6.3), runs networked checks, and enforces the evidence ladder iff its job imports evidence (§12.8).
 
 **Rollout discipline:** every class ships as *warn*, promoted to *block* individually after its false-positive rate proves out. A gate that cries wolf trains bypass behavior, which is worse than no gate. Mechanically: `init` writes `enforce = "warn"`, a cap over the shipped tiers (§12.8); a class is promoted by naming it under `[gates.<gate>]`, and the cap is lifted for everything by deleting the line. Both are `law-touched`, so promotion is always a visible act. The `turn` tiers ride the same cap — under it `check --gate turn` exits 0, so an orchestrator's gate opens too.
 
-**Reporting discipline:** the compiled report is a complete account — every ack and pin counted next to what it accepted, discharged, or armed — and carries **machinery-health signals**: a repo where no rev has ever bumped and no ack exists is not clean; it is one whose propagation has never fired, and its green says only that nobody has looked.
+**Reporting discipline:** the compiled report is a complete account — every ack and pin counted next to what it accepted, cleared, or armed — and carries **machinery-health signals**: a repo where no rev has ever bumped and no ack exists is not clean; it is one whose propagation has never fired, and its green says only that nobody has looked.
 
 ### 8.1 The Informational Channel: The Brief
 
@@ -384,7 +384,7 @@ The system does not model pipelines and does not care whether an obligation is d
 The binary is `sinter` (sintering fuses loose particles into a solid mass under pressure, without melting them). One core library and thin mouths — CLI, hooks, CI — all speaking the same JSONL. Agents use the CLI through their shell like everyone else; there is no MCP server, because a stateless tool has no process to host one and a stdio shim over the CLI would add a tool surface without adding a capability. The surface is specified as help text in §11. Its principles:
 
 - **Suggest, never touch.** `init` is the one exception, and it touches only tool-owned integration files — workflows, hook settings, the manifest skeleton — never governed text. Otherwise the tool may *emit* a patch (`sinter patch`) on stdout; it never applies one. Whoever applies it authors the diff, and the adjudicator judges it like any other.
-- **Three verbs change durable state.** `approve`, `decline`, and `ledger abandon` write the ledger; all refuse to run under a harness (§10.1) and share one refusal set. Main CI appends `discharged` entries (§6.3). `declare` and `evidence import` write session and evidence state under `.sinter/`, which is gitignored scratch, never truth.
+- **Three verbs change durable state.** `approve`, `decline`, and `ledger abandon` write the ledger; all refuse to run under a harness (§10.1) and share one refusal set. Main CI appends `completed` entries (§6.3). `declare` and `evidence import` write session and evidence state under `.sinter/`, which is gitignored scratch, never truth.
 - **Absences by design:** no daemon, no web UI, no MCP server, no second predicate language — every addition in this document is a compiled projection, a ledger entry kind, or a finding definition. No `new`, no `close`, no `ack` (the tool prints the line; a human or agent pastes it, and that edit is adjudicated), no configuration outside the manifest.
 - **Every mouth is a saved query.** `check` is the union of finding definitions; the turn report is `check --diff --gate turn`; CI is `check --gate pr` or `--gate main`; a hook is a filtered `check` or a `brief`. There is nothing a gate can see that `sinter query` cannot show you.
 
@@ -568,7 +568,7 @@ SELECTION
   --path <glob>     Only findings located under <glob>; repeatable
   --plan <slug>     Only findings located within a plan's scope
   --strict          Treat 'warn' as 'block' for the exit code
-  --acked           Also print findings discharged by a live @ack (marked)
+  --acked           Also print findings accepted by a live @ack (marked)
   --strict-parse    Exit 3 on any parse error in a governed file instead of
                     reporting it as a 'parse-error' finding
 
@@ -727,7 +727,7 @@ USAGE
   subject in the result; the fix line; and for unmet-rule findings the origin
   decision's full extent — context, choice, alternatives considered.
   For a class: its definition, tiers per gate, ackability, mechanical fix.
-  For a rule: trigger, discharge and its kind, scope, and its origin's
+  For a rule: trigger, `expect` and its kind, scope, and its origin's
   extent.
   For a subject: every finding on it and every ledger entry about it.
 
@@ -932,10 +932,10 @@ USAGE
                   and verifying tests (rung shown), plus untraced items.
                   Anonymous sites render as path:line links.
   report          The complete account for the diff: findings by class and
-                  tier; every ack and what it accepted or discharged; law
+                  tier; every ack and what it accepted or cleared; law
                   touched by the diff; machinery health; evidence provenance.
                   This is what PR CI posts.
-  residual-plan   The undischarged remainder of a plan as a plan skeleton —
+  residual-plan   The unmet remainder of a plan as a plan skeleton —
                   steps with unmet promises and their scopes, and the plan's
                   journal if it has one — under a successor slug (plan slugs
                   are permanent, §6.3), for a later branch. Emitted, not
@@ -948,14 +948,14 @@ USAGE
   history         A subject's life from the ledger joined with git: each
                   approved revision's extent (word-diffed against the previous),
                   who approved it and when, declines and their reasons, the
-                  plan that promised it, the merge that discharged that plan.
+                  plan that promised it, the merge that completed that plan.
   release-notes   The requirements-layer delta between two ledger points:
-                  declarations approved, bumped, retired, or discharged in the
+                  declarations approved, bumped, retired, or completed in the
                   interval, rendered with extents. Derived, never written.
   merge-order     Leases in dependency order from cross-plan promises (§6.7),
                   or the cycle that prevents one.
   metrics         Health signals with a time axis: revision churn per item,
-                  amendments per plan, approval-to-discharge time, approvals per
+                  amendments per plan, approval-to-completion time, approvals per
                   approval session and seconds per approval, acks per week,
                   code-drift counts. Tables, not judgments.
 
@@ -993,7 +993,7 @@ USAGE
   previous tip. The ledger is not a checkout path: no editor or file tool
   reaches it without git plumbing, which is the point.
 
-  log       Entries newest first: approvals, declines, discharges — id,
+  log       Entries newest first: approvals, declines, completions — id,
             subject, rev, by, branch, when, note or reason
   show      Every approval for a subject, and for plans the approved
             commitment set alongside the current one with the delta marked
@@ -1176,7 +1176,7 @@ USAGE
                                  refs/sinter/ledger explicitly — clones do
                                  not.
                                  Main job: check --gate main, ledger verify,
-                                 and the discharge step — append 'discharged'
+                                 and the completion step — append 'completed'
                                  for merged plans meeting §6.3's condition;
                                  needs push rights to refs/sinter/ledger.
                                  No merge tooling exists: death is a ledger
@@ -1354,14 +1354,14 @@ Notation: `S`, `T` range over fact sets; `E` over sets of edges; `P` promises; `
 |---|---|---|
 | `scope(S)` | plan, step, rule, lease | located facts and hunks whose `path` matches the effective scope of some `x ∈ S`. A step's effective scope is its own `@scope` if present, else its plan's; a plan's effective scope is the union of its steps' (its own `@scope` is the default for steps and the bound on them — a step exceeding it is a `scope-outside-plan` finding); a rule's is its `scope` field. `∅` if `S` has no scope-bearing fact |
 | `promises(S)` | plan, step | promise facts whose step is in `S` or whose plan is in `S` |
-| `met(P)` | promise | promises that are discharged (§6.1: a declaration with that slug within the step's scope; an edge of that kind within scope that is neither dangling nor suspect; a `verifies` edge within scope at rung `passing`, or `unattributed` if the manifest allows) |
+| `met(P)` | promise | promises that are met (§6.1: a declaration with that slug within the step's scope; an edge of that kind within scope that is neither dangling nor suspect; a `verifies` edge within scope at rung `passing`, or `unattributed` if the manifest allows) |
 | `done(S)` | plan, step | steps all of whose promises are met — or, for a step with no promises, whose scope intersects `changed(base)` — and whose in-scope `verifies` edges are all at rung `passing`/allowed; plans all of whose steps are done and whose in-scope `verifies` edges are all at `passing`/allowed |
 
 **Status predicates** (filters: `pred(S) ⊆ S`)
 
 | function | accepts | keeps `f ∈ S` iff |
 |---|---|---|
-| `inforce(S)` | any | for a declaration: `f` carries no status tag and no live `@supersedes` edge has `dst = f` (live: the edge's source is in force and, if its kind is approval-gated, approved, §3.3 — a fixpoint over supersession chains; on a `supersedes` cycle every member is treated as in force and retired by nothing, and the `cycle` finding blocks, so the state is loud rather than guessed). For a plan, its steps, and its promises: the ledger holds no `discharged` or `abandoned` entry for the plan (§6.3). Every other kind: kept |
+| `inforce(S)` | any | for a declaration: `f` carries no status tag and no live `@supersedes` edge has `dst = f` (live: the edge's source is in force and, if its kind is approval-gated, approved, §3.3 — a fixpoint over supersession chains; on a `supersedes` cycle every member is treated as in force and retired by nothing, and the `cycle` finding blocks, so the state is loud rather than guessed). For a plan, its steps, and its promises: the ledger holds no `completed` or `abandoned` entry for the plan (§6.3). Every other kind: kept |
 | `approved(S)` | any | `f` is a declaration of a gated kind with a ledger approval for `(slug, rev, xh)`; or a declaration of a non-gated kind; or a plan whose current commitment set is approved against its latest approved set (§13.7 containment, not `csh` equality); or a step of an approved plan; or any other kind |
 | `bumped(S)` | node | `f` is a declaration absent from `B`'s index, or present with `rev_B(f) < rev_T(f)` |
 | `declined(S)` | node | `f` is a declaration or plan with a live `decline` fact: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
@@ -1389,11 +1389,11 @@ Notation: `S`, `T` range over fact sets; `E` over sets of edges; `P` promises; `
 
 | function | accepts | denotes |
 |---|---|---|
-| `obligations(R)` | law | `⋃_{r ∈ R} ( eval(trigger(r)) - eval(discharge(r)) )` — the obligation subjects of each rule. Rule expressions are evaluated in the same universe; a rule whose trigger or discharge mentions `obligations` is rejected at manifest load (no recursion through the law) |
+| `obligations(R)` | law | `⋃_{r ∈ R} ( eval(trigger(r)) - eval(expect(r)) )` — the obligation subjects of each rule. Rule expressions are evaluated in the same universe; a rule whose trigger or `expect` mentions `obligations` is rejected at manifest load (no recursion through the law) |
 | `triggered(R)` | law | `{r ∈ R : eval(trigger(r)) ≠ ∅}` |
-| `judged(n)` | — | subjects with a `judgment` evidence fact for rule `n` whose verdict is `pass` and whose recorded hash matches the subject's current extent (or commitment-set) hash — the discharge selector for judged rules |
+| `judged(n)` | — | subjects with a `judgment` evidence fact for rule `n` whose verdict is `pass` and whose recorded hash matches the subject's current extent (or commitment-set) hash — the `expect` selector for judged rules |
 
-For an `acked` discharge, ack liveness is `subject ∈ eval(trigger)` — the discharge side never re-enters (§3.3); no circularity.
+For an `acked` `expect`, ack liveness is `subject ∈ eval(trigger)` — the `expect` side never re-enters (§3.3); no circularity.
 
 **Set operators.** `S + T` union, `S ^ T` intersection, `S - T` difference, all over fact identity.
 
@@ -1434,7 +1434,7 @@ Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameter
 
 ### 12.8 Built-in finding definitions
 
-`check` is the union of these. `expr` is the definition where the class is expressible; *engine* marks classes the scanner or adjudicator emits directly because they concern malformed input or two-tree comparisons the algebra does not model (their subjects and details are still ordinary finding facts). Two subtractions are engine steps applied after evaluation to every class, never written into definitions: `historical` facts generate no findings of any class (§3.6), and live `@ack`s discharge findings of ackable classes (liveness judged pre-subtraction, §3.3). A third rule governs the evidence ladder: `never-ran`, `failed`, `unexercised`, and `unmeasured` are evaluated only when an evidence set exists for the tree — the tool judges measurements that exist and never demands one nobody took; wanting the measurement is expressed by importing it (PR CI does; a main job may), and `status --done` refuses without one, because death requires measurement. The `rung` field reads `never-ran` either way; only the finding is withheld. A fourth: facts belonging to a plan not in force — the plan, its steps, its promises — generate no findings; a dead plan is record, not agreement (§6.3). Tiers are the shipped defaults for `(turn, pr, main)`; every class ships at `warn` under the rollout cap and is promoted per §8. `A` = ackable, `F` = mechanical fix exists.
+`check` is the union of these. `expr` is the definition where the class is expressible; *engine* marks classes the scanner or adjudicator emits directly because they concern malformed input or two-tree comparisons the algebra does not model (their subjects and details are still ordinary finding facts). Two subtractions are engine steps applied after evaluation to every class, never written into definitions: `historical` facts generate no findings of any class (§3.6), and live `@ack`s accept findings of ackable classes (liveness judged pre-subtraction, §3.3). A third rule governs the evidence ladder: `never-ran`, `failed`, `unexercised`, and `unmeasured` are evaluated only when an evidence set exists for the tree — the tool judges measurements that exist and never demands one nobody took; wanting the measurement is expressed by importing it (PR CI does; a main job may), and `status --done` refuses without one, because death requires measurement. The `rung` field reads `never-ran` either way; only the finding is withheld. A fourth: facts belonging to a plan not in force — the plan, its steps, its promises — generate no findings; a dead plan is record, not agreement (§6.3). Tiers are the shipped defaults for `(turn, pr, main)`; every class ships at `warn` under the rollout cap and is promoted per §8. `A` = ackable, `F` = mechanical fix exists.
 
 | class | subject | definition | mode | A | F | tiers |
 |---|---|---|---|---|---|---|
@@ -1472,9 +1472,9 @@ Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameter
 | `waiting-on` | promise | `blocked(promises(kind(plan)))` — reported in place of `dangling` for the citation, with the lease and step named (§6.7) | tree | · | · | off, warn, — |
 | `branch-overlap` | step | *engine*: a step's scope intersects a live lease's scope on another branch | tree | · | · | warn, warn, — |
 | `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient`; *engine* also exempts hunks that are wholly the tool's own medicine — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
-| `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable iff the rule's discharge is `acked`; a rule's `tiers` overrides the class's | tree | A* | · | warn, block, block |
+| `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable iff the rule's `expect` is `acked`; a rule's `tiers` overrides the class's | tree | A* | · | warn, block, block |
 | `law-touched` | law | `kind(rule\|gate) ^ changed(base)` — non-disableable; always reported, never blocks | diff | · | · | warn, warn, warn |
-| `merged-incomplete` | plan | *engine*: an in-force plan on the target branch failing the §6.3 discharge condition — merged incomplete; a plan meeting it is discharged by main CI, not a finding | tree | · | · | —, —, block |
+| `merged-incomplete` | plan | *engine*: an in-force plan on the target branch failing the §6.3 completion condition — merged incomplete; a plan meeting it is completed by main CI, not a finding | tree | · | · | —, —, block |
 | `ledger-broken` | ledger | *engine*: `ledger verify` fails | tree | · | · | —, —, block |
 | `pack-mismatch` | pack | *engine*: a pinned pack's hash does not match the cache | tree | · | · | exit 3 everywhere |
 
@@ -1575,7 +1575,7 @@ Fields marked *derived* below are computed from the ledger, evidence, session, o
 | `approved` | bool | *derived*: current commitment set approved against the last approval (§13.7) |
 | `approval` | string | *derived* |
 | `active` | bool | *derived* from session |
-| `live` | bool | *derived*: no `discharged` or `abandoned` ledger entry for the plan (§6.3); its in-force state |
+| `live` | bool | *derived*: no `completed` or `abandoned` ledger entry for the plan (§6.3); its in-force state |
 | `csh` | string | commitment-set hash: SHA-256 over a canonical, step-name-free form — sorted `(word, target, effective step scope)` triples plus the plan scope — so free renames leave it unchanged and a `decline` bound to it survives them |
 | `declined` | bool | *derived* |
 
@@ -1647,8 +1647,8 @@ Unlocated; one per distinct target. (`refstate`, the networked read, is deferred
 | `word` | string | `req` `design` `decision` `satisfies` `verifies` `refines` `cites` `supersedes` |
 | `target` | string | as written |
 | `met` | bool | *derived* |
-| `by` | string | *derived*: id of the discharging fact when met |
-| `out_of_scope` | bool | *derived*: residue that would discharge it exists only outside the step's scope; `met` stays false (§6.1) |
+| `by` | string | *derived*: id of the fact that meets it, when met |
+| `out_of_scope` | bool | *derived*: residue that would meet it exists only outside the step's scope; `met` stays false (§6.1) |
 
 Duplicate promissory tags within one step collapse to a single promise fact.
 
@@ -1685,7 +1685,7 @@ Duplicate promissory tags within one step collapse to a single promise fact.
 | `hash` | string | the subject's extent (or commitment-set) hash at judgment; live while it matches — bound to the text, not the tree, so unrelated edits do not void it |
 | `reason` | string | one line |
 
-**`lease`** (unlocated; projected from the ledger for each approved plan on another branch that is neither discharged nor abandoned and whose branch existed on the remote at the last fetch)
+**`lease`** (unlocated; projected from the ledger for each approved plan on another branch that is neither completed nor abandoned and whose branch existed on the remote at the last fetch)
 
 | field | type | meaning |
 |---|---|---|
@@ -1710,8 +1710,8 @@ Duplicate promissory tags within one step collapse to a single promise fact.
 
 | field | type | meaning |
 |---|---|---|
-| `name` `origin` `trigger` `discharge` | string | as declared |
-| `via` | string | `checked` `judged` `acked` — inferred from `discharge` |
+| `name` `origin` `trigger` `expect` | string | as declared |
+| `via` | string | `checked` `judged` `acked` — inferred from `expect` |
 | `scope` | array of string | |
 | `triggered` | bool | *derived* |
 | `obligations` | int | *derived* obligation count |
@@ -1734,7 +1734,7 @@ Duplicate promissory tags within one step collapse to a single promise fact.
 | `hash` | string | as written |
 | `live` | bool | *derived* |
 | `void` | string | *derived*: `hash` or `target`; omitted when live |
-| `for` | string | *derived*: id of the finding discharged, or the rule, when live |
+| `for` | string | *derived*: id of the finding accepted, or the rule, when live |
 
 **`hunk`** (diff mode; new-side coordinates; a pure deletion has `line = eline = ` the line after the deletion and `added = 0`)
 
@@ -1799,7 +1799,7 @@ An id is stable under: re-indentation, reformatting, line shifts, and re-pinning
 
 The ledger is a JSONL file `ledger.jsonl` in the tree of `refs/sinter/ledger`. Every `approve` run appends lines and commits with the previous tip as parent. Verification (§11.13) checks fast-forward and byte-prefix accretion. Timestamps and authorship are legitimate here — the ledger is history, not a derivation.
 
-Four writers exist: `approve` writes `approval` (with its `approved-*` lines), `decline` writes `decline`, `ledger abandon` writes `abandoned`, and main CI writes `discharged` (§6.3). Entry ids are content-derived: `e-` plus the first twelve hex digits of SHA-256 over the entry's canonical bytes with the `id` key absent. Two writers can never mint one id for different entries, so replay after a lost push race is a set union (`ledger push --replay`); accretion is checked per file — every commit's ledger is a byte-prefix extension of its parent's, and ids never repeat. Where order matters (a decline superseded by a later approval), `ts` decides, never file position. When `[ledger].sign` is set, every ledger commit is signed and `ledger verify --signers` enforces the allowlist.
+Four writers exist: `approve` writes `approval` (with its `approved-*` lines), `decline` writes `decline`, `ledger abandon` writes `abandoned`, and main CI writes `completed` (§6.3). Entry ids are content-derived: `e-` plus the first twelve hex digits of SHA-256 over the entry's canonical bytes with the `id` key absent. Two writers can never mint one id for different entries, so replay after a lost push race is a set union (`ledger push --replay`); accretion is checked per file — every commit's ledger is a byte-prefix extension of its parent's, and ids never repeat. Where order matters (a decline superseded by a later approval), `ts` decides, never file position. When `[ledger].sign` is set, every ledger commit is signed and `ledger verify --signers` enforces the allowlist.
 
 **Every entry** carries `id`, `kind`, `v`, `by`, `ts` (RFC 3339, UTC), `head` (the commit the writer stood on), `branch`, and `tool`.
 
@@ -1824,14 +1824,14 @@ Four writers exist: `approve` writes `approval` (with its `approved-*` lines), `
 
 A decline is live while the subject's current hash equals `hash` and no later approval of the subject exists. It is never deleted; a later approval — at a different hash, or at the same one, the human overriding their own refusal after an `approve` prompt — supersedes it in effect, and `compile history` shows both.
 
-**`discharged`**
+**`completed`**
 
 | field | type | meaning |
 |---|---|---|
 | `subject` | string | `plan:<slug>` |
 | `approval` | string | the approval the plan died under |
 | `merge` | string | merge commit |
-| `report` | string | SHA-256 of the report compiled at discharge |
+| `report` | string | SHA-256 of the report compiled at completion |
 
 **`abandoned`**
 
@@ -1937,12 +1937,12 @@ unexercised   = "block"
 [rules.ste-docs]                           # standing law (§7)
 origin    = "ste-adoption"
 trigger   = "kind(req|design) ^ path(docs/**) ^ changed(base)"
-discharge = "acked(ste-docs)"                # acknowledged discharge: an @ack at the site
+expect    = "acked(ste-docs)"                # acknowledged: an @ack at the site
 
 [rules.issue-linked]
 origin    = "issues-are-truth"
 trigger   = "kind(req) ^ changed(base)"
-discharge = "src(out(cites, kind(req)) ^ in(cites, ref(gh/*)))"   # checked discharge: the graph says so
+expect    = "src(out(cites, kind(req)) ^ in(cites, ref(gh/*)))"   # checked: the graph says so
 
 [findings.decision-uncited]                # a repo-defined finding; without tiers it is query-only
 expr    = "kind(decision) ^ inforce(all) - dst(in(cites, all))"
@@ -1966,10 +1966,10 @@ tiers   = { pr = "warn" }
 | `target` | `"main"` | branch whose merge-base is the default `--base` |
 | `brief.budget` | `12000` | bytes; the turn-level brief uses a quarter of it |
 | `brief.why_budget` | `2000` | bytes; the origin-decision extent attached to an `unmet-rule` block (§7) |
-| `evidence.require_attribution` | `false` | `true`: rung `unattributed` never discharges a `@verifies` promise |
+| `evidence.require_attribution` | `false` | `true`: rung `unattributed` never meets a `@verifies` promise |
 | `ledger.sign`, `ledger.signers` | `false`, `[]` | signed ledger commits and the allowlist (§6.4) |
 | `refuse_env` | `["CLAUDECODE"]` | harness markers that make `approve`/`decline` refuse |
-| `rules.<name>.scope` | `[]` | where a rule's discharge edits land (§7); only needed when outside the plan's scope |
+| `rules.<name>.scope` | `[]` | where the edits that clear a rule's obligations land (§7); only needed when outside the plan's scope |
 | `rules.<name>.tiers` | from `[gates]` `unmet-rule` | per-gate override for one rule's obligations |
 
-Deliberately absent: a hooks table (hook registration lives in the harness's own settings file, which `init` writes; there is nothing to configure twice), a journal switch (a journal exists iff the file does), an evidence directory (fixed at `.sinter/evidence`), the ledger ref (fixed), a schema version (assumed `1` until a `2` exists), sampling of acknowledged discharges by the judge (waits for `sinter judge`), a classification-tag table (an earlier draft's `compile spec --tag` — a selection nobody has asked for yet), and per-kind declaration paths (`[declare]` in an earlier draft — a warn-tier nicety that cost a table and two finding classes; if a repo wants it, it is one `[findings]` entry away: `kind(req) - path(docs/requirements/**)`).
+Deliberately absent: a hooks table (hook registration lives in the harness's own settings file, which `init` writes; there is nothing to configure twice), a journal switch (a journal exists iff the file does), an evidence directory (fixed at `.sinter/evidence`), the ledger ref (fixed), a schema version (assumed `1` until a `2` exists), sampling of acknowledged obligations by the judge (waits for `sinter judge`), a classification-tag table (an earlier draft's `compile spec --tag` — a selection nobody has asked for yet), and per-kind declaration paths (`[declare]` in an earlier draft — a warn-tier nicety that cost a table and two finding classes; if a repo wants it, it is one `[findings]` entry away: `kind(req) - path(docs/requirements/**)`).

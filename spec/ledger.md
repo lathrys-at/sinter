@@ -93,7 +93,7 @@ Every entry carries:
 | field | meaning |
 |---|---|
 | `id` | entry id (section 3) |
-| `kind` | `approval`, `approved-scope`, `approved-promise`, `decline`, `discharged`, or `abandoned` |
+| `kind` | `approval`, `approved-scope`, `approved-promise`, `decline`, `completed`, or `abandoned` |
 | `v` | schema version |
 | `by` | who wrote the entry |
 | `ts` | RFC 3339 timestamp, UTC |
@@ -109,7 +109,7 @@ Four writers exist. The approval command writes `approval` entries, with
 their `approved-scope` and `approved-promise` lines. The decline command
 writes `decline`. The abandon command writes `abandoned`. A person
 runs these three commands. The fourth writer is the CI job on the
-target branch, which writes `discharged` (section 8).
+target branch, which writes `completed` (section 8).
 
 ## 5. `approval`
 
@@ -201,19 +201,19 @@ A later approval of the subject ends the decline's effect. That later
 approval can be at a different hash. It can also be at the same hash,
 when the person overrides their own earlier refusal.
 
-## 8. `discharged`
+## 8. `completed`
 
 ### 8.1 The entry and its writer
 
-@req ledger-discharged v2
+@req ledger-completed
 
-A `discharged` entry closes a plan whose promises all produced their
-residue ([vocabulary.md](vocabulary.md) section 10.2).
+A `completed` entry closes a plan whose promises are all met
+([vocabulary.md](vocabulary.md) section 10.5).
 
 The CI job on the target branch writes the entry. The job runs on
 every push to the target branch. It finds the open plans that are now
-on that branch. It checks each of those plans against the discharge
-condition below. It appends one entry for each plan that meets the
+on that branch. It checks each of those plans against the completion
+condition below. It appends one entry for each plan that passes the
 condition.
 
 | field | meaning |
@@ -221,13 +221,13 @@ condition.
 | `subject` | `plan:<slug>` |
 | `approval` | the plan's latest approval at the time it closed; omitted when the plan has no approval |
 | `merge` | the merge commit |
-| `report` | SHA-256 of the report compiled at discharge |
+| `report` | SHA-256 of the report compiled when the plan closed |
 
-### 8.2 The discharge condition
+### 8.2 The completion condition
 
-@req ledger-discharge-condition v2
+@req ledger-completion-condition
 
-A plan meets the condition when all of these statements are true:
+A plan passes the condition when all of these statements are true:
 
 - Every promised declaration exists.
 - Every promised edge exists, its tag target resolves, and it is not
@@ -247,12 +247,12 @@ needs approval. The second is a revert of the merge commit.
 
 ### 8.3 A repeated run
 
-@req ledger-discharge-idempotent v2
+@req ledger-completion-idempotent
 
 The job's write is idempotent: a second run for the same plan adds no
-second entry. The plan's approvals and the repository tree hold the facts
-that prove discharge. A lost CI run therefore costs one repeat run and
-loses no facts.
+second entry. The plan's approvals and the repository tree hold the
+facts that prove completion. A lost CI run therefore costs one repeat
+run and loses no facts.
 
 ## 9. `abandoned`
 
@@ -279,9 +279,9 @@ An `abandoned` entry ends the plan's lease. It also releases every
 
 ### 10.1 Open and closed
 
-@req ledger-open-plans
+@req ledger-open-plans v2
 
-A plan is **open** until the ledger holds a `discharged` or an
+A plan is **open** until the ledger holds a `completed` or an
 `abandoned` entry for it. A plan with such an entry is **closed**.
 Only a ledger entry closes a plan. No change to the plan file — an
 edit, a move, or a deletion — closes a plan, and the plan file stays
@@ -293,9 +293,9 @@ permanent; a successor plan needs a new slug.
 
 ### 10.2 An absent ledger ref
 
-@req ledger-absent-ref
+@req ledger-absent-ref v2
 
-When the ledger ref is absent, a tool sees no `discharged` and no
+When the ledger ref is absent, a tool sees no `completed` and no
 `abandoned` entries, so it treats every plan as open. A tool in this
 state must warn the user that the ledger ref is absent, and must tell
 the user to fetch it.

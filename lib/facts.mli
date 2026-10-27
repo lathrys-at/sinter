@@ -197,27 +197,26 @@ val effective_scope : plan -> step -> string list
     [plan] when the step has none. *)
 
 type residue = private { id : string; path : string; span : Markdown.span }
-(** A fact that would discharge a promise: its id, its path, and its span. *)
+(** A fact that would meet a promise: its id, its path, and its span. *)
 
-type discharge = private {
+type standing = private {
   by : residue option;
       (** the first member of [residue] whose path is in the effective scope of
           the step or in the default location of the kind of the promise *)
   residue : residue list;
-      (** every fact that would discharge the promise if its place were right,
-          in the order of the paths in byte order and then of the places *)
+      (** every fact that would meet the promise if its place were right, in the
+          order of the paths in byte order and then of the places *)
 }
 (** How a promise stands. *)
 
-val discharge : t -> plan -> step -> promise -> discharge
-(** [discharge facts plan step promise] is how [promise], a promise of [step] of
-    [plan], stands. A declaration would discharge it when its kind is the word
-    and its slug is the tag target of the promise. An edge would discharge it
-    when its word and its tag target are those of the promise, its tag target
-    resolves, and it is not suspect. No edge of the word [verifies] would
-    discharge it.
+val standing : t -> plan -> step -> promise -> standing
+(** [standing facts plan step promise] is how [promise], a promise of [step] of
+    [plan], stands. A declaration would meet it when its kind is the word and
+    its slug is the tag target of the promise. An edge would meet it when its
+    word and its tag target are those of the promise, its tag target resolves,
+    and it is not suspect. No edge of the word [verifies] would meet it.
 
-    [discharge facts plan step] reads the effective scope of [step] once, and
+    [standing facts plan step] reads the effective scope of [step] once, and
     gives a function that each promise of [step] can share.
 
     @raise Invalid_argument
