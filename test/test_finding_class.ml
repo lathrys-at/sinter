@@ -82,7 +82,7 @@ let of_name_refuses_other_names () =
 let gates_have_their_names () =
   Alcotest.(check (list string))
     "the gate names"
-    [ "turn"; "merge"; "target" ]
+    [ "turn"; "review"; "merged" ]
     (List.map Finding_class.gate_name Finding_class.gates);
   List.iter
     (fun gate ->

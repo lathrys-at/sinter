@@ -306,7 +306,7 @@ let check_cmd =
       `S Manpage.s_examples;
       `Pre "  sinter check";
       `P "Report every finding of the working tree, with no tier.";
-      `Pre "  sinter check --gate merge";
+      `Pre "  sinter check --gate review";
       `P
         "Report the findings that matter before a merge, and exit with code 1 \
          when one of them blocks. Run this in CI on a pull request.";
@@ -334,8 +334,8 @@ let check_cmd =
   let gate =
     let doc =
       "The point at which the check runs: $(b,turn), when an agent finishes a \
-       turn and hands back its work; $(b,merge), on a change before it merges \
-       into the default branch, for example on a pull request; or $(b,target), \
+       turn and hands back its work; $(b,review), on a change before it merges \
+       into the default branch, for example on a pull request; or $(b,merged), \
        on the default branch after a merge."
     in
     let gates =
@@ -413,7 +413,7 @@ let cmd =
       `S Manpage.s_examples;
       `Pre "  sinter check";
       `P "Report every finding of the working tree.";
-      `Pre "  sinter check --gate merge";
+      `Pre "  sinter check --gate review";
       `P
         "Report the findings that matter before a merge, and exit with code 1 \
          when one of them blocks.";

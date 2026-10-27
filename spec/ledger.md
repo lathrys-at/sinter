@@ -237,7 +237,7 @@ A plan passes the condition when all of these statements are true:
   `evidence.coverage-attribution` is `"optional"`
   ([manifest.md](manifest.md) section 12).
 - When the job imports no evidence: a promised `verifies` edge can be
-  at any rung. Rung enforcement happened earlier, at the gate `merge`.
+  at any rung. Rung enforcement happened earlier, at the gate `review`.
 
 An open plan on the default branch that fails this condition is the
 finding `merged-incomplete`: a person merged a plan whose work is not

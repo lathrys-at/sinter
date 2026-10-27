@@ -17,9 +17,9 @@ let capped =
     (packs
    ^ "[check]\n\
       rollout-cap = true\n\
-      tiers.merge.parse-error = \"block\"\n\
-      tiers.merge.dangling = \"block\"\n\
-      tiers.merge.suspect = \"off\"\n")
+      tiers.review.parse-error = \"block\"\n\
+      tiers.review.dangling = \"block\"\n\
+      tiers.review.suspect = \"off\"\n")
 
 let at line column = { Markdown.line; column }
 
@@ -97,11 +97,11 @@ let a_parse_error_at_an_error_node_warns_where_its_class_blocks () =
   Alcotest.(check (list (option tier)))
     "an error node and a file that is not text, at merge"
     [ Some Finding_class.Warn; Some Finding_class.Block ]
-    (tiers plain Finding_class.Merge);
+    (tiers plain Finding_class.Review);
   Alcotest.(check (list (option tier)))
     "the same under the cap, where the manifest writes block"
     [ Some Finding_class.Warn; Some Finding_class.Block ]
-    (tiers capped Finding_class.Merge);
+    (tiers capped Finding_class.Review);
   Alcotest.(check (list (option tier)))
     "the same at turn, where the class warns"
     [ Some Finding_class.Warn; Some Finding_class.Warn ]
@@ -109,13 +109,14 @@ let a_parse_error_at_an_error_node_warns_where_its_class_blocks () =
 
 let a_finding_takes_the_tier_of_its_class () =
   Alcotest.(check (list (option tier)))
-    "dangling under the cap, suspect turned off, scope-outside-plan at target"
+    "dangling under the cap, suspect turned off, scope-outside-plan at merged"
     [ Some Finding_class.Block; Some Finding_class.Off; None ]
     [
-      Check.tier capped Finding_class.Merge
+      Check.tier capped Finding_class.Review
         (finding Finding_class.Dangling edge);
-      Check.tier capped Finding_class.Merge (finding Finding_class.Suspect edge);
-      Check.tier plain Finding_class.Target
+      Check.tier capped Finding_class.Review
+        (finding Finding_class.Suspect edge);
+      Check.tier plain Finding_class.Merged
         (finding Finding_class.Scope_outside_plan edge);
     ]
 
@@ -179,13 +180,13 @@ let a_gate_leaves_out_a_class_that_is_off_or_has_no_tier () =
     ]
     (tiers_of (Check.select plain (Some Finding_class.Turn) findings));
   Alcotest.check tiers
-    "the entries at target, where unverified-promise takes no tier"
+    "the entries at merged, where unverified-promise takes no tier"
     [
-      ("untraced", Some ("target", "warn"));
-      ("dangling", Some ("target", "block"));
-      ("parse-error", Some ("target", "warn"));
+      ("untraced", Some ("merged", "warn"));
+      ("dangling", Some ("merged", "block"));
+      ("parse-error", Some ("merged", "warn"));
     ]
-    (tiers_of (Check.select plain (Some Finding_class.Target) findings))
+    (tiers_of (Check.select plain (Some Finding_class.Merged) findings))
 
 let a_gate_keeps_each_finding_that_warns_or_blocks_in_order =
   property "a gate keeps each finding that warns or blocks, in order"
@@ -237,7 +238,7 @@ let a_finding_blocks_at_its_tier_or_under_strict =
         (list_size (int_range 0 5)
            (option
               (oneof_list
-                 [ warn; block; (Finding_class.Merge, Finding_class.Off) ]))))
+                 [ warn; block; (Finding_class.Review, Finding_class.Off) ]))))
     (fun (strict, tiers) ->
       Printf.sprintf "strict %b, %d entries" strict (List.length tiers))
     (fun (strict, tiers) ->
@@ -268,7 +269,7 @@ let a_finding_prints_its_place_tier_class_subject_and_detail () =
            finding ~place:(place ())
              ~detail:"pinned to v1; the declaration is at v2" ~fix:"@cites x v2"
              Finding_class.Suspect edge;
-         tier = Some (Finding_class.Merge, Finding_class.Block);
+         tier = Some (Finding_class.Review, Finding_class.Block);
        });
   Alcotest.(check (list string))
     "with no tier, no detail, and no fix"
@@ -371,14 +372,14 @@ let a_finding_gives_one_line_and_one_more_for_a_fix =
 let a_record_holds_every_field_of_a_finding () =
   Alcotest.(check string)
     "the record"
-    "{\"ack_subject\":\"x\",\"ackable\":true,\"class\":\"retired\",\"col\":2,\"detail\":\"d\",\"ecol\":9,\"eline\":4,\"fix\":\"f\",\"gate\":\"merge\",\"id\":\"finding:retired:cites:site:docs/a.md->x\",\"kind\":\"finding\",\"line\":3,\"mode\":\"tree\",\"path\":\"docs/a.md\",\"subject\":\"cites:site:docs/a.md->x\",\"tier\":\"block\",\"v\":1}"
+    "{\"ack_subject\":\"x\",\"ackable\":true,\"class\":\"retired\",\"col\":2,\"detail\":\"d\",\"ecol\":9,\"eline\":4,\"fix\":\"f\",\"gate\":\"review\",\"id\":\"finding:retired:cites:site:docs/a.md->x\",\"kind\":\"finding\",\"line\":3,\"mode\":\"tree\",\"path\":\"docs/a.md\",\"subject\":\"cites:site:docs/a.md->x\",\"tier\":\"block\",\"v\":1}"
     (Jsonl.to_string
        (Check.record
           {
             finding =
               finding ~place:(place ()) ~detail:"d" ~fix:"f" ~ackable:true
                 Finding_class.Retired edge;
-            tier = Some (Finding_class.Merge, Finding_class.Block);
+            tier = Some (Finding_class.Review, Finding_class.Block);
           }))
 
 let a_record_leaves_out_what_a_finding_does_not_have () =
@@ -443,7 +444,7 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
     ( text.code,
       List.map (fun line -> List.hd (String.split_on_char ' ' line)) text.lines
     );
-  let json = run Check.Json (Some Finding_class.Merge) in
+  let json = run Check.Json (Some Finding_class.Review) in
   Alcotest.(check (pair int int))
     "the code and the number of lines of the JSON"
     (1, if line_feed then 4 else 3)

@@ -7,8 +7,8 @@
 (** A point where Sinter checks a repository. *)
 type gate =
   | Turn  (** at the end of a turn of an agent *)
-  | Merge  (** on a change before it merges into the default branch *)
-  | Target  (** on the default branch, after a merge *)
+  | Review  (** on a change before it merges into the default branch *)
+  | Merged  (** on the default branch, after a merge *)
 
 (** How hard a finding class bites at one gate. *)
 type tier =
@@ -17,10 +17,10 @@ type tier =
   | Block  (** the check reports each finding, and exits with code 1 *)
 
 val gates : gate list
-(** The three gates: [Turn], [Merge], and [Target], in this order. *)
+(** The three gates: [Turn], [Review], and [Merged], in this order. *)
 
 val gate_name : gate -> string
-(** [gate_name gate] is the name of [gate]: ["turn"], ["merge"], or ["target"].
+(** [gate_name gate] is the name of [gate]: ["turn"], ["review"], or ["merged"].
 *)
 
 val gate_of_name : string -> gate option

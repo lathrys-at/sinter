@@ -3,4 +3,4 @@ packs.markdown.files = ["**/*.md"]
 
 [check]
 rollout-cap = true
-tiers.target.suspect = "off"
+tiers.merged.suspect = "off"

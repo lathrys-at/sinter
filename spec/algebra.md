@@ -413,7 +413,7 @@ states holds. Column `F` marks classes with a mechanical fix. A class
 that column `F` does not mark can still give a `fix`
 ([jsonl.md](jsonl.md) section 8), such as the `@ack` line for a
 finding. The `tiers` column gives each class's built-in tier at the
-gates `(turn, merge, target)` ([manifest.md](manifest.md) section
+gates `(turn, review, merged)` ([manifest.md](manifest.md) section
 9.1). A `—` means that the class takes no tier at that gate.
 The **rollout cap** (`check.rollout-cap`) lowers each `block` of the
 column to `warn`, at every gate. `sinter init` writes the cap, so a
@@ -444,7 +444,7 @@ passes the cap ([manifest.md](manifest.md) section 9.3).
 | `retired` | edge | `in(cites, all) - in(cites, inforce(all))`: the `cites` edges whose tag target resolves to a fact that is not in force — a rule's origin edge included. When the cited fact has successors ([vocabulary.md](vocabulary.md) section 8.2), the `detail` names the cited fact and then its successors, in the byte order of their ids, for example `decision:a is superseded by decision:b, decision:c`. The `fix` is then the citation of a successor that replaces the edge: `@cites`, the slug of the successor, and the current revision of the successor when the edge carries a revision. With several successors, the `fix` gives one such citation for each, in the same order, for example `@cites b v2 or @cites c v1`. Ackable only when the cited fact has no successor; the `fix` is then the `@ack` line for the finding | tree | A* | · | warn, block, block |
 | `stale-ack` | ack | *engine*: an `@ack` whose hash no longer matches its block, or whose tag target names neither an ackable finding nor an obligation of a rule in that block ([vocabulary.md](vocabulary.md) section 7.4) | tree | · | F | block, block, block |
 | `wrong-source` | edge | `wrong-source(kind(verifies)) + (kind(refines\|supersedes) - out(refines\|supersedes, kind(req\|design\|decision\|rule)))`: a citation whose kind needs a certain source and that does not have one ([vocabulary.md](vocabulary.md) section 7.2). A `@verifies` needs a test; a `@refines` or a `@supersedes` needs an enclosing declaration | tree | · | · | block, block, block |
-| `never-ran` | edge | `never-ran(kind(verifies)) ^ scope(inforce(kind(plan)))` at `turn`; `never-ran(kind(verifies))` at `merge` and `target` | tree | · | · | warn, block, block |
+| `never-ran` | edge | `never-ran(kind(verifies)) ^ scope(inforce(kind(plan)))` at `turn`; `never-ran(kind(verifies))` at `review` and `merged` | tree | · | · | warn, block, block |
 | `failed` | edge | `failed(kind(verifies))` | tree | · | · | block, block, block |
 | `unexercised` | edge | `unexercised(kind(verifies))` | tree | A | · | warn, block, block |
 | `unmeasured` | edge | `unmeasured(kind(verifies))` | tree | · | · | off, warn, warn |

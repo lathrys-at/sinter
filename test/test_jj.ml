@@ -372,7 +372,7 @@ let checks =
   lazy
     (both (fun repo ->
          List.map (output repo)
-           [ [ "check" ]; [ "check"; "--json"; "--gate"; "merge" ] ]))
+           [ [ "check" ]; [ "check"; "--json"; "--gate"; "review" ] ]))
 
 let a_jj_state_gives_the_same_check_findings () =
   let plain, jj = Lazy.force checks in

@@ -153,8 +153,8 @@ refs.jira = "[A-Z]+-[1-9][0-9]*"
 [check]
 rollout-cap = true
 historical = ["docs/devlog/"]
-tiers.merge.dangling = "block"
-tiers.target.dangling = "block"
+tiers.review.dangling = "block"
+tiers.merged.dangling = "block"
 
 [plan]
 ambient = ["package-lock.json"]
@@ -212,22 +212,22 @@ let the_tier_that_applies_follows_the_three_rules () =
       (Manifest.tier manifest gate finding_class)
   in
   check "a written tier passes the cap" (Some Finding_class.Block)
-    Finding_class.Merge Finding_class.Dangling;
+    Finding_class.Review Finding_class.Dangling;
   check "the cap lowers a built-in block" (Some Finding_class.Warn)
     Finding_class.Turn Finding_class.Dangling;
   check "the cap leaves a built-in warn" (Some Finding_class.Warn)
     Finding_class.Turn Finding_class.Typo_tag;
   check "the cap leaves a built-in off" (Some Finding_class.Off)
     Finding_class.Turn Finding_class.Awaiting_approval;
-  check "a class with no tier at the gate" None Finding_class.Target
+  check "a class with no tier at the gate" None Finding_class.Merged
     Finding_class.Scope_outside_plan;
-  check "pack-mismatch takes no tier" None Finding_class.Merge
+  check "pack-mismatch takes no tier" None Finding_class.Review
     Finding_class.Pack_mismatch
 
 let without_the_cap_the_built_in_tier_applies () =
   let manifest = read (markdown ^ "[check]\ntiers.turn.dangling = \"off\"\n") in
   Alcotest.check tier "a built-in block stays" (Some Finding_class.Block)
-    (Manifest.tier manifest Finding_class.Merge Finding_class.Dangling);
+    (Manifest.tier manifest Finding_class.Review Finding_class.Dangling);
   Alcotest.check tier "a written off" (Some Finding_class.Off)
     (Manifest.tier manifest Finding_class.Turn Finding_class.Dangling);
   Alcotest.check tier "a written tier for another class does not apply"
@@ -239,13 +239,13 @@ let written_tiers_are_sorted () =
     read
       (markdown
      ^ "[check]\n\
-        tiers.target.suspect = \"warn\"\n\
+        tiers.merged.suspect = \"warn\"\n\
         tiers.turn.dangling = \"off\"\n\
         tiers.turn.parse-error = \"block\"\n")
   in
   Alcotest.(check (list string))
     "gate, then class"
-    [ "turn parse-error block"; "turn dangling off"; "target suspect warn" ]
+    [ "turn parse-error block"; "turn dangling off"; "merged suspect warn" ]
     (List.map
        (fun (gate, finding_class, tier) ->
          String.concat " "
@@ -372,17 +372,17 @@ let an_empty_array_is_an_absent_key () =
 let every_form_of_toml_means_the_same () =
   let forms =
     [
-      "[check.tiers.merge]\n\
+      "[check.tiers.review]\n\
        dangling = \"warn\"\n\
        [scan.packs.markdown]\n\
        files = [\"a\"]\n";
       "[check]\n\
-       tiers.merge.dangling = \"warn\"\n\
+       tiers.review.dangling = \"warn\"\n\
        [scan]\n\
        packs.markdown.files = ['a']\n";
-      "check = { tiers = { merge = { dangling = \"warn\" } } }\n\
+      "check = { tiers = { review = { dangling = \"warn\" } } }\n\
        scan.packs.markdown = { files = [\"a\"] }\n";
-      "\"check\".'tiers'.\"merge\".dangling = \"warn\"\n\
+      "\"check\".'tiers'.\"review\".dangling = \"warn\"\n\
        scan . packs . markdown . files = [\n\
       \  \"a\", # a comment\n\
        ]\n";
@@ -392,7 +392,7 @@ let every_form_of_toml_means_the_same () =
     (fun text ->
       let manifest = read text in
       Alcotest.check tier text (Some Finding_class.Warn)
-        (Manifest.tier manifest Finding_class.Merge Finding_class.Dangling);
+        (Manifest.tier manifest Finding_class.Review Finding_class.Dangling);
       Alcotest.(check (list string))
         text [ "markdown a -" ]
         (List.map pack_summary (Manifest.packs manifest)))
@@ -464,10 +464,10 @@ let unknown_keys () =
     "[scan]\npakcs.markdown.files = [\"**/*.md\"]\n"
     [ "sinter.toml:2:1: unknown key 'pakcs' in [scan]; did you mean 'packs'?" ];
   reports "a later part of a dotted key in error"
-    (markdown ^ "[check]\ntiers.merge.danglng = \"block\"\n")
+    (markdown ^ "[check]\ntiers.review.danglng = \"block\"\n")
     [
-      "sinter.toml:4:13: unknown finding class 'danglng' in \
-       [check.tiers.merge]; did you mean 'dangling'?";
+      "sinter.toml:4:14: unknown finding class 'danglng' in \
+       [check.tiers.review]; did you mean 'dangling'?";
     ];
   reports "a key in a pack table" "[scan.packs.ocaml]\nfile = [\"a\"]\n"
     [
@@ -479,7 +479,17 @@ let unknown_keys () =
 
 let an_old_name_is_an_unknown_name () =
   reports "target" "target = \"trunk\"\n"
-    [ "sinter.toml:1:1: unknown key 'target' at the top level" ]
+    [ "sinter.toml:1:1: unknown key 'target' at the top level" ];
+  reports "the gate merge" "[check.tiers.merge]\n"
+    [
+      "sinter.toml:1:14: unknown gate 'merge' in [check.tiers]; did you mean \
+       'merged'?";
+    ];
+  reports "the gate target" "[check.tiers.target]\n"
+    [
+      "sinter.toml:1:14: unknown gate 'target' in [check.tiers]; the gates are \
+       'turn', 'review', or 'merged'";
+    ]
 
 let a_name_with_a_control_character_is_escaped () =
   reports "an unknown key" "\"a\\nb\" = 1\n"
@@ -496,7 +506,7 @@ let a_name_with_a_control_character_is_escaped () =
        lower-case letters and digits, in words joined by '-', such as 'ocaml' \
        or 'tree-sitter'";
       "sinter.toml:5:1: unknown gate \"m\\u007Fe\" in [check.tiers]; the gates \
-       are 'turn', 'merge', or 'target'";
+       are 'turn', 'review', or 'merged'";
     ]
 
 let keys_at_the_wrong_place () =
@@ -518,7 +528,7 @@ let keys_at_the_wrong_place () =
   reports "a fixed name where a gate goes" "[check.tiers]\nrollout-cap = true\n"
     [ "sinter.toml:2:1: 'rollout-cap' belongs in [check]" ];
   reports "a fixed name where a class goes"
-    "[check.tiers.merge]\nhistorical = []\n"
+    "[check.tiers.review]\nhistorical = []\n"
     [ "sinter.toml:2:1: 'historical' belongs in [check]" ];
   reports "a fixed name where a kind goes" "[plan.locations]\nshared = []\n"
     [ "sinter.toml:2:1: 'shared' belongs in [plan]" ]
@@ -562,15 +572,15 @@ let names_that_vary () =
   reports "a gate far from every gate" "[check.tiers.pr]\n"
     [
       "sinter.toml:1:14: unknown gate 'pr' in [check.tiers]; the gates are \
-       'turn', 'merge', or 'target'";
+       'turn', 'review', or 'merged'";
     ];
   reports "a class with no tier at the gate"
-    "[check.tiers.target]\nscope-outside-plan = \"warn\"\n"
+    "[check.tiers.merged]\nscope-outside-plan = \"warn\"\n"
     [
-      "sinter.toml:2:1: 'scope-outside-plan' takes no tier at the gate 'target'";
+      "sinter.toml:2:1: 'scope-outside-plan' takes no tier at the gate 'merged'";
     ];
   reports "config-changed, pack-mismatch, and an unknown class"
-    "[check.tiers.merge]\n\
+    "[check.tiers.review]\n\
      config-changed = \"warn\"\n\
      pack-mismatch = \"warn\"\n\
      xyz = \"warn\"\n"
@@ -578,20 +588,20 @@ let names_that_vary () =
       "sinter.toml:2:1: 'config-changed' takes no tier; it always reports and \
        never blocks";
       "sinter.toml:3:1: 'pack-mismatch' takes no tier at any gate";
-      "sinter.toml:4:1: unknown finding class 'xyz' in [check.tiers.merge]; \
+      "sinter.toml:4:1: unknown finding class 'xyz' in [check.tiers.review]; \
        'tiers' names built-in finding classes only";
     ];
   reports "config-changed is never a suggestion"
-    "[check.tiers.merge]\nconfig-chnged = \"warn\"\n"
+    "[check.tiers.review]\nconfig-chnged = \"warn\"\n"
     [
       "sinter.toml:2:1: unknown finding class 'config-chnged' in \
-       [check.tiers.merge]; 'tiers' names built-in finding classes only";
+       [check.tiers.review]; 'tiers' names built-in finding classes only";
     ];
   reports "the suggestion is a class that takes a tier at the gate"
-    "[check.tiers.target]\nbad-scop = \"warn\"\n"
+    "[check.tiers.merged]\nbad-scop = \"warn\"\n"
     [
       "sinter.toml:2:1: unknown finding class 'bad-scop' in \
-       [check.tiers.target]; 'tiers' names built-in finding classes only";
+       [check.tiers.merged]; 'tiers' names built-in finding classes only";
     ];
   reports "kinds of locations"
     "[plan.locations]\ndecisions = [\"docs/\"]\nplan = [\"x\"]\nfoo = []\n"
@@ -721,14 +731,14 @@ let values () =
   reports "words"
     (markdown
    ^ "[check]\n\
-      tiers.merge.dangling = \"blok\"\n\
+      tiers.review.dangling = \"blok\"\n\
       [ledger]\n\
       approval-required = [\"reqs\", \"req\", \"req\"]\n\
       harness-markers = [\"MY-VAR\", \"A\", \"A\", \"1A\", \"\"]\n\
       [evidence]\n\
       coverage-attribution = \"requird\"\n")
     [
-      "sinter.toml:4:24: 'dangling' takes \"off\", \"warn\", or \"block\", not \
+      "sinter.toml:4:25: 'dangling' takes \"off\", \"warn\", or \"block\", not \
        \"blok\"; did you mean \"block\"?";
       "sinter.toml:6:22: 'approval-required' takes \"req\", \"design\", \
        \"decision\", or \"plan\", not \"reqs\"; did you mean \"req\"?";
@@ -842,10 +852,10 @@ let the_example_messages_of_the_specification () =
     "'rollout-cap' takes true or false, not a string";
   check "[scan.packs.markdown]\nfiles = [\"a\"]\nversion = \"1.0\"\n"
     "the pack markdown is built into sinter and takes no version";
-  check "[check.tiers.merge]\nconfig-changed = \"warn\"\n"
+  check "[check.tiers.review]\nconfig-changed = \"warn\"\n"
     "'config-changed' takes no tier; it always reports and never blocks";
-  check "[check.tiers.target]\nscope-outside-plan = \"warn\"\n"
-    "'scope-outside-plan' takes no tier at the gate 'target'";
+  check "[check.tiers.merged]\nscope-outside-plan = \"warn\"\n"
+    "'scope-outside-plan' takes no tier at the gate 'merged'";
   check
     (markdown ^ "refs.gh = \".\"\n")
     "'.' is not in the id pattern language; put it in a class, for example [.]";
@@ -1164,8 +1174,8 @@ let every_problem_has_a_message () =
     "'' takes an array of strings, and this member is a float"
     (Manifest.Wrong_member_type { key = []; found = Toml.Kind.Float });
   check "an unknown gate with no near name"
-    "unknown gate 'x' in [check.tiers]; the gates are 'turn', 'merge', or \
-     'target'"
+    "unknown gate 'x' in [check.tiers]; the gates are 'turn', 'review', or \
+     'merged'"
     (Manifest.Unknown_gate { name = "x"; nearest = None });
   check "a word of a single choice" "'k' takes \"a\", not \"b\""
     (Manifest.Unknown_value
@@ -1293,7 +1303,7 @@ let since_of_no_setting_is_none () =
     [
       [];
       [ "scan" ];
-      [ "check"; "tiers"; "merge" ];
+      [ "check"; "tiers"; "review" ];
       [ "foo" ];
       [ "spec"; "x" ];
       [ "check"; "tiers"; "a"; "b"; "c" ];
@@ -1394,7 +1404,7 @@ let line =
       "[ledger]";
       "[evidence]";
       "[scan.packs.markdown]";
-      "[check.tiers.merge]";
+      "[check.tiers.review]";
       "[[check]]";
       "spec = \"1.0\"";
       "spec = \"9.0\"";
@@ -1417,7 +1427,7 @@ let line =
       "rollout-cap = true";
       "rollout-cap = 1";
       "historical = [\"docs/\"]";
-      "tiers.merge.dangling = \"block\"";
+      "tiers.review.dangling = \"block\"";
       "dangling = \"warn\"";
       "config-changed = \"warn\"";
       "ambient = [\"a\", 2]";
@@ -1518,9 +1528,9 @@ let settings =
           globs;
         some_of
           [
-            ("merge", "dangling", "warn");
+            ("review", "dangling", "warn");
             ("turn", "suspect", "off");
-            ("target", "cycle", "block");
+            ("merged", "cycle", "block");
           ]
         >|= List.map (fun (gate, cls, tier) ->
             ([ "check"; "tiers"; gate; cls ], Printf.sprintf "%S" tier));

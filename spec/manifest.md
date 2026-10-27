@@ -46,8 +46,8 @@ The manifest is a TOML 1.1.0 document (<https://toml.io/en/v1.1.0>),
 encoded in UTF-8. These rules also apply:
 
 1. Every TOML form that gives the same document has the same meaning.
-   A table header such as `[check.tiers.merge]`, a dotted key such as
-   `tiers.merge.dangling` under `[check]`, and an inline table are all
+   A table header such as `[check.tiers.review]`, a dotted key such as
+   `tiers.review.dangling` under `[check]`, and an inline table are all
    valid. Basic strings and literal strings are both valid.
 2. The path of a dotted key must not go into a table that an earlier
    table header names (section 2.3).
@@ -154,7 +154,7 @@ No other top-level key and no other table exists.
 
 A **key path** names one value. It is the names of the keys from the
 top of the file down to the value, joined with `.`. Example:
-`check.tiers.merge.dangling`. This document names each setting by its
+`check.tiers.review.dangling`. This document names each setting by its
 key path.
 
 This document fixes some names in a key path: the names of the tables,
@@ -196,7 +196,7 @@ A tool that writes a manifest, such as `sinter init`, writes the
 2. Then each table that holds a setting follows, in the order of the
    table in section 3.1, under one header line.
 3. Under each header, each key is a dotted key that holds the whole
-   key path below the table. Example: `tiers.merge.dangling = "block"`
+   key path below the table. Example: `tiers.review.dangling = "block"`
    under `[check]`.
 
 ## 4. Reading the manifest
@@ -272,7 +272,7 @@ sinter: sinter.toml:1:8: this manifest needs specification 1.2, and this sinter 
 sinter: sinter.toml:5:1: the pack markdown is built into sinter and takes no version
 sinter: sinter.toml:7:29: the pack typescript has no runner 'jest'; its runners are vitest
 sinter: sinter.toml:12:1: 'config-changed' takes no tier; it always reports and never blocks
-sinter: sinter.toml:13:1: 'scope-outside-plan' takes no tier at the gate 'target'
+sinter: sinter.toml:13:1: 'scope-outside-plan' takes no tier at the gate 'merged'
 sinter: sinter.toml:6:12: '.' is not in the id pattern language; put it in a class, for example [.]
 sinter: sinter.toml:6:12: the pattern matches an empty id
 sinter: no branch 'main' exists here or on origin; fetch it with git fetch origin main:refs/remotes/origin/main, or set 'default-branch' in sinter.toml to the name of the default branch
@@ -592,8 +592,8 @@ gates:
 | gate | where the check runs |
 |---|---|
 | `turn` | at the end of a turn of an agent, before the agent hands back its work |
-| `merge` | on a change before the change merges into the default branch, for example on a pull request |
-| `target` | on the default branch, after a merge |
+| `review` | on a change before the change merges into the default branch, for example on a pull request |
+| `merged` | on the default branch, after a merge |
 
 A **tier** says how hard a finding class bites at one gate:
 
@@ -616,7 +616,7 @@ names built-in finding classes only.
 
 These are errors:
 
-- `<gate>` is not `turn`, `merge`, or `target`;
+- `<gate>` is not `turn`, `review`, or `merged`;
 - `<class>` is not a built-in finding class;
 - `<class>` takes no tier at `<gate>`;
 - `<class>` is `config-changed`, which always reports and never blocks;
@@ -639,7 +639,7 @@ of these that holds:
 3. The tier that algebra.md section 9 gives the pair.
 
 So a class passes the cap at one gate when the manifest writes its
-tier. Example: `tiers.merge.dangling = "block"` under `[check]`.
+tier. Example: `tiers.review.dangling = "block"` under `[check]`.
 
 ### 9.4 Historical paths
 
@@ -852,7 +852,7 @@ these fields:
 
 | field | type | meaning |
 |---|---|---|
-| `gate` | string | `turn`, `merge`, or `target` |
+| `gate` | string | `turn`, `review`, or `merged` |
 | `class` | string | the finding class |
 | `tier` | string | the tier that applies (section 9.3) |
 | `default` | bool | `true` when `check.tiers` does not write the pair |
@@ -969,7 +969,7 @@ Examples of details:
 ```
 check.rollout-cap: false -> true (weakens)
 check.historical: added "docs/devlog/" (weakens)
-check.tiers.merge.dangling: "block" -> "warn" (weakens)
+check.tiers.review.dangling: "block" -> "warn" (weakens)
 scan.refs.jira: added "[A-Z]+-[1-9][0-9]*" (weakens)
 ledger.approval-required: added "req" (strengthens)
 ```
@@ -1073,8 +1073,8 @@ refs.jira = "[A-Z]+-[1-9][0-9]*"
 [check]
 rollout-cap = true
 historical = ["docs/devlog/"]
-tiers.merge.dangling = "block"
-tiers.target.dangling = "block"
+tiers.review.dangling = "block"
+tiers.merged.dangling = "block"
 
 [plan]
 ambient = ["package-lock.json"]
@@ -1090,4 +1090,4 @@ coverage-attribution = "required"
 
 The markdown files under `test/fixtures/` are test data, so the pack
 `markdown` leaves them out. The class `dangling` passes the rollout
-cap at the gates `merge` and `target`.
+cap at the gates `review` and `merged`.

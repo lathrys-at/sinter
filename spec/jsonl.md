@@ -369,7 +369,7 @@ is unlocated.
 
 | field | type | meaning |
 |---|---|---|
-| `gate` | string | `turn`, `merge`, or `target` |
+| `gate` | string | `turn`, `review`, or `merged` |
 | `class` | string | finding class |
 | `tier` | string | the tier that applies ([manifest.md](manifest.md) section 9.3): `off`, `warn`, or `block` |
 | `default` | bool | `true` when `check.tiers` does not write this pair |
