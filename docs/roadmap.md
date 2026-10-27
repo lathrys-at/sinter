@@ -41,6 +41,11 @@
   journal entries for the step (record `plan-journals`): the step and
   its promises by default, the journal entries on request. Not
   designed.
+- **Plans made of plans**: a step of one plan names another plan as
+  its work, so that a large plan can split into smaller plans. The
+  step is done when the plan it names is completed. For example, a
+  step of `sinter-v0.1` would name the plan `readable-output`. Not
+  designed.
 - **Commit trailers** — read the `Step:`, `Record:`, `Issue:`, and
   `Discharges:` trailers of the commits on a branch (record
   `commit-messages`) and check them against the plan and the diff.
