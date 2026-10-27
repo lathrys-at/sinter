@@ -458,3 +458,123 @@ jobs:
           name: mutation-report
           path: _mutations/report.json
           if-no-files-found: warn
+
+  performance:
+    name: Measure performance
+    runs-on: ubuntu-26.04
+    # @cites performance-budgets
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Decide whether this run measures
+        id: scope
+        run: |
+          set -eu
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+            echo "measure=true" >>"$GITHUB_OUTPUT"
+            echo "A run on main measures."
+            exit 0
+          fi
+          base=$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)
+          changed=$(git diff --name-only "$base" -- \
+            lib bin bridge bench \
+            sinter.opam.locked sinter.opam dune-project \
+            .github/workflows/build.yml \
+            bridge/Cargo.lock bridge/Cargo.toml bridge/rust-toolchain.toml \
+            lib/markdown/tree-sitter-markdown.wasm \
+            test/run-mutants.sh | wc -l)
+          if [ "$changed" -eq 0 ]; then
+            echo "measure=false" >>"$GITHUB_OUTPUT"
+            echo "No measure: the pull request changed no file of the code, the benchmark, or the dependencies."
+          else
+            echo "measure=true" >>"$GITHUB_OUTPUT"
+            echo "The pull request changed $changed files of the code, the benchmark, or the dependencies."
+          fi
+      - name: Name the runner image
+        if: steps.scope.outputs.measure == 'true'
+        id: image
+        run: |
+          test -n "$ImageOS"
+          echo "os=$ImageOS" >>"$GITHUB_OUTPUT"
+      - name: Restore the opam switch
+        if: steps.scope.outputs.measure == 'true'
+        id: opam
+        uses: actions/cache@v6
+        with:
+          path: _opam
+          key: opam-v3-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ hashFiles('sinter.opam.locked') }}
+          restore-keys: |
+            opam-v3-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+        if: steps.scope.outputs.measure == 'true'
+        with:
+          cache: false
+          toolchain: 1.99.1
+      - name: Cache the cargo state
+        if: steps.scope.outputs.measure == 'true'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/sinter-bridge-build
+          key: cargo-performance-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('bridge/Cargo.lock') }}
+          restore-keys: cargo-performance-${{ steps.image.outputs.os }}-${{ runner.arch }}-
+      - name: Turn off git background maintenance
+        if: steps.scope.outputs.measure == 'true' && steps.opam.outputs.cache-hit != 'true'
+        run: git config --global maintenance.auto false
+      - uses: ocaml/setup-ocaml@v3
+        if: steps.scope.outputs.measure == 'true' && steps.opam.outputs.cache-hit != 'true'
+        with:
+          ocaml-compiler: ${{ env.OCAML_VERSION }}
+          cache: false
+      - name: Install dependencies
+        if: steps.scope.outputs.measure == 'true' && steps.opam.outputs.cache-hit != 'true'
+        run: opam install . --deps-only --with-test --with-dev-setup --locked
+      - name: Put the switch on the path
+        if: steps.scope.outputs.measure == 'true'
+        run: |
+          prefix="$GITHUB_WORKSPACE/_opam"
+          echo "$prefix/bin" >>"$GITHUB_PATH"
+          echo "OPAM_SWITCH_PREFIX=$prefix" >>"$GITHUB_ENV"
+          echo "CAML_LD_LIBRARY_PATH=$prefix/lib/stublibs:$prefix/lib/ocaml/stublibs" >>"$GITHUB_ENV"
+      - name: Install perf
+        if: steps.scope.outputs.measure == 'true'
+        run: |
+          set -u
+          if sudo apt-get update -q >/dev/null &&
+            sudo apt-get install -y -q --no-install-recommends \
+              "linux-tools-$(uname -r)" linux-tools-common >/dev/null; then
+            echo "perf is installed for the kernel $(uname -r)."
+          else
+            echo "perf did not install for the kernel $(uname -r)."
+            echo "The run measures the peak memory only."
+          fi
+          paranoid=$(cat /proc/sys/kernel/perf_event_paranoid)
+          echo "kernel.perf_event_paranoid is $paranoid."
+          if [ "$paranoid" -gt 2 ]; then
+            sudo sysctl -w kernel.perf_event_paranoid=2
+          fi
+      - name: Build
+        if: steps.scope.outputs.measure == 'true'
+        run: dune build bin/main.exe bench/run.exe bench/generate.exe
+      - name: Measure
+        if: steps.scope.outputs.measure == 'true'
+        run: |
+          set -eu
+          mkdir -p _performance
+          _build/default/bench/run.exe \
+            --sinter _build/default/bin/main.exe \
+            --generator _build/default/bench/generate.exe \
+            --self . \
+            --self-manifest bench/sinter-self.toml \
+            --json _performance/results.json \
+            --markdown "$GITHUB_STEP_SUMMARY"
+      - name: Upload the measures
+        if: always() && steps.scope.outputs.measure == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: performance
+          path: _performance/results.json
+          if-no-files-found: warn
