@@ -82,6 +82,9 @@ val open_repo : env:string array -> string -> (t, error) result
       holds it, and no replacement of it
     - [GIT_LITERAL_PATHSPECS] is [1]: a path that git takes is the path itself,
       and no pattern
+    - [GIT_NO_LAZY_FETCH] is [1]: in a partial clone, git reports an object that
+      the clone does not hold as missing, and does not fetch it. A function that
+      needs such an object gives [Command_failed] or [Bad_revision].
 
     Each child runs in the root of the working tree.
 

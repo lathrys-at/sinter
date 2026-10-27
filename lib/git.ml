@@ -633,6 +633,7 @@ let removed_variables =
     "GIT_OPTIONAL_LOCKS";
     "GIT_TERMINAL_PROMPT";
     "GIT_NO_REPLACE_OBJECTS";
+    "GIT_NO_LAZY_FETCH";
     "GIT_LITERAL_PATHSPECS";
     "GIT_GLOB_PATHSPECS";
     "GIT_NOGLOB_PATHSPECS";
@@ -656,6 +657,7 @@ let child_env env =
         "GIT_OPTIONAL_LOCKS=0";
         "GIT_TERMINAL_PROMPT=0";
         "GIT_NO_REPLACE_OBJECTS=1";
+        "GIT_NO_LAZY_FETCH=1";
         "GIT_LITERAL_PATHSPECS=1";
       ])
 

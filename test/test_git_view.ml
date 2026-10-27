@@ -265,6 +265,51 @@ let objects_in_an_alternate_of_the_environment_are_read () =
             (List.map (fun (path, change) -> show path change) changes)
       | Error _ -> Alcotest.fail "the diff fails")
 
+let partial_clone () =
+  let origin = with_base [ ("a.txt", "hello\n") ] in
+  ignore (Repo.git origin [ "config"; "uploadpack.allowFilter"; "true" ]);
+  let clone = Filename.concat (Filename.dirname (Repo.root origin)) "clone" in
+  ignore
+    (Repo.git origin
+       [
+         "clone";
+         "-q";
+         "--filter=blob:none";
+         "--no-checkout";
+         "file://" ^ Repo.root origin;
+         clone;
+       ]);
+  Out_channel.with_open_bin (Filename.concat clone "a.txt") (fun channel ->
+      Out_channel.output_string channel "hello\n");
+  let blob = String.trim (Repo.git origin [ "rev-parse"; "HEAD:a.txt" ]) in
+  (origin, clone, blob)
+
+let missing origin clone blob =
+  List.mem ("?" ^ blob)
+    (String.split_on_char '\n'
+       (Repo.git origin
+          [ "-C"; clone; "rev-list"; "--objects"; "--missing=print"; "HEAD" ]))
+
+let a_missing_object_of_a_partial_clone_is_an_error () =
+  let origin, clone, blob = partial_clone () in
+  let env = Array.append (Repo.env origin) [| "GIT_NO_LAZY_FETCH=0" |] in
+  match Git.open_repo ~env clone with
+  | Error _ -> Alcotest.fail "the clone does not open"
+  | Ok t ->
+      Alcotest.(check bool)
+        "the diff fails" true
+        (match Git.diff t ~base:"HEAD" with
+        | Error (Git.Command_failed _) -> true
+        | Ok _ | Error _ -> false);
+      Alcotest.(check bool)
+        "the read of the blob fails" true
+        (match Git.fold_blobs t [ blob ] ~init:() ~f:(fun () _ _ -> ()) with
+        | Error _ -> true
+        | Ok () -> false);
+      Alcotest.(check bool)
+        "the clone still lacks the blob" true
+        (missing origin clone blob)
+
 let rec snapshot root relative =
   let path = Filename.concat root relative in
   match Unix.lstat path with
@@ -354,6 +399,8 @@ let tests =
       objects_in_an_alternate_of_the_environment_are_read;
     case "the configuration does not change the hunks"
       configuration_does_not_change_the_hunks;
+    case "a missing object of a partial clone is an error"
+      a_missing_object_of_a_partial_clone_is_an_error;
     case "the tree key starts no file system monitor"
       the_tree_key_starts_no_file_system_monitor;
     case "the diff writes nothing under the git directory"
