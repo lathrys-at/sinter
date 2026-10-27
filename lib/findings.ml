@@ -39,20 +39,21 @@ let parse_errors documents ~not_text =
           document.errors)
       documents
 
+let nearest_word word =
+  if List.mem word vocabulary then None
+  else Edit_distance.nearest word vocabulary
+
 let typo_tags documents =
   List.filter_map
     (fun (path, (tag : Markdown.tag)) ->
-      if List.mem tag.word vocabulary then None
-      else
-        Option.map
-          (fun nearest ->
-            Finding.make Finding_class.Typo_tag
-              (Finding.Line { path; line = tag.span.start.line })
-              ~place:(place path tag.span)
-              ~detail:
-                (Printf.sprintf "@%s is not a tag word of sinter" tag.word)
-              ~fix:("@" ^ nearest) ())
-          (Edit_distance.nearest tag.word vocabulary))
+      Option.map
+        (fun nearest ->
+          Finding.make Finding_class.Typo_tag
+            (Finding.Line { path; line = tag.span.start.line })
+            ~place:(place path tag.span)
+            ~detail:(Printf.sprintf "@%s is not a tag word of sinter" tag.word)
+            ~fix:("@" ^ nearest) ())
+        (nearest_word tag.word))
     (tags documents)
 
 let ignored_tags documents =
@@ -235,7 +236,7 @@ let unpinned facts =
       else None)
     (Facts.edges facts)
 
-let dangling facts =
+let spellings facts =
   let spellings =
     List.fold_left
       (fun spellings slug ->
@@ -250,6 +251,20 @@ let dangling facts =
               if String.equal d.kind "rule" then None else Some d.slug)
             (Facts.declarations facts)))
   in
+  fun target -> Keys.find_opt (String.lowercase_ascii target) spellings
+
+let declared_spelling facts =
+  let resolve = lazy (Facts.resolve facts)
+  and spelling = lazy (spellings facts) in
+  fun target ->
+    match Lazy.force resolve target with
+    | Facts.Unresolved { dangling = true } -> Lazy.force spelling target
+    | Facts.Unresolved { dangling = false }
+    | Facts.Declaration _ | Facts.External _ ->
+        None
+
+let dangling facts =
+  let spelling = spellings facts in
   List.filter_map
     (fun ((edge : Facts.edge), target) ->
       match target with
@@ -257,9 +272,7 @@ let dangling facts =
           let fix =
             Option.map
               (fun slug -> citation ~word:edge.word ~target:slug edge.rev)
-              (Keys.find_opt
-                 (String.lowercase_ascii edge.target_text)
-                 spellings)
+              (spelling edge.target_text)
           in
           Some
             (Finding.make Finding_class.Dangling (edge_subject edge)

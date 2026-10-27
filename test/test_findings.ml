@@ -808,6 +808,120 @@ let the_findings_are_sorted () =
     (List.map show findings);
   Alcotest.(check int) "the number" 4 (List.length findings)
 
+let nearest_word_names_the_word_that_the_fix_of_typo_tag_writes () =
+  Alcotest.(check (list (option string)))
+    "the word of each tag word"
+    [ Some "req"; Some "req"; Some "verifies"; None; None; None; None ]
+    (List.map Findings.nearest_word
+       [ "reqq"; "Req"; "verifie"; "req"; "ack"; "param"; "" ])
+
+module Gen = QCheck2.Gen
+
+let near_word =
+  Gen.(
+    let* word =
+      oneof_list
+        [ "req"; "design"; "cites"; "verifies"; "ack"; "scope"; "plan"; "pin" ]
+    in
+    let* edits = int_bound 3 in
+    let rec edit word count =
+      if count = 0 then pure word
+      else
+        let* position = int_bound (String.length word) in
+        let* letter = char_range 'a' 'z' in
+        let* how = int_bound 2 in
+        let before = String.sub word 0 position
+        and after = String.sub word position (String.length word - position) in
+        let rest () = String.sub after 1 (String.length after - 1) in
+        edit
+          (match how with
+          | 0 -> before ^ String.make 1 letter ^ after
+          | 1 when after <> "" -> before ^ rest ()
+          | _ when after <> "" -> before ^ String.make 1 letter ^ rest ()
+          | _ -> word)
+          (count - 1)
+    in
+    edit word edits)
+
+let nearest_word_is_a_word_of_the_vocabulary_within_two_edits =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:500
+       ~name:"nearest_word gives a word of the vocabulary within two edits"
+       ~print:(Printf.sprintf "%S") near_word (fun word ->
+         match Findings.nearest_word word with
+         | None -> true
+         | Some nearest ->
+             (not (String.equal nearest word))
+             && Edit_distance.distance word nearest <= 2
+             && Findings.nearest_word nearest = None))
+
+let declared_spelling_names_the_spelling_that_the_fix_of_dangling_writes () =
+  let facts =
+    Facts.make (manifest "")
+      [
+        ( "docs/a.md",
+          document
+            "# A\n\n\
+             @req Lock-Out v1\n\n\
+             ## B\n\n\
+             @design LOCK-out v1\n\n\
+             ## C\n\n\
+             @rule Rate v1\n\n\
+             ## D\n\n\
+             @decision kept v1\n" );
+      ]
+  in
+  Alcotest.(check (list (option string)))
+    "the spelling of each tag target"
+    [ Some "LOCK-out"; None; None; Some "kept"; None; None; None ]
+    (List.map
+       (Findings.declared_spelling facts)
+       [ "lock-out"; "Lock-Out"; "rate"; "KEPT"; "kept"; "gone"; "gh/1" ])
+
+let declared_spelling_gives_the_fix_of_each_dangling_finding =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200
+       ~name:"declared_spelling gives the target of the fix of each dangling"
+       ~print:QCheck2.Print.(list string)
+       Gen.(
+         list_size (int_range 1 6)
+           (map2
+              (fun word slug -> Printf.sprintf "@%s %s v1" word slug)
+              (oneof_list [ "req"; "design"; "rule"; "cites"; "satisfies" ])
+              (oneof_list [ "a"; "A"; "b-c"; "B-C"; "b-C"; "d" ])))
+       (fun lines ->
+         let facts =
+           Facts.make (manifest "")
+             [
+               ( "docs/a.md",
+                 document
+                   (String.concat ""
+                      (List.mapi
+                         (fun index line ->
+                           Printf.sprintf "# S%d\n\n%s\n\n" index line)
+                         lines)) );
+             ]
+         in
+         let spelling = Findings.declared_spelling facts in
+         let fixes =
+           List.filter_map
+             (fun (finding : Finding.t) ->
+               if finding.finding_class = Finding_class.Dangling then
+                 Some (Finding.subject_id finding.subject, finding.fix)
+               else None)
+             (Findings.of_facts facts ~not_text:[])
+         in
+         List.for_all
+           (fun ((edge : Facts.edge), _) ->
+             match List.assoc_opt (Facts.edge_id edge) fixes with
+             | Some fix ->
+                 fix
+                 = Option.map
+                     (fun target -> Printf.sprintf "@%s %s v1" edge.word target)
+                     (spelling edge.target_text)
+             | None -> spelling edge.target_text = None)
+           (Facts.edges facts)))
+
 let case name test = Alcotest.test_case name `Quick test
 
 let of_facts_gives_the_findings_of_tree () =
@@ -840,6 +954,12 @@ let tests =
     case "parse-error sits at each error and at a file that is not text"
       parse_error_sits_at_each_error_and_at_a_file_that_is_not_text;
     case "typo-tag names the nearest word" typo_tag_names_the_nearest_word;
+    case "nearest_word names the word that the fix of typo-tag writes"
+      nearest_word_names_the_word_that_the_fix_of_typo_tag_writes;
+    nearest_word_is_a_word_of_the_vocabulary_within_two_edits;
+    case "declared_spelling names the spelling that the fix of dangling writes"
+      declared_spelling_names_the_spelling_that_the_fix_of_dangling_writes;
+    declared_spelling_gives_the_fix_of_each_dangling_finding;
     case "typo-tag takes the first word in byte order of two equally near"
       typo_tag_takes_the_first_word_in_byte_order_of_two_equally_near;
     case "ignored-tag sits at a later paragraph"

@@ -158,7 +158,7 @@ let unbumped ~base ~same facts =
       | Some _ | None -> None)
     candidates
 
-let renamed ~base ~same ~tombstones facts =
+let rename ~base ~same ~tombstones facts =
   let gone =
     List.filter_map
       (fun (tombstone : tombstone) ->
@@ -213,6 +213,10 @@ let renamed ~base ~same ~tombstones facts =
         | _ -> None)
     | _ -> None
   in
+  successor
+
+let renamed ~base ~same ~tombstones facts =
+  let successor = rename ~base ~same ~tombstones facts in
   List.filter_map
     (fun ((edge : Facts.edge), target) ->
       match target with
@@ -293,6 +297,19 @@ let promise_collisions ~base ~same facts =
                ())
       | Some _ | None -> None)
     candidates
+
+let renamed_to ?(same = fun _ -> false) ~base facts =
+  let resolve = lazy (Facts.resolve facts)
+  and successor =
+    lazy (rename ~base ~same ~tombstones:(tombstones ~same ~base facts) facts)
+  in
+  fun target ->
+    match Lazy.force resolve target with
+    | Facts.Unresolved { dangling = true } ->
+        Option.map snd (Lazy.force successor target)
+    | Facts.Unresolved { dangling = false }
+    | Facts.Declaration _ | Facts.External _ ->
+        None
 
 let historical facts (finding : Finding.t) =
   match finding.place with
