@@ -200,6 +200,11 @@ val edges : t -> (edge * target) list
 (** [edges facts] is every edge, with what its tag target resolves to, in the
     order of the files of {!make} and then of the lines. *)
 
+val resolve : t -> string -> target
+(** [resolve facts text] is what an edge whose tag target is [text] resolves to
+    in [facts], by the rule of {!target}. [resolve facts] builds the map of the
+    slugs once, and gives a function that each tag target can share. *)
+
 val block_hash : t -> string -> int -> string
 (** [block_hash facts path index] is the hash of the block at [index] in the
     blocks of the document of [path] that {!make} took. When [path] occurs more
@@ -223,6 +228,13 @@ val plans : t -> plan list
 val effective_scope : plan -> step -> string list
 (** [effective_scope plan step] is the globs of the [@scope] of [step], or of
     [plan] when the step has none. *)
+
+val covering : t -> string -> string list
+(** [covering facts path] is the id of each step of each plan of [facts] whose
+    effective scope holds [path], in the order of {!plans} and then of the
+    steps. The steps of every plan count. A glob of a scope that is not valid
+    holds no path. [covering facts] builds the path set of each step once, and
+    gives a function that each path can share. *)
 
 type meeting_fact = private { id : string; path : string; span : Markdown.span }
 (** A fact that would meet a promise: its id, its path, and its span. *)

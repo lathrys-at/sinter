@@ -449,7 +449,7 @@ let compare_declarations (a : declaration) (b : declaration) =
 
 module Slugs = Map.Make (String)
 
-let resolve manifest (declarations : declaration array) edges =
+let resolver manifest (declarations : declaration array) =
   let by_slug =
     List.fold_left
       (fun map index ->
@@ -464,24 +464,18 @@ let resolve manifest (declarations : declaration array) edges =
             (List.init (Array.length declarations) Fun.id)))
   in
   let namespaces = Manifest.namespaces manifest in
-  List.map
-    (fun edge ->
-      let text = edge.target_text in
-      match String.index_opt text '/' with
-      | Some slash -> (
-          let ns = String.sub text 0 slash in
-          let id =
-            String.sub text (slash + 1) (String.length text - slash - 1)
-          in
-          match List.assoc_opt ns namespaces with
-          | Some pattern when Id_pattern.matches pattern id ->
-              External { ns; id }
-          | Some _ | None -> Unresolved { dangling = false })
-      | None -> (
-          match Slugs.find_opt text by_slug with
-          | Some index -> Declaration index
-          | None -> Unresolved { dangling = Slug.is_valid text }))
-    edges
+  fun text ->
+    match String.index_opt text '/' with
+    | Some slash -> (
+        let ns = String.sub text 0 slash in
+        let id = String.sub text (slash + 1) (String.length text - slash - 1) in
+        match List.assoc_opt ns namespaces with
+        | Some pattern when Id_pattern.matches pattern id -> External { ns; id }
+        | Some _ | None -> Unresolved { dangling = false })
+    | None -> (
+        match Slugs.find_opt text by_slug with
+        | Some index -> Declaration index
+        | None -> Unresolved { dangling = Slug.is_valid text })
 
 let approved manifest (declarations : declaration array) index =
   match manifest_kind declarations.(index).kind with
@@ -605,7 +599,10 @@ let make manifest files =
   in
   let declarations = Array.of_list (List.rev declarations) in
   let edges = List.rev edges in
-  let targets = resolve manifest declarations edges in
+  let targets =
+    let resolve = resolver manifest declarations in
+    List.map (fun edge -> resolve edge.target_text) edges
+  in
   let retirers = retirers manifest declarations edges targets in
   let plans = List.filter_map Fun.id plans in
   let acks = List.rev acks in
@@ -1077,8 +1074,24 @@ let block_acks facts path index =
     ~default:[]
 
 let edges facts = List.combine facts.edges facts.targets
+let resolve facts = resolver facts.manifest facts.declarations
 let acks facts = facts.acks
 let plans facts = facts.plans
+
+let covering facts =
+  let scopes =
+    List.concat_map
+      (fun plan ->
+        List.map
+          (fun step ->
+            (step_id plan step, path_set (effective_scope plan step)))
+          plan.steps)
+      facts.plans
+  in
+  fun path ->
+    List.filter_map
+      (fun (id, scope) -> if Path_set.mem scope path then Some id else None)
+      scopes
 
 let index ~tree ~base ~default_branch ~manifest ~tool ~mode =
   [

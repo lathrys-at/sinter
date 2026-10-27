@@ -1696,6 +1696,80 @@ let block_acks_are_the_list_scan_of_the_acks =
                (List.init (Array.length document.blocks + 1) Fun.id))
            (("missing.md", document "") :: documents)))
 
+let resolve_gives_the_target_of_each_edge =
+  property "resolve gives each edge the target that its record resolves to"
+    (fun files ->
+      let facts = facts files in
+      let resolve = Facts.resolve facts in
+      List.for_all
+        (fun ((edge : Facts.edge), target) -> resolve edge.target_text = target)
+        (Facts.edges facts))
+
+let resolve_names_what_a_tag_target_would_resolve_to () =
+  let facts =
+    facts
+      [
+        ("docs/b.md", "# B\n\n@design one v4\n");
+        ("docs/a.md", "# A\n\n@req one v2\n\n## C\n\n@rule two v3\n");
+      ]
+  in
+  let resolve = Facts.resolve facts in
+  let shown text =
+    match resolve text with
+    | Facts.Declaration index ->
+        let declaration = List.nth (Facts.declarations facts) index in
+        Printf.sprintf "%s v%d"
+          (Facts.declaration_id declaration)
+          declaration.rev
+    | Facts.External { ns; id } -> Printf.sprintf "external %s %s" ns id
+    | Facts.Unresolved { dangling } -> Printf.sprintf "unresolved %b" dangling
+  in
+  Alcotest.(check (list string))
+    "what each tag target resolves to"
+    [
+      "design:one v4";
+      "unresolved true";
+      "unresolved true";
+      "external gh 12";
+      "unresolved false";
+      "unresolved false";
+      "unresolved false";
+    ]
+    (List.map shown [ "one"; "two"; "One"; "gh/12"; "gh/x"; "jira/1"; "Bad!" ])
+
+let covering_names_each_step_whose_effective_scope_holds_a_path () =
+  let facts =
+    facts
+      [
+        ( ".plans/p.md",
+          "# P\n\n\
+           @plan p\n\
+           @scope src/**, docs/**, !docs/secret.md\n\n\
+           ## Own\n\n\
+           @scope src/lib/**\n\
+           @req x\n\n\
+           ## Inherits\n\n\
+           @req y\n\n\
+           ## Bad glob\n\n\
+           @scope [, notes.md\n" );
+        (".plans/q.md", "# Q\n\n@plan q\n@scope **\n");
+        (".plans/r.md", "# R\n\n@plan r\n\n## All\n\n@scope **\n");
+      ]
+  in
+  let covering = Facts.covering facts in
+  Alcotest.(check (list (pair string (list string))))
+    "the steps that cover each path"
+    [
+      ("src/lib/a.ml", [ "step:p/own"; "step:p/inherits"; "step:r/all" ]);
+      ("src/b.ml", [ "step:p/inherits"; "step:r/all" ]);
+      ("docs/a.md", [ "step:p/inherits"; "step:r/all" ]);
+      ("docs/secret.md", [ "step:r/all" ]);
+      ("notes.md", [ "step:p/bad-glob"; "step:r/all" ]);
+    ]
+    (List.map
+       (fun path -> (path, covering path))
+       [ "src/lib/a.ml"; "src/b.ml"; "docs/a.md"; "docs/secret.md"; "notes.md" ])
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -1865,4 +1939,9 @@ let tests =
     records_come_in_their_order;
     every_reference_names_a_record;
     every_record_is_canonical;
+    resolve_gives_the_target_of_each_edge;
+    case "resolve names what a tag target would resolve to"
+      resolve_names_what_a_tag_target_would_resolve_to;
+    case "covering names each step whose effective scope holds a path"
+      covering_names_each_step_whose_effective_scope_holds_a_path;
   ]
