@@ -201,7 +201,7 @@ let find_base repo manifest base =
           | Error (Git.No_merge_base _) -> Error (No_merge_base name)
           | Error error -> Error (Repository error)))
 
-let documents ~root files =
+let documents ?phases ~root files =
   let engine = Sinter_bridge.create () in
   Fun.protect
     ~finally:(fun () -> Sinter_bridge.close engine)
@@ -215,10 +215,16 @@ let documents ~root files =
               List.fold_left
                 (fun found file ->
                   let* documents, not_text = found in
-                  match Text_file.read (Filename.concat root file) with
+                  match
+                    Allocation.measure phases "read" (fun () ->
+                        Text_file.read (Filename.concat root file))
+                  with
                   | Error error -> Error (Unreadable_file { file; error })
                   | Ok content -> (
-                      match Markdown.read reader content with
+                      match
+                        Allocation.measure phases "parse" (fun () ->
+                            Markdown.read reader content)
+                      with
                       | Ok document ->
                           Ok ((file, document) :: documents, not_text)
                       | Error (Markdown.Not_utf_8 offset) ->
@@ -251,7 +257,7 @@ type tree = {
   warnings : string list;
 }
 
-let load ~env ~dir ~manifest ~base =
+let prepare ~env ~dir ~manifest ~base =
   let* repo = repository (Git.open_repo ~env dir) in
   let root = Git.root repo in
   let path, shown, missing =
@@ -298,9 +304,21 @@ let load ~env ~dir ~manifest ~base =
     | None -> Ok ()
   in
   let* base = find_base repo manifest_value base in
-  let* documents, not_text =
-    documents ~root (List.filter read_by_markdown files)
+  Ok
+    ( repo,
+      root,
+      manifest_value,
+      location,
+      base,
+      List.filter read_by_markdown files,
+      not_utf_8 )
+
+let load ?phases ~env ~dir ~manifest ~base () =
+  let* repo, root, manifest_value, location, base, files, not_utf_8 =
+    Allocation.measure phases "repository" (fun () ->
+        prepare ~env ~dir ~manifest ~base)
   in
+  let* documents, not_text = documents ?phases ~root files in
   Ok
     {
       repo;
@@ -327,17 +345,22 @@ let index tree ~tool =
        ~target_branch:(Manifest.target tree.manifest)
        ~manifest:tree.location ~tool)
 
-let run ~env ~dir ~manifest ~base ~tool =
-  let* tree = load ~env ~dir ~manifest ~base in
-  let* index = index tree ~tool in
-  let facts = Facts.make tree.manifest tree.documents in
-  let* changed =
-    if Facts.needs_changes facts then
-      changed_paths tree.repo (base_commit tree.base)
-    else Ok []
+let run ?phases ~env ~dir ~manifest ~base ~tool () =
+  let* tree = load ?phases ~env ~dir ~manifest ~base () in
+  let* index =
+    Allocation.measure phases "repository" (fun () -> index tree ~tool)
   in
-  Ok
-    {
-      warnings = tree.warnings;
-      records = index :: Facts.records facts ~changed;
-    }
+  let facts =
+    Allocation.measure phases "facts" (fun () ->
+        Facts.make tree.manifest tree.documents)
+  in
+  let* changed =
+    Allocation.measure phases "repository" (fun () ->
+        if Facts.needs_changes facts then
+          changed_paths tree.repo (base_commit tree.base)
+        else Ok [])
+  in
+  let records =
+    Allocation.measure phases "records" (fun () -> Facts.records facts ~changed)
+  in
+  Ok { warnings = tree.warnings; records = index :: records }

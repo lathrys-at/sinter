@@ -710,8 +710,11 @@ let historical manifest (finding : Finding.t) =
     (fun (place : Finding.place) -> Manifest.is_historical manifest place.path)
     (Option.to_list finding.place)
 
-let tree manifest documents ~not_text =
-  let facts = Facts.make manifest documents in
+let tree ?phases manifest documents ~not_text =
+  let facts =
+    Allocation.measure phases "facts" (fun () -> Facts.make manifest documents)
+  in
+  Allocation.measure phases "findings" @@ fun () ->
   List.sort Finding.compare
     (List.filter
        (fun finding -> not (historical manifest finding))

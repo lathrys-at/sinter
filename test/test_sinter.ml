@@ -57,6 +57,7 @@ let () =
       ("git", Test_git.tests);
       ("git diff", Test_git_diff.tests);
       ("fixture", Test_fixture.tests);
+      ("allocation", Test_allocation.tests);
       ("generated tree", Test_generated_tree.tests);
       ("edit distance", Test_edit_distance.tests);
       ("glob", Test_glob.tests);

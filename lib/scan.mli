@@ -87,12 +87,14 @@ type tree = private {
 (** The working tree of a repository as a scan reads it. *)
 
 val load :
+  ?phases:Allocation.t ->
   env:string array ->
   dir:string ->
   manifest:string option ->
   base:string option ->
+  unit ->
   (tree, error) result
-(** [load ~env ~dir ~manifest ~base] reads the working tree of the git
+(** [load ~env ~dir ~manifest ~base ()] reads the working tree of the git
     repository that holds the folder [dir]. [env] is the environment of each git
     child process, as {!Git.open_repo} takes it.
 
@@ -100,6 +102,10 @@ val load :
     relative; [None] names [sinter.toml] at the root of the working tree. [base]
     is the revision of the base commit; [None] takes the merge base of [HEAD]
     and the target branch of the manifest.
+
+    With [phases], it counts the words of the phases [repository] (the
+    repository, the manifest, the list of files, and the base), [read] (the
+    reading of each file), and [parse] (the parse of each file).
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
 
@@ -117,14 +123,20 @@ type outcome = {
 (** What a scan gives. *)
 
 val run :
+  ?phases:Allocation.t ->
   env:string array ->
   dir:string ->
   manifest:string option ->
   base:string option ->
   tool:string ->
+  unit ->
   (outcome, error) result
-(** [run ~env ~dir ~manifest ~base ~tool] scans the working tree that {!load}
+(** [run ~env ~dir ~manifest ~base ~tool ()] scans the working tree that {!load}
     reads with the same arguments. [tool] is the version of the tool, for the
     index record. A file that is not UTF-8 text gives no fact.
+
+    With [phases], it counts the phases of {!load}, and adds to [repository] the
+    index record and the paths that the diff changes, and counts the phases
+    [facts] ({!Facts.make}) and [records] ({!Facts.records}).
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
