@@ -358,7 +358,7 @@ section 15).
 | `via` | string | `checked`, `judged`, or `acked` — inferred from the discharge expression |
 | `scope` | array of string | |
 | `triggered` | bool | *derived* |
-| `owed` | int | *derived* obligation count |
+| `obligations` | int | *derived* obligation count |
 
 **`gate`** — Sinter emits one record for each pair of a gate and a
 finding class that takes a tier at that gate ([manifest.md](manifest.md)
@@ -511,7 +511,7 @@ use the tiers of the `turn` gate.
 | `steps_done` `steps_total` | int |
 | `block` `warn` | int (finding counts, under the `turn` gate's tiers) |
 | `unmapped` | int (hunks) |
-| `owed` | int (rule obligations) |
+| `obligations` | int (rule obligations) |
 | `evidence_fresh` | bool |
 | `bumps` | int (declarations bumped since the base) |
 | `acks_live` `acks_void` | int |

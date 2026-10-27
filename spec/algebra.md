@@ -154,7 +154,8 @@ evaluation:
   located categories plus `hunk`; its argument also accepts `lease`.
   `promises`, `met` → `{promise}`. `done` → `{node}`. A predicate →
   the category set of its argument, intersected with what it accepts.
-  `owed`, `judged` → every category. `triggered` → `{config}`.
+  `obligations`, `judged` → every category. `triggered` →
+  `{config}`.
 - `S + T` → the union of the two category sets. `S ^ T` → the
   intersection. `S - T` → the left side's set.
 
@@ -284,7 +285,7 @@ set holds an attributed coverage fact for some `u ∈ tests(t)`.
 
 | function | accepts | denotes |
 |---|---|---|
-| `owed(R)` | config | `⋃` over `r ∈ R` of `eval(trigger(r)) - eval(discharge(r))`: the obligation subjects of each rule. Rule expressions are evaluated in the same universe. A rule whose trigger or discharge mentions `owed` is an error in its rule file ([manifest.md](manifest.md) section 15); no rule depends on another rule through `owed` |
+| `obligations(R)` | config | `⋃` over `r ∈ R` of `eval(trigger(r)) - eval(discharge(r))`: the obligation subjects of each rule. Rule expressions are evaluated in the same universe. A rule whose trigger or discharge mentions `obligations` is an error in its rule file ([manifest.md](manifest.md) section 15); no rule depends on another rule through `obligations` |
 | `triggered(R)` | config | the rules in `R` whose trigger evaluates to a non-empty set |
 | `judged(n)` | — | subjects with a `judgment` evidence fact for rule `n` whose verdict is `pass` and whose recorded hash matches the subject's current extent hash (or commitment-set hash) |
 
@@ -457,7 +458,7 @@ passes the cap ([manifest.md](manifest.md) section 9.3).
 | `waiting-on` | promise | `blocked(promises(kind(plan)))` — reported in place of `dangling`, with the lease and step named | tree | · | · | off, warn, — |
 | `branch-overlap` | step | *engine*: a step's scope intersects the scope of another branch's lease | tree | · | · | warn, warn, — |
 | `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient - shared`. The engine also exempts hunks that are wholly mechanical repairs — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
-| `unmet-rule` | any | `owed(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's discharge is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
+| `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's discharge is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
 | `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 14.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
 | `merged-incomplete` | plan | *engine*: an open plan on the target branch that fails the discharge condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |
 | `ledger-broken` | ledger | *engine*: ledger verification fails | tree | · | · | —, —, block |

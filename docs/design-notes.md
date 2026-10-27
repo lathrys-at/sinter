@@ -101,7 +101,7 @@ Fourteen words. One more (`@pin`) is designed but deferred.
 | `@cites <slug or ref> [vN]` | anything → any declaration or ref | anonymous | target exists; if a decision, still in force |
 | `@supersedes <slug> vN` | T → T, same type | enclosing declaration | endpoint types match; live edge retires its target |
 
-The source rule follows one principle: *a name is owed exactly when other machinery must address the node; location suffices for everything that merely reads.* Coverage reports render anonymous sources as links. Tests are the case where machinery must address the node — and the AST already names them, so no declaration is owed.
+The source rule follows one principle: *a name is needed exactly when other machinery must address the node; location suffices for everything that merely reads.* Coverage reports render anonymous sources as links. Tests are the case where machinery must address the node — and the AST already names them, so no declaration is needed.
 
 **Status** — we stopped standing behind this. Goes inside the declaration's extent; outside one it is inert, which is what makes code comments safe ground for JSDoc's and odoc's own `@deprecated`. There is no "done" status anywhere.
 
@@ -290,7 +290,7 @@ The ledger unifies with revision machinery: editing an approved item bumps its r
 
 ### 6.5 The Plan Journal
 
-Session scratch — the agent's running todo — belongs to the agent's own machinery and dies with the context window. Between scratch and residue there is a third thing the design should give a home to: what was tried and why it failed. A plan may carry a journal, `.plans/<slug>.log.md`, historical by a built-in glob — no manifest line owed (§3.6): the agent appends, nothing in it generates findings, citations in it resolve and render. It stays beside its plan as part of the record; `compile residual-plan` carries it forward, and `compile report` includes it. Its purpose is to be the place where small decisions accumulate until one earns promotion to a `@decision` record — the promotion heuristic of §7 needs somewhere for the first instance to be written down. Under the collaborative model, most of a project's actual reasoning is small, and without this it is lost.
+Session scratch — the agent's running todo — belongs to the agent's own machinery and dies with the context window. Between scratch and residue there is a third thing the design should give a home to: what was tried and why it failed. A plan may carry a journal, `.plans/<slug>.log.md`, historical by a built-in glob — no manifest line needed (§3.6): the agent appends, nothing in it generates findings, citations in it resolve and render. It stays beside its plan as part of the record; `compile residual-plan` carries it forward, and `compile report` includes it. Its purpose is to be the place where small decisions accumulate until one earns promotion to a `@decision` record — the promotion heuristic of §7 needs somewhere for the first instance to be written down. Under the collaborative model, most of a project's actual reasoning is small, and without this it is lost.
 
 ### 6.6 Plan Linting and Preview
 
@@ -338,7 +338,7 @@ The rules engine *is* the query engine — no second predicate language, and the
 
 **Every rule cites its origin** — the `decision` that earned it — because a law whose evidence is missing reads as taste, and taste gets re-litigated by the next agent. The origin is modeled as a `cites` edge whose source is the rule fact, so retiring the origin makes the rule surface as *law resting on withdrawn reasoning* through the ordinary `retired` finding — this system's own decay mode, caught by its own machinery with no special case. A rule's `scope` declares where its discharge edits land, so that work done to satisfy a triggered rule outside the plan's scope is not reported as invented (§12.8, `unplanned-change`). Promotion heuristic: one instance is a decision; write the rule on the second re-derivation.
 
-**The why reaches the block.** Rules cite origins, and origins have extents with an *alternatives considered* section. In v13 that reasoning existed but never reached the moment it would change behavior. Now every `unmet-rule` finding carries its origin decision's extent (byte-budgeted by `[brief].why_budget`) in the turn report and in `sinter explain`. An agent told "owed: rule `ste-docs`; its origin decision says *three users misread the lockout docs; alternatives considered: glossary (rejected, nobody reads it), reviewer checklist (rejected, decays)*" reframes; an agent told only "owed: rule `ste-docs`" routes around.
+**The why reaches the block.** Rules cite origins, and origins have extents with an *alternatives considered* section. In v13 that reasoning existed but never reached the moment it would change behavior. Now every `unmet-rule` finding carries its origin decision's extent (byte-budgeted by `[brief].why_budget`) in the turn report and in `sinter explain`. An agent told "obligation: rule `ste-docs`; its origin decision says *three users misread the lockout docs; alternatives considered: glossary (rejected, nobody reads it), reviewer checklist (rejected, decays)*" reframes; an agent told only "obligation: rule `ste-docs`" routes around.
 
 **Three kinds of discharge**, in descending trust. A rule does not declare which; the tool reads it off the discharge expression and labels the rule with it in every report, so it is always explicit which laws are enforced and which merely witnessed:
 
@@ -348,7 +348,7 @@ The rules engine *is* the query engine — no second predicate language, and the
 
 How hard a rule's obligations bite is a separate question from how they are discharged, and it is answered the way it is for every other finding: the `unmet-rule` class has a tier per gate, and a rule may override it with its own `tiers`.
 
-The system does not model pipelines and does not care whether an obligation is discharged inline or by a subagent: it publishes what is owed; orchestration stays the agent's problem.
+The system does not model pipelines and does not care whether an obligation is discharged inline or by a subagent: it publishes the obligations; orchestration stays the agent's problem.
 
 ## 8. Gates, and the Brief
 
@@ -357,7 +357,7 @@ The system does not model pipelines and does not care whether an obligation is d
 **One diff, adjudicated at several moments.** Every gate evaluates the working tree against the same **base**: the merge-base of `HEAD` and the manifest's target branch (`main` by default), overridable with `--base`. The working tree is always "now," uncommitted and untracked files included. Hooks, pre-commit, `sinter check`, and PR CI therefore see the same findings, differing only in when they look and which tiers they consult — pre-commit runs the turn tiers, and PR CI is the one variation in *what* it sees: it evaluates the host's merge ref with `--base` at the target tip (§3.5), so the diff is exactly the branch's contribution as it would land. Diff mode (`--diff`) reports the findings the diff *introduced*: those whose identity (§13.6) does not appear in the base tree's finding set. Intersecting with touched facts, as v13 said, would miss a citation nobody touched whose target was deleted.
 
 - **PostToolUse** (surfaces): parse and validation failures on the just-edited file, seconds after writing, plus a note when the edit landed outside the active step's scope. Parse errors degrade toward *stricter* findings, never silent holes — an unparsed `@verifies` is an absent edge — which makes fast parse feedback load-bearing. Only file-path-bearing tools (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`) yield a just-edited file; shell writes surface at the next turn report, which re-derives everything from the actual diff.
-- **The turn report** (`check --diff --gate turn`) is the hand-back contract: what an orchestrator runs before accepting a worker's turn, a human before walking away, an agent before calling itself done — its exit code is what a workflow gates on. Its block tier marks **violations, never incompleteness.** Violations are states the tree must never be *left* in: rev-bump owed, dangling citations, out-of-plan work (every hunk maps onto a step or a triggered rule's scope), rule obligations triggered by artifacts touched this turn, claims-vs-evidence divergence. Incompleteness — unmet promises, untraced items — is never a violation; it is enforced solely by the death gate. An agent that cannot honestly hand back "not done yet" is an agent being trained to fabricate doneness — which is why nothing mechanical seizes the turn: the report is addressed to whoever accepts it.
+- **The turn report** (`check --diff --gate turn`) is the hand-back contract: what an orchestrator runs before accepting a worker's turn, a human before walking away, an agent before calling itself done — its exit code is what a workflow gates on. Its block tier marks **violations, never incompleteness.** Violations are states the tree must never be *left* in: a missing rev bump, dangling citations, out-of-plan work (every hunk maps onto a step or a triggered rule's scope), rule obligations triggered by artifacts touched this turn, claims-vs-evidence divergence. Incompleteness — unmet promises, untraced items — is never a violation; it is enforced solely by the death gate. An agent that cannot honestly hand back "not done yet" is an agent being trained to fabricate doneness — which is why nothing mechanical seizes the turn: the report is addressed to whoever accepts it.
 - **Fresh-context verification** (merge-request time and on demand): an independent agent re-derives expected work from the approved spec and plan, reporting drift both ways — missing *and invented*. It exists because the turn report is path-granular; only a semantic reading catches unrequested work inside a legitimate scope. Also the tier that samples rung 5 of the evidence ladder.
 - **CI, two tiers — the only mechanical blocks**: PR CI recomputes the full adjudication and evidence binding against the branch-committed plan — the authoritative backstop. Main CI recomputes residue checks on the merged result, appends `discharged` entries for merged complete plans (§6.3), runs networked checks, and enforces the evidence ladder iff its job imports evidence (§12.8).
 
@@ -617,7 +617,7 @@ REFERENCE
   Edge        suspect(E)  dangling(E)
   Evidence    orphan(E)  neverran(E)  failed(E)  disconnected(E)
               unattributed(E)  passing(E)
-  Law         owed(R)  triggered(R)  judged(n)
+  Law         obligations(R)  triggered(R)  judged(n)
   Operators   +  union    ^  intersection (binds tighter)    -  difference
   Names may contain '*' as a glob. Kinds may be alternated with '|'. Saved
   definitions are invoked like functions: untraced(verifies), unmet(active).
@@ -1303,7 +1303,7 @@ Lexical rules that matter:
 Each expression is assigned a **category set** statically, before evaluation:
 
 - `all` → every category. `kind(K)` → the categories of the kinds in `K`. Name selectors → their kind's category. `path`, `historical`, `ambient`, `acked` → every located category. `changed` → every category (tombstones and hunks included). `active` → `{node}`. `findings` → `{finding}`.
-- `out`, `in` → `{edge}`. `src`, `dst`, `deps`, `rdeps`, `paths` → `{node, ref, law}` (`src` of a rule's origin edge is a rule). `subject` → every category a finding can be about. `scope` → located categories plus `hunk` (and accepts `lease` in its argument). `promises` → `{promise}`. `met` → `{promise}`. `done` → `{node}`. Predicates, including `declined`, → the category set of their argument, intersected with what they accept. `owed`, `judged` → every category (an obligation's subject is whatever the trigger selected). `triggered` → `{law}`.
+- `out`, `in` → `{edge}`. `src`, `dst`, `deps`, `rdeps`, `paths` → `{node, ref, law}` (`src` of a rule's origin edge is a rule). `subject` → every category a finding can be about. `scope` → located categories plus `hunk` (and accepts `lease` in its argument). `promises` → `{promise}`. `met` → `{promise}`. `done` → `{node}`. Predicates, including `declined`, → the category set of their argument, intersected with what they accept. `obligations`, `judged` → every category (an obligation's subject is whatever the trigger selected). `triggered` → `{law}`.
 - `S + T` → union of category sets; `S ^ T` → intersection; `S - T` → the left's.
 
 Every function declares which categories it **accepts** per argument. Facts of other categories in an argument are dropped silently — `src(all)` is fine and means "sources of every edge." A static **error** is raised only when an argument's category set does not intersect the accepted set: `src(kind(req))` cannot mean anything and is rejected before evaluation with the message `src() accepts edge; argument has category {node}`. This catches definite mistakes without an annotation burden, and it is exactly the exhaustiveness the OCaml implementation gets from a variant of categories.
@@ -1389,7 +1389,7 @@ Notation: `S`, `T` range over fact sets; `E` over sets of edges; `P` promises; `
 
 | function | accepts | denotes |
 |---|---|---|
-| `owed(R)` | law | `⋃_{r ∈ R} ( eval(trigger(r)) - eval(discharge(r)) )` — the obligation subjects of each rule. Rule expressions are evaluated in the same universe; a rule whose trigger or discharge mentions `owed` is rejected at manifest load (no recursion through the law) |
+| `obligations(R)` | law | `⋃_{r ∈ R} ( eval(trigger(r)) - eval(discharge(r)) )` — the obligation subjects of each rule. Rule expressions are evaluated in the same universe; a rule whose trigger or discharge mentions `obligations` is rejected at manifest load (no recursion through the law) |
 | `triggered(R)` | law | `{r ∈ R : eval(trigger(r)) ≠ ∅}` |
 | `judged(n)` | — | subjects with a `judgment` evidence fact for rule `n` whose verdict is `pass` and whose recorded hash matches the subject's current extent (or commitment-set) hash — the discharge selector for judged rules |
 
@@ -1472,7 +1472,7 @@ Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameter
 | `waiting-on` | promise | `blocked(promises(kind(plan)))` — reported in place of `dangling` for the citation, with the lease and step named (§6.7) | tree | · | · | off, warn, — |
 | `branch-overlap` | step | *engine*: a step's scope intersects a live lease's scope on another branch | tree | · | · | warn, warn, — |
 | `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient`; *engine* also exempts hunks that are wholly the tool's own medicine — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
-| `unmet-rule` | any | `owed(kind(rule))`, one finding per `(rule, subject)`; ackable iff the rule's discharge is `acked`; a rule's `tiers` overrides the class's | tree | A* | · | warn, block, block |
+| `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable iff the rule's discharge is `acked`; a rule's `tiers` overrides the class's | tree | A* | · | warn, block, block |
 | `law-touched` | law | `kind(rule\|gate) ^ changed(base)` — non-disableable; always reported, never blocks | diff | · | · | warn, warn, warn |
 | `merged-incomplete` | plan | *engine*: an in-force plan on the target branch failing the §6.3 discharge condition — merged incomplete; a plan meeting it is discharged by main CI, not a finding | tree | · | · | —, —, block |
 | `ledger-broken` | ledger | *engine*: `ledger verify` fails | tree | · | · | —, —, block |
@@ -1714,7 +1714,7 @@ Duplicate promissory tags within one step collapse to a single promise fact.
 | `via` | string | `checked` `judged` `acked` — inferred from `discharge` |
 | `scope` | array of string | |
 | `triggered` | bool | *derived* |
-| `owed` | int | *derived* obligation count |
+| `obligations` | int | *derived* obligation count |
 
 **`gate`** (located in the manifest, one per `(gate, class)` pair, defaults materialized)
 
@@ -1840,7 +1840,7 @@ A decline is live while the subject's current hash equals `hash` and no later ap
 | `subject` | string | `plan:<slug>` |
 | `reason` | string | required |
 
-Abandonment kills the lease and every `waiting-on` resting on it; `compile residual-plan` remains the path back for whatever the plan still owed.
+Abandonment kills the lease and every `waiting-on` resting on it; `compile residual-plan` remains the path back for whatever work the plan still had to do.
 
 **`approved-scope`** — one per glob, plan-level when `step` is omitted
 
@@ -1894,7 +1894,7 @@ The consequences: renaming steps is free (clause 3 matches by promise, not by st
 | `steps_done` `steps_total` | int |
 | `block` `warn` | int (finding counts under the turn tier set) |
 | `unmapped` | int (hunks) |
-| `owed` | int (rule obligations) |
+| `obligations` | int (rule obligations) |
 | `evidence_fresh` | bool |
 | `bumps` | int (declarations bumped since base) |
 | `acks_live` `acks_void` | int |
