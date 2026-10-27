@@ -1,0 +1,2 @@
+sinter.toml:5:1: config-changed tombstone:setting:check.historical=old/ check.historical: removed "old/" (strengthens)
+sinter.toml:5:15: config-changed setting:check.historical=new/ check.historical: added "new/" (weakens)

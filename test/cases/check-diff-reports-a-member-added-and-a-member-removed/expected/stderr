@@ -1,0 +1,2 @@
+sinter: the base is the merge base of HEAD and refs/heads/main, 5fbc9b5a3db7c43fdab0ff5c4ade1f94a82ab583
+sinter: warning: the ledger ref refs/sinter/ledger is absent, so every plan counts as open; fetch it with git fetch origin refs/sinter/ledger:refs/sinter/ledger

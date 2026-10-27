@@ -1,0 +1,2 @@
+sinter.toml:5:15: config-changed setting:check.historical=sinter.toml check.historical: added "sinter.toml" (weakens)
+sinter.toml:8:1: config-changed setting:evidence.test-coverage evidence.test-coverage: "required" -> "optional" (weakens)

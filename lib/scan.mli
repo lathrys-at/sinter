@@ -118,6 +118,17 @@ val load :
 
 (** {1 The base} *)
 
+(** The file at the path of the manifest in the base tree. *)
+type base_manifest =
+  | Outside  (** the manifest is outside the repository *)
+  | Absent  (** the base tree holds no file at the path of the manifest *)
+  | Unchanged
+      (** the base tree holds the file, and {!field-diff} lists no change of its
+          content *)
+  | Changed of string
+      (** the base tree holds the file, and {!field-diff} lists a change of its
+          content: the content of the file in the base tree *)
+
 type compared = private {
   diff : (string * Git.change) list;
       (** the change of each path between the base and the working tree, as
@@ -131,6 +142,9 @@ type compared = private {
           and whose content at the base is not UTF-8 text, in the order of the
           paths, with the byte offset of its first sequence that is not
           well-formed *)
+  base_manifest : base_manifest;
+      (** the file at the path of the manifest in the base tree. Its content is
+          read only when the diff lists a change of it. *)
 }
 (** The base tree as a scan reads it, and the diff between the base and the
     working tree. The base tree is read with the manifest of the working tree.

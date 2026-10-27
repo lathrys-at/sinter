@@ -217,8 +217,9 @@ let block = (Finding_class.Turn, Finding_class.Block)
 let the_exit_code_follows_the_blocking_findings () =
   Alcotest.(check (list int))
     "nothing; a warning; a warning under --strict; a finding with no gate \
-     under --strict; a finding that blocks"
-    [ 0; 0; 1; 1; 1 ]
+     under --strict; a finding that blocks; config-changed under --strict; \
+     config-changed and a warning under --strict"
+    [ 0; 0; 1; 1; 1; 0; 1 ]
     [
       Check.exit_code ~strict:true [];
       Check.exit_code ~strict:false [ entry ~tier:warn Finding_class.Suspect ];
@@ -229,29 +230,45 @@ let the_exit_code_follows_the_blocking_findings () =
           entry ~tier:warn Finding_class.Suspect;
           entry ~tier:block Finding_class.Dangling;
         ];
+      Check.exit_code ~strict:true
+        [
+          entry ~tier:warn Finding_class.Config_changed;
+          entry Finding_class.Config_changed;
+        ];
+      Check.exit_code ~strict:true
+        [
+          entry ~tier:warn Finding_class.Config_changed;
+          entry ~tier:warn Finding_class.Suspect;
+        ];
     ]
 
 let a_finding_blocks_at_its_tier_or_under_strict =
-  property "a finding blocks at the tier block, or any finding under --strict"
+  property
+    "a finding blocks at the tier block, or any finding but config-changed \
+     under --strict"
     Gen.(
       pair bool
         (list_size (int_range 0 5)
-           (option
+           (pair
               (oneof_list
-                 [ warn; block; (Finding_class.Review, Finding_class.Off) ]))))
+                 [ Finding_class.Wrong_source; Finding_class.Config_changed ])
+              (option
+                 (oneof_list
+                    [ warn; block; (Finding_class.Review, Finding_class.Off) ])))))
     (fun (strict, tiers) ->
       Printf.sprintf "strict %b, %d entries" strict (List.length tiers))
     (fun (strict, tiers) ->
-      let entries =
-        List.map (fun tier -> entry ?tier Finding_class.Wrong_source) tiers
-      in
+      let entries = List.map (fun (c, tier) -> entry ?tier c) tiers in
       Check.exit_code ~strict entries
       =
       if
         List.exists
-          (fun tier -> Option.map snd tier = Some Finding_class.Block)
+          (fun (_, tier) -> Option.map snd tier = Some Finding_class.Block)
           tiers
-        || (strict && tiers <> [])
+        || strict
+           && List.exists
+                (fun (c, _) -> c <> Finding_class.Config_changed)
+                tiers
       then Exit_code.findings
       else Exit_code.clean)
 

@@ -2042,8 +2042,66 @@ let one_fault_gives_its_one_error =
 
 let case name test = Alcotest.test_case name `Quick test
 
+let the_document_keeps_every_key_with_its_place () =
+  let manifest =
+    read
+      "default-branch = \"trunk\"\n\
+       [scan]\n\
+       packs.markdown.files = [\"**/*.md\"]\n"
+  in
+  let rec paths prefix table =
+    List.concat_map
+      (fun ((key : Toml.key), node) ->
+        let path = prefix @ [ key.name ] in
+        let start = (Toml.span node).start in
+        let here =
+          Printf.sprintf "%s %d:%d" (String.concat "." path) start.line
+            start.column
+        in
+        match Toml.value node with
+        | Toml.Table table -> here :: paths path table
+        | _ -> [ here ])
+      table
+  in
+  Alcotest.(check (list string))
+    "the keys and the places of their values"
+    [
+      "default-branch 1:18";
+      "scan 2:2";
+      "scan.packs 3:1";
+      "scan.packs.markdown 3:7";
+      "scan.packs.markdown.files 3:24";
+    ]
+    (paths [] (Manifest.document manifest))
+
+let a_name_follows_the_pattern_of_a_pack_name () =
+  List.iter
+    (fun (name, expected) ->
+      Alcotest.(check bool)
+        (Printf.sprintf "%S" name) expected (Manifest.is_name name))
+    [
+      ("ocaml", true);
+      ("tree-sitter", true);
+      ("a1-b2", true);
+      ("x", true);
+      ("", false);
+      ("1a", false);
+      ("-a", false);
+      ("a-", false);
+      ("a--b", false);
+      ("Ab", false);
+      ("a.b", false);
+      ("a=b", false);
+      ("a b", false);
+      ("a_b", false);
+    ]
+
 let tests =
   [
+    case "the document keeps every key with its place"
+      the_document_keeps_every_key_with_its_place;
+    case "a name follows the pattern of a pack name"
+      a_name_follows_the_pattern_of_a_pack_name;
     case "the smallest manifest takes every default"
       the_smallest_manifest_takes_every_default;
     case "the example of sinter reads" the_example_of_sinter_reads;

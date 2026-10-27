@@ -177,3 +177,25 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
 - Left for later: tags are read only in markdown. A re-pin in a code
   comment, such as `(* @cites x v2 *)`, stays an unplanned change until
   the packs of the languages are read.
+
+## Report changes to the configuration
+
+- The comparison is skipped only when the base tree holds the path of
+  the manifest and the diff lists no change of its content. A skip on
+  "the diff does not list the path" alone missed a manifest that git
+  ignores: the diff never lists it, but the base side is then empty,
+  and each written setting is added.
+- The base side counts a pair of `check.tiers` only when its class
+  takes a tier at its gate and is not `config-changed`; such a pair
+  has no gate fact and no tier that applies. A name of a pack, a
+  namespace, or a runner counts only when it matches the name pattern,
+  so that every id parses. `version` and `runners` of the pack
+  `markdown` give no entry. The type of an array is checked per
+  member.
+- The blob of the base manifest is read in the git process that
+  reads the markdown blobs of the base, after them.
+- Left for later: a manifest whose path is not UTF-8 reads as
+  unchanged, since the diff never lists such a path; manifest section
+  7.3 would make it absent. A finding can sit at the line after the
+  last line of the manifest, which the comment of `Finding.place` does
+  not yet allow.

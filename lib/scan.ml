@@ -344,10 +344,13 @@ let not_utf_8_warning path =
     "warning: the path %s is not UTF-8, so sinter does not read the file"
     (escape_path path)
 
+type base_manifest = Outside | Absent | Unchanged | Changed of string
+
 type compared = {
   diff : (string * Git.change) list;
   base_documents : (string * Markdown.t) list;
   base_not_text : (string * int) list;
+  base_manifest : base_manifest;
 }
 
 module Paths = Map.Make (String)
@@ -360,39 +363,47 @@ let changes_content = function
     ->
       true
 
-let read_blobs reader repo wanted =
+let read_blobs reader repo wanted ~manifest =
   let parse acc _ content =
     match acc with
     | Error _ -> acc
-    | Ok (_, _, []) -> acc
-    | Ok (documents, not_text, file :: rest) -> (
+    | Ok (documents, not_text, [], _) ->
+        Ok (documents, not_text, [], Some content)
+    | Ok (documents, not_text, file :: rest, found) -> (
         match Markdown.read reader content with
-        | Ok document -> Ok ((file, document) :: documents, not_text, rest)
+        | Ok document ->
+            Ok ((file, document) :: documents, not_text, rest, found)
         | Error (Markdown.Not_utf_8 offset) ->
-            Ok (documents, (file, offset) :: not_text, rest)
+            Ok (documents, (file, offset) :: not_text, rest, found)
         | Error (Markdown.No_tree error) ->
             Error (Unparsed_base_file { file; error }))
   in
   let* read =
     repository
-      (Git.fold_blobs repo (List.map snd wanted)
-         ~init:(Ok ([], [], List.map fst wanted))
+      (Git.fold_blobs repo
+         (List.map snd wanted @ Option.to_list manifest)
+         ~init:(Ok ([], [], List.map fst wanted, None))
          ~f:parse)
   in
-  Result.map (fun (documents, not_text, _) -> (documents, not_text)) read
+  Result.map
+    (fun (documents, not_text, _, found) -> (documents, not_text, found))
+    read
 
-let base_files ~repo ~commit ~read_by_markdown =
+let base_files ~repo ~commit ~read_by_markdown ~location =
   let* diff = repository (Git.diff repo ~base:commit) in
   let* files = repository (Git.base_tree repo commit) in
+  let manifest = List.assoc_opt location files in
   let files, not_utf_8 =
     List.partition (fun (path, _) -> Sinter_bridge.Utf_8.is_valid path) files
   in
   Ok
     ( diff,
       List.filter (fun (path, _) -> read_by_markdown path) files,
-      List.map fst not_utf_8 )
+      List.map fst not_utf_8,
+      manifest )
 
-let read_base reader ~repo ~diff ~files ~documents ~not_text =
+let read_base reader ~repo ~diff ~files ~documents ~not_text ~location ~manifest
+    =
   let changed =
     List.fold_left
       (fun changed (path, change) ->
@@ -415,7 +426,10 @@ let read_base reader ~repo ~diff ~files ~documents ~not_text =
         | Some _ | None -> Right (path, id))
       files
   in
-  let* read_documents, read_not_text = read_blobs reader repo wanted in
+  let* read_documents, read_not_text, found =
+    read_blobs reader repo wanted
+      ~manifest:(if Paths.mem location changed then manifest else None)
+  in
   let by_path list = List.sort (fun (a, _) (b, _) -> String.compare a b) list in
   Ok
     {
@@ -436,6 +450,13 @@ let read_base reader ~repo ~diff ~files ~documents ~not_text =
                 | path, Not_text offset -> Some (path, offset)
                 | _, Document _ -> None)
               reused);
+      base_manifest =
+        (if Filename.is_relative location then
+           match (manifest, found) with
+           | None, _ -> Absent
+           | Some _, Some text -> Changed text
+           | Some _, None -> Unchanged
+         else Outside);
     }
 
 let assemble ~repo ~manifest ~location ~base ~documents ~not_text ~not_utf_8 =
@@ -467,9 +488,9 @@ let load_with_base ?phases ~env ~dir ~manifest ~base () =
     Allocation.measure phases "repository" (fun () ->
         prepare ~env ~dir ~manifest ~base)
   in
-  let* diff, base_files, base_not_utf_8 =
+  let* diff, base_files, base_not_utf_8, base_manifest =
     Allocation.measure phases "base-read" (fun () ->
-        base_files ~repo ~commit:(base_commit base) ~read_by_markdown)
+        base_files ~repo ~commit:(base_commit base) ~read_by_markdown ~location)
   in
   let* documents, not_text, compared =
     with_reader (fun reader ->
@@ -477,7 +498,7 @@ let load_with_base ?phases ~env ~dir ~manifest ~base () =
         let* compared =
           Allocation.measure phases "base-read" (fun () ->
               read_base reader ~repo ~diff ~files:base_files ~documents
-                ~not_text)
+                ~not_text ~location ~manifest:base_manifest)
         in
         Ok (documents, not_text, compared))
   in
