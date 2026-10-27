@@ -34,3 +34,33 @@
 - No test checks that an old class name is unknown, because such a
   test would put an old name in `test/`. The tests of the 41 names
   and of the table of the specification fix the set.
+
+## Rename the settings of the manifest and the gates
+
+- Four JSON fields that the record does not name: the field `ref` of
+  the record `external` becomes `name`, the id inside the namespace.
+  The field `ref` of the deferred ledger entry `pin` becomes
+  `external`. The field `attributed` of a `cov` record and the field
+  `capped` of a `gate` record keep their names; only their
+  descriptions change.
+- Each runner table yields one setting fact as a member of
+  `scan.packs.<name>.runners`, with the id of the old array member, so
+  that `config-changed` still sees a runner that a change turns on or
+  off. Each runner setting yields its own setting fact.
+- The step's scope lacked `.claude-plugin/**`, which the bump of the
+  plugin version touches. An amendment (#122) added it.
+- The record `commit-messages` still calls the target of `Issue:` a
+  ref; records keep the words of their time.
+- A bad runner name is now an error of a key name, found in the step
+  of the names, as a bad pack name is. Runners come in the order of
+  the file. A runner in two packs is reported at the key of the later
+  pack in byte order.
+- Unlike the step before, a test checks that each old key and each
+  old gate name is now unknown, because the brief fixes that no alias
+  stays. Those tests are the only old names left in `test/`.
+- Sections 10.2 and 10.3 of `spec/manifest.md` became one, so the
+  default locations moved from 10.4 to 10.3; the references follow.
+- Left for later: the design notes still use names of an older design
+  that the record does not list: the gates `pr` and `main`, `enforce`,
+  `refuse_env`, `evidence.require_attribution`, and `ref-state`. The
+  pack descriptor of `spec/packs.md` keeps its own key `spec`.
