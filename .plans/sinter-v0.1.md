@@ -175,6 +175,15 @@ repair.
 Report `config-changed`: each setting of the manifest that differs
 from the base.
 
+## Rewrite the design notes
+@scope docs/design-notes.md, docs/roadmap.md
+Rewrite the design notes in plain language and with the current names.
+Keep the reasons for the design. Replace the copies of the
+specifications in sections 12, 13, and 14 with short sections that
+give the reasons and point to the specifications. Keep the numbers of
+the sections that other files cite, and move the open questions that
+remain to the roadmap.
+
 ## Check Sinter with Sinter
 @scope sinter.toml, .github/workflows/**, spec/**, docs/**, .plans/**
 Add the manifest of Sinter, fix the findings that Sinter reports on
