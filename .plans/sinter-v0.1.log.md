@@ -97,3 +97,8 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
     from its blob when git shows no change.
   - Outside sections 11.3 and 12.7, the design notes still use old
     names of classes and gates, for example `law-touched` and `pr`.
+- The diff compares a file as git stores it, after its clean filter
+  and its end-of-line conversion. A comparison of raw bytes would show
+  every line changed in a checkout with CRLF line ends, and every Git
+  LFS file changed on every run. The cost is wrong positions in a file
+  whose filter changes its number of lines.
