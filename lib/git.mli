@@ -188,6 +188,10 @@ val merge_base : t -> string -> string -> (string, error) result
     commit, that is empty, that starts with [-], or that holds a NUL byte. It is
     [No_merge_base (a, b)] when the two commits have no common ancestor. *)
 
+val is_shallow : t -> (bool, error) result
+(** [is_shallow repo] is [true] when [repo] is a shallow clone: its history
+    stops at commits whose parents it does not hold. *)
+
 val commit_of : t -> string -> (string, error) result
 (** [commit_of repo rev] is the object id of the commit that the revision [rev]
     names, for example ["main"], ["HEAD~1"], or an object id. A tag that points
