@@ -18,8 +18,7 @@ let settings =
       ("check.rollout-cap", 1, 0);
       ("check.historical", 1, 0);
       ("check.tiers.<gate>.<class>", 1, 0);
-      ("plan.ambient", 1, 0);
-      ("plan.shared", 1, 0);
+      ("plan.exempt", 1, 0);
       ("plan.locations.<kind>", 1, 0);
       ("ledger.approval-required", 1, 0);
       ("ledger.harness-markers", 1, 0);
@@ -342,8 +341,7 @@ type t = {
   rollout_cap : bool;
   tiers : (Finding_class.gate * Finding_class.t * Finding_class.tier) list;
   historical : Path_set.t;
-  ambient : Path_set.t;
-  shared : Path_set.t;
+  exempt : Path_set.t;
   locations : (kind * Path_set.t) list;
   approval_required : kind list;
   harness_markers : string list;
@@ -363,8 +361,7 @@ type reading = {
   mutable tiers :
     (Finding_class.gate * Finding_class.t * Finding_class.tier) list;
   mutable historical : Path_set.t;
-  mutable ambient : Path_set.t;
-  mutable shared : Path_set.t;
+  mutable exempt : Path_set.t;
   mutable locations : (kind * Path_set.t) list;
   mutable approval_required : kind list;
   mutable harness_markers : string list;
@@ -649,12 +646,9 @@ let layout reading =
     ( "plan",
       Fixed
         [
-          ( "ambient",
-            path_set reading [ "plan"; "ambient" ] (fun set ->
-                reading.ambient <- set) );
-          ( "shared",
-            path_set reading [ "plan"; "shared" ] (fun set ->
-                reading.shared <- set) );
+          ( "exempt",
+            path_set reading [ "plan"; "exempt" ] (fun set ->
+                reading.exempt <- set) );
           ( "locations",
             Varying
               (fun key ->
@@ -841,8 +835,7 @@ let new_reading () =
     rollout_cap = false;
     tiers = [];
     historical = Path_set.empty;
-    ambient = Path_set.empty;
-    shared = Path_set.empty;
+    exempt = Path_set.empty;
     locations = [];
     approval_required = [];
     harness_markers = [];
@@ -928,8 +921,7 @@ let of_string text =
                     rollout_cap = reading.rollout_cap;
                     tiers = List.sort compare reading.tiers;
                     historical = reading.historical;
-                    ambient = reading.ambient;
-                    shared = reading.shared;
+                    exempt = reading.exempt;
                     locations = reading.locations;
                     approval_required = reading.approval_required;
                     harness_markers = reading.harness_markers;
@@ -982,14 +974,13 @@ let is_historical (manifest : t) path =
   Glob.matches builtin_historical_glob path
   || Path_set.mem manifest.historical path
 
-let ambient (manifest : t) = manifest.ambient
+let exempt (manifest : t) = manifest.exempt
 let lock_file = "sinter.lock"
 
-let is_ambient (manifest : t) ~plan_file ~manifest:location path =
+let is_exempt (manifest : t) ~plan_file ~manifest:location path =
   plan_file path || location = Some path || path = lock_file
-  || Path_set.mem manifest.ambient path
+  || Path_set.mem manifest.exempt path
 
-let shared (manifest : t) = manifest.shared
 let location (manifest : t) kind = List.assoc_opt kind manifest.locations
 let approval_required (manifest : t) = manifest.approval_required
 let harness_markers (manifest : t) = manifest.harness_markers

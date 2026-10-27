@@ -180,9 +180,8 @@ the key (section 5).
 | `check.rollout-cap` | boolean | `false` | findings: tiers | 9.3 | 1.0 |
 | `check.historical` | path set | empty, with one built-in member | findings: which facts can make findings | 9.4 | 1.0 |
 | `check.tiers.<gate>.<class>` | string: a tier | the tier in algebra.md section 9 | findings: tiers | 9.2 | 1.0 |
-| `plan.ambient` | path set | empty, with built-in members | the plan check | 10.2 | 1.0 |
-| `plan.shared` | path set | empty | the plan check | 10.3 | 1.0 |
-| `plan.locations.<kind>` | path set | absent: the kind has no default location | promises | 10.4 | 1.0 |
+| `plan.exempt` | path set | empty, with built-in members | the plan check | 10.2 | 1.0 |
+| `plan.locations.<kind>` | path set | absent: the kind has no default location | promises | 10.3 | 1.0 |
 | `ledger.approval-required` | array of strings: kinds | empty: no kind needs approval | approval | 11.1 | 1.0 |
 | `ledger.harness-markers` | array of strings | empty: the tool's built-in list only | the commands that write the ledger | 11.2 | 1.0 |
 | `evidence.coverage-attribution` | string: `"optional"` or `"required"` | `"optional"` | promises | 12 | 1.0 |
@@ -666,18 +665,21 @@ It never removes the built-in member.
 ### 10.1 Path roles
 
 A **path role** is the meaning that a path set gives to each of its
-paths: a historical path (section 9.4), an ambient path, a shared
-path, or the default location of a kind. Each role has its own setting. A
-path with two roles is written in two settings. Example: a folder of
-generated documentation can be in `plan.ambient` and in
-`check.historical`.
+paths: a historical path (section 9.4), an exempt path, or the default
+location of a kind. Each role has its own setting. A path with two
+roles is written in two settings. Example: a folder of generated
+documentation can be in `plan.exempt` and in `check.historical`.
 
-### 10.2 Ambient paths
+### 10.2 Exempt paths
 
-`plan.ambient` is a path set. A hunk under an **ambient** path needs
-no plan step: `unplanned-change` does not report it
+`plan.exempt` is a path set. A hunk under an **exempt** path needs no
+plan step: `unplanned-change` does not report it
 ([algebra.md](algebra.md) section 9). Use the key for files that tools
-write, such as lock files and generated code.
+write, such as lock files and generated code. Also use it for files
+that every step of every plan can change, such as the dependency and
+license files at the repository root. An exempt path does not widen
+the place where a promise can be met ([vocabulary.md](vocabulary.md)
+section 10.4).
 
 The path set has these built-in members:
 
@@ -689,16 +691,7 @@ The members of the manifest add to them. A `!` glob of the manifest
 leaves out paths of the manifest's own members only. It never removes
 a built-in member.
 
-### 10.3 Shared paths
-
-`plan.shared` is a path set. A **shared** path is a path that every
-step of every plan can change, such as the dependency and license
-files at the repository root. A hunk under a shared path is never work
-outside a plan: `unplanned-change` does not report it. A shared path
-does not widen the place where a promise can be met
-([vocabulary.md](vocabulary.md) section 10.4).
-
-### 10.4 Default locations
+### 10.3 Default locations
 
 `plan.locations.<kind>` is a path set. `<kind>` is `req`, `design`, or
 `decision`. The path set is the **default location** of the kind. A
@@ -787,7 +780,7 @@ them, except as the last column says.
 | the folder of plans | `.plans/` | nothing |
 | the pack `markdown` | built into the tool | name it, and give its files |
 | historical paths | `.plans/**/*.log.md` | add paths |
-| ambient paths | each plan file, the manifest, `sinter.lock` | add paths |
+| exempt paths | each plan file, the manifest, `sinter.lock` | add paths |
 | the tier of each pair of a gate and a built-in class | algebra.md section 9 | write another tier |
 | the default of `default-branch` | `"main"` | write another branch |
 | the default of `check.rollout-cap` | `false` | write `true` |
@@ -814,7 +807,7 @@ The manifest yields facts of the kind `setting`, in the category
 - Each of `default-branch`, `check.rollout-cap`, and
   `evidence.coverage-attribution` yields one setting fact with its
   default value when the manifest does not write it.
-- Each built-in member of `check.historical` and of `plan.ambient`
+- Each built-in member of `check.historical` and of `plan.exempt`
   yields one setting fact. The value of the member for a plan file is
   the path of the plan file. The value of the member for the manifest
   is the path of the manifest.
@@ -968,7 +961,7 @@ does not mean "reports more findings".
 | `scan.namespaces.<ns>` | a namespace removed | a namespace added | a pattern changed |
 | `check.rollout-cap` | `true` to `false` | `false` to `true` | |
 | `check.tiers.<gate>.<class>` | the tier that applies rises | the tier that applies falls | the tier that applies stays the same |
-| `check.historical`, `plan.ambient`, `plan.shared`, `plan.locations.<kind>` | a plain glob removed; a `!` glob added | a plain glob added; a `!` glob removed | |
+| `check.historical`, `plan.exempt`, `plan.locations.<kind>` | a plain glob removed; a `!` glob added | a plain glob added; a `!` glob removed | |
 | `ledger.approval-required` | a kind added | a kind removed | |
 | `ledger.harness-markers` | a name added | a name removed | |
 | `evidence.coverage-attribution` | `"optional"` to `"required"` | `"required"` to `"optional"` | |
@@ -1052,18 +1045,16 @@ namespaces.gh = "[1-9][0-9]*"
 rollout-cap = true
 
 [plan]
-ambient = [
-  "bridge/Cargo.lock",
-  "sinter.opam",
-  "sinter.opam.locked",
-]
-shared = [
+exempt = [
   ".gitignore",
   "LICENSES/",
   "REUSE.toml",
   "THIRD_PARTY.md",
+  "bridge/Cargo.lock",
   "bridge/Cargo.toml",
   "dune-project",
+  "sinter.opam",
+  "sinter.opam.locked",
 ]
 locations.decision = ["docs/decisions/"]
 ```
@@ -1088,8 +1079,13 @@ tiers.review.dangling = "block"
 tiers.merged.dangling = "block"
 
 [plan]
-ambient = ["package-lock.json"]
-shared = [".gitignore", "LICENSE", "package.json", "tsconfig.json"]
+exempt = [
+  ".gitignore",
+  "LICENSE",
+  "package-lock.json",
+  "package.json",
+  "tsconfig.json",
+]
 locations.decision = ["docs/decisions/"]
 
 [ledger]

@@ -647,10 +647,10 @@ must be contained in its plan's scope, by the rule that
 `scope-outside-plan`. A step's **effective scope** is its own scope
 when it has one, and otherwise the plan's scope.
 
-The manifest key `plan.shared` ([manifest.md](manifest.md) section
-10.3) names paths that every step of every plan can change, for
+The manifest key `plan.exempt` ([manifest.md](manifest.md) section
+10.2) names paths that a change can touch with no plan step, for
 example the dependency and license files at the repository root. A
-change under a shared path is never work outside the plan. A shared
+change under an exempt path is never work outside the plan. An exempt
 path does not widen the place where a promise can be met: a promised
 item is met only inside the step's effective scope or inside the
 default location of its kind (section 10.5).
@@ -663,7 +663,7 @@ A promise is **met** as follows:
   slug exists inside the step's effective scope, or inside the default
   location of its kind. The manifest key `plan.locations.<kind>` gives
   the default location of a kind as a path set
-  ([manifest.md](manifest.md) section 10.4), for example
+  ([manifest.md](manifest.md) section 10.3), for example
   `locations.decision = ["docs/decisions/"]` under `[plan]`. A kind
   without an entry has no default location.
 - A promised `@satisfies`, `@refines`, `@cites`, or `@supersedes` is

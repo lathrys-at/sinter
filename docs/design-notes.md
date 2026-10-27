@@ -181,7 +181,7 @@ A `@verifies` edge is at exactly one rung at any time: `wrong-source`, `never-ra
 
 ### 5.1 Manifest
 
-A **TOML manifest at repo root**, `sinter.toml`, declares: the languages in use, as version constraints (exact versions and hashes live in `sinter.lock`, tool-owned, so a pack is the same bytes on every machine and in CI); namespaces of external ids; which kinds the ledger gates; historical and ambient paths (lockfiles and generated code — exempt from scope confinement, counted in the report); rules (§7); repo-defined finding classes; and gate tiers. Which files a pack governs is the pack's business, declared in its descriptor and overridable per language. TOML because it is pure config with zero prose; the reference is §14 and it fits on a screen.
+A **TOML manifest at repo root**, `sinter.toml`, declares: the languages in use, as version constraints (exact versions and hashes live in `sinter.lock`, tool-owned, so a pack is the same bytes on every machine and in CI); namespaces of external ids; which kinds the ledger gates; historical and exempt paths (lockfiles and generated code — exempt from scope confinement, counted in the report); rules (§7); repo-defined finding classes; and gate tiers. Which files a pack governs is the pack's business, declared in its descriptor and overridable per language. TOML because it is pure config with zero prose; the reference is §14 and it fits on a screen.
 
 **The manifest is inside the boundary, on purpose.** The agent can edit it, gate settings included. Under the collaborative model the risk is drift, not sabotage, so the mitigation is visibility: a built-in, non-disableable rule surfaces any diff touching gate configuration or rules in the report and the turn report — "this change also loosened the law" — so a demotion can never ride silently inside an unrelated diff.
 
@@ -247,7 +247,7 @@ A markdown file under `.plans/`, e.g. `.plans/auth-lockout.md`, **committed on t
 - **A step with scope and no promises is a refactor:** done when its scope was touched and existing evidence stays green. Weaker, and visibly so.
 - **Plan files are exempt from rev discipline** — they are judged by commitment-set diff, never text (§6.2). The plan's revision is the count of approved amendments.
 
-**Three carve-outs from scope attribution**, each governed by other machinery: the plan file itself (routes to amendment adjudication); the manifest and lockfile (every touch is already loud); and ambient paths (a `Cargo.lock` hunk maps to no step and never will — without this, the first dependency added under a legitimate step flags its own lockfile).
+**Three carve-outs from scope attribution**, each governed by other machinery: the plan file itself (routes to amendment adjudication); the manifest and lockfile (every touch is already loud); and exempt paths (a `Cargo.lock` hunk maps to no step and never will — without this, the first dependency added under a legitimate step flags its own lockfile).
 
 ### 6.2 Amendment: The Monotone Rule
 
@@ -609,7 +609,7 @@ USAGE
 REFERENCE
   Selectors   all  kind(k|…)  req(s) design(s) decision(s) plan(s) step(p/s)
               test(id) external(ns/id) rule(n)  path(glob)  changed(base|<rev>)
-              active  historical  ambient  acked(target)  findings(class|…)
+              active  historical  exempt  acked(target)  findings(class|…)
   Traversal   out(k|…, S)  in(k|…, S)  src(E)  dst(E)  subject(F)
   Closure     deps(k|…, S)  rdeps(k|…, S)  paths(S, T)
   Plan        scope(S)  promises(S)  met(P)  done(S)  waiting(P)
@@ -641,7 +641,7 @@ EXAMPLES
   sinter query --count 'suspect(kind(edge))'
   sinter query --json 'deps(refines, req(auth-lockout))'
   sinter query --dot 'rdeps(satisfies|verifies, req(auth-*))' | dot -Tsvg
-  sinter query 'kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - ambient'
+  sinter query 'kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - exempt'
   sinter query --jq '.slug' 'kind(decision) - inforce(all)'
 ```
 
@@ -1268,7 +1268,7 @@ Every kind belongs to exactly one **category**. `kind(x)` accepts either.
 | `tombstone` | `tombstone` | yes (base coordinates) | a fact present in `B`'s index and absent from `T`'s; carries the old `id`, `kind`, and extent hash |
 | `finding` | `finding` | yes (its subject's) | derived; class and subject define identity |
 
-"Located" facts carry `path`, `line`, `col`, `eline`, `ecol`. Only located facts are returned by `path(…)`, `scope(…)`, `historical`, `ambient`, and `acked(…)`.
+"Located" facts carry `path`, `line`, `col`, `eline`, `ecol`. Only located facts are returned by `path(…)`, `scope(…)`, `historical`, `exempt`, and `acked(…)`.
 
 ### 12.3 Syntax
 
@@ -1298,13 +1298,13 @@ Lexical rules that matter:
 - **Precedence:** `^` binds tighter than `+` and `-`, which share a level and associate left. `a + b ^ c - d` is `(a + (b ^ c)) - d`. When in doubt, parenthesize; `--explain` prints the fully parenthesized form.
 - **Argument kinds are positional and declared per function** (§12.5). A `name` argument may contain `*` as a glob over the slug (or test ID) alphabet. A `kinds` argument may be a category name.
 - **Names are resolved after substitution**: a saved definition's parameters are substituted syntactically (§12.6) before the expression is parsed, so a parameter may stand for an expression, a kind list, a name, or a glob.
-- **Keywords** `all`, `active`, `historical`, `ambient`, `base` are reserved as bare words; a saved definition may not shadow a built-in.
+- **Keywords** `all`, `active`, `historical`, `exempt`, `base` are reserved as bare words; a saved definition may not shadow a built-in.
 
 ### 12.4 Categories as types
 
 Each expression is assigned a **category set** statically, before evaluation:
 
-- `all` → every category. `kind(K)` → the categories of the kinds in `K`. Name selectors → their kind's category. `path`, `historical`, `ambient`, `acked` → every located category. `changed` → every category (tombstones and hunks included). `active` → `{node}`. `findings` → `{finding}`.
+- `all` → every category. `kind(K)` → the categories of the kinds in `K`. Name selectors → their kind's category. `path`, `historical`, `exempt`, `acked` → every located category. `changed` → every category (tombstones and hunks included). `active` → `{node}`. `findings` → `{finding}`.
 - `out`, `in` → `{edge}`. `src`, `dst`, `deps`, `rdeps`, `paths` → `{node, external, law}` (`src` of a rule's origin edge is a rule). `subject` → every category a finding can be about. `scope` → located categories plus `hunk` (and accepts `claim` in its argument). `promises` → `{promise}`. `met` → `{promise}`. `done` → `{node}`. Predicates, including `declined`, → the category set of their argument, intersected with what they accept. `obligations`, `judged` → every category (an obligation's subject is whatever the trigger selected). `triggered` → `{law}`.
 - `S + T` → union of category sets; `S ^ T` → intersection; `S - T` → the left's.
 
@@ -1328,7 +1328,7 @@ Notation: `S`, `T` range over fact sets; `E` over sets of edges; `P` promises; `
 | `changed(b)` | — | see §12.7; `b` is `base` or a revision |
 | `active` | — | the active plan and, if declared, the active step (§6.1); only in-force plans are candidates; `∅` if no plan is active |
 | `historical` | — | located facts under a manifest `historical` path |
-| `ambient` | — | located facts under a manifest `ambient` path, in a plan file, in the manifest, or in the lockfile |
+| `exempt` | — | located facts under a manifest `exempt` path, in a plan file, in the manifest, or in the lockfile |
 | `acked(t)` | — | located facts `f` such that the tag-bearing block containing `f` carries a **live** `@ack` whose target `t` applies to `f`: the class or rule name matches, and the ack's subject, if given, equals `f`'s key (`dst` slug for an edge, slug for a node, `id` otherwise) |
 | `findings(C)` | — | finding facts whose class ∈ `C` |
 
@@ -1473,7 +1473,7 @@ Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameter
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets | tree | · | · | warn, warn, — |
 | `waiting-on` | promise | `waiting(promises(kind(plan)))` — reported in place of `dangling` for the citation, with the claim and step named (§6.7) | tree | · | · | off, warn, — |
 | `branch-overlap` | step | *engine*: a step's scope intersects a claim's scope on another branch | tree | · | · | warn, warn, — |
-| `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient`; *engine* also exempts hunks that are wholly the tool's own medicine — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
+| `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - exempt`; *engine* also exempts hunks that are wholly the tool's own medicine — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable iff the rule's `expect` is `acked`; a rule's `tiers` overrides the class's | tree | A* | · | warn, block, block |
 | `law-touched` | law | `kind(rule\|gate) ^ changed(base)` — non-disableable; always reported, never blocks | diff | · | · | warn, warn, warn |
 | `merged-incomplete` | plan | *engine*: an in-force plan on the default branch failing the §6.3 completion condition — merged incomplete; a plan meeting it is completed by main CI, not a finding | tree | · | · | —, —, block |
@@ -1501,7 +1501,7 @@ $ sinter query 'untraced(verifies)'
 docs/auth.md:12:1: req auth-lockout v2
 docs/auth.md:31:1: req lockout-notify v1
 
-$ sinter query 'kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient'
+$ sinter query 'kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - exempt'
 src/session/store.rs:88:1: hunk +14/-3
 ```
 
@@ -1743,7 +1743,7 @@ Duplicate promissory tags within one step collapse to a single promise fact.
 | field | type | meaning |
 |---|---|---|
 | `added` `removed` | int | |
-| `ambient` | bool | *derived* |
+| `exempt` | bool | *derived* |
 | `planned` | array of string | *derived*: ids of steps or rules whose scope covers the hunk; empty when no step and no rule covers the hunk |
 
 **`tombstone`** (base coordinates)
@@ -1917,7 +1917,7 @@ A pack's fixture directory contains a tiny project, `expected.jsonl`, a fixture 
 enforce    = "warn"                        # rollout cap: nothing blocks or exits 1 until this line goes or a class is promoted below (§8)
 approve    = ["req"]                       # kinds the ledger gates; kinds not listed count approved (§12.8)
 historical = ["docs/devlog/**"]            # citations resolve and render; no findings (.plans/*.log.md is built-in)
-ambient    = ["Cargo.lock", "**/generated/**"]   # exempt from scope confinement; counted in the report
+exempt     = ["Cargo.lock", "**/generated/**"]   # exempt from scope confinement; counted in the report
 
 [languages]                                # constraints here; exact versions and hashes in sinter.lock
 rust   = "1.4"

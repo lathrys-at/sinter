@@ -87,8 +87,8 @@ Notes on individual kinds:
   extent hash.
 
 "Located" facts carry `path`, `line`, `col`, `eline`, and `ecol`. The
-functions `path(…)`, `scope(…)`, `historical`, `ambient`, `shared`, and
-`acked(…)` return located facts only.
+functions `path(…)`, `scope(…)`, `historical`, `exempt`, and `acked(…)`
+return located facts only.
 
 ## 4. Syntax
 
@@ -134,8 +134,8 @@ Lexical rules:
   parameters are substituted as text before the expression is parsed
   (section 7). A parameter can therefore stand for an expression, a
   kind list, a name, or a glob.
-- **Keywords.** `all`, `active`, `historical`, `ambient`, `shared`,
-  and `base` are reserved as bare words. A saved definition must not shadow a
+- **Keywords.** `all`, `active`, `historical`, `exempt`, and `base`
+  are reserved as bare words. A saved definition must not shadow a
   built-in name.
 
 ## 5. Categories as types
@@ -145,7 +145,7 @@ evaluation:
 
 - `all` → every category. `kind(K)` → the categories of the kinds in
   `K`. A name selector → its kind's category. `path`, `historical`,
-  `ambient`, `shared`, `acked` → every located category. `changed` → every
+  `exempt`, `acked` → every located category. `changed` → every
   category, tombstones and hunks included. `active` → `{node}`.
   `findings` → `{finding}`.
 - `out`, `in` → `{edge}`. `src`, `dst`, `deps`, `rdeps`, `paths` →
@@ -187,8 +187,7 @@ declaration. "Declaration" means a `req`, `design`, or `decision`.
 | `changed(b)` | see section 8; `b` is `base` or a revision |
 | `active` | the active plan and, when the session declares one, the active step; only open plans are candidates; `∅` when no plan is active |
 | `historical` | located facts under a historical path: a path of `check.historical`, its built-in member included ([manifest.md](manifest.md) section 9.4) |
-| `ambient` | located facts under an ambient path: a path of `plan.ambient`, its built-in members included (each plan file, the manifest, and the lock file `sinter.lock`; [manifest.md](manifest.md) section 10.2) |
-| `shared` | located facts under a shared path: a path of `plan.shared`, which every step of every plan can change ([manifest.md](manifest.md) section 10.3) |
+| `exempt` | located facts under an exempt path: a path of `plan.exempt`, its built-in members included (each plan file, the manifest, and the lock file `sinter.lock`; [manifest.md](manifest.md) section 10.2) |
 | `acked(t)` | the located facts `f` whose tag-bearing block carries a live `@ack` with the tag target `t`, where `t` applies to `f`. The tag target `t` applies to `f` when both of these conditions hold: the class name or rule name in `t` matches, and the ack's subject, when the ack gives one, equals `f` in the form that [vocabulary.md](vocabulary.md) section 7.4 gives |
 | `findings(C)` | finding facts whose class is in `C` |
 
@@ -457,7 +456,7 @@ passes the cap ([manifest.md](manifest.md) section 9.3).
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets. Two scopes intersect when a plain glob of one contains a plain glob of the other, or is contained in it, by the rule of glob containment of [ledger.md](ledger.md) section 11 | tree | · | · | warn, warn, — |
 | `waiting-on` | promise | `waiting(promises(kind(plan)))` — reported in place of `dangling`, with the claim and step named | tree | · | · | off, warn, — |
 | `branch-overlap` | step | *engine*: a step's scope intersects the scope of another branch's claim | tree | · | · | warn, warn, — |
-| `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient - shared`. The engine also exempts hunks that are wholly mechanical repairs — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
+| `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - exempt`. The engine also exempts hunks that are wholly mechanical repairs — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's `expect` is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
 | `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 14.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
 | `merged-incomplete` | plan | *engine*: an open plan on the default branch that fails the completion condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |

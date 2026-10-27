@@ -1205,7 +1205,7 @@ These rules apply:
   stops with exit code 3. The message names the pack and says to run
   `sinter pack add`.
 - A line for a pack that the manifest does not name has no effect.
-- The lock file is an ambient path ([manifest.md](manifest.md) section
+- The lock file is an exempt path ([manifest.md](manifest.md) section
   10.2).
 - The `index` record of a scan names each pack of the lock file
   ([jsonl.md](jsonl.md) section 10).

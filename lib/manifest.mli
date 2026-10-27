@@ -245,22 +245,19 @@ val is_historical : t -> string -> bool
 (** [is_historical manifest path] is [true] when the built-in member matches
     [path], or when [path] is in {!historical}. *)
 
-val ambient : t -> Path_set.t
-(** [ambient manifest] is the path set that [plan.ambient] writes. *)
+val exempt : t -> Path_set.t
+(** [exempt manifest] is the path set that [plan.exempt] writes. *)
 
 val lock_file : string
-(** The path of the lock file, [sinter.lock], a built-in ambient path. *)
+(** The path of the lock file, [sinter.lock], a built-in exempt path. *)
 
-val is_ambient :
+val is_exempt :
   t -> plan_file:(string -> bool) -> manifest:string option -> string -> bool
-(** [is_ambient manifest ~plan_file ~manifest:location path] is [true] when
-    [path] is a built-in ambient path, or in {!ambient}. The built-in ambient
-    paths are each path for which [plan_file] is [true], [location] when it is
+(** [is_exempt manifest ~plan_file ~manifest:location path] is [true] when
+    [path] is a built-in exempt path, or in {!exempt}. The built-in exempt paths
+    are each path for which [plan_file] is [true], [location] when it is
     [Some _], and {!lock_file}. [location] is the path of the manifest relative
     to the repository root, and [None] for a manifest outside the repository. *)
-
-val shared : t -> Path_set.t
-(** [shared manifest] is the path set that [plan.shared] writes. *)
 
 val location : t -> kind -> Path_set.t option
 (** [location manifest kind] is the default location of [kind], or [None] when

@@ -44,11 +44,8 @@ let the_smallest_manifest_takes_every_default () =
     "no historical member" true
     (Path_set.is_empty (Manifest.historical manifest));
   Alcotest.(check bool)
-    "no ambient member" true
-    (Path_set.is_empty (Manifest.ambient manifest));
-  Alcotest.(check bool)
-    "no shared member" true
-    (Path_set.is_empty (Manifest.shared manifest));
+    "no exempt member" true
+    (Path_set.is_empty (Manifest.exempt manifest));
   Alcotest.(check bool)
     "no location" true
     (List.for_all
@@ -85,18 +82,16 @@ namespaces.gh = "[1-9][0-9]*"
 rollout-cap = true
 
 [plan]
-ambient = [
-  "bridge/Cargo.lock",
-  "sinter.opam",
-  "sinter.opam.locked",
-]
-shared = [
+exempt = [
   ".gitignore",
   "LICENSES/",
   "REUSE.toml",
   "THIRD_PARTY.md",
+  "bridge/Cargo.lock",
   "bridge/Cargo.toml",
   "dune-project",
+  "sinter.opam",
+  "sinter.opam.locked",
 ]
 locations.decision = ["docs/decisions/"]
 |}
@@ -118,20 +113,19 @@ let the_example_of_sinter_reads () =
        (Manifest.namespaces manifest));
   Alcotest.(check bool) "rollout-cap" true (Manifest.rollout_cap manifest);
   Alcotest.(check (list string))
-    "ambient"
-    [ "bridge/Cargo.lock"; "sinter.opam"; "sinter.opam.locked" ]
-    (members (Manifest.ambient manifest));
-  Alcotest.(check (list string))
-    "shared"
+    "exempt"
     [
       ".gitignore";
       "LICENSES/";
       "REUSE.toml";
       "THIRD_PARTY.md";
+      "bridge/Cargo.lock";
       "bridge/Cargo.toml";
       "dune-project";
+      "sinter.opam";
+      "sinter.opam.locked";
     ]
-    (members (Manifest.shared manifest));
+    (members (Manifest.exempt manifest));
   Alcotest.(check (option (list string)))
     "the location of decisions" (Some [ "docs/decisions/" ])
     (Option.map members (Manifest.location manifest Manifest.Decision));
@@ -157,8 +151,13 @@ tiers.review.dangling = "block"
 tiers.merged.dangling = "block"
 
 [plan]
-ambient = ["package-lock.json"]
-shared = [".gitignore", "LICENSE", "package.json", "tsconfig.json"]
+exempt = [
+  ".gitignore",
+  "LICENSE",
+  "package-lock.json",
+  "package.json",
+  "tsconfig.json",
+]
 locations.decision = ["docs/decisions/"]
 
 [ledger]
@@ -263,7 +262,7 @@ let built_in_paths_join_the_written_ones () =
      ^ "[check]\n\
         historical = [\"docs/devlog/\", \"!docs/devlog/keep.md\"]\n\
         [plan]\n\
-        ambient = [\"gen/\", \"!.plans/**\"]\n")
+        exempt = [\"gen/\", \"!.plans/**\"]\n")
   in
   let historical = Manifest.is_historical manifest in
   Alcotest.(check bool)
@@ -274,21 +273,21 @@ let built_in_paths_join_the_written_ones () =
     "a written ! glob" false
     (historical "docs/devlog/keep.md");
   Alcotest.(check bool) "a plan file" false (historical ".plans/a.md");
-  let ambient =
-    Manifest.is_ambient manifest
+  let exempt =
+    Manifest.is_exempt manifest
       ~plan_file:(fun path -> path = ".plans/a.md")
       ~manifest:(Some "conf/sinter.toml")
   in
-  Alcotest.(check bool) "a plan file is ambient" true (ambient ".plans/a.md");
+  Alcotest.(check bool) "a plan file is exempt" true (exempt ".plans/a.md");
   Alcotest.(check bool)
-    "the manifest is ambient" true
-    (ambient "conf/sinter.toml");
-  Alcotest.(check bool) "the lock file is ambient" true (ambient "sinter.lock");
-  Alcotest.(check bool) "a written member" true (ambient "gen/x.ml");
-  Alcotest.(check bool) "another file" false (ambient "src/x.ml");
+    "the manifest is exempt" true
+    (exempt "conf/sinter.toml");
+  Alcotest.(check bool) "the lock file is exempt" true (exempt "sinter.lock");
+  Alcotest.(check bool) "a written member" true (exempt "gen/x.ml");
+  Alcotest.(check bool) "another file" false (exempt "src/x.ml");
   Alcotest.(check bool)
     "a manifest outside the repository" false
-    (Manifest.is_ambient manifest
+    (Manifest.is_exempt manifest
        ~plan_file:(fun _ -> false)
        ~manifest:None "sinter.toml");
   Alcotest.(check string)
@@ -474,8 +473,11 @@ let unknown_keys () =
       "sinter.toml:2:1: unknown key 'file' in [scan.packs.ocaml]; did you mean \
        'files'?";
     ];
-  reports "a tie goes to the first name in byte order" "[plan]\nshare = []\n"
-    [ "sinter.toml:2:1: unknown key 'share' in [plan]; did you mean 'shared'?" ]
+  reports "a tie goes to the first name in byte order" "[chan]\n"
+    [
+      "sinter.toml:1:2: unknown key 'chan' at the top level; did you mean \
+       'plan'?";
+    ]
 
 let an_old_name_is_an_unknown_name () =
   reports "target" "target = \"trunk\"\n"
@@ -491,7 +493,12 @@ let an_old_name_is_an_unknown_name () =
        'turn', 'review', or 'merged'";
     ];
   reports "scan.refs" "[scan]\nrefs.gh = \"[1-9][0-9]*\"\n"
-    [ "sinter.toml:2:1: unknown key 'refs' in [scan]" ]
+    [ "sinter.toml:2:1: unknown key 'refs' in [scan]" ];
+  reports "plan.ambient and plan.shared" "[plan]\nambient = []\nshared = []\n"
+    [
+      "sinter.toml:2:1: unknown key 'ambient' in [plan]";
+      "sinter.toml:3:1: unknown key 'shared' in [plan]";
+    ]
 
 let a_name_with_a_control_character_is_escaped () =
   reports "an unknown key" "\"a\\nb\" = 1\n"
@@ -532,8 +539,8 @@ let keys_at_the_wrong_place () =
   reports "a fixed name where a class goes"
     "[check.tiers.review]\nhistorical = []\n"
     [ "sinter.toml:2:1: 'historical' belongs in [check]" ];
-  reports "a fixed name where a kind goes" "[plan.locations]\nshared = []\n"
-    [ "sinter.toml:2:1: 'shared' belongs in [plan]" ]
+  reports "a fixed name where a kind goes" "[plan.locations]\nexempt = []\n"
+    [ "sinter.toml:2:1: 'exempt' belongs in [plan]" ]
 
 let wrong_types () =
   reports "a string for a boolean" "[check]\nrollout-cap = \"yes\"\n"
@@ -1261,7 +1268,7 @@ let rows () =
 
 let since_is_that_of_the_specification () =
   let rows = rows () in
-  Alcotest.(check int) "the number of keys" 16 (List.length rows);
+  Alcotest.(check int) "the number of keys" 15 (List.length rows);
   List.iter
     (fun (key, since) ->
       let path =
@@ -1413,7 +1420,7 @@ let line =
       "tiers.review.dangling = \"block\"";
       "dangling = \"warn\"";
       "config-changed = \"warn\"";
-      "ambient = [\"a\", 2]";
+      "exempt = [\"a\", 2]";
       "locations.decision = [\"d/\"]";
       "approval-required = [\"req\"]";
       "harness-markers = [\"A\"]";
@@ -1519,7 +1526,7 @@ let settings =
             ([ "check"; "tiers"; gate; cls ], Printf.sprintf "%S" tier));
         map
           (fun g ->
-            if g = [] then [] else [ ([ "plan"; "ambient" ], strings g) ])
+            if g = [] then [] else [ ([ "plan"; "exempt" ], strings g) ])
           globs;
         map
           (fun g ->
@@ -1609,7 +1616,7 @@ let summary manifest =
        Manifest.default_branch manifest;
        string_of_bool (Manifest.rollout_cap manifest);
        String.concat "," (members (Manifest.historical manifest));
-       String.concat "," (members (Manifest.ambient manifest));
+       String.concat "," (members (Manifest.exempt manifest));
        (match Manifest.location manifest Manifest.Decision with
        | None -> "-"
        | Some set -> String.concat "," (members set));
