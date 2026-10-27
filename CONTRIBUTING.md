@@ -528,6 +528,13 @@ sign off code that you did not review.
   `/sinter:plan` skill. A change to a plan's promises or scopes is an
   amendment. Make it a separate, small pull request, so that the
   maintainer's merge is the approval.
+- While you carry out a plan step, append brief entries to the plan's
+  journal, `.plans/<slug>.log.md`, under a `##` heading that repeats
+  the step's heading: a few lines each, for a decision taken, an
+  approach that failed and why, a deviation from the step's design,
+  or an item left for later. Revise the entries before the pull
+  request opens, and ship them in it
+  (`docs/decisions/plan-journals.md`).
 - Ask a design question in a GitHub issue, with the options and their
   costs. The maintainer rules; the ruling is then carried out in a
   pull request.

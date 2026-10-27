@@ -37,6 +37,10 @@
     `@ack`, discharges the obligation.
   - It shares its design with `@pin` (`spec/vocabulary.md` section
     7.4) and with evidence import. Not designed.
+- **Plans with their journals** — show each plan step with the
+  journal entries for the step (record `plan-journals`): the step and
+  its promises by default, the journal entries on request. Not
+  designed.
 - **Commit trailers** — read the `Step:`, `Record:`, `Issue:`, and
   `Discharges:` trailers of the commits on a branch (record
   `commit-messages`) and check them against the plan and the diff.
