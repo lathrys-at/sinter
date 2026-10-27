@@ -148,3 +148,32 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
   whole base.
 - `bench/budgets.toml` gives `check-diff` a growth limit only. Its
   memory number waits for the first measure of the CI job on Linux.
+
+## Report unplanned changes
+
+- Only the plans of the working tree cover a hunk. A plan covers a
+  path only through its steps, so a plan file with a `@scope` and no
+  step covers nothing, and a `##` section with no plan tag is no step.
+- No rule covers a hunk: no code reads rule files yet, so the term
+  `scope(triggered(kind(rule)))` is empty.
+- A mechanical repair is decided by the tags and the facts. Three
+  details were decided during the step:
+  - A revision added to a `@cites` is no repair. The fix of
+    `unpinned` writes a revision only for the other four citation
+    words.
+  - A pair of equal tags differs by no edit, so it is no repair. An
+    example is a change of the task marker `[ ]` to `[x]` alone.
+  - The spaces between the tag word, the tag target, and the revision
+    are not part of a tag, and the test does not compare them. The
+    spaces before the inline description are part of it.
+- The class is assembled in `Check.compare_with_base`, which passes
+  the findings of `Unplanned.findings` to `Adjudicator.classes`. The
+  signature of `Adjudicator.classes` stays as it was.
+- Each change of the generated trees of the benchmark lies in the
+  scope of a plan, so the test of mechanical repairs does not run
+  there. With the scopes of the plans moved away from the changes, the
+  growth of the phase `findings` was 11.22 for `check` and 11.10 for
+  `check --diff`, under the limit of 12.
+- Left for later: tags are read only in markdown. A re-pin in a code
+  comment, such as `(* @cites x v2 *)`, stays an unplanned change until
+  the packs of the languages are read.
