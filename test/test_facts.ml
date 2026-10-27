@@ -1398,7 +1398,7 @@ let lookup_tree =
       (Gen.list_size (Gen.int_range 1 4)
          (Gen.pair
             (Gen.oneof_list lookup_scopes)
-            (Gen.list_size (Gen.int_range 1 4) (Gen.oneof_list lookup_promises))))
+            (Gen.list_size (Gen.int_range 0 4) (Gen.oneof_list lookup_promises))))
   in
   Gen.map2
     (fun files plan ->
@@ -1502,6 +1502,63 @@ let discharge_refuses_a_promise_of_other_facts () =
         ];
       ignore (Facts.discharge facts plan one a)
   | _ -> Alcotest.fail "one plan with two steps of one promise in each"
+
+let scope_set globs =
+  match Path_set.of_strings (List.sort_uniq String.compare globs) with
+  | Ok set -> set
+  | Error _ -> Alcotest.failf "a bad scope: %s" (String.concat ", " globs)
+
+let changed_paths =
+  Gen.list_size (Gen.int_bound 2)
+    (Gen.oneof_list [ "a.md"; "src/b.md"; "lib/c.md"; "src/z.md"; "z.md" ])
+
+let print_lookup_case = QCheck2.Print.(pair print_tree (list string))
+
+let a_step_is_done_by_the_list_scan_of_the_verifies_edges =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200
+       ~name:
+         "a step is done when no verifies edge is in its scope, by the list \
+          scan, and its promises are met or the diff changes its scope"
+       ~print:print_lookup_case (Gen.pair lookup_tree changed_paths)
+       (fun (files, changed) ->
+         let facts = facts ~extra:lookup_extra files in
+         let records = Facts.records facts ~changed in
+         List.for_all
+           (fun (plan : Facts.plan) ->
+             List.for_all
+               (fun (step : Facts.step) ->
+                 let in_scope =
+                   Path_set.mem (scope_set (Facts.effective_scope plan step))
+                 in
+                 let verified =
+                   not
+                     (List.exists
+                        (fun ((edge : Facts.edge), _) ->
+                          String.equal edge.word "verifies"
+                          && in_scope edge.path)
+                        (Facts.edges facts))
+                 in
+                 let met =
+                   List.length
+                     (List.filter
+                        (fun promise ->
+                          Option.is_some
+                            (Facts.discharge facts plan step promise).by)
+                        step.promises)
+                 in
+                 let total = List.length step.promises in
+                 let expected =
+                   verified
+                   &&
+                   if total = 0 then List.exists in_scope changed
+                   else met = total
+                 in
+                 check_field records (Facts.step_id plan step) "done"
+                   (bool expected);
+                 true)
+               plan.steps)
+           (Facts.plans facts)))
 
 let case name f = Alcotest.test_case name `Quick f
 
@@ -1659,6 +1716,7 @@ let tests =
     the_residue_index_gives_the_list_scan;
     case "discharge refuses a promise of other facts"
       discharge_refuses_a_promise_of_other_facts;
+    a_step_is_done_by_the_list_scan_of_the_verifies_edges;
     records_come_in_their_order;
     every_reference_names_a_record;
     every_record_is_canonical;

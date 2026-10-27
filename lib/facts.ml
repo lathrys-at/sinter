@@ -153,7 +153,11 @@ module Pairs = Map.Make (struct
     match String.compare a c with 0 -> String.compare b d | order -> order
 end)
 
-type lookups = { declared : int list Pairs.t; cited : edge list Pairs.t }
+type lookups = {
+  declared : int list Pairs.t;
+  cited : edge list Pairs.t;
+  verifies : string list;
+}
 
 type t = {
   manifest : Manifest.t;
@@ -559,6 +563,12 @@ let lookups (declarations : declaration array) edges targets plans =
           if discharges then Some ((edge.word, edge.target_text), edge)
           else None)
         (List.combine edges targets);
+    verifies =
+      List.sort_uniq String.compare
+        (List.filter_map
+           (fun (edge : edge) ->
+             if String.equal edge.word "verifies" then Some edge.path else None)
+           edges);
   }
 
 let make manifest files =
@@ -863,11 +873,7 @@ let plan_records facts ~changed plan =
     in
     let total = List.length promises in
     let verified =
-      not
-        (List.exists
-           (fun (edge : edge) ->
-             String.equal edge.word "verifies" && in_scope edge.path)
-           facts.edges)
+      not (List.exists in_scope (Lazy.force facts.lookups).verifies)
     in
     let done_ =
       verified
