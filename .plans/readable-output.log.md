@@ -77,3 +77,12 @@
 - A step is no tag line, so a `duplicate` of a step has no mark.
 - `unbumped` marks the revision of the declaration, or its word when
   the tag gives no revision.
+- A `retired` finding names the cited item, with its status or with
+  "superseded", and each successor. The status tag line is not at
+  hand, so the label of the cited item names the status.
+- Left for later, because each needs data threaded through `Facts`:
+  the paragraph that Sinter reads, for `ignored-tag`; the declaration
+  with another spelling, for `dangling`; the status tag and the
+  retiring edge, for `retired`; the `@scope` lines and their globs,
+  for `scope-outside-plan` and `promise-out-of-scope`; the edges of a
+  `cycle`; and the parts of an `@ack`.

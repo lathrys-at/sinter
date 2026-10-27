@@ -596,7 +596,7 @@ let unbumped_marks_the_revision_or_the_word () =
              ])
           []))
 
-let renamed_marks_the_target () =
+let renamed_marks_the_target_and_names_the_new_declaration () =
   let base =
     [
       ("docs/spec.md", "# Spec\n\n@req lockout v1 Lock it.\n");
@@ -610,7 +610,10 @@ let renamed_marks_the_target () =
   in
   let tree_facts = facts tree in
   Alcotest.check strings "the marks"
-    [ "docs/use.md:3 / 10-17 renamed since the base" ]
+    [
+      "docs/use.md:3 / 10-17 renamed since the base / declared here now at \
+       docs/moved.md:3:1-3:33";
+    ]
     (List.filter_map
        (fun (finding : Finding.t) ->
          if finding.finding_class = Finding_class.Renamed then
@@ -638,7 +641,8 @@ let tests =
   [
     case "unbumped marks the revision or the word"
       unbumped_marks_the_revision_or_the_word;
-    case "renamed marks the target" renamed_marks_the_target;
+    case "renamed marks the target and names the new declaration"
+      renamed_marks_the_target_and_names_the_new_declaration;
     case "promise-collision marks the target" promise_collision_marks_the_target;
     case "a tombstone names each fact that the working tree lacks"
       a_tombstone_names_each_fact_that_the_working_tree_lacks;

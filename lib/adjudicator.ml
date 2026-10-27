@@ -249,6 +249,13 @@ let renamed ~base ~same ~tombstones facts =
                 ?mark:
                   (Finding.part edge.tag Tag_line.Target
                      "renamed since the base")
+                ~related:
+                  [
+                    {
+                      Finding.label = "declared here now";
+                      place = Some (place next);
+                    };
+                  ]
                 ())
             (successor edge.target_text)
       | Facts.Unresolved { dangling = false }

@@ -1004,7 +1004,7 @@ let misplaced_plan_marks_the_word () =
       "docs/a.md:3 / 1-6 not in a file under .plans/";
     ]
 
-let duplicate_marks_the_target () =
+let duplicate_marks_the_target_and_names_the_first () =
   check_parts Finding_class.Duplicate
     [
       ("docs/b.md", "# B\n\nText.\n\n- @req Auth v1\n");
@@ -1014,36 +1014,70 @@ let duplicate_marks_the_target () =
       (".plans/p.md", "# P\n\n@plan p\n");
     ]
     [
-      ".plans/q.md:3 / 7-8 declared again here";
-      ".plans/q.md:9 / no mark";
-      "docs/b.md:5 / 8-12 declared again here";
+      ".plans/q.md:3 / 7-8 declared again here / first declared here at \
+       .plans/p.md:3:1-3:8";
+      ".plans/q.md:9 / no mark / first declared here at .plans/q.md:5:1-5:7";
+      "docs/b.md:5 / 8-12 declared again here / first declared here at \
+       docs/a.md:3:1-3:15";
     ]
 
-let unpinned_marks_the_target () =
+let unpinned_marks_the_target_and_names_the_declaration () =
   check_parts Finding_class.Unpinned
-    [ ("docs/a.md", "# A\n\n@req a v3\n\n## B\n\n@satisfies a\n") ]
-    [ "docs/a.md:7 / 12-13 no revision" ]
+    [
+      ( "docs/a.md",
+        "# A\n\n@req a v3\n\n## B\n\n@satisfies a\n@satisfies gh/1\n" );
+    ]
+    [
+      "docs/a.md:7 / 12-13 no revision / declared here at v3 at \
+       docs/a.md:3:1-3:10";
+      "docs/a.md:8 / 12-16 no revision";
+    ]
 
 let dangling_marks_the_target () =
   check_parts Finding_class.Dangling
     [ ("docs/b.md", "# B\n\n- @cites Login v2\n") ]
     [ "docs/b.md:3 / 10-15 no declaration has this slug" ]
 
-let suspect_marks_the_revision () =
+let suspect_marks_the_revision_and_names_the_declaration () =
   check_parts Finding_class.Suspect
     [
       ( "docs/a.md",
         "# A\n\n@req a v2\n\n## B\n\n@cites a v1\n@verifies a\tv3 x\n" );
     ]
-    [ "docs/a.md:7 / 10-12 names v1"; "docs/a.md:8 / 13-15 names v3" ]
+    [
+      "docs/a.md:7 / 10-12 names v1 / now at v2 at docs/a.md:3:1-3:10";
+      "docs/a.md:8 / 13-15 names v3 / now at v2 at docs/a.md:3:1-3:10";
+    ]
 
-let retired_marks_the_target () =
+let retired_marks_the_target_and_names_the_item_and_its_successors () =
   check_parts Finding_class.Retired
     [
       ("docs/a.md", "# A\n\n@decision old\n@deprecated\n");
       ("docs/b.md", "# B\n\n@cites old\n");
     ]
-    [ "docs/b.md:3 / 8-11 cites a retired item" ]
+    [
+      "docs/b.md:3 / 8-11 cites a retired item / the cited item is deprecated \
+       at docs/a.md:3:1-3:14";
+    ];
+  check_parts Finding_class.Retired
+    [
+      ( "docs/a.md",
+        "# A\n\n\
+         @decision c\n\
+         @supersedes a v1\n\n\
+         ## B\n\n\
+         @decision b v2\n\
+         @supersedes a v1\n\n\
+         ## A\n\n\
+         @decision a\n\
+         @deprecated\n" );
+      ("docs/b.md", "# B\n\n@cites a v1\n");
+    ]
+    [
+      "docs/b.md:3 / 8-9 cites a retired item / a successor at \
+       docs/a.md:3:1-3:12 / a successor at docs/a.md:8:1-8:15 / the cited item \
+       is superseded at docs/a.md:13:1-13:12";
+    ]
 
 let wrong_source_marks_the_word () =
   check_parts Finding_class.Wrong_source
@@ -1072,39 +1106,259 @@ let unverified_promise_marks_the_target () =
     [ (".plans/p.md", "# P\n\n@plan p\n\n## One\n\n@design b\n") ]
     [ ".plans/p.md:7 / 9-10 no promised @verifies" ]
 
-let promise_out_of_scope_marks_the_target () =
+let promise_out_of_scope_marks_the_target_and_names_each_fact () =
   check_parts Finding_class.Promise_out_of_scope
     [
       (".plans/p.md", "# P\n\n@plan p\n\n## One\n\n@scope lib/**\n@req a\n");
-      ("docs/a.md", "# A\n\n@req a v1\n");
+      ("docs/b.md", "# B\n\n@req a v1\n");
+      ("docs/a.md", "# A\n\nText.\n\n- @req a v1\n");
     ]
-    [ ".plans/p.md:8 / 6-7 met only outside the scope of the step" ]
+    [
+      ".plans/p.md:8 / 6-7 met only outside the scope of the step / meets the \
+       promise outside the scope at docs/a.md:5:3-5:12 / meets the promise \
+       outside the scope at docs/b.md:3:1-3:10";
+    ]
+
+let cycle_names_each_other_member () =
+  check_parts Finding_class.Cycle
+    [
+      ( "docs/a.md",
+        "# A\n\n\
+         @req c\n\
+         @refines b v1\n\n\
+         ## B\n\n\
+         @req b\n\
+         @refines a v1\n\n\
+         ## C\n\n\
+         @req a\n\
+         @refines c v1\n\n\
+         ## D\n\n\
+         @decision d\n\
+         @supersedes d v1\n" );
+    ]
+    [
+      "docs/a.md:13 / no mark / part of the cycle at docs/a.md:3:1-3:7 / part \
+       of the cycle at docs/a.md:8:1-8:7";
+      "docs/a.md:18 / no mark";
+    ]
+
+let scope_overlap_names_each_earlier_step () =
+  check_parts Finding_class.Scope_overlap
+    [
+      ( ".plans/p.md",
+        "# P\n\n\
+         @plan p\n\
+         @scope lib/**\n\n\
+         ## One\n\n\
+         @scope lib/a/**\n\
+         @req a\n\n\
+         ## Two\n\n\
+         @req b\n\n\
+         ## Three\n\n\
+         @req a\n\
+         @req b\n" );
+    ]
+    [
+      ".plans/p.md:15 / no mark / shares promises and scope at \
+       .plans/p.md:6:1-6:7 / shares promises and scope at \
+       .plans/p.md:11:1-11:7";
+    ]
+
+let tag_line =
+  Gen.map
+    (fun ((prefix, word), (blank, target), revision) ->
+      prefix ^ "@" ^ word ^ blank ^ target ^ revision)
+    (Gen.triple
+       (Gen.pair
+          (Gen.oneof_list [ ""; "- "; "* [ ] "; "  "; "\t" ])
+          (Gen.oneof_list
+             [
+               "req";
+               "design";
+               "decision";
+               "rule";
+               "cites";
+               "satisfies";
+               "verifies";
+               "refines";
+               "supersedes";
+               "plan";
+               "deprecated";
+               "reqq";
+               "Req";
+             ]))
+       (Gen.pair
+          (Gen.oneof_list [ " "; "\t"; " \t " ])
+          (Gen.oneof_list
+             [
+               "a";
+               "b";
+               "Auth";
+               "auth";
+               "x!";
+               "gh/1";
+               "gh/0";
+               "xy/1";
+               "/1";
+               "\xc3\xa9t\xc3\xa9";
+               "";
+             ]))
+       (Gen.oneof_list [ ""; " v1"; " v2"; "\tv3 text \xc3\xa9"; " v0" ]))
+
+let section =
+  Gen.oneof_weighted
+    [
+      ( 6,
+        Gen.map2
+          (fun heading lines ->
+            heading ^ "\n\n" ^ String.concat "\n" lines ^ "\n")
+          (Gen.oneof_list [ "# A"; "## B"; "## C"; "### D" ])
+          (Gen.list_size (Gen.int_range 1 4) tag_line) );
+      (1, Gen.return "## R\n\n@req ra\n@refines rb v1\n");
+      (1, Gen.return "## S\n\n@req rb\n@refines ra v1\n");
+      (1, Gen.return "## O\n\n@decision old\n@deprecated\n");
+      (1, Gen.return "## N\n\n@decision new v2\n@supersedes old v1\n");
+      (1, Gen.return "## U\n\n@cites old v1\n@cites lockout v1\n");
+    ]
+
+let file_text =
+  Gen.map (String.concat "\n") (Gen.list_size (Gen.int_range 1 4) section)
+
+let generated_tree =
+  Gen.map4
+    (fun a b c steps ->
+      [
+        ("docs/a.md", a);
+        ("docs/b.md", b);
+        ("src/c.md", c);
+        (".plans/p.md", "# P\n\n@plan p\n@scope docs/**\n\n" ^ steps);
+      ])
+    file_text file_text file_text file_text
+
+let renamed_in (base, tree) =
+  let add text files =
+    List.map
+      (fun (path, content) ->
+        if String.equal path "docs/a.md" then (path, content ^ "\n" ^ text)
+        else (path, content))
+      files
+  in
+  ( add "## L\n\n@req lockout v1 Lock it.\n" base,
+    add "## L\n\n@req account v2 Lock it.\n" tree )
+
+let print_tree files =
+  String.concat "\n"
+    (List.map (fun (path, text) -> "== " ^ path ^ "\n" ^ text) files)
+
+let characters line =
+  let rec go offset acc =
+    if offset >= String.length line then Array.of_list (List.rev acc)
+    else
+      let rec next at =
+        if at < String.length line && Char.code line.[at] land 0xC0 = 0x80 then
+          next (at + 1)
+        else at
+      in
+      let stop = next (offset + 1) in
+      go stop (String.sub line offset (stop - offset) :: acc)
+  in
+  go 0 []
+
+let marks_hold files (finding : Finding.t) =
+  let texts =
+    List.map (fun (path, text) -> (path, Line_index.make text)) files
+  in
+  let in_tree (place : Finding.place) =
+    match List.assoc_opt place.path texts with
+    | Some lines ->
+        place.span.start.line >= 1
+        && place.span.stop.line <= Line_index.count lines
+    | None -> false
+  in
+  let mark_holds =
+    match (finding.mark, finding.place) with
+    | None, _ -> true
+    | Some _, None -> false
+    | Some { start; stop; _ }, Some place -> (
+        match List.assoc_opt place.path texts with
+        | None -> false
+        | Some lines ->
+            let line = place.span.start.line in
+            let content = characters (Line_index.content lines line) in
+            let text =
+              String.concat ""
+                (Array.to_list (Array.sub content (start - 1) (stop - start)))
+            in
+            let tag =
+              Array.to_list (document (Line_index.text lines)).tags
+              |> List.find (fun (tag : Markdown.tag) ->
+                  tag.span.start.line = line)
+            in
+            List.mem text
+              ((("@" ^ tag.word) :: Option.to_list tag.target)
+              @ Option.to_list
+                  (Option.map (fun rev -> "v" ^ string_of_int rev) tag.rev)))
+  in
+  mark_holds
+  && List.for_all
+       (fun (related : Finding.related) ->
+         Option.fold ~none:true ~some:in_tree related.place)
+       finding.related
+
+let marks_and_related_places_hold_on_any_tree =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:300
+       ~name:
+         "on any tree, each mark covers a part of its tag, and each related \
+          place lies in the tree"
+       ~print:(fun (base, tree) ->
+         print_tree base ^ "\n==== tree\n" ^ print_tree tree)
+       (Gen.map
+          (fun (base, tree, rename) ->
+            if rename then renamed_in (base, tree) else (base, tree))
+          (Gen.triple generated_tree generated_tree Gen.bool))
+       (fun (base, tree) ->
+         let facts files =
+           Facts.make (manifest "")
+             (List.map (fun (path, text) -> (path, document text)) files)
+         in
+         let tree_facts = facts tree in
+         List.for_all (marks_hold tree)
+           (Adjudicator.classes ~base:(facts base) tree_facts
+              (Findings.of_facts tree_facts ~not_text:[]))))
 
 let tests =
   [
+    marks_and_related_places_hold_on_any_tree;
     Alcotest.test_case "typo-tag marks the word" `Quick typo_tag_marks_the_word;
     Alcotest.test_case "invalid-target marks the target" `Quick
       invalid_target_marks_the_target;
     Alcotest.test_case "misplaced-plan marks the word" `Quick
       misplaced_plan_marks_the_word;
-    Alcotest.test_case "duplicate marks the target" `Quick
-      duplicate_marks_the_target;
-    Alcotest.test_case "unpinned marks the target" `Quick
-      unpinned_marks_the_target;
+    Alcotest.test_case "duplicate marks the target and names the first" `Quick
+      duplicate_marks_the_target_and_names_the_first;
+    Alcotest.test_case "unpinned marks the target and names the declaration"
+      `Quick unpinned_marks_the_target_and_names_the_declaration;
     Alcotest.test_case "dangling marks the target" `Quick
       dangling_marks_the_target;
-    Alcotest.test_case "suspect marks the revision" `Quick
-      suspect_marks_the_revision;
-    Alcotest.test_case "retired marks the target" `Quick
-      retired_marks_the_target;
+    Alcotest.test_case "suspect marks the revision and names the declaration"
+      `Quick suspect_marks_the_revision_and_names_the_declaration;
+    Alcotest.test_case
+      "retired marks the target and names the item and its successors" `Quick
+      retired_marks_the_target_and_names_the_item_and_its_successors;
     Alcotest.test_case "wrong-source marks the word" `Quick
       wrong_source_marks_the_word;
     Alcotest.test_case "untraced marks the target" `Quick
       untraced_marks_the_target;
     Alcotest.test_case "unverified-promise marks the target" `Quick
       unverified_promise_marks_the_target;
-    Alcotest.test_case "promise-out-of-scope marks the target" `Quick
-      promise_out_of_scope_marks_the_target;
+    Alcotest.test_case
+      "promise-out-of-scope marks the target and names each fact" `Quick
+      promise_out_of_scope_marks_the_target_and_names_each_fact;
+    Alcotest.test_case "cycle names each other member" `Quick
+      cycle_names_each_other_member;
+    Alcotest.test_case "scope-overlap names each earlier step" `Quick
+      scope_overlap_names_each_earlier_step;
     case "of_facts gives the findings of tree"
       of_facts_gives_the_findings_of_tree;
     case "parse-error sits at each error and at a file that is not text"
