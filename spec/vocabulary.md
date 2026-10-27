@@ -393,7 +393,7 @@ stand in that paragraph. There is no "done" status.
 | tag | applies to | meaning |
 |---|---|---|
 | `@deprecated` | `req`, `design`, `decision` | no longer applies; nothing replaces it |
-| `@rejected` | `decision` | considered and declined; the record stays |
+| `@rejected` | `decision` | considered and not chosen; the record stays |
 | `@deferred` | `decision` | not decided; the description says what would settle it |
 
 ### 7.4 Directives
