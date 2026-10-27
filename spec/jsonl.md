@@ -493,7 +493,7 @@ excludes it.
 |---|---|---|
 | `tree` | string | tree key |
 | `base` | string | resolved base revision |
-| `target_branch` | string | the target branch |
+| `default_branch` | string | the default branch |
 | `manifest` | string | the path of the manifest: relative to the repository root when the manifest is in the repository, otherwise absolute |
 | `ledger` | string | ledger tip commit; omitted when the ref is absent |
 | `evidence` | bool | whether evidence exists for `tree` |

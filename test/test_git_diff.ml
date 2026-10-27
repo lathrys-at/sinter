@@ -443,7 +443,7 @@ let error =
         | Git.Git_not_found s -> "Git_not_found " ^ s
         | Git.Not_a_repository { dir; _ } -> "Not_a_repository " ^ dir
         | Git.Bad_revision s -> "Bad_revision " ^ s
-        | Git.Target_not_found s -> "Target_not_found " ^ s
+        | Git.Default_branch_not_found s -> "Default_branch_not_found " ^ s
         | Git.No_merge_base (a, b) -> "No_merge_base " ^ a ^ " " ^ b
         | Git.Command_failed { args; _ } ->
             "Command_failed " ^ String.concat " " args
@@ -451,20 +451,20 @@ let error =
         | Git.File_error s -> "File_error " ^ s))
     ( = )
 
-let target =
+let default_branch =
   Alcotest.testable
-    (fun formatter (target : Git.target) ->
+    (fun formatter (branch : Git.default_branch) ->
       Format.fprintf formatter "{%s; %s; %s}"
-        (match target.source with
+        (match branch.source with
         | Git.Upstream -> "Upstream"
         | Git.Local_branch -> "Local_branch"
         | Git.Origin_branch -> "Origin_branch")
-        target.refname target.commit)
+        branch.refname branch.commit)
     ( = )
 
 let resolves name expected_source expected_ref () =
   let _, t = open_shared () in
-  Alcotest.(check (result target error))
+  Alcotest.(check (result default_branch error))
     name
     (Ok
        {
@@ -472,7 +472,7 @@ let resolves name expected_source expected_ref () =
          refname = expected_ref;
          commit = commit_id expected_ref;
        })
-    (Git.resolve_target t name)
+    (Git.resolve_default_branch t name)
 
 let the_upstream_comes_first =
   resolves "main" Git.Upstream "refs/remotes/origin/main"
@@ -491,9 +491,9 @@ let an_upstream_that_is_a_local_branch_is_found =
 
 let not_found name () =
   let _, t = open_shared () in
-  Alcotest.(check (result target error))
-    name (Error (Git.Target_not_found name))
-    (Git.resolve_target t name)
+  Alcotest.(check (result default_branch error))
+    name (Error (Git.Default_branch_not_found name))
+    (Git.resolve_default_branch t name)
 
 let merge_base_gives_the_common_ancestor () =
   let _, t = open_shared () in
@@ -807,24 +807,26 @@ let tests =
     diff_reads_what_git_writes;
     diff_reads_hunks_with_context;
     diff_is_total;
-    case "resolve_target takes the upstream first" the_upstream_comes_first;
-    case "resolve_target takes a local branch before origin"
+    case "resolve_default_branch takes the upstream first"
+      the_upstream_comes_first;
+    case "resolve_default_branch takes a local branch before origin"
       a_local_branch_comes_before_origin;
-    case "resolve_target finds a local branch alone"
+    case "resolve_default_branch finds a local branch alone"
       a_local_branch_alone_is_found;
-    case "resolve_target finds a branch of origin alone"
+    case "resolve_default_branch finds a branch of origin alone"
       a_branch_of_origin_alone_is_found;
-    case "resolve_target finds an upstream that is a local branch"
+    case "resolve_default_branch finds an upstream that is a local branch"
       an_upstream_that_is_a_local_branch_is_found;
-    case "resolve_target finds no branch of an unknown name"
+    case "resolve_default_branch finds no branch of an unknown name"
       (not_found "nothing");
-    case "resolve_target reads no revision syntax in a name"
+    case "resolve_default_branch reads no revision syntax in a name"
       (not_found "main~1");
-    case "resolve_target reads no range in a name" (not_found "main..main");
-    case "resolve_target reads no glob in a name" (not_found "m*");
-    case "resolve_target finds no branch of a prefix of a branch name"
+    case "resolve_default_branch reads no range in a name"
+      (not_found "main..main");
+    case "resolve_default_branch reads no glob in a name" (not_found "m*");
+    case "resolve_default_branch finds no branch of a prefix of a branch name"
       (not_found "deep");
-    case "resolve_target finds no branch of a name with a NUL byte"
+    case "resolve_default_branch finds no branch of a name with a NUL byte"
       (not_found "ma\000in");
     case "commit_of gives the commit of a revision"
       commit_of_gives_the_commit_of_a_revision;

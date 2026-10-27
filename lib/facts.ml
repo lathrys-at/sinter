@@ -1021,13 +1021,13 @@ let edges facts = List.combine facts.edges facts.targets
 let acks facts = facts.acks
 let plans facts = facts.plans
 
-let index ~tree ~base ~target_branch ~manifest ~tool =
+let index ~tree ~base ~default_branch ~manifest ~tool =
   [
     ("v", Jsonl.int 1);
     ("kind", Jsonl.string "index");
     ("tree", Jsonl.string tree);
     ("base", Jsonl.string base);
-    ("target_branch", Jsonl.string target_branch);
+    ("default_branch", Jsonl.string default_branch);
     ("manifest", Jsonl.string manifest);
     ("evidence", Jsonl.bool false);
     ("packs", Jsonl.strings []);

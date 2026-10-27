@@ -229,13 +229,13 @@ let a_jj_state_gives_the_same_base () =
     (trunk plain, trunk plain)
     (Scan.base_commit plain_tree.base, Scan.base_commit jj_tree.base)
 
-let a_jj_state_takes_the_local_branch_as_the_target () =
+let a_jj_state_takes_the_local_branch_as_the_default_branch () =
   let plain, jj = Lazy.force pair in
   Alcotest.(check (pair string string))
-    "the target ref of each"
+    "the ref of the default branch of each"
     ("refs/remotes/origin/main", "refs/heads/main")
-    ( (ok (Git.resolve_target (opened plain) "main")).refname,
-      (ok (Git.resolve_target (opened jj) "main")).refname )
+    ( (ok (Git.resolve_default_branch (opened plain) "main")).refname,
+      (ok (Git.resolve_default_branch (opened jj) "main")).refname )
 
 let print_change = function
   | Git.Added -> "added"
@@ -401,15 +401,17 @@ let the_check_of_a_jj_state_reports_the_findings_of_new_files () =
         (status, json_status, lines text)
   | _ -> Alcotest.fail "the check runs twice"
 
-let a_stale_local_main_with_no_upstream_is_the_target_over_origin_main () =
+let a_stale_local_main_with_no_upstream_is_the_default_branch_over_origin_main
+    () =
   let plain = plain_repository ~trunk_ahead:true () in
   change_working_copy plain;
   let jj = jj_state ~late:[] plain in
   let tree = load jj in
   Alcotest.(check (pair string string))
-    "the target ref and the base: the local main, behind origin/main"
+    "the ref of the default branch and the base: the local main, behind \
+     origin/main"
     ("refs/heads/main", trunk jj)
-    ( (ok (Git.resolve_target (opened jj) "main")).refname,
+    ( (ok (Git.resolve_default_branch (opened jj) "main")).refname,
       Scan.base_commit tree.base )
 
 let empty =
@@ -451,8 +453,8 @@ let tests =
       a_jj_state_keeps_refs_under_refs_jj;
     case "a jj state gives the same files" a_jj_state_gives_the_same_files;
     case "a jj state gives the same base" a_jj_state_gives_the_same_base;
-    case "a jj state takes the local branch as the target"
-      a_jj_state_takes_the_local_branch_as_the_target;
+    case "a jj state takes the local branch as the default branch"
+      a_jj_state_takes_the_local_branch_as_the_default_branch;
     case "a jj state gives the same diff" a_jj_state_gives_the_same_diff;
     case
       "a file that the parent deleted and the working copy brings back is \
@@ -469,8 +471,10 @@ let tests =
       a_jj_state_gives_the_same_check_findings;
     case "the check of a jj state reports the findings of new files"
       the_check_of_a_jj_state_reports_the_findings_of_new_files;
-    case "a stale local main with no upstream is the target over origin/main"
-      a_stale_local_main_with_no_upstream_is_the_target_over_origin_main;
+    case
+      "a stale local main with no upstream is the default branch over \
+       origin/main"
+      a_stale_local_main_with_no_upstream_is_the_default_branch_over_origin_main;
     case "an empty working-copy commit gives no change against HEAD"
       an_empty_working_copy_commit_gives_no_change_against_head;
     case "an empty working-copy commit gives the tree of HEAD as its key"

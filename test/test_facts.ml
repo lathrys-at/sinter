@@ -795,9 +795,9 @@ let a_plan_tag_outside_plans_gives_no_plan () =
 let the_index_names_the_tree_and_the_base () =
   Alcotest.(check string)
     "the index record"
-    "{\"base\":\"b\",\"evidence\":false,\"kind\":\"index\",\"manifest\":\"sinter.toml\",\"mode\":\"tree\",\"packs\":[],\"target_branch\":\"main\",\"tool\":\"v1\",\"tree\":\"t\",\"v\":1}"
+    "{\"base\":\"b\",\"default_branch\":\"main\",\"evidence\":false,\"kind\":\"index\",\"manifest\":\"sinter.toml\",\"mode\":\"tree\",\"packs\":[],\"tool\":\"v1\",\"tree\":\"t\",\"v\":1}"
     (Jsonl.to_string
-       (Facts.index ~tree:"t" ~base:"b" ~target_branch:"main"
+       (Facts.index ~tree:"t" ~base:"b" ~default_branch:"main"
           ~manifest:"sinter.toml" ~tool:"v1"))
 
 module Gen = QCheck2.Gen

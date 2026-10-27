@@ -131,13 +131,13 @@ stay relative to the repository root.
 
 ### 3.1 Tables and key paths
 
-The top level of the manifest holds two keys, `spec` and `target`.
+The top level of the manifest holds two keys, `spec` and `default-branch`.
 They act on every part of Sinter. Every other key is in one of five
 tables, and each table holds the settings of one part of Sinter:
 
 | table | part of Sinter | what its settings decide |
 |---|---|---|
-| top level | every part | the version of the specifications; the target branch |
+| top level | every part | the version of the specifications; the default branch |
 | `[scan]` | the scanner | which files each pack reads; which test runners write the reports for its tests; which refs resolve |
 | `[check]` | findings | which facts can make findings; the tier of each built-in finding class |
 | `[plan]` | the plan check and promises | which changes need a plan step; where a promised declaration can be met |
@@ -171,7 +171,7 @@ the key (section 5).
 | key path | type | default | acts on | section | since |
 |---|---|---|---|---|---|
 | `spec` | string | absent: no version check | reading the manifest | 5 | 1.0 |
-| `target` | string | `"main"` | the base of a diff | 6 | 1.0 |
+| `default-branch` | string | `"main"` | the base of a diff | 6 | 1.0 |
 | `scan.packs.<name>.files` | path set | none: required for each pack | the scanner: the files of pack `<name>` | 8.1 | 1.0 |
 | `scan.packs.<name>.version` | string | none: required for each fetched pack; an error on `markdown` | the scanner: the release of pack `<name>` | 8.1 | 1.0 |
 | `scan.packs.<name>.runners` | array of strings: runner names | empty: the pack has no runner; an error on `markdown` | test evidence: the runners whose reports bind to the tests of pack `<name>` | 8.1 | 1.0 |
@@ -238,9 +238,10 @@ are equally near, the message suggests the first in byte order.
 
 **A key at the wrong place.** When an unknown key is a fixed name of
 another place in the layout, the message names that place. Example: a
-line `target = "trunk"` under the header `[evidence]` gives the key
-path `evidence.target`. The message says that `target` belongs at the
-top level, above the first table header.
+line `default-branch = "trunk"` under the header `[evidence]` gives the
+key path `evidence.default-branch`. The message says that
+`default-branch` belongs at the top level, above the first table
+header.
 
 **A wrong type.** A value of the wrong TOML type is an error. The
 message names the type that the key takes and the type that it found.
@@ -264,7 +265,7 @@ This list is informative.
 sinter: no sinter.toml at the repository root; create one, or name one with --manifest
 sinter: sinter.toml names no pack; add a line such as packs.markdown.files = ["**/*.md"] under [scan]
 sinter: sinter.toml:9:1: unknown key 'historic' in [check]; did you mean 'historical'?
-sinter: sinter.toml:14:1: 'target' belongs at the top level, above the first table header
+sinter: sinter.toml:14:1: 'default-branch' belongs at the top level, above the first table header
 sinter: sinter.toml:8:15: 'rollout-cap' takes true or false, not a string
 sinter: sinter.toml:4:1: the dotted key 'b.ct' adds a key to the table 'a.b', which a table header made; write 'ct' under the header [a.b]
 sinter: sinter.toml:1:8: this manifest needs specification 1.2, and this sinter implements 1.1; install a newer sinter
@@ -274,7 +275,7 @@ sinter: sinter.toml:12:1: 'config-changed' takes no tier; it always reports and 
 sinter: sinter.toml:13:1: 'scope-outside-plan' takes no tier at the gate 'target'
 sinter: sinter.toml:6:12: '.' is not in the id pattern language; put it in a class, for example [.]
 sinter: sinter.toml:6:12: the pattern matches an empty id
-sinter: no branch 'main' exists here or on origin; fetch it with git fetch origin main:refs/remotes/origin/main, or set 'target' in sinter.toml to the name of the main branch
+sinter: no branch 'main' exists here or on origin; fetch it with git fetch origin main:refs/remotes/origin/main, or set 'default-branch' in sinter.toml to the name of the default branch
 sinter: this clone is shallow, so the merge base of HEAD and the branch 'main' is not here; fetch the whole history with git fetch --unshallow origin main:refs/remotes/origin/main
 sinter: src/a.ts is in the files of two packs, typescript and javascript; add a '!' glob to one of them
 sinter: .plans/auth.md is under .plans/, and the pack markdown does not read it; add ".plans/" to its files
@@ -314,19 +315,19 @@ compares `spec` with its own version:
 
 `spec` yields no fact (section 14.1).
 
-## 6. The target branch: `target`
+## 6. The default branch: `default-branch`
 
-The **target branch** is the branch that work merges into. The key
-`target` names it. The default is `"main"`. `sinter init` writes the
-key only when the target branch is not `main`.
+The **default branch** is the branch that work merges into. The key
+`default-branch` names it. The default is `"main"`. `sinter init`
+writes the key only when the default branch is not `main`.
 
 The value must be a branch name: `refs/heads/<value>` must pass
 `git check-ref-format`, and the value must not start with `refs/`.
 
 A command that needs a base, and that has no `--base`, resolves the
-target branch to a commit. In the list below, `<branch>` is the value
-of `target`. The command tries these refs in order, and it takes the
-first that exists:
+default branch to a commit. In the list below, `<branch>` is the value
+of `default-branch`. The command tries these refs in order, and it
+takes the first that exists:
 
 1. `<branch>@{upstream}`: the branch that the local branch `<branch>`
    tracks.
@@ -334,20 +335,21 @@ first that exists:
 3. The remote branch `refs/remotes/origin/<branch>`.
 
 When none of the three exists, the command stops with exit code 3. The
-message says to fetch the branch, or to set `target` in the manifest.
+message says to fetch the branch, or to set `default-branch` in the
+manifest.
 
 The base of the diff is the merge base of `HEAD` and the commit of the
-target branch. When the two commits have no common ancestor, the
+default branch. When the two commits have no common ancestor, the
 command stops with exit code 3.
 
-When the repository is a shallow clone, and the target branch or the
+When the repository is a shallow clone, and the default branch or the
 merge base is not found, the command stops with exit code 3. The
 message says that the clone is shallow, and says to fetch the whole
 history.
 
 The plain output of `sinter status` and of `sinter check` names the
 base that the command used: the ref that resolved, and the commit of
-the base. The `index` record carries the base and the target branch
+the base. The `index` record carries the base and the default branch
 ([jsonl.md](jsonl.md) section 10).
 
 ## 7. Globs, path sets, and the file set
@@ -590,8 +592,8 @@ gates:
 | gate | where the check runs |
 |---|---|
 | `turn` | at the end of a turn of an agent, before the agent hands back its work |
-| `merge` | on a change before the change merges into the target branch, for example on a pull request |
-| `target` | on the target branch, after a merge |
+| `merge` | on a change before the change merges into the default branch, for example on a pull request |
+| `target` | on the default branch, after a merge |
 
 A **tier** says how hard a finding class bites at one gate:
 
@@ -782,7 +784,7 @@ them, except as the last column says.
 | historical paths | `.plans/**/*.log.md` | add paths |
 | ambient paths | each plan file, the manifest, `sinter.lock` | add paths |
 | the tier of each pair of a gate and a built-in class | algebra.md section 9 | write another tier |
-| the default of `target` | `"main"` | write another branch |
+| the default of `default-branch` | `"main"` | write another branch |
 | the default of `check.rollout-cap` | `false` | write `true` |
 | the default of `evidence.coverage-attribution` | `"optional"` | write `"required"` |
 
@@ -800,7 +802,7 @@ The manifest yields facts of the kind `setting`, in the category
   fact.
 - An array that the manifest writes yields one setting fact for each
   member.
-- Each of `target`, `check.rollout-cap`, and
+- Each of `default-branch`, `check.rollout-cap`, and
   `evidence.coverage-attribution` yields one setting fact with its
   default value when the manifest does not write it.
 - Each built-in member of `check.historical` and of `plan.ambient`
@@ -895,7 +897,7 @@ From each side, the adjudicator makes a **comparison set**. Each entry
 of the set has an id and a value, by the rules of sections 14.1 and
 14.2:
 
-1. one entry for each of `target`, `check.rollout-cap`, and
+1. one entry for each of `default-branch`, `check.rollout-cap`, and
    `evidence.coverage-attribution`: the written value, or the default;
 2. one entry for each other key that the side writes with one value;
    for a pair that `check.tiers` writes, the id is `gate:<gate>/<class>`
@@ -947,7 +949,7 @@ does not mean "reports more findings".
 
 | key path | strengthens | weakens | changes |
 |---|---|---|---|
-| `target` | | | each change |
+| `default-branch` | | | each change |
 | `scan.packs.<name>.files` | a plain glob added; a `!` glob removed | a plain glob removed; a `!` glob added | |
 | `scan.packs.<name>.version` | | | each change |
 | `scan.packs.<name>.runners` | | | each change |

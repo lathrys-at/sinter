@@ -136,7 +136,7 @@ Stored fingerprints want a write path, which is banned. OpenFastTrace's manual-r
 
 **The diff adjudicator closes exactly that gap:** the turn report or CI sees "extent changed, rev didn't" — flagged at hand-back, blocked at CI. Every extent edit needs a bump — there is no editorial escape hatch, because a self-reported "this didn't change meaning" is a second self-report channel to spot-check, and a typo-driven bump costs one emitted re-pin patch. Stateless, deterministic. A bump also un-approves the item until it is approved again (§6.4): one mechanism, two consequences.
 
-One collision statelessness cannot see locally: two branches each bump `v2`→`v3` with different meanings. Mitigation: PR CI checks out the host's merge ref — the branch as it would land — with `--base` at the *live target tip*, never a stale merge base, so the second branch lands as "extent changed, rev didn't"; approved items are further covered by the ledger's extent hash (same rev, different bytes → unapproved). The residual exposure on unapproved items is the price of statelessness, filed.
+One collision statelessness cannot see locally: two branches each bump `v2`→`v3` with different meanings. Mitigation: PR CI checks out the host's merge ref — the branch as it would land — with `--base` at the *live tip of the default branch*, never a stale merge base, so the second branch lands as "extent changed, rev didn't"; approved items are further covered by the ledger's extent hash (same rev, different bytes → unapproved). The residual exposure on unapproved items is the price of statelessness, filed.
 
 ### 3.6 Retirement & Propagation
 
@@ -264,7 +264,7 @@ Plans must be refactorable on the fly *and* harder to loosen than code — other
 
 Death is a **ledger fact, never a file event.** A plan dies `completed` or `abandoned` (§6.7); the file stays where it is. There is no deletion to orchestrate, no merge commit to edit, no host-specific machinery — this used to be the hardest section in the document and is now bookkeeping.
 
-The **death gate** is unchanged in substance: a plan may only be completed when everything it promised has become static fact. Enforcement sits at the merge gate — `status --done`, run where evidence exists (PR CI, the merge queue, or whoever merges). What *writes* the entry is main CI: on every push to the target branch it finds in-force plans now on main — merged, in other words — checks each against the **completion condition** — every promise is met: declarations present, edges present and neither dangling nor suspect, `@verifies` edges at `passing` (or allowed `unmeasured`) when main's job measures, at any rung when it does not (§12.8; rung enforcement already happened at the merge gate) — and appends its `completed` entry, recording the merge commit and the hash of the report compiled at completion. An in-force plan on main that *fails* the condition is the `merged-incomplete` finding, blocking: someone merged half a plan, and the honest exits are an approved shrink (§6.2) or reverting the merge. The writer is idempotent bookkeeping — the plan's approvals and the tree are the evidence — so a lost CI run costs a retry, not truth. (The job needs push rights to `refs/sinter/ledger`.)
+The **death gate** is unchanged in substance: a plan may only be completed when everything it promised has become static fact. Enforcement sits at the merge gate — `status --done`, run where evidence exists (PR CI, the merge queue, or whoever merges). What *writes* the entry is main CI: on every push to the default branch it finds in-force plans now on main — merged, in other words — checks each against the **completion condition** — every promise is met: declarations present, edges present and neither dangling nor suspect, `@verifies` edges at `passing` (or allowed `unmeasured`) when main's job measures, at any rung when it does not (§12.8; rung enforcement already happened at the merge gate) — and appends its `completed` entry, recording the merge commit and the hash of the report compiled at completion. An in-force plan on main that *fails* the condition is the `merged-incomplete` finding, blocking: someone merged half a plan, and the honest exits are an approved shrink (§6.2) or reverting the merge. The writer is idempotent bookkeeping — the plan's approvals and the tree are the evidence — so a lost CI run costs a retry, not truth. (The job needs push rights to `refs/sinter/ledger`.)
 
 A plan **not in force** — dead — is exempt from everything: its facts generate no findings (§12.8), it holds no claim, contributes no scope, and is skipped by the active-plan rule. Plan slugs are permanent, like decision slugs — reuse is a `duplicate` — so `compile residual-plan` emits its skeleton under a successor slug. Liveness is a ledger read: without the ledger ref every plan reads live, which `status` flags loudly (fetch the ledger). What this leaves on main is deliberate: the plan and its journal beside the facts they produced, with the ledger saying who approved it, what it promised, and when it stopped being an agreement.
 
@@ -354,7 +354,7 @@ The system does not model pipelines and does not care whether an obligation is c
 
 **Adjudication is layered**, fast/local → authoritative, all installed by `init` (§11). Hooks, the CLI, and CI share one adjudication library, and **the local tiers inform; only CI blocks.** A position, not a concession: in-loop interception — denying tool calls, seizing turn-ends — is enforcement aimed at the agent's hands, and what it trains under pressure is bypass. Enforcement belongs at the merge boundary, which cannot be talked past, and in the workflow of whoever orchestrates the session — a human, or a lead agent running workers — consuming the same deterministic report CI will recompute. What the tool contributes is that the report is seconds-fast, identical at every tier, and derived from artifacts alone; a hand-edit meets the same adjudication as an agent edit.
 
-**One diff, adjudicated at several moments.** Every gate evaluates the working tree against the same **base**: the merge-base of `HEAD` and the manifest's target branch (`main` by default), overridable with `--base`. The working tree is always "now," uncommitted and untracked files included. Hooks, pre-commit, `sinter check`, and PR CI therefore see the same findings, differing only in when they look and which tiers they consult — pre-commit runs the turn tiers, and PR CI is the one variation in *what* it sees: it evaluates the host's merge ref with `--base` at the target tip (§3.5), so the diff is exactly the branch's contribution as it would land. Diff mode (`--diff`) reports the findings the diff *introduced*: those whose identity (§13.6) does not appear in the base tree's finding set. Intersecting with touched facts, as v13 said, would miss a citation nobody touched whose target was deleted.
+**One diff, adjudicated at several moments.** Every gate evaluates the working tree against the same **base**: the merge-base of `HEAD` and the manifest's default branch (`main` by default), overridable with `--base`. The working tree is always "now," uncommitted and untracked files included. Hooks, pre-commit, `sinter check`, and PR CI therefore see the same findings, differing only in when they look and which tiers they consult — pre-commit runs the turn tiers, and PR CI is the one variation in *what* it sees: it evaluates the host's merge ref with `--base` at the tip of the default branch (§3.5), so the diff is exactly the branch's contribution as it would land. Diff mode (`--diff`) reports the findings the diff *introduced*: those whose identity (§13.6) does not appear in the base tree's finding set. Intersecting with touched facts, as v13 said, would miss a citation nobody touched whose target was deleted.
 
 - **PostToolUse** (surfaces): parse and validation failures on the just-edited file, seconds after writing, plus a note when the edit landed outside the active step's scope. Parse errors degrade toward *stricter* findings, never silent holes — an unparsed `@verifies` is an absent edge — which makes fast parse feedback load-bearing. Only file-path-bearing tools (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`) yield a just-edited file; shell writes surface at the next turn report, which re-derives everything from the actual diff.
 - **The turn report** (`check --diff --gate turn`) is the hand-back contract: what an orchestrator runs before accepting a worker's turn, a human before walking away, an agent before calling itself done — its exit code is what a workflow gates on. Its block tier marks **violations, never incompleteness.** Violations are states the tree must never be *left* in: a missing rev bump, dangling citations, out-of-plan work (every hunk maps onto a step or a triggered rule's scope), rule obligations triggered by artifacts touched this turn, claims-vs-evidence divergence. Incompleteness — unmet promises, untraced items — is never a violation; it is enforced solely by the death gate. An agent that cannot honestly hand back "not done yet" is an agent being trained to fabricate doneness — which is why nothing mechanical seizes the turn: the report is addressed to whoever accepts it.
@@ -415,7 +415,7 @@ Not a menu, not Datalog: a Bazel-sized algebra over the fact stream, specified i
 The surface is specified as the help text itself. Conventions that apply to every verb:
 
 - **Repo discovery.** Every verb runs from anywhere inside a git worktree; the repo root is `git rev-parse --show-toplevel` and the manifest is `sinter.toml` there. Nothing is looked up in the home directory except the pack cache.
-- **Base.** `--base <rev>` is accepted by every verb that reads the diff. Default: `git merge-base HEAD <target>` where `<target>` is `manifest.target` (`main`). The working tree is always "now."
+- **Base.** `--base <rev>` is accepted by every verb that reads the diff. Default: `git merge-base HEAD <branch>` where `<branch>` is the manifest's `default-branch` (`main`). The working tree is always "now."
 - **Output is deterministic.** Line output is sorted by `(kind, path, line, col, id)`. JSONL is canonical (§13.1). Two runs on the same tree, base, ledger, and evidence produce identical bytes.
 - **Exit codes** are shared: `0` clean/success · `1` findings present (or plan not done under `status --done`) · `2` usage error · `3` environment error (manifest invalid, pack missing or hash mismatch, git unavailable, parse error in a governed file when `--strict-parse`) · `4` refused (`approve`, `decline`, or `ledger abandon` without a tty or under a harness marker; ledger not fast-forward; revision taken). A hook translates these into its harness's protocol (§11.18).
 - **Line format** for findings, used by `check`, `status`, `query` when the result contains findings, and hook stderr:
@@ -464,7 +464,7 @@ COMMANDS
 GLOBAL OPTIONS
   -C <dir>            Run as if started in <dir>
   --manifest <path>   Manifest path (default: <repo>/sinter.toml)
-  --base <rev>        Diff base (default: merge-base of HEAD and manifest target)
+  --base <rev>        Diff base (default: merge-base of HEAD and the default branch)
   --json              JSON Lines on stdout; one fact per line (see: sinter scan --help)
   --color <when>      auto | always | never  (also honors NO_COLOR)
   -q, --quiet         Findings only; no progress, hints, or health lines
@@ -1146,7 +1146,7 @@ EXAMPLES
 sinter init — install the integration the design assumes
 
 USAGE
-  sinter init [--hook <harness>]... [--ci <host>] [--target <branch>]
+  sinter init [--hook <harness>]... [--ci <host>] [--default-branch <branch>]
              [--check] [--yes] [--print]
 
   Idempotent. Writes only what is missing; reports drift in what exists and
@@ -1165,9 +1165,10 @@ USAGE
                                  UserPromptSubmit is offered, off by
                                  default)
     <ci workflows>               PR job, on the host's merge ref with
-                                 --base at the target tip (§3.5): check
-                                 --diff --gate pr, evidence import, report
-                                 as a comment, SARIF upload. The test-run
+                                 --base at the tip of the default branch
+                                 (§3.5): check --diff --gate pr, evidence
+                                 import, report as a comment, SARIF
+                                 upload. The test-run
                                  line is the repo's own bash: init writes a
                                  marked RUN-TESTS step it cannot fill,
                                  seeded with each pack's suggested
@@ -1185,7 +1186,8 @@ USAGE
 OPTIONS
   --hook <harness>   claude-code (others by PR to the harness table)
   --ci <host>        github | gitlab
-  --target <branch>  Target branch for base computation (default: main)
+  --default-branch <branch>
+                     Default branch for base computation (default: main)
   --check            Write nothing; exit 1 if anything is missing or drifted
   --yes              Accept defaults without prompting
   --print            Print what would be written, to stdout, and stop
@@ -1474,7 +1476,7 @@ Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameter
 | `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient`; *engine* also exempts hunks that are wholly the tool's own medicine — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable iff the rule's `expect` is `acked`; a rule's `tiers` overrides the class's | tree | A* | · | warn, block, block |
 | `law-touched` | law | `kind(rule\|gate) ^ changed(base)` — non-disableable; always reported, never blocks | diff | · | · | warn, warn, warn |
-| `merged-incomplete` | plan | *engine*: an in-force plan on the target branch failing the §6.3 completion condition — merged incomplete; a plan meeting it is completed by main CI, not a finding | tree | · | · | —, —, block |
+| `merged-incomplete` | plan | *engine*: an in-force plan on the default branch failing the §6.3 completion condition — merged incomplete; a plan meeting it is completed by main CI, not a finding | tree | · | · | —, —, block |
 | `ledger-broken` | ledger | *engine*: `ledger verify` fails | tree | · | · | —, —, block |
 | `pack-mismatch` | pack | *engine*: a pinned pack's hash does not match the cache | tree | · | · | exit 3 everywhere |
 
@@ -1878,7 +1880,7 @@ The consequences: renaming steps is free (clause 3 matches by promise, not by st
 |---|---|---|
 | `tree` | string | tree key |
 | `base` | string | resolved base revision |
-| `target` | string | target branch |
+| `default_branch` | string | default branch |
 | `ledger` | string | ledger tip commit; omitted if the ref is absent |
 | `evidence` | bool | whether evidence exists for `tree` |
 | `packs` | array of string | `name@version#hash`, from `sinter.lock` |
@@ -1963,7 +1965,7 @@ tiers   = { pr = "warn" }
 
 | key | default | meaning |
 |---|---|---|
-| `target` | `"main"` | branch whose merge-base is the default `--base` |
+| `default-branch` | `"main"` | branch whose merge-base is the default `--base` |
 | `brief.budget` | `12000` | bytes; the turn-level brief uses a quarter of it |
 | `brief.why_budget` | `2000` | bytes; the origin-decision extent attached to an `unmet-rule` block (§7) |
 | `evidence.require_attribution` | `false` | `true`: rung `unmeasured` never meets a `@verifies` promise |

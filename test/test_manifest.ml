@@ -27,7 +27,9 @@ let the_smallest_manifest_takes_every_default () =
   Alcotest.(check (option string))
     "spec" None
     (Option.map Major_minor.to_string (Manifest.spec manifest));
-  Alcotest.(check string) "target" "main" (Manifest.target manifest);
+  Alcotest.(check string)
+    "default-branch" "main"
+    (Manifest.default_branch manifest);
   Alcotest.(check bool) "rollout-cap" false (Manifest.rollout_cap manifest);
   Alcotest.(check bool)
     "coverage-attribution" true
@@ -340,10 +342,11 @@ let every_location_kind_reads () =
        (fun kind -> Option.map members (Manifest.location manifest kind))
        Manifest.[ Req; Design; Decision; Plan ])
 
-let a_target_branch_reads () =
+let a_default_branch_reads () =
   Alcotest.(check string)
-    "target" "release/1.0"
-    (Manifest.target (read ("target = \"release/1.0\"\n" ^ markdown)))
+    "default-branch" "release/1.0"
+    (Manifest.default_branch
+       (read ("default-branch = \"release/1.0\"\n" ^ markdown)))
 
 let an_empty_array_is_an_absent_key () =
   let manifest =
@@ -474,6 +477,10 @@ let unknown_keys () =
   reports "a tie goes to the first name in byte order" "[plan]\nshare = []\n"
     [ "sinter.toml:2:1: unknown key 'share' in [plan]; did you mean 'shared'?" ]
 
+let an_old_name_is_an_unknown_name () =
+  reports "target" "target = \"trunk\"\n"
+    [ "sinter.toml:1:1: unknown key 'target' at the top level" ]
+
 let a_name_with_a_control_character_is_escaped () =
   reports "an unknown key" "\"a\\nb\" = 1\n"
     [ "sinter.toml:1:1: unknown key \"a\\nb\" at the top level" ];
@@ -493,10 +500,11 @@ let a_name_with_a_control_character_is_escaped () =
     ]
 
 let keys_at_the_wrong_place () =
-  reports "a top-level key under a table" "[evidence]\ntarget = \"trunk\"\n"
+  reports "a top-level key under a table"
+    "[evidence]\ndefault-branch = \"trunk\"\n"
     [
-      "sinter.toml:2:1: 'target' belongs at the top level, above the first \
-       table header";
+      "sinter.toml:2:1: 'default-branch' belongs at the top level, above the \
+       first table header";
     ];
   reports "a table under another table" "[plan]\ncheck = 1\n"
     [
@@ -527,14 +535,17 @@ let wrong_types () =
     [ "sinter.toml:1:8: 'scan' takes a table, not an integer" ];
   reports "an array of tables for a table" "[[check]]\n"
     [ "sinter.toml:1:3: 'check' takes a table, not an array of tables" ];
-  reports "a table for a string" "[target]\n"
-    [ "sinter.toml:1:2: 'target' takes a string, not a table" ];
+  reports "a table for a string" "[default-branch]\n"
+    [ "sinter.toml:1:2: 'default-branch' takes a string, not a table" ];
   reports "a string for an array" "[check]\nhistorical = \"docs/\"\n"
     [ "sinter.toml:2:14: 'historical' takes an array of strings, not a string" ];
   reports "a float, a date, and a boolean"
-    "target = 1.5\n[check]\nrollout-cap = 1979-05-27\nhistorical = [true]\n"
+    "default-branch = 1.5\n\
+     [check]\n\
+     rollout-cap = 1979-05-27\n\
+     historical = [true]\n"
     [
-      "sinter.toml:1:10: 'target' takes a string, not a float";
+      "sinter.toml:1:18: 'default-branch' takes a string, not a float";
       "sinter.toml:3:15: 'rollout-cap' takes true or false, not a date or a \
        time";
       "sinter.toml:4:15: 'historical' takes an array of strings, and this \
@@ -639,22 +650,22 @@ let names_that_vary () =
     ]
 
 let values () =
-  reports "a target that is not a branch name"
-    ("target = \"a..b\"\n" ^ markdown)
+  reports "a default branch that is not a branch name"
+    ("default-branch = \"a..b\"\n" ^ markdown)
     [
-      "sinter.toml:1:12: \"a..b\" is not a branch name; a branch name cannot \
+      "sinter.toml:1:20: \"a..b\" is not a branch name; a branch name cannot \
        hold '..'";
     ];
   reports "a column counts code points"
-    ("target = \"\xc3\xa9..b\"\n" ^ markdown)
+    ("default-branch = \"\xc3\xa9..b\"\n" ^ markdown)
     [
-      "sinter.toml:1:12: \"\xc3\xa9..b\" is not a branch name; a branch name \
+      "sinter.toml:1:20: \"\xc3\xa9..b\" is not a branch name; a branch name \
        cannot hold '..'";
     ];
   reports "an escape puts the error at the string"
-    ("target = \"a\\u002e.b\"\n" ^ markdown)
+    ("default-branch = \"a\\u002e.b\"\n" ^ markdown)
     [
-      "sinter.toml:1:10: \"a..b\" is not a branch name; a branch name cannot \
+      "sinter.toml:1:18: \"a..b\" is not a branch name; a branch name cannot \
        hold '..'";
     ];
   reports "globs, packs, and patterns"
@@ -825,8 +836,8 @@ let the_example_messages_of_the_specification () =
   in
   check "[check]\nhistoric = 1\n"
     "unknown key 'historic' in [check]; did you mean 'historical'?";
-  check "[evidence]\ntarget = \"trunk\"\n"
-    "'target' belongs at the top level, above the first table header";
+  check "[evidence]\ndefault-branch = \"trunk\"\n"
+    "'default-branch' belongs at the top level, above the first table header";
   check "[check]\nrollout-cap = \"x\"\n"
     "'rollout-cap' takes true or false, not a string";
   check "[scan.packs.markdown]\nfiles = [\"a\"]\nversion = \"1.0\"\n"
@@ -972,13 +983,17 @@ let a_runner_can_take_the_name_of_another_place () =
       (markdown
      ^ "packs.ts.files = [\"a\"]\n\
         packs.ts.version = \"1.0\"\n\
-        packs.ts.runners = [\"check\", \"target\", \"refs\"]\n\
+        packs.ts.runners = [\"check\", \"default-branch\", \"refs\"]\n\
         packs.ts.check.mode = 1\n\
-        packs.ts.target = {}\n")
+        packs.ts.default-branch = {}\n")
   in
   Alcotest.(check (list string))
     "the runners"
-    [ "check 5:21-5:28 mode@6:16=1"; "target 5:30-5:38"; "refs 5:40-5:46" ]
+    [
+      "check 5:21-5:28 mode@6:16=1";
+      "default-branch 5:30-5:46";
+      "refs 5:48-5:54";
+    ]
     (runners_of manifest "ts")
 
 let ts = "packs.ts.files = [\"a\"]\npacks.ts.version = \"1.0\"\n"
@@ -1201,14 +1216,16 @@ let a_runner_message_stays_on_one_line () =
     (message (Manifest.Bad_runner_name "Files"))
 
 let newer_keys_names_each_key_newer_than_spec () =
-  match Toml.parse "target = \"a\"\n[check]\nrollout-cap = true\nfoo = 1\n" with
+  match
+    Toml.parse "default-branch = \"a\"\n[check]\nrollout-cap = true\nfoo = 1\n"
+  with
   | Error _ -> Alcotest.fail "the text does not parse"
   | Ok document ->
       Alcotest.(check (list string))
         "the keys newer than 0.9"
         [
-          "s:1:1: 'target' needs specification 1.0, and the manifest states \
-           spec = \"0.9\"; write spec = \"1.0\"";
+          "s:1:1: 'default-branch' needs specification 1.0, and the manifest \
+           states spec = \"0.9\"; write spec = \"1.0\"";
           "s:3:1: 'check.rollout-cap' needs specification 1.0, and the \
            manifest states spec = \"0.9\"; write spec = \"1.0\"";
         ]
@@ -1381,8 +1398,8 @@ let line =
       "[[check]]";
       "spec = \"1.0\"";
       "spec = \"9.0\"";
-      "target = \"main\"";
-      "target = \"a..b\"";
+      "default-branch = \"main\"";
+      "default-branch = \"a..b\"";
       "packs.markdown.files = [\"**/*.md\"]";
       "packs.ocaml.files = [\"**/*.ml\"]";
       "packs.ocaml.version = \"1.0\"";
@@ -1482,7 +1499,7 @@ let settings =
     let globs = some_of [ "docs/"; "a/**/b"; "*.md"; "x" ] in
     let pairs =
       [
-        oneof_list [ []; [ ([ "target" ], "\"trunk\"") ] ];
+        oneof_list [ []; [ ([ "default-branch" ], "\"trunk\"") ] ];
         return
           [
             ( [ "scan"; "packs"; "markdown"; "files" ],
@@ -1596,7 +1613,7 @@ let render_inline settings =
 let summary manifest =
   String.concat "\n"
     ([
-       Manifest.target manifest;
+       Manifest.default_branch manifest;
        string_of_bool (Manifest.rollout_cap manifest);
        String.concat "," (members (Manifest.historical manifest));
        String.concat "," (members (Manifest.ambient manifest));
@@ -1653,12 +1670,12 @@ let runner_pool =
     "go-test";
     "r2";
     "check";
-    "target";
+    "default-branch";
     "plan";
   ]
 
 let pack_pool = [ "c"; "go"; "ocaml"; "rust"; "typescript" ]
-let setting_keys = [ "mode"; "args"; "files"; "target"; "rollout-cap" ]
+let setting_keys = [ "mode"; "args"; "files"; "default-branch"; "rollout-cap" ]
 
 let setting_values =
   [
@@ -2088,7 +2105,7 @@ let tests =
     case "harness markers keep their order" harness_markers_keep_their_order;
     case "approval kinds keep their order" approval_kinds_keep_their_order;
     case "every location kind reads" every_location_kind_reads;
-    case "a target branch reads" a_target_branch_reads;
+    case "a default branch reads" a_default_branch_reads;
     case "an empty array is an absent key" an_empty_array_is_an_absent_key;
     case "every form of TOML means the same" every_form_of_toml_means_the_same;
     case "a syntax error reports the TOML reader"
@@ -2096,6 +2113,7 @@ let tests =
     case "spec errors" spec_errors;
     case "the version comes before the names" the_version_comes_before_the_names;
     case "unknown keys" unknown_keys;
+    case "an old name is an unknown name" an_old_name_is_an_unknown_name;
     case "a name with a control character is escaped"
       a_name_with_a_control_character_is_escaped;
     case "keys at the wrong place" keys_at_the_wrong_place;

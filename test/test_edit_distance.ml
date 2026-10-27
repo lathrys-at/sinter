@@ -141,7 +141,9 @@ let long_names_answer_quickly () =
     (Edit_distance.distance (String.make 2000 'x') (String.make 20 'y'));
   nearest "a name of 100000 characters" None
     (Edit_distance.nearest (String.make 100_000 'x')
-       [ "check"; "evidence"; "ledger"; "plan"; "scan"; "spec"; "target" ])
+       [
+         "check"; "evidence"; "ledger"; "plan"; "scan"; "spec"; "default-branch";
+       ])
 
 let nearest_breaks_a_tie_by_byte_order () =
   nearest "tier is one edit from both" (Some "tied")

@@ -7,8 +7,8 @@
 (** A point where Sinter checks a repository. *)
 type gate =
   | Turn  (** at the end of a turn of an agent *)
-  | Merge  (** on a change before it merges into the target branch *)
-  | Target  (** on the target branch, after a merge *)
+  | Merge  (** on a change before it merges into the default branch *)
+  | Target  (** on the default branch, after a merge *)
 
 (** How hard a finding class bites at one gate. *)
 type tier =

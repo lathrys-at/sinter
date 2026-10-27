@@ -228,12 +228,12 @@ val standing : t -> plan -> step -> promise -> standing
 val index :
   tree:string ->
   base:string ->
-  target_branch:string ->
+  default_branch:string ->
   manifest:string ->
   tool:string ->
   Jsonl.record
-(** [index ~tree ~base ~target_branch ~manifest ~tool] is the header record of a
-    scan in tree mode, for a repository with no ledger ref, no evidence, and no
-    fetched pack. [tree] is the tree key, [base] the object id of the base
+(** [index ~tree ~base ~default_branch ~manifest ~tool] is the header record of
+    a scan in tree mode, for a repository with no ledger ref, no evidence, and
+    no fetched pack. [tree] is the tree key, [base] the object id of the base
     commit, [manifest] the path of the manifest, and [tool] the version of the
     tool. *)

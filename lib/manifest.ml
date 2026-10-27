@@ -9,7 +9,7 @@ let settings =
       (String.split_on_char '.' path, Major_minor.make major minor))
     [
       ("spec", 1, 0);
-      ("target", 1, 0);
+      ("default-branch", 1, 0);
       ("scan.packs.<name>.files", 1, 0);
       ("scan.packs.<name>.version", 1, 0);
       ("scan.packs.<name>.runners", 1, 0);
@@ -343,7 +343,7 @@ type pack = {
 
 type t = {
   spec : Major_minor.t option;
-  target : string;
+  default_branch : string;
   packs : pack list;
   refs : (string * Id_pattern.t) list;
   rollout_cap : bool;
@@ -360,7 +360,7 @@ type t = {
 type reading = {
   mutable names_errors : (Toml.position * problem) list;
   mutable value_errors : (Toml.position * problem) list;
-  mutable target : string option;
+  mutable default_branch : string option;
   mutable pack_keys : (string * Toml.position) list;
   mutable files : (string * Path_set.t option) list;
   mutable versions : (string * Major_minor.t option) list;
@@ -632,11 +632,11 @@ let tier_place reading gate =
 let layout reading =
   [
     ("spec", Text (fun _ _ -> ()));
-    ( "target",
+    ( "default-branch",
       Text
         (fun node value ->
           match Branch_name.check value with
-          | Ok () -> reading.target <- Some value
+          | Ok () -> reading.default_branch <- Some value
           | Error error ->
               value_error reading
                 (inside node (Branch_name.error_offset error))
@@ -883,7 +883,7 @@ let new_reading () =
   {
     names_errors = [];
     value_errors = [];
-    target = None;
+    default_branch = None;
     pack_keys = [];
     files = [];
     versions = [];
@@ -980,7 +980,8 @@ let of_string text =
                 Ok
                   {
                     spec;
-                    target = Option.value reading.target ~default:"main";
+                    default_branch =
+                      Option.value reading.default_branch ~default:"main";
                     packs;
                     refs = List.sort compare reading.refs;
                     rollout_cap = reading.rollout_cap;
@@ -1012,7 +1013,7 @@ let load path =
       | Error errors -> Error (Invalid errors))
 
 let spec (manifest : t) = manifest.spec
-let target (manifest : t) = manifest.target
+let default_branch (manifest : t) = manifest.default_branch
 let packs (manifest : t) = manifest.packs
 let ref_namespaces (manifest : t) = manifest.refs
 let rollout_cap (manifest : t) = manifest.rollout_cap

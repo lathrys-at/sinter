@@ -109,7 +109,7 @@ type problem =
   | Wrong_member_type of { key : string list; found : Toml.Kind.t }
       (** a member of an array of strings that is not a string *)
   | Not_a_branch of { name : string; error : Branch_name.error }
-      (** the value of [target] *)
+      (** the value of [default-branch] *)
   | Bad_glob of { member : string; error : Glob.error }
       (** a member of a path set that is not a glob, or not [!] and a glob *)
   | Repeated_member of { key : string list; member : string }
@@ -207,9 +207,9 @@ val load : string -> (t, load_error) result
 val spec : t -> Major_minor.t option
 (** [spec manifest] is the version that [spec] states, or [None]. *)
 
-val target : t -> string
-(** [target manifest] is the target branch: the value of [target], or ["main"].
-*)
+val default_branch : t -> string
+(** [default_branch manifest] is the default branch: the value of
+    [default-branch], or ["main"]. *)
 
 val packs : t -> pack list
 (** [packs manifest] is the packs, sorted by name in byte order. The list is

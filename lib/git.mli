@@ -2,8 +2,8 @@
 (* Copyright 2026 The Sinter Authors *)
 
 (** Read a git repository: the files of the working tree and of a commit, the
-    target branch, the merge base, the diff, and the tree key. The functions run
-    the [git] executable as a child process. They need git 2.30 or later.
+    default branch, the merge base, the diff, and the tree key. The functions
+    run the [git] executable as a child process. They need git 2.30 or later.
 
     A path is relative to the root of the working tree, with [/] between its
     parts, as git prints it with the option [-z]. A path is a string of bytes,
@@ -28,7 +28,7 @@ type error =
   | Bad_revision of string
       (** the string names no commit, or no object of the kind that the function
           reads *)
-  | Target_not_found of string
+  | Default_branch_not_found of string
       (** no branch of the string's name gives a commit *)
   | No_merge_base of string * string
       (** the two revisions have no common ancestor *)
@@ -143,27 +143,27 @@ val fold_blobs :
     blob, [f] has seen each id in front of it. An exception that [f] raises
     passes through, after the git process ends. *)
 
-(** {1 Target branch and merge base} *)
+(** {1 Default branch and merge base} *)
 
-(** The rule that found the target branch. *)
+(** The rule that found the default branch. *)
 type source =
   | Upstream  (** the branch that the local branch of the name tracks *)
   | Local_branch  (** the local branch of the name *)
   | Origin_branch  (** the branch of the name on the remote [origin] *)
 
-type target = {
+type default_branch = {
   source : source;
   refname : string;
       (** the full name of the ref that gave the commit, for example
           ["refs/remotes/origin/main"] *)
   commit : string;  (** the object id of the commit *)
 }
-(** The target branch, and the commit at its tip. *)
+(** The default branch, and the commit at its tip. *)
 
-val resolve_target : t -> string -> (target, error) result
-(** [resolve_target repo name] is the target branch of the name [name], for
-    example ["main"]. The function looks at three refs, in order, and takes the
-    first that points at a commit:
+val resolve_default_branch : t -> string -> (default_branch, error) result
+(** [resolve_default_branch repo name] is the default branch of the name [name],
+    for example ["main"]. The function looks at three refs, in order, and takes
+    the first that points at a commit:
 
     + the upstream of the local branch [refs/heads/<name>], which
       [<name>@{upstream}] names: the ref that the configuration of the branch
@@ -175,8 +175,8 @@ val resolve_target : t -> string -> (target, error) result
     characters such as [*], have no meaning in it. A ref that points at an
     object other than a commit, such as an annotated tag, does not count.
 
-    The error is [Target_not_found name] when none of the three refs points at a
-    commit, and when [name] holds a NUL byte. *)
+    The error is [Default_branch_not_found name] when none of the three refs
+    points at a commit, and when [name] holds a NUL byte. *)
 
 val merge_base : t -> string -> string -> (string, error) result
 (** [merge_base repo a b] is the object id of the merge base of the commits that
