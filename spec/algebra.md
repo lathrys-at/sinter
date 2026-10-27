@@ -557,9 +557,15 @@ working tree. Each removed line and each added line of the hunk must
 be a tag line. Each removed or added `@ack` line is one edit. The
 other removed lines and added lines must be equal in number. The first
 removed line pairs with the first added line, and so on. The two tags
-of each pair must differ only in the parts that one of the edits
-above changes. The rest of each line of the pair, the inline
-description, must be equal.
+of each pair must differ by exactly one of the edits above. The added
+tag must be the tag that the fix of that edit writes, by the facts of
+the working tree and, for `renamed`, of the base tree. For example, a
+re-pin and a revision added to a citation must write the current
+revision of the target, and the retarget of `renamed` must name the
+declaration that has the extent hash of the tombstone. One exception:
+a bump of a declaration can write any higher revision. The column of
+the `@` and the rest of each line of the pair, the inline description,
+must be equal.
 
 ## 10. Evaluation, ordering, and errors
 
