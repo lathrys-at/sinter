@@ -290,6 +290,12 @@ let check_cmd =
         "Some checks compare the working tree with a base commit. The command \
          prints the base on standard error, or, with $(b,--json), in the first \
          record. Warnings also go to standard error.";
+      `P
+        "With $(b,--diff), the command reports only the findings that the \
+         changes since the base add. It checks the base with the same \
+         manifest, and leaves out each finding that the base already has. A \
+         finding whose lines moved, and whose text the changes did not touch, \
+         counts as one that the base has.";
     ]
   in
   let exits_doc =
@@ -310,6 +316,10 @@ let check_cmd =
       `P
         "Report the findings that matter before a merge, and exit with code 1 \
          when one of them blocks. Run this in CI on a pull request.";
+      `Pre "  sinter check --diff --gate review";
+      `P
+        "Report only the findings that the changes since the base add, for \
+         example on a pull request in a repository that has findings already.";
       `Pre "  sinter check --json";
       `P "Print the findings as JSON, for a program to read.";
     ]
@@ -361,12 +371,21 @@ let check_cmd =
     in
     Arg.(value & flag & info [ "json" ] ~doc)
   in
+  let diff =
+    let doc =
+      "Report only the findings that the changes since the base add, and not \
+       those that the base already has."
+    in
+    Arg.(value & flag & info [ "diff" ] ~doc)
+  in
   let report lines = List.iter (Printf.eprintf "sinter: %s\n") lines in
-  let run manifest base gate strict json =
+  let run manifest base diff gate strict json =
     with_phases @@ fun phases ->
     match
       Sinter_core.Check.run ?phases ~env:(Unix.environment ())
-        ~dir:(Sys.getcwd ()) ~manifest ~base ~gate ~strict
+        ~dir:(Sys.getcwd ()) ~manifest ~base
+        ~mode:(if diff then Sinter_core.Mode.Diff else Sinter_core.Mode.Tree)
+        ~gate ~strict
         ~format:
           (if json then Sinter_core.Check.Json else Sinter_core.Check.Text)
         ~tool:version ()
@@ -389,7 +408,7 @@ let check_cmd =
           report [ Printf.sprintf "cannot write the output: %s" message ];
           environment_error)
   in
-  Cmd.v info Term.(const run $ manifest $ base $ gate $ strict $ json)
+  Cmd.v info Term.(const run $ manifest $ base $ diff $ gate $ strict $ json)
 
 let cmd =
   let doc = "a linter for keeping your specs, plans, and code in sync" in

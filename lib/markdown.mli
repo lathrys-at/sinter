@@ -54,8 +54,9 @@ val close : reader -> unit
 type heading = {
   text : string;
       (** the heading text: the line without its opening [#] characters and the
-          indentation before them, without its closing sequence, and without the
-          spaces and tabs at both ends *)
+          indentation before them, without its closing sequence, without the
+          spaces and tabs at both ends, and then without the section number at
+          its start ({!Section_number}) *)
   slug : string;
       (** [text] with each ASCII letter made lowercase, each run of other
           characters than ASCII letters and digits made one [-], and the [-] at
@@ -95,7 +96,10 @@ type node =
 type extent = {
   first : int;  (** the first line of the extent *)
   last : int;  (** the last line of the extent, never a blank line *)
-  hash : string;  (** the extent hash, as 64 lowercase hexadecimal digits *)
+  hash : string;
+      (** the extent hash, as 64 lowercase hexadecimal digits. On each heading
+          line that opens a section, the hash leaves out the section number of
+          the heading text, with the spaces and tabs after it. *)
 }
 (** The extent of a declaration. *)
 

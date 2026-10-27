@@ -23,3 +23,7 @@ val tree :
 
     With [phases], it counts the phases [facts] ({!Facts.make}) and [findings]
     (the rest). *)
+
+val of_facts : Facts.t -> not_text:(string * int) list -> Finding.t list
+(** [of_facts facts ~not_text] is {!tree} of the manifest and the files of
+    [facts], with no phase. It builds no facts. *)

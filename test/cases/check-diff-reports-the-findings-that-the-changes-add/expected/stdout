@@ -1,0 +1,11 @@
+docs/added.md:3:1: dangling cites:site:docs/added.md#a->ghost no declaration has the slug ghost
+docs/binary.md:3:1: typo-tag line:docs/binary.md@L3 @revs is not a tag word of sinter
+  fix: @req
+docs/binary.md:4:1: parse-error file:docs/binary.md@L4C1 the markdown parser cannot read the text here
+docs/changed.md:3:1: typo-tag line:docs/changed.md@L3 @revs is not a tag word of sinter
+  fix: @req
+docs/guide.md:8:1: dangling cites:site:docs/guide.md#new-section->missing-two no declaration has the slug missing-two
+docs/guide.md:14:1: typo-tag line:docs/guide.md@L14 @verifie is not a tag word of sinter
+  fix: @verifies
+docs/moved-to.md:3:1: typo-tag line:docs/moved-to.md@L3 @revs is not a tag word of sinter
+  fix: @req

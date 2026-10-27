@@ -48,12 +48,12 @@ val text : entry -> string list
     gives, and no control character but the tab stands in a line. A second line,
     [  fix: ] and the fix, follows when the finding has a fix. *)
 
-val record : entry -> Jsonl.record
-(** [record entry] is the finding record of [entry]. It holds the fields [v],
-    [kind], [id], [class], [subject], [ack_subject], [ackable], and [mode]
-    (["tree"]); [detail] and [fix] when the finding has them; [path], [line],
-    [col], [eline], and [ecol] when it has a place; and [gate] and [tier] when
-    the entry has a tier. *)
+val record : mode:Mode.t -> entry -> Jsonl.record
+(** [record ~mode entry] is the finding record of [entry] in a run of [mode]. It
+    holds the fields [v], [kind], [id], [class], [subject], [ack_subject],
+    [ackable], and [mode] (the {!Mode.name} of [mode]); [detail] and [fix] when
+    the finding has them; [path], [line], [col], [eline], and [ecol] when it has
+    a place; and [gate] and [tier] when the entry has a tier. *)
 
 (** {1 The check} *)
 
@@ -80,20 +80,32 @@ val run :
   dir:string ->
   manifest:string option ->
   base:string option ->
+  mode:Mode.t ->
   gate:Finding_class.gate option ->
   strict:bool ->
   format:format ->
   tool:string ->
   unit ->
   (report, Scan.error) result
-(** [run ~env ~dir ~manifest ~base ~gate ~strict ~format ~tool ()] checks the
-    working tree that {!Scan.load} reads with [env], [dir], [manifest], and
-    [base]. [gate] is the gate of the check, [strict] says whether every finding
-    counts for the exit code, and [tool] is the version of the tool, for the
-    index record.
+(** [run ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool ()] checks
+    the working tree that {!Scan.load_with_base} reads with [env], [dir],
+    [manifest], and [base]. [gate] is the gate of the check, [strict] says
+    whether every finding counts for the exit code, and [tool] is the version of
+    the tool, for the index record.
 
-    With [phases], it counts the phases of {!Scan.load} and of {!Findings.tree},
-    adds the selection of the findings to [findings] and the index record to
-    [repository], and counts the phase [output], the lines of the report.
+    In the mode [Tree], the findings are those of the working tree. In the mode
+    [Diff], they are the findings of the working tree less the findings of the
+    base ({!Baseline.subtract}). The findings of the base come from the base
+    tree that {!Scan.load_with_base} reads, with the manifest of the working
+    tree and no evidence. In both modes, the findings also hold the classes that
+    compare the working tree with the base ({!Adjudicator.classes}).
+
+    With [phases], it counts the phases of {!Scan.load_with_base}, [facts]
+    ({!Facts.make}) and [findings] (the findings, their subtraction, the classes
+    that compare with the base, and their selection), the index record in
+    [repository], and the phase [output], the lines of the report. In the mode
+    [Diff], it counts the facts of the base in [base-facts] and their findings
+    in [base-findings]. In the mode [Tree], the facts of the files of the base
+    that differ from the working tree count in [findings].
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)

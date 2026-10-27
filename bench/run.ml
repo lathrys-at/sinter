@@ -26,7 +26,12 @@ type result = {
   phases : (string * int) list list;
 }
 
-let commands = [ "scan"; "check" ]
+let commands = [ "scan"; "check"; "check-diff" ]
+
+let arguments = function
+  | "check-diff" -> [ "check"; "--diff" ]
+  | command -> [ command ]
+
 let time = "/usr/bin/time"
 let read path = In_channel.with_open_bin path In_channel.input_all
 
@@ -156,10 +161,10 @@ let measure ~platform ~counter ~sinter ~phases ~stdout target command =
   let errors = scratch_file "errors" and words = scratch_file "words" in
   if Sys.file_exists words then Sys.remove words;
   let invocation =
-    sinter :: command
-    :: Option.fold ~none:[]
-         ~some:(fun path -> [ "--manifest"; path ])
-         target.manifest
+    (sinter :: arguments command)
+    @ Option.fold ~none:[]
+        ~some:(fun path -> [ "--manifest"; path ])
+        target.manifest
   in
   let argv =
     match (platform, counter) with
@@ -464,12 +469,13 @@ let () =
     [
       `S Manpage.s_description;
       `P
-        "Run $(i,sinter scan) and $(i,sinter check) on each tree: once to warm \
-         up, and then $(b,--runs) times, each run measured. On Linux, GNU \
-         $(i,time) gives the peak resident memory, and $(i,perf stat) counts \
-         the instructions in user space when $(i,perf) is on the PATH and can \
-         count them. On macOS, $(i,time -l) gives the peak resident memory, \
-         the instructions, and the peak memory footprint.";
+        "Run $(i,sinter scan), $(i,sinter check), and $(i,sinter check --diff) \
+         on each tree: once to warm up, and then $(b,--runs) times, each run \
+         measured. The results name $(i,sinter check --diff) $(i,check-diff). \
+         On Linux, GNU $(i,time) gives the peak resident memory, and $(i,perf \
+         stat) counts the instructions in user space when $(i,perf) is on the \
+         PATH and can count them. On macOS, $(i,time -l) gives the peak \
+         resident memory, the instructions, and the peak memory footprint.";
       `P
         "On Linux, the peak memory is the largest of the peaks of sinter and \
          of each process that it starts. The instruction count of $(i,perf \

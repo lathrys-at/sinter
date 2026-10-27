@@ -25,6 +25,34 @@ val make : Manifest.t -> (string * Markdown.t) list -> t
     the namespaces, the kinds that need approval, and the default locations of
     the kinds. *)
 
+val manifest : t -> Manifest.t
+(** [manifest facts] is the manifest that {!make} took. *)
+
+val files : t -> (string * Markdown.t) list
+(** [files facts] is the files that {!make} took, in their order. *)
+
+type identity = private {
+  kind : string;  (** the kind of the fact, as its record names it *)
+  id : string;  (** the id of the fact *)
+  place : (string * Markdown.span) option;
+      (** the path and the span of the record of the fact; [None] for a fact
+          that has no place, an [external] *)
+}
+(** The identity of one fact. *)
+
+val identities : t -> identity list
+(** [identities facts] is the identity of each fact that {!records} gives a
+    record for: each declaration, edge, site, ack, plan, step, promise, and
+    external id, in this order of kinds. An external id that several edges name
+    comes once. *)
+
+val iter_identities :
+  ?within:(string -> bool) -> t -> (identity -> unit) -> unit
+(** [iter_identities ~within facts f] calls [f] on each identity of
+    {!identities} [facts], in its order, whose place has a path for which
+    [within] is [true], and on each external id that an edge of such a path
+    names. [within] is [true] for every path when absent. *)
+
 val needs_changes : t -> bool
 (** [needs_changes facts] is [true] when a step of a plan has no promise. Only
     then does {!records} read its argument [changed]. *)
@@ -231,9 +259,10 @@ val index :
   default_branch:string ->
   manifest:string ->
   tool:string ->
+  mode:Mode.t ->
   Jsonl.record
-(** [index ~tree ~base ~default_branch ~manifest ~tool] is the header record of
-    a scan in tree mode, for a repository with no ledger ref, no evidence, and
-    no fetched pack. [tree] is the tree key, [base] the object id of the base
-    commit, [manifest] the path of the manifest, and [tool] the version of the
-    tool. *)
+(** [index ~tree ~base ~default_branch ~manifest ~tool ~mode] is the header
+    record of a run in [mode], for a repository with no ledger ref, no evidence,
+    and no fetched pack. [tree] is the tree key, [base] the object id of the
+    base commit, [manifest] the path of the manifest, and [tool] the version of
+    the tool. *)

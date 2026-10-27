@@ -1,0 +1,4 @@
+default-branch = "trunk"
+
+[scan]
+packs.markdown.files = ["**/*.md"]

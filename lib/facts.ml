@@ -170,6 +170,7 @@ end)
 
 type t = {
   manifest : Manifest.t;
+  files : (string * Markdown.t) list;
   declarations : declaration array;
   inforce : bool array;
   retirers : int list array;
@@ -610,6 +611,7 @@ let make manifest files =
   let acks = List.rev acks in
   {
     manifest;
+    files;
     declarations;
     inforce = in_force ~retirers declarations edges targets;
     retirers;
@@ -967,6 +969,62 @@ let records facts ~changed =
           ]))
   @ external_records facts
 
+type identity = {
+  kind : string;
+  id : string;
+  place : (string * Markdown.span) option;
+}
+
+let iter_identities ?(within = fun _ -> true) facts f =
+  let at kind id path span =
+    if within path then f { kind; id; place = Some (path, span) }
+  in
+  Array.iter
+    (fun (d : declaration) ->
+      if Option.is_some (manifest_kind d.kind) then
+        at d.kind (declaration_id d) d.path d.span)
+    facts.declarations;
+  List.iter
+    (fun (edge : edge) -> at edge.word (edge_id edge) edge.path edge.span)
+    facts.edges;
+  List.iter
+    (fun (site : site) -> at "site" site.id site.path site.span)
+    facts.sites;
+  List.iter
+    (fun (ack : ack) ->
+      at "ack" ("ack:" ^ ack.block ^ ":" ^ ack.target) ack.path ack.span)
+    facts.acks;
+  List.iter
+    (fun plan ->
+      at "plan" ("plan:" ^ plan.slug) plan.path plan.span;
+      List.iter
+        (fun (step : step) ->
+          at "step" (step_id plan step) plan.path step.span;
+          List.iter
+            (fun (promise : promise) ->
+              at "promise" (promise_id plan step promise) plan.path promise.span)
+            step.promises)
+        plan.steps)
+    facts.plans;
+  List.iter
+    (fun id -> f { kind = "external"; id; place = None })
+    (List.sort_uniq String.compare
+       (List.filter_map Fun.id
+          (List.map2
+             (fun (edge : edge) target ->
+               match target with
+               | External { ns; id } when within edge.path ->
+                   Some ("external:" ^ ns ^ "/" ^ id)
+               | External _ | Declaration _ | Unresolved _ -> None)
+             facts.edges facts.targets)))
+
+let identities facts =
+  let found = ref [] in
+  iter_identities facts (fun identity -> found := identity :: !found);
+  List.rev !found
+
+let manifest facts = facts.manifest
+let files facts = facts.files
 let declarations facts = Array.to_list facts.declarations
 let is_in_force facts index = facts.inforce.(index)
 
@@ -1022,7 +1080,7 @@ let edges facts = List.combine facts.edges facts.targets
 let acks facts = facts.acks
 let plans facts = facts.plans
 
-let index ~tree ~base ~default_branch ~manifest ~tool =
+let index ~tree ~base ~default_branch ~manifest ~tool ~mode =
   [
     ("v", Jsonl.int 1);
     ("kind", Jsonl.string "index");
@@ -1033,5 +1091,5 @@ let index ~tree ~base ~default_branch ~manifest ~tool =
     ("evidence", Jsonl.bool false);
     ("packs", Jsonl.strings []);
     ("tool", Jsonl.string tool);
-    ("mode", Jsonl.string "tree");
+    ("mode", Jsonl.string (Mode.name mode));
   ]

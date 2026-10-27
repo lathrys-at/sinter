@@ -700,6 +700,24 @@ let only_a_step_with_no_promise_needs_the_changes () =
        (fun text -> Facts.needs_changes (facts [ (".plans/p.md", text) ]))
        [ refactor; auth_plan ])
 
+let a_section_number_leaves_titles_and_slugs () =
+  let lines_of files = records files in
+  let records =
+    records
+      [
+        (".plans/p.md", "# 1. The plan\n\n@plan p\n\n## 2.1 Lock it\n\n@req a\n");
+        ("docs/a.md", "# 3. Spec\n\n@req a v1\n");
+      ]
+  in
+  check_field records "plan:p" "title" (str "The plan");
+  check_field records "step:p/lock-it" "title" (str "Lock it");
+  check_field records "promise:step:p/lock-it:req:a" "line" (int 7);
+  check_field records "req:a" "title" (str "Spec");
+  check_field records "req:a" "xh" (str (Sha256.hex "# Spec\n\n\n"));
+  check_field
+    (lines_of [ ("s.md", "# 2.3 Sub\n\n@cites a\n") ])
+    "site:s.md#sub" "name" (str "sub")
+
 let repeated_promises_of_a_step_collapse () =
   let records =
     records [ (".plans/p.md", "# P\n\n@plan p\n\n## S\n\n@req a\n@req a\n") ]
@@ -803,7 +821,16 @@ let the_index_names_the_tree_and_the_base () =
     "{\"base\":\"b\",\"default_branch\":\"main\",\"evidence\":false,\"kind\":\"index\",\"manifest\":\"sinter.toml\",\"mode\":\"tree\",\"packs\":[],\"tool\":\"v1\",\"tree\":\"t\",\"v\":1}"
     (Jsonl.to_string
        (Facts.index ~tree:"t" ~base:"b" ~default_branch:"main"
-          ~manifest:"sinter.toml" ~tool:"v1"))
+          ~manifest:"sinter.toml" ~tool:"v1" ~mode:Mode.Tree));
+  Alcotest.(check (option string))
+    "the mode of a diff" (Some "diff")
+    (match
+       List.assoc_opt "mode"
+         (Facts.index ~tree:"t" ~base:"b" ~default_branch:"main"
+            ~manifest:"sinter.toml" ~tool:"v1" ~mode:Mode.Diff)
+     with
+    | Some (Jsonl.Scalar (Jsonl.String mode)) -> Some mode
+    | _ -> None)
 
 module Gen = QCheck2.Gen
 
@@ -1673,6 +1700,8 @@ let case name f = Alcotest.test_case name `Quick f
 
 let tests =
   [
+    case "a section number leaves titles and slugs"
+      a_section_number_leaves_titles_and_slugs;
     case "a declaration gives its record" a_declaration_gives_its_record;
     case "a declaration without a revision has revision 1"
       a_declaration_without_a_revision_has_revision_1;

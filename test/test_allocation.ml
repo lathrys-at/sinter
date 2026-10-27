@@ -162,7 +162,16 @@ let a_command_writes_the_words_of_its_phases () =
       Sys.remove words)
     [
       ("scan", [ "repository"; "read"; "parse"; "facts"; "records"; "output" ]);
-      ("check", [ "repository"; "read"; "parse"; "facts"; "findings"; "output" ]);
+      ( "check",
+        [
+          "repository";
+          "base-read";
+          "read";
+          "parse";
+          "facts";
+          "findings";
+          "output";
+        ] );
     ]
 
 let an_empty_variable_writes_nothing () =

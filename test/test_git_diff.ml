@@ -170,51 +170,98 @@ let refs_is_total =
 
 let lines texts = String.concat "" (List.map (fun line -> line ^ "\n") texts)
 let section path rest = ("diff --git a/" ^ path ^ " b/" ^ path) :: rest
-let hunk line eline added removed : Git.hunk = { line; eline; added; removed }
+
+let hunk line eline ecol old_line added removed : Git.hunk =
+  { line; eline; ecol; old_line; added; removed }
+
+let sections =
+  Alcotest.testable
+    (fun formatter value ->
+      Format.pp_print_string formatter (Generators.print_sections value))
+    ( = )
+
+let text path hunks = [ (path, [ (Git.Decode.Changed, Git.Text hunks) ]) ]
 
 let empty_output_has_no_change () =
-  decoded changes "no section" (Ok []) (Git.Decode.diff "")
+  decoded sections "no section" (Ok []) (Git.Decode.diff "")
 
 let output_without_a_last_line_feed_is_refused () =
   refused "no line feed" (Git.Decode.diff "diff --git a/f b/f\nold mode 100644")
 
 let a_changed_line_is_one_hunk () =
-  decoded changes "line 3 changed"
-    (Ok [ ("f", Git.Modified [ hunk 3 3 1 1 ]) ])
+  decoded sections "line 3 changed"
+    (Ok (text "f" [ hunk 3 3 2 3 1 1 ]))
     (Git.Decode.diff (lines (section "f" [ "@@ -3 +3 @@"; "-a"; "+b" ])))
 
 let added_lines_span_their_new_lines () =
-  decoded changes "lines 4 to 6 added"
-    (Ok [ ("f", Git.Modified [ hunk 4 6 3 0 ]) ])
+  decoded sections "lines 4 to 6 added after old line 3"
+    (Ok (text "f" [ hunk 4 6 3 4 3 0 ]))
     (Git.Decode.diff
-       (lines (section "f" [ "@@ -3,0 +4,3 @@"; "+a"; "+b"; "+c" ])))
+       (lines (section "f" [ "@@ -3,0 +4,3 @@"; "+a"; "+b"; "+cc" ])))
+
+let lines_added_at_the_top_come_before_old_line_1 () =
+  decoded sections "two lines before the first"
+    (Ok (text "f" [ hunk 1 2 2 1 2 0 ]))
+    (Git.Decode.diff (lines (section "f" [ "@@ -0,0 +1,2 @@"; "+a"; "+b" ])))
 
 let a_pure_deletion_is_at_the_line_after_it () =
-  decoded changes "lines 6 and 7 deleted after new line 5"
-    (Ok [ ("f", Git.Modified [ hunk 6 6 0 2 ]) ])
+  decoded sections "lines 6 and 7 deleted after new line 5"
+    (Ok (text "f" [ hunk 6 6 1 6 0 2 ]))
     (Git.Decode.diff (lines (section "f" [ "@@ -6,2 +5,0 @@"; "-a"; "-b" ])))
 
 let a_deletion_at_the_start_is_at_line_1 () =
-  decoded changes "lines 1 and 2 deleted"
-    (Ok [ ("f", Git.Modified [ hunk 1 1 0 2 ]) ])
+  decoded sections "lines 1 and 2 deleted"
+    (Ok (text "f" [ hunk 1 1 1 1 0 2 ]))
     (Git.Decode.diff (lines (section "f" [ "@@ -1,2 +0,0 @@"; "-a"; "-b" ])))
 
 let a_deletion_at_the_end_is_past_the_last_line () =
-  decoded changes "the last two lines of a file of 3 deleted"
-    (Ok [ ("f", Git.Modified [ hunk 2 2 0 2 ]) ])
+  decoded sections "the last two lines of a file of 3 deleted"
+    (Ok (text "f" [ hunk 2 2 1 2 0 2 ]))
     (Git.Decode.diff (lines (section "f" [ "@@ -2,2 +1,0 @@"; "-b"; "-c" ])))
 
 let the_hunks_of_a_file_keep_their_order () =
-  decoded changes "two hunks"
-    (Ok [ ("f", Git.Modified [ hunk 2 2 1 1; hunk 9 10 2 0 ]) ])
+  decoded sections "two hunks"
+    (Ok (text "f" [ hunk 2 2 2 2 1 1; hunk 9 10 2 9 2 0 ]))
     (Git.Decode.diff
        (lines
           (section "f"
              [ "@@ -2 +2 @@"; "-a"; "+b"; "@@ -8,0 +9,2 @@"; "+c"; "+d" ])))
 
+let the_end_column_counts_characters () =
+  decoded sections "two characters of two bytes and one of three"
+    (Ok (text "f" [ hunk 1 1 4 1 1 0 ]))
+    (Git.Decode.diff
+       (lines
+          (section "f" [ "@@ -0,0 +1 @@"; "+\xc3\xa9\xc3\xa9\xe2\x82\xac" ])));
+  decoded sections "a byte order mark on line 1 counts in no column"
+    (Ok (text "f" [ hunk 1 1 2 1 1 0 ]))
+    (Git.Decode.diff
+       (lines (section "f" [ "@@ -0,0 +1 @@"; "+\xef\xbb\xbfx" ])));
+  decoded sections "a byte order mark on line 2 is a character"
+    (Ok (text "f" [ hunk 2 2 3 2 1 0 ]))
+    (Git.Decode.diff
+       (lines (section "f" [ "@@ -1,0 +2 @@"; "+\xef\xbb\xbfx" ])))
+
+let a_carriage_return_before_the_line_feed_ends_the_line () =
+  decoded sections "the carriage return is part of the line ending"
+    (Ok (text "f" [ hunk 1 1 2 1 1 0 ]))
+    (Git.Decode.diff (lines (section "f" [ "@@ -0,0 +1 @@"; "+b\r" ])));
+  decoded sections "with no line feed, the carriage return is a character"
+    (Ok (text "f" [ hunk 1 1 3 1 1 0 ]))
+    (Git.Decode.diff
+       (lines
+          (section "f"
+             [ "@@ -0,0 +1 @@"; "+b\r"; "\\ No newline at end of file" ])));
+  decoded sections "a missing line feed of the old side counts for nothing"
+    (Ok (text "f" [ hunk 1 1 2 1 1 1 ]))
+    (Git.Decode.diff
+       (lines
+          (section "f"
+             [ "@@ -1 +1 @@"; "-a"; "\\ No newline at end of file"; "+b\r" ])))
+
 let a_binary_file_is_binary () =
-  decoded changes "binary"
-    (Ok [ ("f", Git.Binary) ])
+  decoded sections "binary"
+    (Ok [ ("f", [ (Git.Decode.Changed, Git.Binary) ]) ])
     (Git.Decode.diff
        (lines
           (section "f"
@@ -224,19 +271,31 @@ let a_binary_file_is_binary () =
              ])))
 
 let a_mode_change_alone_has_no_hunk () =
-  decoded changes "mode change"
-    (Ok [ ("f", Git.Modified []) ])
+  decoded sections "mode change"
+    (Ok (text "f" []))
     (Git.Decode.diff
        (lines (section "f" [ "old mode 100644"; "new mode 100755" ])))
 
+let a_new_and_a_deleted_file_name_their_sides () =
+  decoded sections "the sides"
+    (Ok
+       [
+         ("d", [ (Git.Decode.Removed, Git.Text []) ]);
+         ("n", [ (Git.Decode.Created, Git.Text []) ]);
+       ])
+    (Git.Decode.diff
+       (lines
+          (section "n" [ "new file mode 100644" ]
+          @ section "d" [ "deleted file mode 100644" ])))
+
 let a_section_with_no_line_after_its_header_has_no_hunk () =
-  decoded changes "two bare sections"
-    (Ok [ ("e", Git.Modified []); ("f", Git.Modified []) ])
+  decoded sections "two bare sections"
+    (Ok (text "e" [] @ text "f" []))
     (Git.Decode.diff (lines (section "f" [] @ section "e" [])))
 
 let the_marker_of_a_missing_line_feed_is_skipped () =
-  decoded changes "one run despite the markers"
-    (Ok [ ("f", Git.Modified [ hunk 1 2 2 1 ]) ])
+  decoded sections "one run despite the markers"
+    (Ok (text "f" [ hunk 1 2 2 1 2 1 ]))
     (Git.Decode.diff
        (lines
           (section "f"
@@ -250,51 +309,44 @@ let the_marker_of_a_missing_line_feed_is_skipped () =
              ])))
 
 let context_lines_end_a_run () =
-  decoded changes "two runs in one hunk"
-    (Ok [ ("f", Git.Modified [ hunk 2 2 1 1; hunk 4 4 0 1 ]) ])
+  decoded sections "two runs in one hunk"
+    (Ok (text "f" [ hunk 2 2 2 2 1 1; hunk 4 4 1 4 0 1 ]))
     (Git.Decode.diff
        (lines (section "f" [ "@@ -1,4 +1,3 @@"; " a"; "-b"; "+B"; " c"; "-d" ])))
 
 let an_empty_line_is_a_context_line () =
-  decoded changes "the empty line ends the first run"
-    (Ok [ ("f", Git.Modified [ hunk 1 1 0 1; hunk 2 2 1 0 ]) ])
+  decoded sections "the empty line ends the first run"
+    (Ok (text "f" [ hunk 1 1 1 1 0 1; hunk 2 2 2 3 1 0 ]))
     (Git.Decode.diff
        (lines (section "f" [ "@@ -1,2 +1,2 @@"; "-a"; ""; "+b" ])))
 
-let two_sections_of_one_path_are_joined () =
-  decoded changes "a type change"
-    (Ok [ ("f", Git.Modified [ hunk 1 1 0 2; hunk 1 1 1 0 ]) ])
+let two_sections_of_one_path_stay_apart () =
+  decoded sections "a type change"
+    (Ok
+       [
+         ( "f",
+           [
+             (Git.Decode.Removed, Git.Text [ hunk 1 1 1 1 0 2 ]);
+             (Git.Decode.Created, Git.Text [ hunk 1 1 2 1 1 0 ]);
+           ] );
+       ])
     (Git.Decode.diff
        (lines
           (section "f"
              [ "deleted file mode 100644"; "@@ -1,2 +0,0 @@"; "-a"; "-b" ]
           @ section "f" [ "new file mode 120000"; "@@ -0,0 +1 @@"; "+t" ])))
 
-let a_binary_section_makes_a_joined_path_binary () =
-  decoded changes "binary wins"
-    (Ok [ ("f", Git.Binary) ])
-    (Git.Decode.diff
-       (lines
-          (section "f" [ "@@ -1 +0,0 @@"; "-a" ]
-          @ section "f" [ "Binary files /dev/null and b/f differ" ])))
-
 let the_paths_are_sorted_by_byte_order () =
-  decoded changes "sorted"
-    (Ok
-       [
-         ("B", Git.Modified []);
-         ("a", Git.Modified []);
-         ("a b", Git.Modified []);
-         ("\xc3\xa9", Git.Modified []);
-       ])
+  decoded sections "sorted"
+    (Ok (text "B" [] @ text "a" [] @ text "a b" [] @ text "\xc3\xa9" []))
     (Git.Decode.diff
        (lines
           (section "a b" [] @ section "\xc3\xa9" [] @ section "a" []
          @ section "B" [])))
 
 let a_quoted_name_is_unquoted () =
-  decoded changes "every escape"
-    (Ok [ ("\007\b\t\n\011\012\r\"\\\xc3\xa9\x7f\x1b x", Git.Modified []) ])
+  decoded sections "every escape"
+    (Ok (text "\007\b\t\n\011\012\r\"\\\xc3\xa9\x7f\x1b x" []))
     (Git.Decode.diff
        (lines
           [
@@ -303,13 +355,13 @@ let a_quoted_name_is_unquoted () =
           ]))
 
 let a_name_with_spaces_and_b_slash_is_read () =
-  decoded changes "the path a b/a"
-    (Ok [ ("a b/a", Git.Modified []) ])
+  decoded sections "the path a b/a"
+    (Ok (text "a b/a" []))
     (Git.Decode.diff (lines (section "a b/a" [])))
 
 let a_one_byte_name_is_read () =
-  decoded changes "the path x"
-    (Ok [ ("x", Git.Modified []) ])
+  decoded sections "the path x"
+    (Ok (text "x" []))
     (Git.Decode.diff "diff --git a/x b/x\n")
 
 let a_bad_git_line_is_refused () =
@@ -379,20 +431,18 @@ let output_that_does_not_start_with_a_section_is_refused () =
   refused "a hunk first" (Git.Decode.diff (lines [ "@@ -1 +1 @@"; "-a"; "+b" ]))
 
 let diff_reads_what_git_writes =
-  property ~name:"diff gives back the changes of an output of git diff -U0"
+  property ~name:"diff gives back the sections of an output of git diff -U0"
     ~print:(fun (output, expected) ->
-      Printf.sprintf "%S %s" output (Generators.print_changes expected))
+      Printf.sprintf "%S %s" output (Generators.print_sections expected))
     Generators.diff_output
     (fun (output, expected) -> Git.Decode.diff output = Ok expected)
 
 let diff_reads_hunks_with_context =
   property ~name:"diff gives each run of changed lines of a hunk with context"
     ~print:(fun (output, runs) ->
-      Printf.sprintf "%S %s" output
-        (Generators.print_changes [ ("f", Git.Modified runs) ]))
+      Printf.sprintf "%S %s" output (Generators.print_sections (text "f" runs)))
     Generators.diff_output_with_context
-    (fun (output, runs) ->
-      Git.Decode.diff output = Ok [ ("f", Git.Modified runs) ])
+    (fun (output, runs) -> Git.Decode.diff output = Ok (text "f" runs))
 
 let diff_is_total =
   property ~name:"diff gives changes or an error for a damaged output"
@@ -668,8 +718,6 @@ let change_of path =
   | Some change -> Generators.print_change change
   | None -> "absent"
 
-let hunk line eline added removed : Git.hunk = { line; eline; added; removed }
-
 let is path expected () =
   Alcotest.(check string)
     path
@@ -679,30 +727,45 @@ let is path expected () =
 let is_absent path () = Alcotest.(check string) path "absent" (change_of path)
 
 let a_modified_file_gives_its_hunks =
-  is "mod.txt" (Git.Modified [ hunk 3 3 1 1; hunk 6 6 0 2; hunk 8 8 1 0 ])
+  is "mod.txt"
+    (Git.Modified
+       (Git.Text [ hunk 3 3 6 3 1 1; hunk 6 6 1 6 0 2; hunk 8 8 16 10 1 0 ]))
 
 let diff_puts_a_deletion_at_the_start_at_line_1 =
-  is "head.txt" (Git.Modified [ hunk 1 1 0 2 ])
+  is "head.txt" (Git.Modified (Git.Text [ hunk 1 1 1 1 0 2 ]))
 
 let diff_puts_a_deletion_at_the_end_past_the_last_line =
-  is "tail.txt" (Git.Modified [ hunk 2 2 0 2 ])
+  is "tail.txt" (Git.Modified (Git.Text [ hunk 2 2 1 2 0 2 ]))
 
 let a_name_with_a_tab_a_space_and_a_non_ascii_byte_is_read =
-  is quoted_name (Git.Modified [ hunk 1 1 1 1 ])
+  is quoted_name (Git.Modified (Git.Text [ hunk 1 1 6 1 1 1 ]))
 
-let diff_finds_a_binary_file = is "bin.dat" Git.Binary
-let diff_gives_a_mode_change_no_hunk = is "mode.sh" (Git.Modified [])
-let a_file_deleted_on_disk_is_deleted = is "gone.txt" Git.Deleted
-let a_file_removed_from_the_index_is_deleted = is "removed.txt" Git.Deleted
-let a_new_tracked_file_is_added = is "added.txt" Git.Added
-let an_untracked_file_is_added = is "untracked.txt" Git.Added
-let an_untracked_file_of_the_base_is_added = is "unstaged.txt" Git.Added
-let a_file_that_became_a_link_is_deleted = is "typed.txt" Git.Deleted
+let diff_finds_a_binary_file = is "bin.dat" (Git.Modified Git.Binary)
+let diff_gives_a_mode_change_no_hunk = is "mode.sh" (Git.Modified (Git.Text []))
+
+let a_file_deleted_on_disk_is_deleted =
+  is "gone.txt" (Git.Deleted (Git.Text [ hunk 1 1 1 1 0 1 ]))
+
+let a_file_removed_from_the_index_is_deleted =
+  is "removed.txt" (Git.Deleted (Git.Text [ hunk 1 1 1 1 0 1 ]))
+
+let a_new_tracked_file_is_added =
+  is "added.txt" (Git.Added (Git.Text [ hunk 1 1 6 1 1 0 ]))
+
+let an_untracked_file_is_added =
+  is "untracked.txt" (Git.Added (Git.Text [ hunk 1 1 4 1 1 0 ]))
+
+let an_untracked_file_of_the_base_is_compared_with_the_base =
+  is_absent "unstaged.txt"
+
+let a_file_that_became_a_link_is_deleted =
+  is "typed.txt" (Git.Deleted (Git.Text [ hunk 1 1 1 1 0 1 ]))
 
 let a_rename_is_a_deletion_and_an_addition () =
   Alcotest.(check (pair string string))
     "old and new name" ("Deleted", "Added")
-    (change_of "old-name.txt", change_of "new-name.txt")
+    ( String.sub (change_of "old-name.txt") 0 7,
+      String.sub (change_of "new-name.txt") 0 5 )
 
 let an_unchanged_file_is_left_out = is_absent "README.md"
 let an_ignored_file_is_left_out = is_absent "ignored.log"
@@ -726,7 +789,6 @@ let diff_sorts_the_paths_by_byte_order () =
       "removed.txt";
       "tail.txt";
       "typed.txt";
-      "unstaged.txt";
       "untracked.txt";
     ]
     (List.map fst (shared_changes ()))
@@ -773,6 +835,8 @@ let tests =
       output_without_a_last_line_feed_is_refused;
     case "a changed line is one hunk" a_changed_line_is_one_hunk;
     case "added lines span their new lines" added_lines_span_their_new_lines;
+    case "lines added at the top come before old line 1"
+      lines_added_at_the_top_come_before_old_line_1;
     case "a pure deletion is at the line after it"
       a_pure_deletion_is_at_the_line_after_it;
     case "a deletion at the start is at line 1"
@@ -789,10 +853,13 @@ let tests =
       the_marker_of_a_missing_line_feed_is_skipped;
     case "context lines end a run" context_lines_end_a_run;
     case "an empty line is a context line" an_empty_line_is_a_context_line;
-    case "two sections of one path are joined"
-      two_sections_of_one_path_are_joined;
-    case "a binary section makes a joined path binary"
-      a_binary_section_makes_a_joined_path_binary;
+    case "two sections of one path stay apart"
+      two_sections_of_one_path_stay_apart;
+    case "a new and a deleted file name their sides"
+      a_new_and_a_deleted_file_name_their_sides;
+    case "the end column counts characters" the_end_column_counts_characters;
+    case "a carriage return before the line feed ends the line"
+      a_carriage_return_before_the_line_feed_ends_the_line;
     case "the paths are sorted by byte order" the_paths_are_sorted_by_byte_order;
     case "a quoted name is unquoted" a_quoted_name_is_unquoted;
     case "a name with spaces and b/ is read"
@@ -864,8 +931,8 @@ let tests =
       a_file_removed_from_the_index_is_deleted;
     case "diff finds a new tracked file" a_new_tracked_file_is_added;
     case "diff finds an untracked file" an_untracked_file_is_added;
-    case "diff calls an untracked file of the base added"
-      an_untracked_file_of_the_base_is_added;
+    case "diff compares an untracked file of the base with the base"
+      an_untracked_file_of_the_base_is_compared_with_the_base;
     case "diff calls a file that became a link deleted"
       a_file_that_became_a_link_is_deleted;
     case "diff makes a rename a deletion and an addition"

@@ -17,6 +17,7 @@ type error =
   | No_head
   | Unreadable_file of { file : string; error : Text_file.error }
   | Unparsed_file of { file : string; error : Sinter_bridge.Tree.error }
+  | Unparsed_base_file of { file : string; error : Sinter_bridge.Tree.error }
   | Reader of Markdown.load_error
 
 let ( let* ) = Result.bind
@@ -105,6 +106,8 @@ let messages = function
   | Unreadable_file { file; error } -> [ Text_file.message file error ]
   | Unparsed_file { file; error } ->
       [ file ^ ": " ^ Sinter_bridge.Tree.message error ]
+  | Unparsed_base_file { file; error } ->
+      [ file ^ " at the base: " ^ Sinter_bridge.Tree.message error ]
   | Reader (Markdown.Grammar error) ->
       [
         "the built-in grammar of markdown does not load: "
@@ -221,7 +224,7 @@ let find_base repo manifest base =
               unless_shallow repo name (No_merge_base name)
           | Error error -> Error (Repository error)))
 
-let documents ?phases ~root files =
+let with_reader f =
   let engine = Sinter_bridge.create () in
   Fun.protect
     ~finally:(fun () -> Sinter_bridge.close engine)
@@ -231,30 +234,31 @@ let documents ?phases ~root files =
       | Ok reader ->
           Fun.protect
             ~finally:(fun () -> Markdown.close reader)
-            (fun () ->
-              List.fold_left
-                (fun found file ->
-                  let* documents, not_text = found in
-                  match
-                    Allocation.measure phases "read" (fun () ->
-                        Text_file.read (Filename.concat root file))
-                  with
-                  | Error error -> Error (Unreadable_file { file; error })
-                  | Ok content -> (
-                      match
-                        Allocation.measure phases "parse" (fun () ->
-                            Markdown.read reader content)
-                      with
-                      | Ok document ->
-                          Ok ((file, document) :: documents, not_text)
-                      | Error (Markdown.Not_utf_8 offset) ->
-                          Ok (documents, (file, offset) :: not_text)
-                      | Error (Markdown.No_tree error) ->
-                          Error (Unparsed_file { file; error })))
-                (Ok ([], []))
-                files
-              |> Result.map (fun (documents, not_text) ->
-                  (List.rev documents, List.rev not_text))))
+            (fun () -> f reader))
+
+let documents ?phases reader ~root files =
+  List.fold_left
+    (fun found file ->
+      let* documents, not_text = found in
+      match
+        Allocation.measure phases "read" (fun () ->
+            Text_file.read (Filename.concat root file))
+      with
+      | Error error -> Error (Unreadable_file { file; error })
+      | Ok content -> (
+          match
+            Allocation.measure phases "parse" (fun () ->
+                Markdown.read reader content)
+          with
+          | Ok document -> Ok ((file, document) :: documents, not_text)
+          | Error (Markdown.Not_utf_8 offset) ->
+              Ok (documents, (file, offset) :: not_text)
+          | Error (Markdown.No_tree error) ->
+              Error (Unparsed_file { file; error })))
+    (Ok ([], []))
+    files
+  |> Result.map (fun (documents, not_text) ->
+      (List.rev documents, List.rev not_text))
 
 let changed_paths repo commit =
   let* changes = repository (Git.diff repo ~base:commit) in
@@ -262,8 +266,9 @@ let changed_paths repo commit =
     (List.filter_map
        (fun (path, change) ->
          match change with
-         | Git.Modified [] -> None
-         | Git.Added | Git.Deleted | Git.Binary | Git.Modified (_ :: _) ->
+         | Git.Modified (Git.Text []) -> None
+         | Git.Added _ | Git.Deleted _
+         | Git.Modified (Git.Binary | Git.Text (_ :: _)) ->
              Some path)
        changes)
 
@@ -330,40 +335,163 @@ let prepare ~env ~dir ~manifest ~base =
       manifest_value,
       location,
       base,
+      read_by_markdown,
       List.filter read_by_markdown files,
       not_utf_8 )
 
+let not_utf_8_warning path =
+  Printf.sprintf
+    "warning: the path %s is not UTF-8, so sinter does not read the file"
+    (escape_path path)
+
+type compared = {
+  diff : (string * Git.change) list;
+  base_documents : (string * Markdown.t) list;
+  base_not_text : (string * int) list;
+}
+
+module Paths = Map.Make (String)
+
+type held = Document of Markdown.t | Not_text of int
+
+let changes_content = function
+  | Git.Modified (Git.Text []) -> false
+  | Git.Added _ | Git.Deleted _ | Git.Modified (Git.Binary | Git.Text (_ :: _))
+    ->
+      true
+
+let read_blobs reader repo wanted =
+  let parse acc _ content =
+    match acc with
+    | Error _ -> acc
+    | Ok (_, _, []) -> acc
+    | Ok (documents, not_text, file :: rest) -> (
+        match Markdown.read reader content with
+        | Ok document -> Ok ((file, document) :: documents, not_text, rest)
+        | Error (Markdown.Not_utf_8 offset) ->
+            Ok (documents, (file, offset) :: not_text, rest)
+        | Error (Markdown.No_tree error) ->
+            Error (Unparsed_base_file { file; error }))
+  in
+  let* read =
+    repository
+      (Git.fold_blobs repo (List.map snd wanted)
+         ~init:(Ok ([], [], List.map fst wanted))
+         ~f:parse)
+  in
+  Result.map (fun (documents, not_text, _) -> (documents, not_text)) read
+
+let base_files ~repo ~commit ~read_by_markdown =
+  let* diff = repository (Git.diff repo ~base:commit) in
+  let* files = repository (Git.base_tree repo commit) in
+  let files, not_utf_8 =
+    List.partition (fun (path, _) -> Sinter_bridge.Utf_8.is_valid path) files
+  in
+  Ok
+    ( diff,
+      List.filter (fun (path, _) -> read_by_markdown path) files,
+      List.map fst not_utf_8 )
+
+let read_base reader ~repo ~diff ~files ~documents ~not_text =
+  let changed =
+    List.fold_left
+      (fun changed (path, change) ->
+        if changes_content change then Paths.add path () changed else changed)
+      Paths.empty diff
+  in
+  let held =
+    List.fold_left
+      (fun held (path, offset) -> Paths.add path (Not_text offset) held)
+      (List.fold_left
+         (fun held (path, document) -> Paths.add path (Document document) held)
+         Paths.empty documents)
+      not_text
+  in
+  let reused, wanted =
+    List.partition_map
+      (fun (path, id) ->
+        match Paths.find_opt path held with
+        | Some found when not (Paths.mem path changed) -> Left (path, found)
+        | Some _ | None -> Right (path, id))
+      files
+  in
+  let* read_documents, read_not_text = read_blobs reader repo wanted in
+  let by_path list = List.sort (fun (a, _) (b, _) -> String.compare a b) list in
+  Ok
+    {
+      diff;
+      base_documents =
+        by_path
+          (read_documents
+          @ List.filter_map
+              (function
+                | path, Document document -> Some (path, document)
+                | _, Not_text _ -> None)
+              reused);
+      base_not_text =
+        by_path
+          (read_not_text
+          @ List.filter_map
+              (function
+                | path, Not_text offset -> Some (path, offset)
+                | _, Document _ -> None)
+              reused);
+    }
+
+let assemble ~repo ~manifest ~location ~base ~documents ~not_text ~not_utf_8 =
+  {
+    repo;
+    manifest;
+    location;
+    base;
+    documents;
+    not_text;
+    warnings =
+      List.map not_utf_8_warning (List.sort_uniq String.compare not_utf_8)
+      @ [ ledger_warning ];
+  }
+
 let load ?phases ~env ~dir ~manifest ~base () =
-  let* repo, root, manifest_value, location, base, files, not_utf_8 =
+  let* repo, root, manifest, location, base, _, files, not_utf_8 =
     Allocation.measure phases "repository" (fun () ->
         prepare ~env ~dir ~manifest ~base)
   in
-  let* documents, not_text = documents ?phases ~root files in
-  Ok
-    {
-      repo;
-      manifest = manifest_value;
-      location;
-      base;
-      documents;
-      not_text;
-      warnings =
-        List.map
-          (fun path ->
-            Printf.sprintf
-              "warning: the path %s is not UTF-8, so sinter does not read the \
-               file"
-              (escape_path path))
-          not_utf_8
-        @ [ ledger_warning ];
-    }
+  let* documents, not_text =
+    with_reader (fun reader -> documents ?phases reader ~root files)
+  in
+  Ok (assemble ~repo ~manifest ~location ~base ~documents ~not_text ~not_utf_8)
 
-let index tree ~tool =
+let load_with_base ?phases ~env ~dir ~manifest ~base () =
+  let* repo, root, manifest, location, base, read_by_markdown, files, not_utf_8
+      =
+    Allocation.measure phases "repository" (fun () ->
+        prepare ~env ~dir ~manifest ~base)
+  in
+  let* diff, base_files, base_not_utf_8 =
+    Allocation.measure phases "base-read" (fun () ->
+        base_files ~repo ~commit:(base_commit base) ~read_by_markdown)
+  in
+  let* documents, not_text, compared =
+    with_reader (fun reader ->
+        let* documents, not_text = documents ?phases reader ~root files in
+        let* compared =
+          Allocation.measure phases "base-read" (fun () ->
+              read_base reader ~repo ~diff ~files:base_files ~documents
+                ~not_text)
+        in
+        Ok (documents, not_text, compared))
+  in
+  Ok
+    ( assemble ~repo ~manifest ~location ~base ~documents ~not_text
+        ~not_utf_8:(not_utf_8 @ base_not_utf_8),
+      compared )
+
+let index ?(mode = Mode.Tree) tree ~tool =
   let* key = repository (Git.tree_key tree.repo) in
   Ok
     (Facts.index ~tree:key ~base:(base_commit tree.base)
        ~default_branch:(Manifest.default_branch tree.manifest)
-       ~manifest:tree.location ~tool)
+       ~manifest:tree.location ~tool ~mode)
 
 let run ?phases ~env ~dir ~manifest ~base ~tool () =
   let* tree = load ?phases ~env ~dir ~manifest ~base () in

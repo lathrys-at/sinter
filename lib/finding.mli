@@ -78,6 +78,10 @@ val escape : string -> string
 val id : t -> string
 (** [id finding] is [finding:<class>:<subject id>]. *)
 
+val id_of : Finding_class.t -> subject -> string
+(** [id_of finding_class subject] is the {!id} of a finding of [finding_class]
+    about [subject]. *)
+
 val compare : t -> t -> int
 (** [compare a b] orders two findings by the path of their places, the line and
     the column where their places start, and their ids, each path and id in byte

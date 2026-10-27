@@ -48,3 +48,11 @@
 (subdir
  cases/check-under-warn-only-blocks-nothing/tree
  (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-reports-a-promise-of-a-slug-that-the-base-declares/base
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-reports-a-promise-of-a-slug-that-the-base-declares/tree
+ (dirs :standard .plans))

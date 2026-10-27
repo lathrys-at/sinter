@@ -374,7 +374,7 @@ let a_record_holds_every_field_of_a_finding () =
     "the record"
     "{\"ack_subject\":\"x\",\"ackable\":true,\"class\":\"retired\",\"col\":2,\"detail\":\"d\",\"ecol\":9,\"eline\":4,\"fix\":\"f\",\"gate\":\"review\",\"id\":\"finding:retired:cites:site:docs/a.md->x\",\"kind\":\"finding\",\"line\":3,\"mode\":\"tree\",\"path\":\"docs/a.md\",\"subject\":\"cites:site:docs/a.md->x\",\"tier\":\"block\",\"v\":1}"
     (Jsonl.to_string
-       (Check.record
+       (Check.record ~mode:Mode.Tree
           {
             finding =
               finding ~place:(place ()) ~detail:"d" ~fix:"f" ~ackable:true
@@ -385,9 +385,9 @@ let a_record_holds_every_field_of_a_finding () =
 let a_record_leaves_out_what_a_finding_does_not_have () =
   Alcotest.(check string)
     "the record"
-    "{\"ack_subject\":\"file:docs/b.md\",\"ackable\":false,\"class\":\"parse-error\",\"id\":\"finding:parse-error:file:docs/b.md\",\"kind\":\"finding\",\"mode\":\"tree\",\"subject\":\"file:docs/b.md\",\"v\":1}"
+    "{\"ack_subject\":\"file:docs/b.md\",\"ackable\":false,\"class\":\"parse-error\",\"id\":\"finding:parse-error:file:docs/b.md\",\"kind\":\"finding\",\"mode\":\"diff\",\"subject\":\"file:docs/b.md\",\"v\":1}"
     (Jsonl.to_string
-       (Check.record
+       (Check.record ~mode:Mode.Diff
           { finding = finding Finding_class.Parse_error file; tier = None }))
 
 let a_record_is_canonical_and_names_a_gate_only_with_a_tier =
@@ -395,7 +395,7 @@ let a_record_is_canonical_and_names_a_gate_only_with_a_tier =
     Gen.(pair finding_gen (option (oneof_list [ warn; block ])))
     (fun (finding, _) -> print_finding finding)
     (fun (finding, tier) ->
-      let record = Check.record { finding; tier } in
+      let record = Check.record ~mode:Mode.Tree { finding; tier } in
       ignore (Jsonl.to_string record);
       List.mem_assoc "gate" record = Option.is_some tier
       && List.mem_assoc "tier" record = Option.is_some tier
@@ -418,7 +418,8 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
   let run format gate =
     match
       Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
-        ~manifest:None ~base:None ~gate ~strict:false ~format ~tool:"v1" ()
+        ~manifest:None ~base:None ~mode:Mode.Tree ~gate ~strict:false ~format
+        ~tool:"v1" ()
     with
     | Ok report -> report
     | Error error ->
@@ -456,8 +457,88 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
 
 let case name f = Alcotest.test_case name `Quick f
 
+let diff_lines ?base repo =
+  match
+    Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+      ~manifest:None ~base ~mode:Mode.Diff ~gate:None ~strict:false
+      ~format:Check.Text ~tool:"v1" ()
+  with
+  | Ok report -> report.lines
+  | Error error ->
+      Alcotest.failf "the check fails: %s"
+        (String.concat "; " (Scan.messages error))
+
+let commit repo message =
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; message ])
+
+let a_diff_against_the_merge_base_reports_what_the_branch_adds () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "sinter.toml" packs;
+  Git_fixture.write repo "docs/a.md" "# A\n\n@cites old v1\n@revs a\n";
+  commit repo "main";
+  ignore (Git_fixture.git repo [ "checkout"; "-q"; "-b"; "work" ]);
+  Git_fixture.write repo "docs/a.md"
+    "# A\n\n@cites old v1\n@revs a\n\n## B\n\n@cites new v1\n";
+  commit repo "work";
+  ignore (Git_fixture.git repo [ "checkout"; "-q"; "main" ]);
+  Git_fixture.write repo "docs/main.md" "# M\n\n@cites later v1\n";
+  commit repo "later on main";
+  ignore (Git_fixture.git repo [ "checkout"; "-q"; "work" ]);
+  Alcotest.(check (list string))
+    "the finding of the branch"
+    [
+      "docs/a.md:8:1: dangling cites:site:docs/a.md#b->new no declaration has \
+       the slug new";
+    ]
+    (diff_lines repo)
+
+let a_diff_compares_each_file_as_git_stores_it () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "sinter.toml" packs;
+  List.iter
+    (fun name ->
+      Git_fixture.write repo
+        ("docs/" ^ name ^ ".md")
+        ("# " ^ name ^ "\n\n@cites old-" ^ name ^ " v1\n@revs x\n"))
+    [ "untracked"; "intent"; "assumed"; "skipped"; "crlf" ];
+  commit repo "base";
+  ignore
+    (Git_fixture.git repo
+       [ "rm"; "-q"; "--cached"; "docs/untracked.md"; "docs/intent.md" ]);
+  ignore (Git_fixture.git repo [ "add"; "-N"; "docs/intent.md" ]);
+  ignore
+    (Git_fixture.git repo
+       [ "update-index"; "--assume-unchanged"; "docs/assumed.md" ]);
+  ignore
+    (Git_fixture.git repo
+       [ "update-index"; "--skip-worktree"; "docs/skipped.md" ]);
+  Git_fixture.append_config repo "[core]\n\tautocrlf = true\n";
+  Git_fixture.write repo "docs/crlf.md"
+    "# crlf\r\n\r\n@cites old-crlf v1\r\n@revs x\r\n";
+  List.iter
+    (fun name ->
+      Git_fixture.write repo
+        ("docs/" ^ name ^ ".md")
+        ("# " ^ name ^ "\n\nNew line.\n\n## S\n\n@cites old-" ^ name
+       ^ " v1\n@revs x\n"))
+    [ "assumed"; "skipped" ];
+  Alcotest.(check (list string))
+    "the findings that the changes add"
+    [
+      "docs/assumed.md:7:1: dangling cites:site:docs/assumed.md#s->old-assumed \
+       no declaration has the slug old-assumed";
+      "docs/skipped.md:7:1: dangling cites:site:docs/skipped.md#s->old-skipped \
+       no declaration has the slug old-skipped";
+    ]
+    (diff_lines ~base:"HEAD" repo)
+
 let tests =
   [
+    case "a diff against the merge base reports what the branch adds"
+      a_diff_against_the_merge_base_reports_what_the_branch_adds;
+    case "a diff compares each file as git stores it"
+      a_diff_compares_each_file_as_git_stores_it;
     case "a parse error at an error node warns where its class blocks"
       a_parse_error_at_an_error_node_warns_where_its_class_blocks;
     case "a finding takes the tier of its class"

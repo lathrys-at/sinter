@@ -3,15 +3,18 @@
 
 (* @cites performance-budgets *)
 
-(** The performance budgets of [sinter scan] and [sinter check], and their check
-    against the measures of a benchmark run.
+(** The performance budgets of [sinter scan], [sinter check], and
+    [sinter check --diff], and their check against the measures of a benchmark
+    run.
 
-    The budgets file is TOML. It holds the table [scan] and the table [check],
-    and nothing else. Each table holds two keys, and nothing else:
+    The budgets file is TOML. It holds the tables [scan] and [check], the table
+    [check-diff] when [sinter check --diff] has budgets, and nothing else. Each
+    table holds these keys, and nothing else:
 
     - [peak-memory-kib], a positive integer: the limit of the median peak
       resident memory of the command on the tree of 10,000 declarations, on
-      Linux, in KiB
+      Linux, in KiB. The table [check-diff] may leave it out; the command then
+      has no memory budget.
     - [allocation-growth], a positive integer or float: the limit, for each
       phase of the command, of the words that the phase allocates on the tree of
       10,000 declarations, divided by the words on the tree of 1,000
@@ -28,12 +31,13 @@ val of_string : string -> (t, string) result
     @raise Sinter_bridge.Error as {!Sinter_core.Toml.parse} raises it. *)
 
 val peak_kib : t -> string -> int option
-(** [peak_kib budgets command] is the memory budget of [command], [scan] or
-    [check]; [None] for any other command. *)
+(** [peak_kib budgets command] is the memory budget of [command], [scan],
+    [check], or [check-diff]; [None] for any other command, and for a command
+    with no memory budget. *)
 
 val growth : t -> string -> float option
 (** [growth budgets command] is the growth limit of the phases of [command],
-    [scan] or [check]; [None] for any other command. *)
+    [scan], [check], or [check-diff]; [None] for any other command. *)
 
 (** The outcome of one budget. *)
 type verdict =
@@ -42,7 +46,7 @@ type verdict =
   | Skipped of string  (** why the run cannot check the budget *)
 
 type outcome = {
-  command : string;  (** [scan] or [check] *)
+  command : string;  (** [scan], [check], or [check-diff] *)
   budget : string;  (** [peak-memory-kib] or [allocation-growth] *)
   phase : string option;  (** the phase of a growth limit *)
   limit : float;
@@ -57,7 +61,8 @@ val check :
   words:(tree:string -> command:string -> (string * float) list) ->
   outcome list
 (** [check budgets ~linux ~peak ~words] checks the budgets of [scan], then of
-    [check]: the memory budget, and then the growth limit of each phase.
+    [check], then of [check-diff] when the budgets have that table: the memory
+    budget, when the command has one, and then the growth limit of each phase.
     [peak ~tree ~command] is the median peak memory of [command] on [tree] in
     KiB, or [None] when the run did not measure it. [words ~tree ~command] is
     the words of each phase of [command] on [tree], in the order of the phases,
