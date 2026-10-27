@@ -956,9 +956,16 @@ let fold_blobs_refuses_a_sha1_id_in_a_sha256_repository () =
 let open_descriptors () = Array.length (Sys.readdir "/dev/fd")
 
 let no_child_left () =
-  match Unix.waitpid [ Unix.WNOHANG ] (-1) with
-  | exception Unix.Unix_error (Unix.ECHILD, _, _) -> true
-  | _ -> false
+  let deadline = Unix.gettimeofday () +. 1. in
+  let rec check () =
+    match Unix.waitpid [ Unix.WNOHANG ] (-1) with
+    | exception Unix.Unix_error (Unix.ECHILD, _, _) -> true
+    | 0, _ when Unix.gettimeofday () < deadline ->
+        Unix.sleepf 0.001;
+        check ()
+    | _ -> false
+  in
+  check ()
 
 let too_long = String.make 2_000_000 'a'
 
@@ -1062,20 +1069,23 @@ let tree_key_reports_an_index_it_cannot_read () =
 let open_repo_waits_again_after_a_signal () =
   let env, script =
     Repo.fake_git
-      "printf 'sha1\\n%s\\n' \"$0\"\nexec >&-\nexec /bin/sleep 0.01\n"
+      {|printf 'sha1\n%s\n' "$0"
+exec >&-
+i=0
+while [ $i -lt 200 ]; do
+  case $(/bin/ps -o stat= -p $PPID) in S*) break ;; esac
+  /bin/sleep 0.005
+  i=$((i + 1))
+done
+kill -ALRM $PPID
+exec /bin/sleep 0.01
+|}
   in
   let previous = Sys.signal Sys.sigalrm (Sys.Signal_handle ignore) in
-  let stop = { Unix.it_interval = 0.; it_value = 0. } in
   let result =
     Fun.protect
-      ~finally:(fun () ->
-        ignore (Unix.setitimer Unix.ITIMER_REAL stop);
-        Sys.set_signal Sys.sigalrm previous)
-      (fun () ->
-        ignore
-          (Unix.setitimer Unix.ITIMER_REAL
-             { Unix.it_interval = 0.002; it_value = 0.002 });
-        Git.open_repo ~env script)
+      ~finally:(fun () -> Sys.set_signal Sys.sigalrm previous)
+      (fun () -> Git.open_repo ~env script)
   in
   Alcotest.(check string) "the root" script (Git.root (ok result))
 
