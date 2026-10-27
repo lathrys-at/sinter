@@ -252,7 +252,10 @@ text. To normalize, apply these steps in order:
 1. Take the extent's content lines. In code, remove the indentation
    and the comment sigils of each line, as [packs.md](packs.md)
    section 6.3 says; each pack lists its comment sigils. Markdown has
-   no comment sigils, so in markdown keep the lines as they are.
+   no comment sigils, so in markdown keep the lines as they are, with
+   one change: on each heading line that opens a section, remove the
+   section number of its heading text (section 10.3), with the spaces
+   and tabs after it.
 2. Remove trailing whitespace from every line.
 3. Use LF as the line ending.
 4. Drop every `@ack` line.
@@ -278,11 +281,12 @@ hash:
 - a re-pin of a citation.
 
 A change of the indentation before the comment sigils, of trailing
-whitespace, of the line endings, of an `@ack` line, or of the text
-that step 5 removes also does not change the extent hash. Every other
-byte change changes the extent hash. For example, when the opening
-sigil of a block comment moves onto a line of its own, the extent
-gains an empty line, and its hash changes.
+whitespace, of the line endings, of an `@ack` line, of the section
+number of a heading, or of the text that step 5 removes also does not
+change the extent hash. Every other byte change changes the extent
+hash. For example, when the opening sigil of a block comment moves
+onto a line of its own, the extent gains an empty line, and its hash
+changes.
 
 ### 6.2 The code hash
 
@@ -606,7 +610,7 @@ promise — is a **step**. A `##` section with no plan tags is prose, not
 a step.
 
 The **heading text** of an ATX heading is the text of its line as the
-source writes it, with three parts removed:
+source writes it, with four parts removed:
 
 - the `#` characters that open the heading, and the indentation
   before them;
@@ -614,12 +618,25 @@ source writes it, with three parts removed:
   characters after the opening `#` characters, at the end of the
   line, with only spaces and tabs after it, and with a space or a tab
   right before it;
-- the spaces and tabs at both ends of the text that remains.
+- the spaces and tabs at both ends of the text that remains;
+- then the section number at the start of the text, when the text has
+  one, with the spaces and tabs after it.
+
+A **section number** holds at least one `.`. It is a run of ASCII
+digits and a `.`, then optionally more runs of digits joined by `.`,
+with an optional final `.`. A space or a tab follows it. As a pattern:
+`[0-9]+\.([0-9]+(\.[0-9]+)*\.?)?[ \t]`. Examples: the headings
+`## 2.1 The file` and `## 3. Storage` have the heading texts
+`The file` and `Storage`. The headings `## 2026 targets` and
+`## v2.1 notes` keep their text, because they hold no section number.
 
 Inline markup stays as the source writes it. Example: the heading
 `## Scan **markdown** ##` has the heading text `Scan **markdown**`.
 The field `title` of a declaration, a plan, or a step in markdown is
 the heading text of its section ([jsonl.md](jsonl.md) section 4).
+The removal of the section number applies to every heading: of a
+declaration, of a plan, and of a step. So a change of a section number
+changes no title and no slug.
 
 The scanner derives a step's slug from the step's heading text. A
 letter or a digit here is an ASCII letter or digit; every other
