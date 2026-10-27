@@ -161,6 +161,13 @@ type lookups = {
 
 module Paths = Map.Make (String)
 
+module Blocks = Map.Make (struct
+  type t = string * int
+
+  let compare (a, b) (c, d) =
+    match String.compare a c with 0 -> Int.compare b d | order -> order
+end)
+
 type t = {
   manifest : Manifest.t;
   declarations : declaration array;
@@ -173,6 +180,7 @@ type t = {
   plans : plan list;
   lookups : lookups Lazy.t;
   block_hashes : string array Paths.t Lazy.t;
+  block_acks : ack list Blocks.t Lazy.t;
 }
 
 let site_id path (section : Markdown.section) =
@@ -599,6 +607,7 @@ let make manifest files =
   let targets = resolve manifest declarations edges in
   let retirers = retirers manifest declarations edges targets in
   let plans = List.filter_map Fun.id plans in
+  let acks = List.rev acks in
   {
     manifest;
     declarations;
@@ -607,7 +616,7 @@ let make manifest files =
     edges;
     targets;
     sites = List.rev sites;
-    acks = List.rev acks;
+    acks;
     plans;
     lookups = lazy (lookups declarations edges targets plans);
     block_hashes =
@@ -624,6 +633,15 @@ let make manifest files =
                  | kept -> kept)
                hashes)
            Paths.empty files);
+    block_acks =
+      lazy
+        (List.fold_left
+           (fun groups (ack : ack) ->
+             Blocks.update
+               (ack.path, ack.block_index)
+               (fun found -> Some (ack :: Option.value found ~default:[]))
+               groups)
+           Blocks.empty (List.rev acks));
   }
 
 let needs_changes facts =
@@ -993,6 +1011,11 @@ let successors facts index =
 
 let block_hash facts path index =
   (Paths.find path (Lazy.force facts.block_hashes)).(index)
+
+let block_acks facts path index =
+  Option.value
+    (Blocks.find_opt (path, index) (Lazy.force facts.block_acks))
+    ~default:[]
 
 let edges facts = List.combine facts.edges facts.targets
 let acks facts = facts.acks

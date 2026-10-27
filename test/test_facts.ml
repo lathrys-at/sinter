@@ -1346,6 +1346,8 @@ let lookup_lines =
     "@verifies b";
     "@deprecated";
     "@ack disendorsed a 0123abcd";
+    "@ack disendorsed 89abcdef";
+    "@cites a\n@ack disendorsed a 0123abcd\n@ack disendorsed b 89abcdef";
   ]
 
 let lookup_promises =
@@ -1641,6 +1643,30 @@ let block_hash_reads_the_first_of_two_files_with_one_path () =
     "the two hashes differ" false
     (String.equal first.blocks.(0).hash second.blocks.(0).hash)
 
+let block_acks_are_the_list_scan_of_the_acks =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200
+       ~name:
+         "the acks of each block are the acks of the list whose path and block \
+          index are those of the block, in the order of the list"
+       ~print:print_tree lookup_tree (fun files ->
+         let documents =
+           List.map (fun (path, text) -> (path, document text)) files
+         in
+         let facts = Facts.make (manifest ()) documents in
+         let acks = Facts.acks facts in
+         List.for_all
+           (fun (path, (document : Markdown.t)) ->
+             List.for_all
+               (fun index ->
+                 Facts.block_acks facts path index
+                 = List.filter
+                     (fun (ack : Facts.ack) ->
+                       String.equal ack.path path && ack.block_index = index)
+                     acks)
+               (List.init (Array.length document.blocks + 1) Fun.id))
+           (("missing.md", document "") :: documents)))
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -1800,6 +1826,7 @@ let tests =
     a_step_is_done_by_the_list_scan_of_the_verifies_edges;
     by_of_each_promise_is_the_first_residue_in_place;
     block_hash_is_the_hash_of_the_listed_document;
+    block_acks_are_the_list_scan_of_the_acks;
     case "block hash reads the first of two files with one path"
       block_hash_reads_the_first_of_two_files_with_one_path;
     records_come_in_their_order;

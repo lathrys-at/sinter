@@ -696,13 +696,11 @@ let acked facts (edge : Facts.edge) =
   List.exists
     (fun (ack : Facts.ack) ->
       let finding_class, subject = ack_target ack.target in
-      String.equal ack.path edge.path
-      && ack.block_index = edge.block_index
-      && String.length ack.hash >= 8
+      String.length ack.hash >= 8
       && String.starts_with ~prefix:ack.hash hash
       && String.equal finding_class "disendorsed"
       && Option.fold ~none:true ~some:(String.equal edge.target_text) subject)
-    (Facts.acks facts)
+    (Facts.block_acks facts edge.path edge.block_index)
 
 let historical manifest (finding : Finding.t) =
   List.exists

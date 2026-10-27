@@ -185,6 +185,10 @@ val acks : t -> ack list
 (** [acks facts] is every ack, in the order of the files and then of the lines.
 *)
 
+val block_acks : t -> string -> int -> ack list
+(** [block_acks facts path index] is each ack of {!acks} whose path is [path]
+    and whose block index is [index], in the order of {!acks}. *)
+
 val plans : t -> plan list
 (** [plans facts] is every plan, in the order of the files of {!make}. *)
 
