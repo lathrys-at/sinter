@@ -1,6 +1,6 @@
 # Readable output
 @plan readable-output
-@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, plugins/**, .claude-plugin/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, .plans/**
+@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, plugins/**, .claude-plugin/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, .plans/**, sinter.toml, .github/workflows/**
 Make the output of Sinter clear for people and stable for programs:
 plain names for the finding classes, findings that show the source
 and their fix, a full and a brief text form, errors in one layout,
@@ -14,6 +14,18 @@ Rename 20 finding classes, for example `disendorsed` to `retired` and
 "approval", "owed" becomes "obligation", "discharge" splits into
 "completed", "meet", `expect`, and "accept", "lease" becomes "claim",
 "residue" goes, and a `@supersedes` edge is "effective".
+
+## Rename the settings of the manifest and the gates
+@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, plugins/**, sinter.toml, .github/workflows/**
+@decision manifest-names
+Give each setting of the manifest a name with one meaning: `spec`
+becomes `sinter-spec`, `target` becomes `default-branch`, `scan.refs`
+becomes `scan.namespaces`, `rollout-cap` becomes `warn-only`,
+`harness-markers` becomes `agent-markers`, and `coverage-attribution`
+becomes `test-coverage`. Merge `plan.ambient` and `plan.shared` into
+`plan.exempt`, give each test runner one table under `runners`, call a
+ref an "external id", and rename the gates `merge` and `target` to
+`review` and `merged`.
 
 ## Show the parts of a tag and the related places
 @scope lib/**, test/**, spec/**, docs/decisions/**
