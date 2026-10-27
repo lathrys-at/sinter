@@ -1,0 +1,12 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 The Sinter Authors
+
+(library
+ (name sinter_bench)
+ (modules generated_tree)
+ (libraries sinter_core sinter_bridge git_fixture unix))
+
+(executable
+ (name generate)
+ (modules generate)
+ (libraries sinter_bench sinter_bridge git_fixture cmdliner unix))

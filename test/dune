@@ -8,6 +8,7 @@
  (modes exe)
  (deps
   %{exe:../bin/main.exe}
+  %{exe:../bench/generate.exe}
   (glob_files_rec fixtures/*)
   (glob_files ../spec/*.md)
   (source_tree cases)
@@ -16,6 +17,7 @@
   sinter_core
   sinter_bridge
   git_fixture
+  sinter_bench
   alcotest
   qcheck-core
   qcheck-alcotest
