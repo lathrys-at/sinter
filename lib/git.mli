@@ -1,9 +1,11 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
+(* @cites git-versions *)
+
 (** Read a git repository: the files of the working tree and of a commit, the
     default branch, the merge base, the diff, and the tree key. The functions
-    run the [git] executable as a child process. They need git 2.30 or later.
+    run the [git] executable as a child process. They need git 2.43.7 or later.
 
     A path is relative to the root of the working tree, with [/] between its
     parts, as git prints it with the option [-z]. A path is a string of bytes,
