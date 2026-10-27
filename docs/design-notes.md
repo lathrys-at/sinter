@@ -509,7 +509,7 @@ USAGE
     3. Open obligations: unmapped hunks, unmet-rule items, unapproved targets.
     3a. Live declines on anything in scope, with their reasons.
     3b. Claims: other branches' approved plans overlapping this scope, and
-        promises here that are blocked on promises there (§6.7).
+        promises here that are waiting on promises there (§6.7).
     4. Finding counts by class, split by tier under the turn tier set.
     5. Machinery health: revisions bumped since base, live acks, void acks,
        evidence age (tree key match), rules whose origin is not in force.
@@ -612,7 +612,7 @@ REFERENCE
               active  historical  ambient  acked(target)  findings(class|…)
   Traversal   out(k|…, S)  in(k|…, S)  src(E)  dst(E)  subject(F)
   Closure     deps(k|…, S)  rdeps(k|…, S)  paths(S, T)
-  Plan        scope(S)  promises(S)  met(P)  done(S)  blocked(P)
+  Plan        scope(S)  promises(S)  met(P)  done(S)  waiting(P)
   Status      inforce(S)  approved(S)  bumped(S)  declined(S)
   Edge        suspect(E)  dangling(E)
   Evidence    wrong-source(E)  never-ran(E)  failed(E)  unexercised(E)
@@ -696,7 +696,7 @@ USAGE
     4. Rules whose trigger intersects the scope, each with its origin's
        first line.
     5. Live declines on anything in scope, with reasons.
-    6. Claims overlapping the scope, and promises here blocked on promises
+    6. Claims overlapping the scope, and promises here waiting on promises
        there.
     7. Current block-tier findings with fix lines.
 
@@ -785,7 +785,7 @@ USAGE
     reworks       declines whose subject has since changed: the rework
                   landed; is it right now?
     spot-checks   rule acks recorded by agents since the last inbox visit
-    claims        overlapping scopes, blocked cross-plan promises, and
+    claims        overlapping scopes, waiting cross-plan promises, and
                   claims released by branch deletion since the last visit
 
   Each item names the command that resolves it. The tool never notifies;
@@ -1365,7 +1365,7 @@ Notation: `S`, `T` range over fact sets; `E` over sets of edges; `P` promises; `
 | `approved(S)` | any | `f` is a declaration of a gated kind with a ledger approval for `(slug, rev, xh)`; or a declaration of a non-gated kind; or a plan whose current commitment set is approved against its latest approved set (§13.7 containment, not `csh` equality); or a step of an approved plan; or any other kind |
 | `bumped(S)` | node | `f` is a declaration absent from `B`'s index, or present with `rev_B(f) < rev_T(f)` |
 | `declined(S)` | node | `f` is a declaration or plan with a live `decline` fact: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
-| `blocked(P)` | promise | `p` targets a slug declared nowhere in `T` but promised for declaration by some `claim` — an ordering fact, reported instead of `dangling` |
+| `waiting(P)` | promise | `p` targets a slug declared nowhere in `T` but promised for declaration by some `claim` — an ordering fact, reported instead of `dangling` |
 
 **Edge predicates**
 
@@ -1469,7 +1469,7 @@ Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameter
 | `unverified-promise` | promise | *engine*: a promised `req`/`design` with no promised `verifies` of it in the same plan (§6.6) | tree | · | · | warn, warn, — |
 | `promise-collision` | promise | *engine*: a promised declaration whose slug exists in `index(B)` or is promised by a claim | tree | · | · | block, block, — |
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets | tree | · | · | warn, warn, — |
-| `waiting-on` | promise | `blocked(promises(kind(plan)))` — reported in place of `dangling` for the citation, with the claim and step named (§6.7) | tree | · | · | off, warn, — |
+| `waiting-on` | promise | `waiting(promises(kind(plan)))` — reported in place of `dangling` for the citation, with the claim and step named (§6.7) | tree | · | · | off, warn, — |
 | `branch-overlap` | step | *engine*: a step's scope intersects a claim's scope on another branch | tree | · | · | warn, warn, — |
 | `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient`; *engine* also exempts hunks that are wholly the tool's own medicine — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable iff the rule's `expect` is `acked`; a rule's `tiers` overrides the class's | tree | A* | · | warn, block, block |
@@ -1899,7 +1899,7 @@ The consequences: renaming steps is free (clause 3 matches by promise, not by st
 | `bumps` | int (declarations bumped since base) |
 | `acks_live` `acks_void` | int |
 | `declines` | int (live, in scope) |
-| `claims` `blocked` | int |
+| `claims` `waiting` | int |
 | `code_drift` | int |
 | `law_touched` | bool |
 

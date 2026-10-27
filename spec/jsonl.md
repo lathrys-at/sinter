@@ -516,7 +516,7 @@ use the tiers of the `turn` gate.
 | `bumps` | int (declarations bumped since the base) |
 | `acks_live` `acks_void` | int |
 | `declines` | int (live, in scope) |
-| `claims` `blocked` | int |
+| `claims` `waiting` | int |
 | `code_drift` | int |
 | `config_changed` | bool (`true` when the diff changes the configuration: the check reports at least one `config-changed` finding, [manifest.md](manifest.md) section 14.4) |
 
