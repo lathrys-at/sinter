@@ -85,13 +85,14 @@ jobs:
           echo "two: $two"
           test "$one" != "$two"
       - name: Build
+        id: build
         run: dune build
       - name: Check that sinter.opam matches dune-project
         run: git diff --exit-code -- sinter.opam
       - name: Test
         run: dune test
       - name: Check Sinter with Sinter
-        if: matrix.os == 'ubuntu-latest'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.os == 'ubuntu-latest' }}
         run: |
           set -eu
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
