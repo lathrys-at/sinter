@@ -50,6 +50,43 @@ let writes_every_value_type () =
          ("empty", Jsonl.strings []);
        ])
 
+let writes_an_array_of_objects () =
+  line "each object in order, its keys sorted"
+    {|{"none":[],"places":[{"line":2,"path":"b"},{"a":true,"label":"x"},{}]}|}
+    (Jsonl.to_string
+       [
+         ( "places",
+           Jsonl.objects
+             [
+               [ ("path", Jsonl.String "b"); ("line", Jsonl.Int 2) ];
+               [ ("label", Jsonl.String "x"); ("a", Jsonl.Bool true) ];
+               [];
+             ] );
+         ("none", Jsonl.objects []);
+       ])
+
+let sorts_the_keys_of_an_object_by_utf16_code_units () =
+  let astral = "\xf0\x90\x80\x80" in
+  let private_use = "\xee\x80\x80" in
+  line "the astral key comes first"
+    ("{\"o\":[{\"" ^ astral ^ "\":1,\"" ^ private_use ^ "\":2}]}")
+    (Jsonl.to_string
+       [
+         ( "o",
+           Jsonl.objects
+             [ [ (private_use, Jsonl.Int 2); (astral, Jsonl.Int 1) ] ] );
+       ])
+
+let rejects_a_repeated_field_in_an_object () =
+  Alcotest.check_raises "the same field twice in an object"
+    (Invalid_argument "Sinter_core.Jsonl: an object holds the field \"a\" twice")
+    (fun () ->
+      ignore
+        (Jsonl.to_string
+           [
+             ("o", Jsonl.objects [ [ ("a", Jsonl.Int 1); ("a", Jsonl.Int 2) ] ]);
+           ]))
+
 let escapes_as_rfc_8785_requires () =
   line "the seven short escapes and the \\u00xx form"
     {|{"s":"\"\\\b\f\n\r\t\u0000\u001f"}|}
@@ -116,7 +153,22 @@ let same_value (expected : Jsonl.value) (json : Yojson.Safe.t) =
   | Jsonl.Array items, `List parsed ->
       List.length items = List.length parsed
       && List.for_all2 same_scalar items parsed
-  | Jsonl.Array _, _ -> false
+  | Jsonl.Objects items, `List parsed ->
+      List.length items = List.length parsed
+      && List.for_all2
+           (fun fields json ->
+             match json with
+             | `Assoc pairs ->
+                 List.length pairs = List.length fields
+                 && List.for_all
+                      (fun (name, scalar) ->
+                        match List.assoc_opt name pairs with
+                        | Some json -> same_scalar scalar json
+                        | None -> false)
+                      fields
+             | _ -> false)
+           items parsed
+  | (Jsonl.Array _ | Jsonl.Objects _), _ -> false
 
 let fields_of_line line =
   match Yojson.Safe.from_string line with
@@ -157,6 +209,27 @@ let a_line_holds_its_keys_in_compare_keys_order =
       | Some fields ->
           let names = List.map fst fields in
           List.equal String.equal names (List.sort Jsonl.compare_keys names))
+
+let an_object_holds_its_keys_in_compare_keys_order =
+  property ~name:"each object of a line holds its keys in compare_keys order"
+    ~print:Generators.print_record Generators.record (fun record ->
+      match Yojson.Safe.from_string (Jsonl.to_string record) with
+      | `Assoc fields ->
+          List.for_all
+            (fun (_, json) ->
+              match json with
+              | `List items ->
+                  List.for_all
+                    (function
+                      | `Assoc pairs ->
+                          let names = List.map fst pairs in
+                          List.equal String.equal names
+                            (List.sort Jsonl.compare_keys names)
+                      | _ -> true)
+                    items
+              | _ -> true)
+            fields
+      | _ -> false)
 
 let a_line_holds_no_whitespace_outside_a_string =
   property ~name:"a line holds no whitespace outside a string"
@@ -324,6 +397,7 @@ let properties =
   [
     a_line_parses_to_the_same_fields_and_values;
     a_line_holds_its_keys_in_compare_keys_order;
+    an_object_holds_its_keys_in_compare_keys_order;
     a_line_holds_no_whitespace_outside_a_string;
     a_line_holds_no_byte_below_u_0020;
     a_line_escapes_only_what_rfc_8785_escapes;
@@ -370,6 +444,12 @@ let tests =
     Alcotest.test_case "orders two astral keys by their high unit" `Quick
       orders_two_astral_keys_by_their_high_unit;
     Alcotest.test_case "writes every value type" `Quick writes_every_value_type;
+    Alcotest.test_case "writes an array of objects" `Quick
+      writes_an_array_of_objects;
+    Alcotest.test_case "sorts the keys of an object by UTF-16 code units" `Quick
+      sorts_the_keys_of_an_object_by_utf16_code_units;
+    Alcotest.test_case "rejects a repeated field in an object" `Quick
+      rejects_a_repeated_field_in_an_object;
     Alcotest.test_case "escapes as RFC 8785 requires" `Quick
       escapes_as_rfc_8785_requires;
     Alcotest.test_case "keeps text above the ASCII range" `Quick

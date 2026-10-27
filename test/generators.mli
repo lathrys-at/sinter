@@ -40,7 +40,9 @@ val scalar : Sinter_core.Jsonl.scalar QCheck2.Gen.t
     integer is in range. *)
 
 val value : Sinter_core.Jsonl.value QCheck2.Gen.t
-(** One field value, a scalar or an array of at most four scalars. *)
+(** One field value: a scalar, an array of at most four scalars, or an array of
+    at most three flat objects of at most four fields each. The names in each
+    object are distinct. *)
 
 val record : Sinter_core.Jsonl.record QCheck2.Gen.t
 (** A record of at most six fields. The field names are distinct, every string
@@ -48,16 +50,18 @@ val record : Sinter_core.Jsonl.record QCheck2.Gen.t
     {!Sinter_core.Jsonl.to_string} never raises on it. *)
 
 val record_with_a_repeated_field : Sinter_core.Jsonl.record QCheck2.Gen.t
-(** A record that holds one field name twice, and that breaks no other rule. *)
+(** A record that holds one field name twice, or that holds an object that holds
+    one field name twice, and that breaks no other rule. *)
 
 val record_with_an_integer_out_of_range : Sinter_core.Jsonl.record QCheck2.Gen.t
-(** A record that holds one integer outside the allowed range, and that breaks
-    no other rule. *)
+(** A record that holds one integer outside the allowed range, in a scalar, an
+    array item, or an object, and that breaks no other rule. *)
 
 val record_with_a_string_that_is_not_utf_8 :
   Sinter_core.Jsonl.record QCheck2.Gen.t
 (** A record that holds one string that is not valid UTF-8, in a field name, a
-    scalar, or an array item, and that breaks no other rule. *)
+    scalar, an array item, or the name or the value of a field of an object, and
+    that breaks no other rule. *)
 
 val print_record : Sinter_core.Jsonl.record QCheck2.Print.t
 (** The printer for a counterexample of type {!Sinter_core.Jsonl.record}. *)

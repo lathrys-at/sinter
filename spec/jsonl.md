@@ -35,8 +35,15 @@ RFC 8785 (JCS). Each line must meet all of these conditions:
 The schema restricts values so that JCS stays trivial to implement:
 
 - **Value types:** string; integer in `[-(2^53-1), 2^53-1]`; boolean;
-  or an array of those. No floats, no nulls, no nested objects. An
-  absent value is an omitted key, never `null`.
+  an array of those; or an array of flat objects. A **flat object**
+  is a JSON object whose values are strings, integers, or booleans.
+  No floats, no nulls. An object is a value only as a member of an
+  array of flat objects, and a flat object holds no array and no
+  object. An absent value is an omitted key, never `null`.
+- **Flat objects:** the keys of each flat object are sorted by UTF-16
+  code units, as the keys of the line are. No key occurs twice in the
+  object of the line, and no key occurs twice in one flat object. A
+  key of a flat object can also be a key of the line.
 - **Strings:** Sinter writes a string that comes from the text of a
   file as the file holds it. It does not normalize Unicode in a string
   of a governed file, of the manifest, or of the front matter of a

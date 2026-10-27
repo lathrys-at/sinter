@@ -2,7 +2,8 @@
 (* Copyright 2026 The Sinter Authors *)
 
 type scalar = String of string | Int of int | Bool of bool
-type value = Scalar of scalar | Array of scalar list
+type flat = (string * scalar) list
+type value = Scalar of scalar | Array of scalar list | Objects of flat list
 type record = (string * value) list
 
 let string s = Scalar (String s)
@@ -10,6 +11,7 @@ let int i = Scalar (Int i)
 let bool b = Scalar (Bool b)
 let strings l = Array (List.map (fun s -> String s) l)
 let ints l = Array (List.map (fun i -> Int i) l)
+let objects l = Objects l
 
 (* @cites json-handling *)
 (* The range of an integer in the canonical form. *)
@@ -81,31 +83,49 @@ let add_scalar buffer = function
       Buffer.add_string buffer (string_of_int i)
   | Bool b -> Buffer.add_string buffer (if b then "true" else "false")
 
-let add_value buffer = function
-  | Scalar s -> add_scalar buffer s
-  | Array items ->
-      Buffer.add_char buffer '[';
-      List.iteri
-        (fun index item ->
-          if index > 0 then Buffer.add_char buffer ',';
-          add_scalar buffer item)
-        items;
-      Buffer.add_char buffer ']'
-
-let to_string record =
+let add_object buffer ~holder add fields =
   let sorted =
-    List.stable_sort (fun (a, _) (b, _) -> compare_keys a b) record
+    List.stable_sort (fun (a, _) (b, _) -> compare_keys a b) fields
   in
   let rec check_unique = function
     | (a, _) :: ((b, _) :: _ as rest) ->
         if String.equal a b then
           invalid_arg
-            (Printf.sprintf
-               "Sinter_core.Jsonl: the record holds the field %S twice" a);
+            (Printf.sprintf "Sinter_core.Jsonl: %s holds the field %S twice"
+               holder a);
         check_unique rest
     | _ -> ()
   in
   check_unique sorted;
+  Buffer.add_char buffer '{';
+  List.iteri
+    (fun index (name, value) ->
+      if index > 0 then Buffer.add_char buffer ',';
+      add_escaped buffer name;
+      Buffer.add_char buffer ':';
+      add buffer value)
+    sorted;
+  Buffer.add_char buffer '}'
+
+let add_array buffer add items =
+  Buffer.add_char buffer '[';
+  List.iteri
+    (fun index item ->
+      if index > 0 then Buffer.add_char buffer ',';
+      add buffer item)
+    items;
+  Buffer.add_char buffer ']'
+
+let add_value buffer = function
+  | Scalar s -> add_scalar buffer s
+  | Array items -> add_array buffer add_scalar items
+  | Objects items ->
+      add_array buffer
+        (fun buffer fields ->
+          add_object buffer ~holder:"an object" add_scalar fields)
+        items
+
+let to_string record =
   let buffer =
     Buffer.create
       (256
@@ -113,15 +133,7 @@ let to_string record =
         "the number is only the first size of a buffer that grows as it needs, \
          and no output reads it"])
   in
-  Buffer.add_char buffer '{';
-  List.iteri
-    (fun index (name, value) ->
-      if index > 0 then Buffer.add_char buffer ',';
-      add_escaped buffer name;
-      Buffer.add_char buffer ':';
-      add_value buffer value)
-    sorted;
-  Buffer.add_char buffer '}';
+  add_object buffer ~holder:"the record" add_value record;
   Buffer.contents buffer
 
 let output channel record =
