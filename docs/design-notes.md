@@ -1,43 +1,156 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 <!-- Copyright 2026 The Sinter Authors -->
 
-# Design Notes: Plan-Centric Spec Tracing & Enforcement for Agentic Development
+# Sinter design notes
 
 ## 1. Thesis
 
-Agentic coding systems reliably fail at two things: following project conventions and staying on an agreed plan. This is architectural, not a capability gap:
+A coding agent is a program that writes code for a person with a
+language model. Coding agents often fail at two things: they do not
+follow the conventions of a project, and they do not stay on the plan
+that they agreed with the person. These failures come from how agents
+work, not from a lack of skill. Three published results show this:
 
-- Plan signal decays 4–12× within a single action-observation step; agents depend on the plan remaining literally in context ("Plans Don't Persist," arXiv:2606.22953).
-- Constraint violations rise from 0% with a policy in full context to 30–59% after compaction ("Governance Decay," arXiv:2606.22528).
-- Self-reported completion diverges from actual tool activity often enough that published enforcement patterns refuse to admit self-report as evidence (Proof-or-Stop, arXiv:2607.14890).
+- An agent depends on its plan being in its **context**: the text that
+  the model can see at one time. The signal of a plan falls by a
+  factor of 4 to 12 within one step of action and observation ("Plans
+  Don't Persist", arXiv:2606.22953).
+- While a whole policy was in the agents' context, the rate of broken
+  constraints was 0 percent. After **compaction**, which shortens the
+  context to make room, the rate rose to 30 to 59 percent ("Governance
+  Decay", arXiv:2606.22528).
+- An agent's report that its work is complete often differs from what
+  its tools did. Published patterns of enforcement therefore do not
+  accept the agent's own report as evidence ("Proof-or-Stop",
+  arXiv:2607.14890).
 
-So agreements cannot be enforced by instructions in context. They must be enforced by an external system that (a) derives status from artifacts, never from self-report, and (b) blocks illegal transitions deterministically at the merge boundary while making them unmissable everywhere earlier. Every state that Sinter reports must be one that the person who merges can check from the repository and its test results, without trusting an agent's report. Context injection is an informational channel, not an enforcement channel — and so is tool-call interception: hooks that deny edits or seize turn-ends are enforcement aimed at the agent's hands, and what that trains under pressure is bypass. Locally the tool computes the same deterministic verdict CI will and hands it to whoever runs the session's workflow — a human, or an orchestrating lead agent — which is where in-loop judgment belongs.
+So instructions in the context cannot enforce an agreement. A system
+outside the agent must enforce it, and that system needs two
+properties:
 
-**Threat model: the agent is collaborative.** The enemy is *decay* — plans falling out of context, conventions forgotten after compaction, completion pressure producing optimistic self-report — not a scheming adversary. The assumption is load-bearing: local evidence and hooks are trusted rather than tamper-proofed, approval prevents accidents and drift rather than forgery, and the manifest is agent-editable. Words like "laundering" name pressure gradients that arise without malice. Deployments that cannot make this assumption need hardening (§10.1 notes where it attaches) that the baseline deliberately does not carry.
+1. It reads the state of the work from artifacts, which are the files
+   of the repository and the results of test runs. It never reads the
+   state from the agent's report about its own work.
+2. It blocks a change that breaks an agreement at the merge, by rules
+   that give the same answer every time. Before the merge, it makes
+   each such change impossible to miss.
 
-**Prior art, and the gap.** Beads owns the agent-facing task graph, and it enforces that graph and its gates, but it binds no requirement to a test. Spec-driven tools (Spec Kit, OpenSpec, Kiro) treat specs mostly as prompt-level context: OpenSpec checks only the structure of a spec, and Kiro checks the requirements but takes the status of a task from the agent. The requirements-traceability tradition (Doorstop, StrictDoc, OpenFastTrace) owns typed graphs, suspect links, and coverage — proven under DO-178C — but predates agents. Two newer tools bind agreements to test results. The first, agent-spec, gives each requirement a verdict from `cargo test` and gates on it in pre-commit and CI, for Rust only. The second, coherence, binds claims in separate spec files to code symbols and test titles, in TypeScript, Python, and Ruby; it has no revisions, so nothing becomes suspect when a requirement changes. Claude Code hooks own deterministic blocking but have no data model. Luria (a truth-maintenance system over decision records) owns the *why*-layer and two operational lessons imported here: most propagation findings resolve by acknowledged judgment, not repair; and an enforcement field nobody ever moves is an enforcement mechanism that cannot fire. No tool checked in October 2026 has these five things:
+Sinter is such a system. The person who merges a change must be able to
+check every state that Sinter reports from the repository and its test
+results alone.
 
-- revision pins with a check that forces the bump, and no tool that writes into the files;
-- test evidence from any language, through JUnit XML;
-- tags read by a parser, not by a regular expression;
+Text that a tool puts into the agent's context is a channel of
+information, not of enforcement. A **hook** is a command that the
+agent's program runs at a fixed event, for example after each edit. A
+hook that stops an edit or holds the end of the agent's turn is also not
+enforcement. Such a hook acts on the agent's actions, not on the result
+of the work. Under pressure, it teaches the agent to go around it. So on
+a local machine, Sinter computes the same result that CI (continuous
+integration, the checks that the hosting service runs on each change)
+will compute. Sinter gives that result to whoever runs the session: a
+person, or a lead agent that directs other agents. That person or lead
+agent is the place for judgment during the work.
+
+**The threat model: the agent cooperates.** The problem is decay, not
+an attacker. Plans fall out of the context, conventions are lost after
+compaction, and the pressure to finish makes an agent's reports too
+hopeful. Sinter does not defend against an agent that schemes. This
+assumption carries weight in three places. Sinter trusts local
+evidence and hooks, and does not protect them against tampering.
+Approval prevents accidents and drift, not forgery. The agent can edit
+the manifest. A deployment that cannot make this assumption needs more
+protection, which Sinter by default does not carry, on purpose.
+Section 6.4 says where that protection attaches.
+
+**Prior art, and the gap.** Other tools hold parts of this design:
+
+- Beads holds the task graph that agents use. It enforces that graph
+  and its gates, but it binds no requirement to a test.
+- Spec Kit, OpenSpec, and Kiro use specifications mostly as text for
+  the prompt. OpenSpec checks only the structure of a specification.
+  Kiro checks the requirements, but it takes the status of a task from
+  the agent.
+- Doorstop, StrictDoc, and OpenFastTrace come from the tradition of
+  requirements traceability. They have graphs in which each item and
+  each link has a kind, suspect links, and coverage. Projects
+  certified under DO-178C, the standard for aircraft software, use the
+  method. A suspect link is a link to an item that changed after the
+  link was written. These tools are older than coding agents.
+- agent-spec gives each requirement a result from `cargo test`, and
+  gates on that result before a commit and in CI. It works for Rust
+  only.
+- coherence binds claims in separate specification files to symbols in
+  the code and to test titles, in TypeScript, Python, and Ruby. It has
+  no revisions, so nothing becomes suspect when a requirement changes.
+- Claude Code hooks can block an action with a fixed rule, but they
+  have no data model.
+- Luria is a truth-maintenance system over decision records: it holds
+  the reasons of a project. Sinter takes two lessons from it. Most of
+  the findings that a change causes end with a judgment that a person
+  records, not with a repair. And a field that sets off a check, such
+  as the status of a record, does nothing when nobody ever changes
+  it.
+
+No tool checked in October 2026 has these five things:
+
+- revision pins, so that a citation names the revision of the item
+  that it cites; a check that forces a revision to rise; and a tool
+  that never writes into the files;
+- test evidence from any language, through JUnit XML, a common file
+  format for test results;
+- tags that a parser reads, not a regular expression;
 - plans whose steps promise facts;
-- SARIF output.
+- output in SARIF, the standard format for the results of static
+  analysis.
 
-## 2. Shape: One Dynamic Object, Static Facts
+## 2. Shape: one changing object and static facts
 
-The system has exactly one dynamic object — the **plan** — and everything else is either the static facts that plans leave or machinery policing the conversion.
+The system has one object that changes over time: the **plan**.
+Everything else is a static fact that plans leave behind, or a
+mechanism that checks how plans turn into facts.
 
-A **plan** is a branch-scoped agreement between user and agent: steps, each promising graph deltas. It is born on its branch and its entire purpose is to convert itself into **static facts**: requirement and decision declarations in prose, `@satisfies` and `@verifies` citations at implementation and test sites, test evidence, ledger entries. **A plan dies by ledger entry, never by file event — `completed` at merge, and only when everything it promised has become static fact, or `abandoned` by a human (§6.3)** — and its file never moves: a dead plan stays in the tree as inert record beside the facts it produced. Nothing is archived elsewhere because nothing is deleted; the ledger, not the filesystem, says when scaffolding stopped being an agreement.
+A **tag** is a short line in a comment or a document, such as
+`@verifies auth-lockout v2`; section 3 defines the tags. A plan is an
+agreement between a person and an agent. It holds steps, and each step
+promises facts that its work will add to the repository. A plan exists
+to turn itself into **static facts**: declarations of requirements and
+decisions in prose, `@satisfies` and `@verifies` citations in the code
+and the tests, test evidence, and entries in the ledger, Sinter's record
+of judgments (section 6.4). A plan is **open** until the ledger records
+that it closed. It closes in one of two ways (section 6.3). CI records
+it as `completed` after the merge, and only when everything that it
+promised is a static fact. Or a person records it as `abandoned`. The
+plan file never moves. A closed plan stays in the tree as a record,
+beside the facts that it produced. Nothing goes to an archive, because
+nothing is deleted. The ledger, not the file system, says when a plan
+stopped being an agreement.
 
-- The **graph** (§3) is the accumulated facts: tags in the repo's own text.
-- **Evidence** (§4) binds `@verifies` citations to real test runs and coverage.
-- **Specifications** (§6.4) are approved projections of the graph, outliving every plan that fed them.
-- **The ledger** (§6.4) is the record of every judgment — approvals, declines, completions, abandonments — on a git ref outside the tree; a plan's death is one of its facts (§6.3).
-- **Obligations** (§7) are the computed difference between what agreements demand and what facts exist — never stored, recomputed at every gate.
-- **Rules** (§7) are standing law: checked-in query expressions that generate obligations forever.
-- **Gates** (§8) police the conversion.
+The parts of the system:
 
-Obligations attach to tags, plans, and diffs — never to the tree as a whole — so an existing repo starts with an empty graph and zero findings, and adoption is incremental by construction: any deliberate ratchet is a manifest rule, never a migration.
+- The **graph** (section 3) is the set of these facts, as tags in the
+  repository's own text.
+- **Evidence** (section 4) binds each `@verifies` citation to real
+  test runs and coverage.
+- **Compiled specifications** (section 6.4) are approved views of the
+  graph. They outlast every plan that added to them.
+- The **ledger** (section 6.4) is the record of every judgment:
+  approvals, declines, completions, and abandonments. It lives on a
+  git ref outside the tree. The closing of a plan is one of its
+  entries.
+- **Obligations** (section 7) are the difference between what the
+  agreements demand and the facts that exist. Sinter never stores an
+  obligation. It computes the obligations again at every gate.
+- **Rules** (section 7) are standing law: query expressions, checked
+  into the repository, that make obligations for as long as they
+  stand.
+- **Gates** (section 8) are the points where Sinter checks how plans
+  turn into facts.
+
+Obligations attach to tags, plans, and diffs, never to the tree as a
+whole. So an existing repository starts with an empty graph and no
+findings, and a project can adopt Sinter one step at a time. A project
+that wants to raise its standard over time writes a rule or a setting
+of the manifest, never a one-time change to the whole repository.
 
 ## 3. The Graph
 
