@@ -118,7 +118,7 @@ conformance fixtures ship their own ledger and evidence.
 | `status` | string | `deprecated`, `rejected`, or `deferred`; omitted when none |
 | `inforce` | bool | *derived* |
 | `approved` | bool | *derived* |
-| `stamp` | string | *derived*: the id of the ledger stamp that approves the declaration; omitted when none |
+| `approval` | string | *derived*: the id of the `approval` entry of the ledger that approves the declaration; omitted when none |
 | `approval_required` | bool | whether the kind needs approval: `ledger.approval-required` lists it ([manifest.md](manifest.md) section 11.1) |
 | `declined` | bool | *derived*: a live decline exists for `(slug, xh)` |
 
@@ -136,7 +136,7 @@ When the result is empty, the record omits `desc`.
 Example:
 
 ```json
-{"approval_required":true,"approved":true,"col":1,"desc":"Five consecutive failures within ten minutes freeze the account.","ecol":21,"eline":13,"id":"req:auth-lockout","inforce":true,"kind":"req","line":13,"pack":"markdown","path":"docs/auth.md","rev":2,"slug":"auth-lockout","stamp":"s-41","title":"Lock account after 5 failed attempts","v":1,"xeline":29,"xh":"9f3a…","xline":12}
+{"approval":"s-41","approval_required":true,"approved":true,"col":1,"desc":"Five consecutive failures within ten minutes freeze the account.","ecol":21,"eline":13,"id":"req:auth-lockout","inforce":true,"kind":"req","line":13,"pack":"markdown","path":"docs/auth.md","rev":2,"slug":"auth-lockout","title":"Lock account after 5 failed attempts","v":1,"xeline":29,"xh":"9f3a…","xline":12}
 ```
 
 **`plan`**
@@ -147,7 +147,7 @@ Example:
 | `title` | string | the heading text of the section that holds the `@plan` tag ([vocabulary.md](vocabulary.md) section 10.3); omitted for the section of level 0 |
 | `scope` | array of string | plan-level globs |
 | `approved` | bool | *derived*: the plan is approved ([algebra.md](algebra.md) section 6.5) |
-| `stamp` | string | *derived* |
+| `approval` | string | *derived* |
 | `active` | bool | *derived* from the session; `false` when there is no session |
 | `open` | bool | *derived*: the plan is open — the ledger holds no `discharged` entry and no `abandoned` entry for it ([ledger.md](ledger.md) section 10) |
 | `csh` | string | the commitment-set hash, as the text after this table gives it |
@@ -321,10 +321,10 @@ into the evidence directory, never into the tree.
 ## 7. Ledger-projection, rule, gate, setting, ack, hunk, and tombstone records
 
 **`lease`** — unlocated. Sinter projects lease records from the
-ledger. It emits one record for each stamped plan that meets all three
+ledger. It emits one record for each approved plan that meets all three
 conditions:
 
-- The plan's stamp was written from a branch other than the current
+- The plan's approval was written from a branch other than the current
   one.
 - The plan is open ([ledger.md](ledger.md) section 10).
 - That branch existed on the remote at the last fetch.
@@ -332,11 +332,11 @@ conditions:
 | field | type | meaning |
 |---|---|---|
 | `plan` | string | plan slug |
-| `branch` | string | the branch the stamp was written from |
-| `stamp` | string | latest stamp id |
-| `scope` | array of string | union of the stamped step scopes |
+| `branch` | string | the branch the approval was written from |
+| `approval` | string | the id of the latest `approval` entry |
+| `scope` | array of string | union of the approved step scopes |
 | `declares` | array of string | slugs the lease promises to declare |
-| `stamped` | string | RFC 3339 timestamp |
+| `ts` | string | RFC 3339 timestamp of the approval |
 
 **`decline`** — unlocated. Sinter projects decline records from the
 ledger. It emits live entries only.

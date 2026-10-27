@@ -712,13 +712,13 @@ location.
 `"req"`, `"design"`, `"decision"`, or `"plan"`, and no member occurs
 twice. The default is empty: no kind needs approval.
 
-A **stamp** is a ledger entry that records an approval
-([ledger.md](ledger.md) section 5). An item of a kind in the list is
-approved only when the ledger holds a stamp for it:
+An **approval** is a ledger entry that records that a person approved
+an item ([ledger.md](ledger.md) section 5). An item of a kind in the
+list is approved only when the ledger holds an approval for it:
 
-- a declaration of the kind `req`, `design`, or `decision` needs a
-  stamp for its current slug, revision, and extent hash;
-- a plan needs a stamp against which its current commitment set is
+- a declaration of the kind `req`, `design`, or `decision` needs an
+  approval for its current slug, revision, and extent hash;
+- a plan needs an approval against which its current commitment set is
   approved ([ledger.md](ledger.md) section 11).
 
 An item of a kind that is not in the list counts as approved. The

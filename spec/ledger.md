@@ -76,24 +76,24 @@ Ids never repeat within the ledger.
 
 ### 3.4 The order of entries
 
-@req ledger-entry-order
+@req ledger-entry-order v2
 
 Where order matters — for example a decline superseded by a later
-stamp — the `ts` field decides the order, and not the position in the
-file.
+approval — the `ts` field decides the order, and not the position in
+the file.
 
 ## 4. Common fields
 
 ### 4.1 The fields of every entry
 
-@req ledger-common-fields
+@req ledger-common-fields v2
 
 Every entry carries:
 
 | field | meaning |
 |---|---|
 | `id` | entry id (section 3) |
-| `kind` | `stamp`, `stamped-scope`, `stamped-promise`, `decline`, `discharged`, or `abandoned` |
+| `kind` | `approval`, `approved-scope`, `approved-promise`, `decline`, `discharged`, or `abandoned` |
 | `v` | schema version |
 | `by` | who wrote the entry |
 | `ts` | RFC 3339 timestamp, UTC |
@@ -103,21 +103,21 @@ Every entry carries:
 
 ### 4.2 The writers
 
-@req ledger-writers
+@req ledger-writers v2
 
-Four writers exist. The approval command writes `stamp` entries, with
-their `stamped-scope` and `stamped-promise` lines. The decline command
+Four writers exist. The approval command writes `approval` entries, with
+their `approved-scope` and `approved-promise` lines. The decline command
 writes `decline`. The abandon command writes `abandoned`. A person
 runs these three commands. The fourth writer is the CI job on the
 target branch, which writes `discharged` (section 8).
 
-## 5. `stamp`
+## 5. `approval`
 
-### 5.1 The fields of a stamp
+### 5.1 The fields of an approval entry
 
-@req ledger-stamp
+@req ledger-approval-entry
 
-A stamp records an approval.
+An `approval` entry records that a person approved a subject.
 
 | field | meaning |
 |---|---|
@@ -128,51 +128,51 @@ A stamp records an approval.
 
 ### 5.2 Approval
 
-@req ledger-approval
+@req ledger-approval v2
 
 Approval attaches to the `(slug, rev, xh)` triple, never to a
 document. A declaration of a kind that needs approval
 ([manifest.md](manifest.md) section 11.1) is **approved** if and only
-if the ledger holds a stamp for its current `(slug, rev, xh)`. A
-revision bump therefore removes approval until the item is stamped
+if the ledger holds an approval for its current `(slug, rev, xh)`. A
+revision bump therefore removes approval until the item is approved
 again. A declaration of a kind that does not need approval counts as
 approved.
 
 ### 5.3 Revision reservation
 
-@req ledger-revision-reservation
+@req ledger-revision-reservation v2
 
-A writer must refuse to write a stamp for `(slug, rev)` when the
-ledger already holds a stamp for that pair with a different `xh`. The
-refusal message names the earlier entry and the branch that entry was
-written from. To resolve the refusal, the author must increase the
-declaration's revision again. When the ledger already holds a stamp
-for the same `(slug, rev)` with the same `xh`, the writer writes no
-new entry.
+A writer must refuse to write an approval for `(slug, rev)` when the
+ledger already holds an approval for that pair with a different `xh`.
+The refusal message names the earlier entry and the branch that entry
+was written from. To resolve the refusal, the author must increase the
+declaration's revision again. When the ledger already holds an
+approval for the same `(slug, rev)` with the same `xh`, the writer
+writes no new entry.
 
-## 6. `stamped-scope` and `stamped-promise`
+## 6. `approved-scope` and `approved-promise`
 
-@req ledger-stamped-commitment-set
+@req ledger-approved-commitment-set
 
-A plan stamp holds the approved commitment set as entries, not only as
-a hash. A hash shows only that two sets differ. It does not show which
-promises or scopes differ, and the comparison in section 11 needs that
-detail. Two entry kinds carry the set.
+The approval entry of a plan holds the approved commitment set as
+entries, not only as a hash. A hash shows only that two sets differ.
+It does not show which promises or scopes differ, and the comparison
+in section 11 needs that detail. Two entry kinds carry the set.
 
-**`stamped-scope`** — one per glob. When `step` is omitted, the glob is
-plan-level.
+**`approved-scope`** — one per glob. When `step` is omitted, the glob
+is plan-level.
 
 | field | meaning |
 |---|---|
-| `stamp` | the stamp entry this belongs to |
+| `approval` | the approval entry this belongs to |
 | `step` | step slug; omitted for the plan scope |
 | `glob` | one scope glob |
 
-**`stamped-promise`** — one per promise.
+**`approved-promise`** — one per promise.
 
 | field | meaning |
 |---|---|
-| `stamp` | the stamp entry this belongs to |
+| `approval` | the approval entry this belongs to |
 | `step` | step slug |
 | `word` `target` | the promise |
 
@@ -193,19 +193,19 @@ refused.
 
 ### 7.2 A live decline
 
-@req ledger-live-decline
+@req ledger-live-decline v2
 
 A decline is **live** while the subject's current hash equals `hash`
-and no later stamp of the subject exists. A decline is never deleted.
-A later stamp of the subject ends the decline's effect. That later
-stamp can be at a different hash. It can also be at the same hash,
+and no later approval of the subject exists. A decline is never deleted.
+A later approval of the subject ends the decline's effect. That later
+approval can be at a different hash. It can also be at the same hash,
 when the person overrides their own earlier refusal.
 
 ## 8. `discharged`
 
 ### 8.1 The entry and its writer
 
-@req ledger-discharged
+@req ledger-discharged v2
 
 A `discharged` entry closes a plan whose promises all produced their
 residue ([vocabulary.md](vocabulary.md) section 10.2).
@@ -219,7 +219,7 @@ condition.
 | field | meaning |
 |---|---|
 | `subject` | `plan:<slug>` |
-| `stamp` | the plan's latest stamp at the time it closed; omitted when the plan has no stamp |
+| `approval` | the plan's latest approval at the time it closed; omitted when the plan has no approval |
 | `merge` | the merge commit |
 | `report` | SHA-256 of the report compiled at discharge |
 
@@ -242,15 +242,15 @@ A plan meets the condition when all of these statements are true:
 An open plan on the target branch that fails this condition is the
 finding `merged-incomplete`: a person merged a plan whose work is not
 complete. Two corrections remove the finding. The first is a smaller
-commitment set for the plan, with a new stamp when the kind `plan`
+commitment set for the plan, with a new approval when the kind `plan`
 needs approval. The second is a revert of the merge commit.
 
 ### 8.3 A repeated run
 
-@req ledger-discharge-idempotent
+@req ledger-discharge-idempotent v2
 
 The job's write is idempotent: a second run for the same plan adds no
-second entry. The plan's stamps and the repository tree hold the facts
+second entry. The plan's approvals and the repository tree hold the facts
 that prove discharge. A lost CI run therefore costs one repeat run and
 loses no facts.
 
@@ -304,15 +304,15 @@ the user to fetch it.
 
 ### 11.1 The comparison of commitment sets
 
-@req ledger-plan-approval
+@req ledger-plan-approval v2
 
 A plan's **commitment set** is the set of canonical facts about the
 plan: the promises of each step, the scope of each step, and the plan
 scope. When the kind `plan` does not need approval
 ([manifest.md](manifest.md) section 11.1), every plan counts as
 approved, and this section does not apply. Otherwise the tool compares
-the current set `C` against the stamped set `C₀`. The plan is approved
-if and only if all three clauses hold:
+the current set `C` against the approved set `C₀`. The plan is
+approved if and only if all three clauses hold:
 
 1. The multiset of `(word, target)` over all promises is equal in `C`
    and `C₀`.
@@ -326,7 +326,7 @@ if and only if all three clauses hold:
 
 ### 11.2 Glob containment
 
-@req ledger-glob-containment
+@req ledger-glob-containment v2
 
 **Glob containment** `G' ⊆ G` is decided structurally and
 conservatively. Every glob in `G'` must satisfy one of these three
@@ -338,15 +338,15 @@ cases:
 - it is `<g>/<segments>` for some `<g>/**` in `G`.
 
 When the checker cannot prove that a glob satisfies one of these three
-cases, the checker treats the new scope as wider than the stamped
+cases, the checker treats the new scope as wider than the approved
 scope. The rule is decidable and deterministic. When the checker
-cannot prove containment, the checker asks a person for a new stamp,
+cannot prove containment, the checker asks a person for a new approval,
 which is the safe result for approval.
 
 ### 11.3 Free amendments
 
 An amendment is **free** when the plan stays approved after it and no
-new stamp is needed. The consequences of the three clauses:
+new approval is needed. The consequences of the three clauses:
 
 - Renaming a step is free, because clause 3 matches by promise and not
   by step name.
@@ -354,17 +354,17 @@ new stamp is needed. The consequences of the three clauses:
 - Splitting a step is free when each new step keeps or narrows the
   scope of the original step.
 - Merging steps is free when the merged scope equals the union of the
-  original steps' scopes. Any other merge needs a stamp.
-- Any promise added or removed fails clause 1 and needs a stamp.
+  original steps' scopes. Any other merge needs an approval.
+- Any promise added or removed fails clause 1 and needs an approval.
 
 ## 12. `pin` (deferred)
 
 A `pin` entry will endorse the current hash of external content. It
-adds three fields to the common fields of section 4: `stamp`, `ref`,
+adds three fields to the common fields of section 4: `approval`, `ref`,
 and `hash`. The example shows only the fields of the entry's own:
 
 ```json
-{"hash":"…","kind":"pin","ref":"gh/42","stamp":"…"}
+{"approval":"…","hash":"…","kind":"pin","ref":"gh/42"}
 ```
 
 It is designed but deferred, together with the `@pin` directive.

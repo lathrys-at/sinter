@@ -558,7 +558,7 @@ into a governed file. Two rules make hand-written pins work:
    `v2` becomes suspect when the declaration that it names moves to
    `v3`. Suspect citations are findings until they are re-pinned.
 
-A bump also removes the item's approval until it is stamped again (see
+A bump also removes the item's approval until it is approved again (see
 [ledger.md](ledger.md)).
 
 ## 10. Plan files
@@ -703,5 +703,5 @@ one. The citations of the old slug then dangle. When the new
 declaration has an extent hash equal to the old one, the rename is
 mechanical: a tool can retarget the citations (finding class
 `renamed`, which carries a mechanical fix). A rename removes an item's
-approval. A renamed item stays unapproved until it is stamped again,
+approval. A renamed item stays unapproved until it is approved again,
 even when its text is unchanged.
