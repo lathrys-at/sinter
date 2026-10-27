@@ -1,13 +1,13 @@
 # Readable output
 @plan readable-output
-@scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, .plans/**
+@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, plugins/**, .claude-plugin/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, .plans/**
 Make the output of Sinter clear for people and stable for programs:
 plain names for the finding classes, findings that show the source
 and their fix, a full and a brief text form, errors in one layout,
 color, and at the end a porcelain form for scripts.
 
 ## Rename the finding classes and their words
-@scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**
+@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, plugins/**, .claude-plugin/**
 @decision plain-names
 Rename 20 finding classes, for example `disendorsed` to `retired` and
 `uncovered` to `untraced`, and the words under them: "stamp" becomes
