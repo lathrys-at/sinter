@@ -13,6 +13,7 @@ type error =
   | Bad_base of string
   | Target_not_found of string
   | No_merge_base of string
+  | Shallow_clone of string
   | No_head
   | Unreadable_file of { file : string; error : Text_file.error }
   | Unparsed_file of { file : string; error : Sinter_bridge.Tree.error }
@@ -78,8 +79,10 @@ let messages = function
   | Target_not_found name ->
       [
         Printf.sprintf
-          "no branch '%s' exists here or on origin; set 'target' in sinter.toml"
-          name;
+          "no branch '%s' exists here or on origin; fetch it with git fetch \
+           origin %s:refs/remotes/origin/%s, or set 'target' in sinter.toml to \
+           the name of the main branch"
+          name name name;
       ]
   | No_merge_base name ->
       [
@@ -87,6 +90,14 @@ let messages = function
           "HEAD and the branch '%s' have no common ancestor; name a base with \
            --base"
           name;
+      ]
+  | Shallow_clone name ->
+      [
+        Printf.sprintf
+          "this clone is shallow, so the merge base of HEAD and the branch \
+           '%s' is not here; fetch the whole history with git fetch \
+           --unshallow origin %s:refs/remotes/origin/%s"
+          name name name;
       ]
   | No_head ->
       [ "HEAD names no commit; make a commit, or name a base with --base" ]
@@ -182,6 +193,12 @@ let base_message = function
       Printf.sprintf "the base is the merge base of HEAD and %s, %s" refname
         commit
 
+let unless_shallow repo name error =
+  match Git.is_shallow repo with
+  | Ok true -> Error (Shallow_clone name)
+  | Ok false -> Error error
+  | Error failure -> Error (Repository failure)
+
 let find_base repo manifest base =
   match base with
   | Some revision -> (
@@ -192,13 +209,15 @@ let find_base repo manifest base =
   | None -> (
       let name = Manifest.target manifest in
       match Git.resolve_target repo name with
-      | Error (Git.Target_not_found _) -> Error (Target_not_found name)
+      | Error (Git.Target_not_found _) ->
+          unless_shallow repo name (Target_not_found name)
       | Error error -> Error (Repository error)
       | Ok target -> (
           match Git.merge_base repo "HEAD" target.commit with
           | Ok commit -> Ok (Merge_base { refname = target.refname; commit })
           | Error (Git.Bad_revision _) -> Error No_head
-          | Error (Git.No_merge_base _) -> Error (No_merge_base name)
+          | Error (Git.No_merge_base _) ->
+              unless_shallow repo name (No_merge_base name)
           | Error error -> Error (Repository error)))
 
 let documents ?phases ~root files =

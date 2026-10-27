@@ -1,1 +1,1 @@
-sinter: no branch 'trunk' exists here or on origin; set 'target' in sinter.toml
+sinter: no branch 'trunk' exists here or on origin; fetch it with git fetch origin trunk:refs/remotes/origin/trunk, or set 'target' in sinter.toml to the name of the main branch
