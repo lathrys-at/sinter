@@ -1069,20 +1069,23 @@ let tree_key_reports_an_index_it_cannot_read () =
 let open_repo_waits_again_after_a_signal () =
   let env, script =
     Repo.fake_git
-      "printf 'sha1\\n%s\\n' \"$0\"\nexec >&-\nexec /bin/sleep 0.01\n"
+      {|printf 'sha1\n%s\n' "$0"
+exec >&-
+i=0
+while [ $i -lt 200 ]; do
+  case $(/bin/ps -o stat= -p $PPID) in S*) break ;; esac
+  /bin/sleep 0.005
+  i=$((i + 1))
+done
+kill -ALRM $PPID
+exec /bin/sleep 0.01
+|}
   in
   let previous = Sys.signal Sys.sigalrm (Sys.Signal_handle ignore) in
-  let stop = { Unix.it_interval = 0.; it_value = 0. } in
   let result =
     Fun.protect
-      ~finally:(fun () ->
-        ignore (Unix.setitimer Unix.ITIMER_REAL stop);
-        Sys.set_signal Sys.sigalrm previous)
-      (fun () ->
-        ignore
-          (Unix.setitimer Unix.ITIMER_REAL
-             { Unix.it_interval = 0.002; it_value = 0.002 });
-        Git.open_repo ~env script)
+      ~finally:(fun () -> Sys.set_signal Sys.sigalrm previous)
+      (fun () -> Git.open_repo ~env script)
   in
   Alcotest.(check string) "the root" script (Git.root (ok result))
 
