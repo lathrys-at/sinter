@@ -84,6 +84,7 @@ let () =
       ("facts", Test_facts.tests);
       ("finding", Test_finding.tests);
       ("fact id", Test_fact_id.tests);
+      ("config change", Test_config_change.tests);
       ("findings", Test_findings.tests);
       ("scan", Test_scan.tests);
       ("check", Test_check.tests);
