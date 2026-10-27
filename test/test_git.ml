@@ -21,7 +21,8 @@ let print_error : Git.error -> string = function
   | Not_a_repository { dir; detail } ->
       Printf.sprintf "Not_a_repository %S: %s" dir detail
   | Bad_revision rev -> Printf.sprintf "Bad_revision %S" rev
-  | Target_not_found name -> Printf.sprintf "Target_not_found %S" name
+  | Default_branch_not_found name ->
+      Printf.sprintf "Default_branch_not_found %S" name
   | No_merge_base (a, b) -> Printf.sprintf "No_merge_base %S %S" a b
   | Command_failed { args; status; stderr } ->
       Printf.sprintf "Command_failed [%s] %s: %s" (String.concat " " args)

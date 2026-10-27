@@ -96,9 +96,9 @@ jobs:
         run: |
           set -eu
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            gate=merge
+            gate=review
           else
-            gate=target
+            gate=merged
           fi
           echo "The gate is $gate."
           dune exec -- sinter check --gate "$gate"

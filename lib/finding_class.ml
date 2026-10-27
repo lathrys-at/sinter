@@ -1,15 +1,15 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-type gate = Turn | Merge | Target
+type gate = Turn | Review | Merged
 type tier = Off | Warn | Block
 
-let gates = [ Turn; Merge; Target ]
+let gates = [ Turn; Review; Merged ]
 
 let gate_name = function
   | Turn -> "turn"
-  | Merge -> "merge"
-  | Target -> "target"
+  | Review -> "review"
+  | Merged -> "merged"
 
 let gate_of_name name = List.find_opt (fun g -> gate_name g = name) gates
 let tiers_in_order = [ Off; Warn; Block ]
@@ -195,5 +195,5 @@ let tiers = function
 let of_name text = List.find_opt (fun c -> name c = text) all
 
 let builtin_tier finding_class gate =
-  let turn, merge, target = tiers finding_class in
-  match gate with Turn -> turn | Merge -> merge | Target -> target
+  let turn, review, merged = tiers finding_class in
+  match gate with Turn -> turn | Review -> review | Merged -> merged

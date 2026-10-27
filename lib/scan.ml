@@ -11,7 +11,7 @@ type error =
   | Plan_not_read of string
   | Pack_not_available of string
   | Bad_base of string
-  | Target_not_found of string
+  | Default_branch_not_found of string
   | No_merge_base of string
   | Shallow_clone of string
   | No_head
@@ -31,7 +31,8 @@ let git_message = function
   | Git.Not_a_repository { dir; _ } ->
       Printf.sprintf "the folder %s is in no git repository" dir
   | Git.Bad_revision revision -> Printf.sprintf "'%s' names no commit" revision
-  | Git.Target_not_found name -> Printf.sprintf "no branch '%s' exists" name
+  | Git.Default_branch_not_found name ->
+      Printf.sprintf "no branch '%s' exists" name
   | Git.No_merge_base (a, b) ->
       Printf.sprintf "%s and %s have no common ancestor" a b
   | Git.Command_failed { args; stderr; _ } ->
@@ -76,12 +77,12 @@ let messages = function
       ]
   | Bad_base revision ->
       [ Printf.sprintf "the base '%s' names no commit" revision ]
-  | Target_not_found name ->
+  | Default_branch_not_found name ->
       [
         Printf.sprintf
           "no branch '%s' exists here or on origin; fetch it with git fetch \
-           origin %s:refs/remotes/origin/%s, or set 'target' in sinter.toml to \
-           the name of the main branch"
+           origin %s:refs/remotes/origin/%s, or set 'default-branch' in \
+           sinter.toml to the name of the default branch"
           name name name;
       ]
   | No_merge_base name ->
@@ -207,14 +208,14 @@ let find_base repo manifest base =
       | Error (Git.Bad_revision _) -> Error (Bad_base revision)
       | Error error -> Error (Repository error))
   | None -> (
-      let name = Manifest.target manifest in
-      match Git.resolve_target repo name with
-      | Error (Git.Target_not_found _) ->
-          unless_shallow repo name (Target_not_found name)
+      let name = Manifest.default_branch manifest in
+      match Git.resolve_default_branch repo name with
+      | Error (Git.Default_branch_not_found _) ->
+          unless_shallow repo name (Default_branch_not_found name)
       | Error error -> Error (Repository error)
-      | Ok target -> (
-          match Git.merge_base repo "HEAD" target.commit with
-          | Ok commit -> Ok (Merge_base { refname = target.refname; commit })
+      | Ok branch -> (
+          match Git.merge_base repo "HEAD" branch.commit with
+          | Ok commit -> Ok (Merge_base { refname = branch.refname; commit })
           | Error (Git.Bad_revision _) -> Error No_head
           | Error (Git.No_merge_base _) ->
               unless_shallow repo name (No_merge_base name)
@@ -361,7 +362,7 @@ let index tree ~tool =
   let* key = repository (Git.tree_key tree.repo) in
   Ok
     (Facts.index ~tree:key ~base:(base_commit tree.base)
-       ~target_branch:(Manifest.target tree.manifest)
+       ~default_branch:(Manifest.default_branch tree.manifest)
        ~manifest:tree.location ~tool)
 
 let run ?phases ~env ~dir ~manifest ~base ~tool () =

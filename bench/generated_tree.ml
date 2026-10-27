@@ -139,7 +139,7 @@ let decision_files state ~decisions =
             else None)
           (List.init (between state 0 2) Fun.id)
       in
-      let refs =
+      let externals =
         if chance state 0.2 then
           [ Printf.sprintf "@cites gh/%d" (between state 1 5000) ]
         else []
@@ -149,7 +149,7 @@ let decision_files state ~decisions =
         String.concat "\n"
           (Printf.sprintf "@decision dec-%d" index
            :: Option.to_list (status index)
-          @ supersedes @ cites @ refs)
+          @ supersedes @ cites @ externals)
       in
       let summary = prose state 1 in
       let context = prose state 4 in
@@ -299,7 +299,9 @@ let plan_files state ~plans ~requirements ~decisions =
         String.concat "\n" (head :: steps) ))
 
 let manifest =
-  "[scan]\npacks.markdown.files = [\"**/*.md\"]\nrefs.gh = \"[1-9][0-9]*\"\n"
+  "[scan]\n\
+   packs.markdown.files = [\"**/*.md\"]\n\
+   namespaces.gh = \"[1-9][0-9]*\"\n"
 
 let sample state items count =
   let items = Array.of_list items in

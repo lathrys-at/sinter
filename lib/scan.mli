@@ -25,12 +25,12 @@ type error =
   | Pack_not_available of string
       (** the manifest names a fetched pack, and this tool reads none *)
   | Bad_base of string  (** the revision of the base names no commit *)
-  | Target_not_found of string
-      (** no branch of the name of the target branch gives a commit *)
+  | Default_branch_not_found of string
+      (** no branch of the name of the default branch gives a commit *)
   | No_merge_base of string
-      (** [HEAD] and the target branch of this name have no common ancestor *)
+      (** [HEAD] and the default branch of this name have no common ancestor *)
   | Shallow_clone of string
-      (** the repository is a shallow clone, and it holds no target branch of
+      (** the repository is a shallow clone, and it holds no default branch of
           this name or no merge base of [HEAD] and that branch *)
   | No_head  (** [HEAD] names no commit *)
   | Unreadable_file of { file : string; error : Text_file.error }
@@ -57,7 +57,7 @@ type base =
   | Given of { revision : string; commit : string }
       (** the commit of the revision that the caller named *)
   | Merge_base of { refname : string; commit : string }
-      (** the merge base of [HEAD] and the commit of the target branch, which
+      (** the merge base of [HEAD] and the commit of the default branch, which
           the ref of the full name [refname] gave *)
 
 val base_commit : base -> string
@@ -104,7 +104,7 @@ val load :
     [manifest] is the path of the manifest, relative to [dir] when it is
     relative; [None] names [sinter.toml] at the root of the working tree. [base]
     is the revision of the base commit; [None] takes the merge base of [HEAD]
-    and the target branch of the manifest.
+    and the default branch of the manifest.
 
     With [phases], it counts the words of the phases [repository] (the
     repository, the manifest, the list of files, and the base), [read] (the

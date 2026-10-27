@@ -9,9 +9,9 @@ Status: draft. The six specifications share one version; see [docs/versioning.md
 
 The **manifest** is a TOML file that holds the settings of one
 repository for Sinter. Its settings say which files Sinter reads and
-which refs resolve. They set how hard each finding class bites. They
-say which changes need a plan step, which kinds need approval, and
-which test evidence meets a promise.
+which external ids resolve. They set how hard each finding class
+bites. They say which changes need a plan step, which kinds need
+approval, and which test evidence meets a promise.
 
 This document defines the file, its tables, and its keys. It says how
 a tool reads the file, and which errors a manifest can hold. It also
@@ -46,8 +46,8 @@ The manifest is a TOML 1.1.0 document (<https://toml.io/en/v1.1.0>),
 encoded in UTF-8. These rules also apply:
 
 1. Every TOML form that gives the same document has the same meaning.
-   A table header such as `[check.tiers.merge]`, a dotted key such as
-   `tiers.merge.dangling` under `[check]`, and an inline table are all
+   A table header such as `[check.tiers.review]`, a dotted key such as
+   `tiers.review.dangling` under `[check]`, and an inline table are all
    valid. Basic strings and literal strings are both valid.
 2. The path of a dotted key must not go into a table that an earlier
    table header names (section 2.3).
@@ -131,14 +131,15 @@ stay relative to the repository root.
 
 ### 3.1 Tables and key paths
 
-The top level of the manifest holds two keys, `spec` and `target`.
-They act on every part of Sinter. Every other key is in one of five
-tables, and each table holds the settings of one part of Sinter:
+The top level of the manifest holds two keys, `sinter-spec` and
+`default-branch`. They act on every part of Sinter. Every other key is
+in one of five tables, and each table holds the settings of one part
+of Sinter:
 
 | table | part of Sinter | what its settings decide |
 |---|---|---|
-| top level | every part | the version of the specifications; the target branch |
-| `[scan]` | the scanner | which files each pack reads; which test runners write the reports for its tests; which refs resolve |
+| top level | every part | the version of the specifications; the default branch |
+| `[scan]` | the scanner | which files each pack reads; which test runners write the reports for its tests; which external ids resolve |
 | `[check]` | findings | which facts can make findings; the tier of each built-in finding class |
 | `[plan]` | the plan check and promises | which changes need a plan step; where a promised declaration can be met |
 | `[ledger]` | approval and the ledger | which kinds need approval; where the commands that write the ledger refuse |
@@ -154,12 +155,12 @@ No other top-level key and no other table exists.
 
 A **key path** names one value. It is the names of the keys from the
 top of the file down to the value, joined with `.`. Example:
-`check.tiers.merge.dangling`. This document names each setting by its
+`check.tiers.review.dangling`. This document names each setting by its
 key path.
 
 This document fixes some names in a key path: the names of the tables,
-and keys such as `rollout-cap`. Each fixed name occurs at one place in
-the layout. Other names vary: the name of a pack, a ref namespace, a
+and keys such as `warn-only`. Each fixed name occurs at one place in
+the layout. Other names vary: the name of a pack, a namespace, a
 gate, a finding class, or a kind. This document writes a name that
 varies in angle brackets, for example `<name>`.
 
@@ -170,22 +171,21 @@ the key (section 5).
 
 | key path | type | default | acts on | section | since |
 |---|---|---|---|---|---|
-| `spec` | string | absent: no version check | reading the manifest | 5 | 1.0 |
-| `target` | string | `"main"` | the base of a diff | 6 | 1.0 |
+| `sinter-spec` | string | absent: no version check | reading the manifest | 5 | 1.0 |
+| `default-branch` | string | `"main"` | the base of a diff | 6 | 1.0 |
 | `scan.packs.<name>.files` | path set | none: required for each pack | the scanner: the files of pack `<name>` | 8.1 | 1.0 |
 | `scan.packs.<name>.version` | string | none: required for each fetched pack; an error on `markdown` | the scanner: the release of pack `<name>` | 8.1 | 1.0 |
-| `scan.packs.<name>.runners` | array of strings: runner names | empty: the pack has no runner; an error on `markdown` | test evidence: the runners whose reports bind to the tests of pack `<name>` | 8.1 | 1.0 |
-| `scan.packs.<name>.<runner>.<key>` | the type that the descriptor of pack `<name>` gives the runner setting `<key>` | the default that the descriptor gives | test evidence: the runner setting `<key>` of the runner `<runner>` | 8.1 | 1.0 |
-| `scan.refs.<ns>` | string: an id pattern | absent: the namespace `<ns>` does not exist | the scanner and findings: which refs resolve | 8.3 | 1.0 |
-| `check.rollout-cap` | boolean | `false` | findings: tiers | 9.3 | 1.0 |
+| `scan.packs.<name>.runners.<runner>` | table: the runner settings of the runner `<runner>` | absent: the runner is off; an error on `markdown` | test evidence: the runner `<runner>`, whose reports bind to the tests of pack `<name>` | 8.1 | 1.0 |
+| `scan.packs.<name>.runners.<runner>.<key>` | the type that the descriptor of pack `<name>` gives the runner setting `<key>` | the default that the descriptor gives | test evidence: the runner setting `<key>` of the runner `<runner>` | 8.1 | 1.0 |
+| `scan.namespaces.<ns>` | string: an id pattern | absent: the namespace `<ns>` does not exist | the scanner and findings: which external ids resolve | 8.3 | 1.0 |
+| `check.warn-only` | boolean | `false` | findings: tiers | 9.3 | 1.0 |
 | `check.historical` | path set | empty, with one built-in member | findings: which facts can make findings | 9.4 | 1.0 |
 | `check.tiers.<gate>.<class>` | string: a tier | the tier in algebra.md section 9 | findings: tiers | 9.2 | 1.0 |
-| `plan.ambient` | path set | empty, with built-in members | the plan check | 10.2 | 1.0 |
-| `plan.shared` | path set | empty | the plan check | 10.3 | 1.0 |
-| `plan.locations.<kind>` | path set | absent: the kind has no default location | promises | 10.4 | 1.0 |
+| `plan.exempt` | path set | empty, with built-in members | the plan check | 10.2 | 1.0 |
+| `plan.locations.<kind>` | path set | absent: the kind has no default location | promises | 10.3 | 1.0 |
 | `ledger.approval-required` | array of strings: kinds | empty: no kind needs approval | approval | 11.1 | 1.0 |
-| `ledger.harness-markers` | array of strings | empty: the tool's built-in list only | the commands that write the ledger | 11.2 | 1.0 |
-| `evidence.coverage-attribution` | string: `"optional"` or `"required"` | `"optional"` | promises | 12 | 1.0 |
+| `ledger.agent-markers` | array of strings | empty: the tool's built-in list only | the commands that write the ledger | 11.2 | 1.0 |
+| `evidence.test-coverage` | string: `"optional"` or `"required"` | `"optional"` | promises | 12 | 1.0 |
 
 ### 3.3 The canonical form
 
@@ -196,8 +196,11 @@ A tool that writes a manifest, such as `sinter init`, writes the
 2. Then each table that holds a setting follows, in the order of the
    table in section 3.1, under one header line.
 3. Under each header, each key is a dotted key that holds the whole
-   key path below the table. Example: `tiers.merge.dangling = "block"`
+   key path below the table. Example: `tiers.review.dangling = "block"`
    under `[check]`.
+4. A runner with no runner setting is a dotted key that ends at the
+   table of the runner, with an empty inline table as its value.
+   Example: `packs.typescript.runners.vitest = {}` under `[scan]`.
 
 ## 4. Reading the manifest
 
@@ -206,7 +209,7 @@ A tool that writes a manifest, such as `sinter init`, writes the
 The tool checks a manifest in five steps, in this order:
 
 1. The TOML syntax (sections 2.2 and 2.3).
-2. The key `spec` (section 5).
+2. The key `sinter-spec` (section 5).
 3. The names of the keys and the types of the values.
 4. Each value, against the rules of its key.
 5. The checks that need a tree (section 8.2), during the scan of each
@@ -216,9 +219,9 @@ The tool stops at the first step that finds an error. It reports each
 error of that step that it finds, one per line, in the order of their
 positions in the file. Then the command stops with exit code 3.
 
-Step 2 comes before step 3. So when `spec` states a version that is
-newer than the version of the tool, the tool reports the version, and
-not a key that it does not know.
+Step 2 comes before step 3. So when `sinter-spec` states a version
+that is newer than the version of the tool, the tool reports the
+version, and not a key that it does not know.
 
 ### 4.2 Errors
 
@@ -238,9 +241,10 @@ are equally near, the message suggests the first in byte order.
 
 **A key at the wrong place.** When an unknown key is a fixed name of
 another place in the layout, the message names that place. Example: a
-line `target = "trunk"` under the header `[evidence]` gives the key
-path `evidence.target`. The message says that `target` belongs at the
-top level, above the first table header.
+line `default-branch = "trunk"` under the header `[evidence]` gives the
+key path `evidence.default-branch`. The message says that
+`default-branch` belongs at the top level, above the first table
+header.
 
 **A wrong type.** A value of the wrong TOML type is an error. The
 message names the type that the key takes and the type that it found.
@@ -264,27 +268,27 @@ This list is informative.
 sinter: no sinter.toml at the repository root; create one, or name one with --manifest
 sinter: sinter.toml names no pack; add a line such as packs.markdown.files = ["**/*.md"] under [scan]
 sinter: sinter.toml:9:1: unknown key 'historic' in [check]; did you mean 'historical'?
-sinter: sinter.toml:14:1: 'target' belongs at the top level, above the first table header
-sinter: sinter.toml:8:15: 'rollout-cap' takes true or false, not a string
+sinter: sinter.toml:14:1: 'default-branch' belongs at the top level, above the first table header
+sinter: sinter.toml:8:13: 'warn-only' takes true or false, not a string
 sinter: sinter.toml:4:1: the dotted key 'b.ct' adds a key to the table 'a.b', which a table header made; write 'ct' under the header [a.b]
-sinter: sinter.toml:1:8: this manifest needs specification 1.2, and this sinter implements 1.1; install a newer sinter
+sinter: sinter.toml:1:15: this manifest needs specification 1.2, and this sinter implements 1.1; install a newer sinter
 sinter: sinter.toml:5:1: the pack markdown is built into sinter and takes no version
-sinter: sinter.toml:7:29: the pack typescript has no runner 'jest'; its runners are vitest
+sinter: sinter.toml:7:26: the pack typescript has no runner 'jest'; its runners are vitest
 sinter: sinter.toml:12:1: 'config-changed' takes no tier; it always reports and never blocks
-sinter: sinter.toml:13:1: 'scope-outside-plan' takes no tier at the gate 'target'
+sinter: sinter.toml:13:1: 'scope-outside-plan' takes no tier at the gate 'merged'
 sinter: sinter.toml:6:12: '.' is not in the id pattern language; put it in a class, for example [.]
 sinter: sinter.toml:6:12: the pattern matches an empty id
-sinter: no branch 'main' exists here or on origin; fetch it with git fetch origin main:refs/remotes/origin/main, or set 'target' in sinter.toml to the name of the main branch
+sinter: no branch 'main' exists here or on origin; fetch it with git fetch origin main:refs/remotes/origin/main, or set 'default-branch' in sinter.toml to the name of the default branch
 sinter: this clone is shallow, so the merge base of HEAD and the branch 'main' is not here; fetch the whole history with git fetch --unshallow origin main:refs/remotes/origin/main
 sinter: src/a.ts is in the files of two packs, typescript and javascript; add a '!' glob to one of them
 sinter: .plans/auth.md is under .plans/, and the pack markdown does not read it; add ".plans/" to its files
 ```
 
-## 5. The specification version: `spec`
+## 5. The specification version: `sinter-spec`
 
-`spec` states the oldest version of the specifications that the
-manifest needs. The key is optional. With no `spec`, the tool makes no
-version check. `sinter init` writes the version that the tool
+`sinter-spec` states the oldest version of the specifications that the
+manifest needs. The key is optional. With no `sinter-spec`, the tool
+makes no version check. `sinter init` writes the version that the tool
 implements.
 
 The value has the form `MAJOR.MINOR`: two decimal numbers with no
@@ -295,38 +299,38 @@ meaning ([docs/versioning.md](../docs/versioning.md)).
 A tool implements one version of the specifications. One version is
 newer than another when its major number is greater, or when the
 major numbers are equal and its minor number is greater. The tool
-compares `spec` with its own version:
+compares `sinter-spec` with its own version:
 
-1. When `spec` is newer than the version that the tool implements, the
-   tool stops with exit code 3. The message names both versions and
-   says to install a newer tool.
-2. When the major number of `spec` is less than the major number of
-   the version that the tool implements, the tool stops with exit code
-   3. A new major version can change the meaning of a key, so the tool
-   does not read a manifest of an older major version. The message
-   names both versions and points to the notes on the change between
-   the two major versions.
-3. When the manifest writes a key that a version newer than `spec`
-   added, the tool stops with exit code 3. The column "since" of
-   section 3.2 gives the version that added each key. The message
-   names the key, the version that added it, and the line
-   `spec = "<version>"` to write.
+1. When `sinter-spec` is newer than the version that the tool
+   implements, the tool stops with exit code 3. The message names both
+   versions and says to install a newer tool.
+2. When the major number of `sinter-spec` is less than the major
+   number of the version that the tool implements, the tool stops with
+   exit code 3. A new major version can change the meaning of a key,
+   so the tool does not read a manifest of an older major version. The
+   message names both versions and points to the notes on the change
+   between the two major versions.
+3. When the manifest writes a key that a version newer than
+   `sinter-spec` added, the tool stops with exit code 3. The column
+   "since" of section 3.2 gives the version that added each key. The
+   message names the key, the version that added it, and the line
+   `sinter-spec = "<version>"` to write.
 
-`spec` yields no fact (section 14.1).
+`sinter-spec` yields no fact (section 14.1).
 
-## 6. The target branch: `target`
+## 6. The default branch: `default-branch`
 
-The **target branch** is the branch that work merges into. The key
-`target` names it. The default is `"main"`. `sinter init` writes the
-key only when the target branch is not `main`.
+The **default branch** is the branch that work merges into. The key
+`default-branch` names it. The default is `"main"`. `sinter init`
+writes the key only when the default branch is not `main`.
 
 The value must be a branch name: `refs/heads/<value>` must pass
 `git check-ref-format`, and the value must not start with `refs/`.
 
 A command that needs a base, and that has no `--base`, resolves the
-target branch to a commit. In the list below, `<branch>` is the value
-of `target`. The command tries these refs in order, and it takes the
-first that exists:
+default branch to a commit. In the list below, `<branch>` is the value
+of `default-branch`. The command tries these refs in order, and it
+takes the first that exists:
 
 1. `<branch>@{upstream}`: the branch that the local branch `<branch>`
    tracks.
@@ -334,20 +338,21 @@ first that exists:
 3. The remote branch `refs/remotes/origin/<branch>`.
 
 When none of the three exists, the command stops with exit code 3. The
-message says to fetch the branch, or to set `target` in the manifest.
+message says to fetch the branch, or to set `default-branch` in the
+manifest.
 
 The base of the diff is the merge base of `HEAD` and the commit of the
-target branch. When the two commits have no common ancestor, the
+default branch. When the two commits have no common ancestor, the
 command stops with exit code 3.
 
-When the repository is a shallow clone, and the target branch or the
+When the repository is a shallow clone, and the default branch or the
 merge base is not found, the command stops with exit code 3. The
 message says that the clone is shallow, and says to fetch the whole
 history.
 
 The plain output of `sinter status` and of `sinter check` names the
 base that the command used: the ref that resolved, and the commit of
-the base. The `index` record carries the base and the target branch
+the base. The `index` record carries the base and the default branch
 ([jsonl.md](jsonl.md) section 10).
 
 ## 7. Globs, path sets, and the file set
@@ -446,7 +451,7 @@ files of a pack (section 8.1). A `!` glob in the files of a pack is
 the only way to leave a file of the file set out of reading. The
 manifest holds no other list of paths to leave out.
 
-## 8. `[scan]`: packs and refs
+## 8. `[scan]`: packs and namespaces
 
 ### 8.1 Packs
 
@@ -479,23 +484,23 @@ When a pack that the manifest names is not available to the tool, a
 command that reads the repository stops with exit code 3
 ([packs.md](packs.md) section 12.5).
 
-`scan.packs.<name>.runners` is an array of runner names. A **runner**
-is a test runner whose reports Sinter binds to the tests of the pack
-([packs.md](packs.md) section 9). Each member is a runner that the
-descriptor of the pack lists, and no member occurs twice. One runner
-name stands in the `runners` of one pack at most. A runner name is
-never `files`, `version`, or `runners`. The default is
-empty: Sinter binds no report to the tests of the pack. The pack
-`markdown` has no runner, and the key on it is an error.
+`scan.packs.<name>.runners` is a table of runners. A **runner** is a
+test runner whose reports Sinter binds to the tests of the pack
+([packs.md](packs.md) section 9). Each key of the table is the name of
+a runner that the descriptor of the pack lists, and its value is the
+table of that runner. A runner is on when its table exists, for
+example `runners.vitest = {}` under `[scan.packs.typescript]`. One
+runner name stands in the `runners` of one pack at most. With no
+runner, Sinter binds no report to the tests of the pack. The pack
+`markdown` has no runner, and the key `runners` on it is an error.
 
-`scan.packs.<name>.<runner>.<key>` sets the runner setting `<key>` of
-the runner `<runner>`. A **runner setting** is a key that the
-descriptor of the pack defines for the runner, with its type and its
-default value ([packs.md](packs.md) section 3.5). `<runner>` is a
-member of `scan.packs.<name>.runners`. The tool checks the names, the
-types, and the values of these keys against the descriptor when it
-loads the pack. It reports each error as section 4.2 says, and the
-command stops with exit code 3.
+`scan.packs.<name>.runners.<runner>.<key>` sets the runner setting
+`<key>` of the runner `<runner>`. A **runner setting** is a key that
+the descriptor of the pack defines for the runner, with its type and
+its default value ([packs.md](packs.md) section 3.5). The tool checks
+the names, the types, and the values of these keys against the
+descriptor when it loads the pack. It reports each error as section
+4.2 says, and the command stops with exit code 3.
 
 `sinter evidence import` gives each report to the adapters of the
 runners that the manifest names. When the adapters of two runners
@@ -517,25 +522,27 @@ command reads. When a check fails, the command stops with exit code 3.
    grammar of the pack ([packs.md](packs.md) section 3.3). The message
    names the file and the pack.
 
-### 8.3 Ref namespaces
+### 8.3 Namespaces
 
-A **ref** is a tag target that points outside the repository, written
-`<ns>/<id>` ([vocabulary.md](vocabulary.md) section 4.2). `<ns>` is a
-**ref namespace**, and `<id>` is the id inside it.
+An **external id** is a tag target that points outside the repository,
+written `<ns>/<id>` ([vocabulary.md](vocabulary.md) section 4.2).
+`<ns>` is a **namespace**, and `<id>` is the id inside it.
 
-`scan.refs.<ns>` declares the ref namespace `<ns>`. Its value is an id
-pattern (section 8.4). A ref `<ns>/<id>` resolves when the manifest
-declares `<ns>` and `<id>` matches the pattern of `<ns>`. Otherwise the
-ref does not resolve ([vocabulary.md](vocabulary.md) section 4.2).
+`scan.namespaces.<ns>` declares the namespace `<ns>`. Its value is an
+id pattern (section 8.4). An external id `<ns>/<id>` resolves when the
+manifest declares `<ns>` and `<id>` matches the pattern of `<ns>`.
+Otherwise the external id does not resolve
+([vocabulary.md](vocabulary.md) section 4.2).
 
 The name of a namespace matches `[a-z][a-z0-9]*(-[a-z0-9]+)*`. No
 namespace is built in. For the issues and the pull requests of a
-project on GitHub, write `refs.gh = "[1-9][0-9]*"` under `[scan]`.
+project on GitHub, write `namespaces.gh = "[1-9][0-9]*"` under
+`[scan]`.
 
 ### 8.4 The id pattern language
 
 An **id pattern** is a small regular expression that matches the whole
-id of a ref. A pattern is built from these parts:
+`<id>` of an external id. A pattern is built from these parts:
 
 | part | form | matches |
 |---|---|---|
@@ -590,8 +597,8 @@ gates:
 | gate | where the check runs |
 |---|---|
 | `turn` | at the end of a turn of an agent, before the agent hands back its work |
-| `merge` | on a change before the change merges into the target branch, for example on a pull request |
-| `target` | on the target branch, after a merge |
+| `review` | on a change before the change merges into the default branch, for example on a pull request |
+| `merged` | on the default branch, after a merge |
 
 A **tier** says how hard a finding class bites at one gate:
 
@@ -614,30 +621,31 @@ names built-in finding classes only.
 
 These are errors:
 
-- `<gate>` is not `turn`, `merge`, or `target`;
+- `<gate>` is not `turn`, `review`, or `merged`;
 - `<class>` is not a built-in finding class;
 - `<class>` takes no tier at `<gate>`;
 - `<class>` is `config-changed`, which always reports and never blocks;
 - `<class>` is `pack-mismatch`, which takes no tier at any gate.
 
-### 9.3 The rollout cap and the tier that applies
+### 9.3 Warn-only and the tier that applies
 
-`check.rollout-cap` is a boolean. The default is `false`. While the
-value is `true`, the **rollout cap** lowers to `warn` each tier that
-[algebra.md](algebra.md) section 9 sets to `block`, at every gate. The
-cap does not change a tier that `check.tiers` writes. `sinter init`
-writes `rollout-cap = true`.
+`check.warn-only` is a boolean. The default is `false`. While the
+value is `true`, Sinter lowers to `warn` each tier that
+[algebra.md](algebra.md) section 9 sets to `block`, at every gate.
+`check.warn-only` does not change a tier that `check.tiers` writes.
+`sinter init` writes `warn-only = true`.
 
 The **tier that applies** to a pair of a gate and a class is the first
 of these that holds:
 
 1. When `check.tiers` writes the pair, the written tier.
-2. When `check.rollout-cap` is `true` and algebra.md section 9 gives
+2. When `check.warn-only` is `true` and algebra.md section 9 gives
    the pair `block`, `warn`.
 3. The tier that algebra.md section 9 gives the pair.
 
-So a class passes the cap at one gate when the manifest writes its
-tier. Example: `tiers.merge.dangling = "block"` under `[check]`.
+So a tier that the manifest writes for a class at one gate applies
+while `check.warn-only` is `true`. Example:
+`tiers.review.dangling = "block"` under `[check]`.
 
 ### 9.4 Historical paths
 
@@ -659,18 +667,21 @@ It never removes the built-in member.
 ### 10.1 Path roles
 
 A **path role** is the meaning that a path set gives to each of its
-paths: a historical path (section 9.4), an ambient path, a shared
-path, or the default location of a kind. Each role has its own setting. A
-path with two roles is written in two settings. Example: a folder of
-generated documentation can be in `plan.ambient` and in
-`check.historical`.
+paths: a historical path (section 9.4), an exempt path, or the default
+location of a kind. Each role has its own setting. A path with two
+roles is written in two settings. Example: a folder of generated
+documentation can be in `plan.exempt` and in `check.historical`.
 
-### 10.2 Ambient paths
+### 10.2 Exempt paths
 
-`plan.ambient` is a path set. A hunk under an **ambient** path needs
-no plan step: `unplanned-change` does not report it
+`plan.exempt` is a path set. A hunk under an **exempt** path needs no
+plan step: `unplanned-change` does not report it
 ([algebra.md](algebra.md) section 9). Use the key for files that tools
-write, such as lock files and generated code.
+write, such as lock files and generated code. Also use it for files
+that every step of every plan can change, such as the dependency and
+license files at the repository root. An exempt path does not widen
+the place where a promise can be met ([vocabulary.md](vocabulary.md)
+section 10.4).
 
 The path set has these built-in members:
 
@@ -682,16 +693,7 @@ The members of the manifest add to them. A `!` glob of the manifest
 leaves out paths of the manifest's own members only. It never removes
 a built-in member.
 
-### 10.3 Shared paths
-
-`plan.shared` is a path set. A **shared** path is a path that every
-step of every plan can change, such as the dependency and license
-files at the repository root. A hunk under a shared path is never work
-outside a plan: `unplanned-change` does not report it. A shared path
-does not widen the place where a promise can be met
-([vocabulary.md](vocabulary.md) section 10.4).
-
-### 10.4 Default locations
+### 10.3 Default locations
 
 `plan.locations.<kind>` is a path set. `<kind>` is `req`, `design`, or
 `decision`. The path set is the **default location** of the kind. A
@@ -726,15 +728,15 @@ predicate `approved()` ([algebra.md](algebra.md) section 6.5), each
 finding class that uses it, and the liveness of a `@supersedes` edge
 ([vocabulary.md](vocabulary.md) section 8.1) follow this rule.
 
-### 11.2 Harness markers
+### 11.2 Agent markers
 
-A **harness marker** is an environment variable that an agent harness
-sets. The commands `sinter approve`, `sinter decline`, and
-`sinter ledger abandon` refuse with exit code 4 when the environment
-holds a harness marker, whatever its value.
+An **agent marker** is an environment variable that shows that an
+agent runs the command. The commands `sinter approve`,
+`sinter decline`, and `sinter ledger abandon` refuse with exit code 4
+when the environment holds an agent marker, whatever its value.
 
-The tool holds a built-in list of harness markers.
-`ledger.harness-markers` is an array of names that add to that list.
+The tool holds a built-in list of agent markers.
+`ledger.agent-markers` is an array of names that add to that list.
 Each name matches `[A-Za-z_][A-Za-z0-9_]*`, and no name occurs twice.
 The default is empty. The manifest can only add names. It cannot
 remove a name from the built-in list of the tool. A name that is
@@ -742,13 +744,14 @@ already in that list is valid, and it changes nothing.
 
 ## 12. `[evidence]`: test evidence
 
-`evidence.coverage-attribution` is `"optional"` or `"required"`. The
-default is `"optional"`. The value decides which rungs of a
-`@verifies` edge meet a promise. [algebra.md](algebra.md) section
-6.7 defines the rungs. **Attributed coverage** is coverage that
-Sinter measures for each test on its own. An edge is at rung
+`evidence.test-coverage` is `"optional"` or `"required"`. The default
+is `"optional"`. The value decides which rungs of a `@verifies` edge
+meet a promise. [algebra.md](algebra.md) section 6.7 defines the
+rungs. **The coverage of each test** is the coverage that Sinter
+measures for one test on its own. **The coverage of the whole run** is
+the coverage of all the tests of a run together. An edge is at rung
 `unmeasured` when its tests pass and the run covered its sites, but
-no attributed coverage shows that the test ran them.
+the evidence holds no coverage of each test for its tests.
 
 | value | rungs that meet a promise |
 |---|---|
@@ -780,13 +783,13 @@ them, except as the last column says.
 | the folder of plans | `.plans/` | nothing |
 | the pack `markdown` | built into the tool | name it, and give its files |
 | historical paths | `.plans/**/*.log.md` | add paths |
-| ambient paths | each plan file, the manifest, `sinter.lock` | add paths |
+| exempt paths | each plan file, the manifest, `sinter.lock` | add paths |
 | the tier of each pair of a gate and a built-in class | algebra.md section 9 | write another tier |
-| the default of `target` | `"main"` | write another branch |
-| the default of `check.rollout-cap` | `false` | write `true` |
-| the default of `evidence.coverage-attribution` | `"optional"` | write `"required"` |
+| the default of `default-branch` | `"main"` | write another branch |
+| the default of `check.warn-only` | `false` | write `true` |
+| the default of `evidence.test-coverage` | `"optional"` | write `"required"` |
 
-The list of harness markers is built into the tool, not into this
+The list of agent markers is built into the tool, not into this
 specification. The manifest can add names to it (section 11.2).
 
 ## 14. Facts from the manifest
@@ -800,17 +803,21 @@ The manifest yields facts of the kind `setting`, in the category
   fact.
 - An array that the manifest writes yields one setting fact for each
   member.
-- Each of `target`, `check.rollout-cap`, and
-  `evidence.coverage-attribution` yields one setting fact with its
+- Each runner table yields one setting fact as a member of
+  `scan.packs.<name>.runners`: its value is the name of the runner,
+  and it is located at the key of the runner. Each runner setting in
+  the table yields its own setting fact by the rules above.
+- Each of `default-branch`, `check.warn-only`, and
+  `evidence.test-coverage` yields one setting fact with its
   default value when the manifest does not write it.
-- Each built-in member of `check.historical` and of `plan.ambient`
+- Each built-in member of `check.historical` and of `plan.exempt`
   yields one setting fact. The value of the member for a plan file is
   the path of the plan file. The value of the member for the manifest
   is the path of the manifest.
-- `spec` yields no fact.
+- `sinter-spec` yields no fact.
 - `check.tiers` yields gate facts (section 14.2), and no setting
   facts.
-- The built-in list of harness markers of the tool yields no facts.
+- The built-in list of agent markers of the tool yields no facts.
 
 The `setting` record has these fields, in addition to the envelope of
 [jsonl.md](jsonl.md) section 3:
@@ -850,11 +857,11 @@ these fields:
 
 | field | type | meaning |
 |---|---|---|
-| `gate` | string | `turn`, `merge`, or `target` |
+| `gate` | string | `turn`, `review`, or `merged` |
 | `class` | string | the finding class |
 | `tier` | string | the tier that applies (section 9.3) |
 | `default` | bool | `true` when `check.tiers` does not write the pair |
-| `capped` | bool | `true` when the rollout cap lowered the tier |
+| `capped` | bool | `true` when `check.warn-only` lowered the tier |
 
 A gate fact whose pair `check.tiers` writes is located at that entry.
 A gate fact whose pair the manifest does not write is unlocated. The id
@@ -866,6 +873,7 @@ of a gate fact is `gate:<gate>/<class>`.
 |---|---|
 | a setting fact of one value | from the first character of the key, as its line writes it, to the last character of the value |
 | a setting fact of one member | the string of the member, its quotes included |
+| a setting fact of one runner table | the part `<runner>` of the first key of the file that names the table of the runner, its quotes included when the key quotes it |
 | a written gate fact | the whole entry, as for a setting fact of one value |
 
 A comment after a value is not part of a position. Lines and columns
@@ -895,18 +903,19 @@ From each side, the adjudicator makes a **comparison set**. Each entry
 of the set has an id and a value, by the rules of sections 14.1 and
 14.2:
 
-1. one entry for each of `target`, `check.rollout-cap`, and
-   `evidence.coverage-attribution`: the written value, or the default;
+1. one entry for each of `default-branch`, `check.warn-only`, and
+   `evidence.test-coverage`: the written value, or the default;
 2. one entry for each other key that the side writes with one value;
    for a pair that `check.tiers` writes, the id is `gate:<gate>/<class>`
    and the value is the written tier;
 3. one entry for each member of an array that the side writes, except
-   a member that is also built in.
+   a member that is also built in, and one entry for each runner table
+   that the side writes, as section 14.1 says.
 
-`spec` has no entry. On the base side, only the key paths of section
-3.2 count, and only the values of the type that each key takes. The
-type of a key `scan.packs.<name>.<runner>.<key>` is the type that the
-descriptor of the pack of the working tree gives it.
+`sinter-spec` has no entry. On the base side, only the key paths of
+section 3.2 count, and only the values of the type that each key
+takes. The type of a key `scan.packs.<name>.runners.<runner>.<key>` is
+the type that the descriptor of the pack of the working tree gives it.
 
 **A change.** An id that is in one comparison set only is a change. An
 id whose two values differ is a change. Comments, blank lines, the
@@ -947,28 +956,28 @@ does not mean "reports more findings".
 
 | key path | strengthens | weakens | changes |
 |---|---|---|---|
-| `target` | | | each change |
+| `default-branch` | | | each change |
 | `scan.packs.<name>.files` | a plain glob added; a `!` glob removed | a plain glob removed; a `!` glob added | |
 | `scan.packs.<name>.version` | | | each change |
 | `scan.packs.<name>.runners` | | | each change |
-| `scan.packs.<name>.<runner>.<key>` | | | each change |
-| `scan.refs.<ns>` | a namespace removed | a namespace added | a pattern changed |
-| `check.rollout-cap` | `true` to `false` | `false` to `true` | |
+| `scan.packs.<name>.runners.<runner>.<key>` | | | each change |
+| `scan.namespaces.<ns>` | a namespace removed | a namespace added | a pattern changed |
+| `check.warn-only` | `true` to `false` | `false` to `true` | |
 | `check.tiers.<gate>.<class>` | the tier that applies rises | the tier that applies falls | the tier that applies stays the same |
-| `check.historical`, `plan.ambient`, `plan.shared`, `plan.locations.<kind>` | a plain glob removed; a `!` glob added | a plain glob added; a `!` glob removed | |
+| `check.historical`, `plan.exempt`, `plan.locations.<kind>` | a plain glob removed; a `!` glob added | a plain glob added; a `!` glob removed | |
 | `ledger.approval-required` | a kind added | a kind removed | |
-| `ledger.harness-markers` | a name added | a name removed | |
-| `evidence.coverage-attribution` | `"optional"` to `"required"` | `"required"` to `"optional"` | |
+| `ledger.agent-markers` | a name added | a name removed | |
+| `evidence.test-coverage` | `"optional"` to `"required"` | `"required"` to `"optional"` | |
 
 A tier rises in the order `off`, `warn`, `block`.
 
 Examples of details:
 
 ```
-check.rollout-cap: false -> true (weakens)
+check.warn-only: false -> true (weakens)
 check.historical: added "docs/devlog/" (weakens)
-check.tiers.merge.dangling: "block" -> "warn" (weakens)
-scan.refs.jira: added "[A-Z]+-[1-9][0-9]*" (weakens)
+check.tiers.review.dangling: "block" -> "warn" (weakens)
+scan.namespaces.jira: added "[A-Z]+-[1-9][0-9]*" (weakens)
 ledger.approval-required: added "req" (strengthens)
 ```
 
@@ -1025,7 +1034,7 @@ records, and other documents. Every other setting has its default.
 ### 16.2 Sinter
 
 ```toml
-spec = "1.0"
+sinter-spec = "1.0"
 
 [scan]
 packs.markdown.files = ["**/*.md"]
@@ -1033,24 +1042,22 @@ packs.ocaml.files = ["**/*.ml", "**/*.mli"]
 packs.ocaml.version = "1.0"
 packs.rust.files = ["**/*.rs"]
 packs.rust.version = "1.0"
-refs.gh = "[1-9][0-9]*"
+namespaces.gh = "[1-9][0-9]*"
 
 [check]
-rollout-cap = true
+warn-only = true
 
 [plan]
-ambient = [
-  "bridge/Cargo.lock",
-  "sinter.opam",
-  "sinter.opam.locked",
-]
-shared = [
+exempt = [
   ".gitignore",
   "LICENSES/",
   "REUSE.toml",
   "THIRD_PARTY.md",
+  "bridge/Cargo.lock",
   "bridge/Cargo.toml",
   "dune-project",
+  "sinter.opam",
+  "sinter.opam.locked",
 ]
 locations.decision = ["docs/decisions/"]
 ```
@@ -1058,34 +1065,39 @@ locations.decision = ["docs/decisions/"]
 ### 16.3 A TypeScript project
 
 ```toml
-spec = "1.0"
+sinter-spec = "1.0"
 
 [scan]
 packs.markdown.files = ["**/*.md", "!test/fixtures/"]
 packs.typescript.files = ["**/*.ts", "!**/*.d.ts"]
 packs.typescript.version = "1.0"
-packs.typescript.runners = ["vitest"]
-refs.gh = "[1-9][0-9]*"
-refs.jira = "[A-Z]+-[1-9][0-9]*"
+packs.typescript.runners.vitest = {}
+namespaces.gh = "[1-9][0-9]*"
+namespaces.jira = "[A-Z]+-[1-9][0-9]*"
 
 [check]
-rollout-cap = true
+warn-only = true
 historical = ["docs/devlog/"]
-tiers.merge.dangling = "block"
-tiers.target.dangling = "block"
+tiers.review.dangling = "block"
+tiers.merged.dangling = "block"
 
 [plan]
-ambient = ["package-lock.json"]
-shared = [".gitignore", "LICENSE", "package.json", "tsconfig.json"]
+exempt = [
+  ".gitignore",
+  "LICENSE",
+  "package-lock.json",
+  "package.json",
+  "tsconfig.json",
+]
 locations.decision = ["docs/decisions/"]
 
 [ledger]
 approval-required = ["req"]
 
 [evidence]
-coverage-attribution = "required"
+test-coverage = "required"
 ```
 
 The markdown files under `test/fixtures/` are test data, so the pack
-`markdown` leaves them out. The class `dangling` passes the rollout
-cap at the gates `merge` and `target`.
+`markdown` leaves them out. At the gates `review` and `merged`, the
+class `dangling` blocks while `warn-only` is `true`.

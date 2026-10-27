@@ -5,9 +5,9 @@
     text of [sinter.toml].
 
     The reader checks the text in four steps, in this order: the TOML syntax;
-    the key [spec]; the names of the keys and the types of the values; and each
-    value against the rules of its key. It stops at the first step that finds an
-    error, and gives every error of that step. *)
+    the key [sinter-spec]; the names of the keys and the types of the values;
+    and each value against the rules of its key. It stops at the first step that
+    finds an error, and gives every error of that step. *)
 
 (** {1 Versions and kinds} *)
 
@@ -16,7 +16,7 @@ val specification : Major_minor.t
 
 val since : string list -> Major_minor.t option
 (** [since path] is the version of the specifications that added the setting at
-    the key path [path], such as [["check"; "rollout-cap"]]. A name that varies,
+    the key path [path], such as [["check"; "warn-only"]]. A name that varies,
     such as the name of a pack, can be any name except a fixed name of the same
     table: [["scan"; "packs"; "ocaml"; "files"; "x"]] names no setting. It is
     [None] when [path] names no setting. *)
@@ -29,7 +29,7 @@ val kind_name : kind -> string
 (** [kind_name kind] is ["req"], ["design"], ["decision"], or ["plan"]. *)
 
 (** Which rungs of an edge of the kind [verifies] complete a promise. *)
-type coverage_attribution =
+type test_coverage =
   | Optional  (** the rungs [passing] and [unmeasured] *)
   | Required  (** the rung [passing] alone *)
 
@@ -48,20 +48,20 @@ type expected =
 type problem =
   | Syntax of Toml.error  (** the text is not a TOML 1.1.0 document *)
   | Not_a_version of { key : string list; text : string }
-      (** the string of [spec] or of a pack version is not of the form
+      (** the string of [sinter-spec] or of a pack version is not of the form
           MAJOR.MINOR *)
-  | Spec_too_new of Major_minor.t
-      (** [spec] states a version newer than {!specification} *)
-  | Spec_major_too_old of Major_minor.t
-      (** [spec] states a version with a major number below that of
+  | Sinter_spec_too_new of Major_minor.t
+      (** [sinter-spec] states a version newer than {!specification} *)
+  | Sinter_spec_major_too_old of Major_minor.t
+      (** [sinter-spec] states a version with a major number below that of
           {!specification} *)
   | Key_too_new of {
       key : string list;
       since : Major_minor.t;
-      spec : Major_minor.t;
+      sinter_spec : Major_minor.t;
     }
-      (** the manifest writes a key that a version newer than its [spec] added
-      *)
+      (** the manifest writes a key that a version newer than its [sinter-spec]
+          added *)
   | Unknown_key of {
       name : string;
       table : string list;
@@ -95,9 +95,8 @@ type problem =
   | Markdown_version  (** a version for the built-in pack [markdown] *)
   | Markdown_runners  (** runners for the built-in pack [markdown] *)
   | Bad_runner_name of string
-      (** a member of the runners of a pack that is not a runner name: a name
-          that does not match the pattern of a pack name, or one of [files],
-          [version], or [runners] *)
+      (** a key under the runners of a pack that is not a runner name: a name
+          that does not match the pattern of a pack name *)
   | Runner_in_two_packs of { runner : string; pack : string; other : string }
       (** the runners of [pack] and of [other] both hold [runner]; [other] is
           the first pack in byte order that holds it *)
@@ -109,7 +108,7 @@ type problem =
   | Wrong_member_type of { key : string list; found : Toml.Kind.t }
       (** a member of an array of strings that is not a string *)
   | Not_a_branch of { name : string; error : Branch_name.error }
-      (** the value of [target] *)
+      (** the value of [default-branch] *)
   | Bad_glob of { member : string; error : Glob.error }
       (** a member of a path set that is not a glob, or not [!] and a glob *)
   | Repeated_member of { key : string list; member : string }
@@ -126,7 +125,7 @@ type problem =
       nearest : string option;
     }  (** a string that is not one of the words that the key takes *)
   | Bad_marker of string
-      (** a harness marker that is not a name of an environment variable *)
+      (** a agent marker that is not a name of an environment variable *)
 
 (** One error of a manifest. *)
 type error =
@@ -136,11 +135,11 @@ type error =
           part of the key that is in error. *)
   | No_pack  (** the manifest names no pack *)
 
-val newer_keys : spec:Major_minor.t -> Toml.table -> error list
-(** [newer_keys ~spec document] is a [Key_too_new] error at each key of
-    [document] whose setting a version newer than [spec] added, in the order of
-    their places. {!of_string} gives these errors when the manifest states
-    [spec]. *)
+val newer_keys : sinter_spec:Major_minor.t -> Toml.table -> error list
+(** [newer_keys ~sinter_spec document] is a [Key_too_new] error at each key of
+    [document] whose setting a version newer than [sinter-spec] added, in the
+    order of their places. {!of_string} gives these errors when the manifest
+    states [sinter-spec]. *)
 
 val message : error -> string
 (** [message error] says what is wrong and, when it can, what to write instead.
@@ -156,13 +155,13 @@ val render : path:string -> error -> string
 type runner = {
   name : string;
   at : Toml.span;
-      (** the span of the member of [scan.packs.<name>.runners] that names the
-          runner, its quotes included *)
+      (** the span of the part [<runner>] of the first key of the file that
+          names the table [scan.packs.<name>.runners.<runner>] *)
   settings : (Toml.key * Toml.node) list;
-      (** each runner setting [scan.packs.<name>.<runner>.<key>] that the
-          manifest writes, in the order of the file: the part [<key>] of the key
-          path, with its span, and the value as the text writes it. The reader
-          checks no name, type, or value of a setting. *)
+      (** each runner setting [scan.packs.<name>.runners.<runner>.<key>] that
+          the manifest writes, in the order of the file: the part [<key>] of the
+          key path, with its span, and the value as the text writes it. The
+          reader checks no name, type, or value of a setting. *)
 }
 (** One runner of a pack. *)
 
@@ -172,8 +171,8 @@ type pack = {
   version : Major_minor.t option;
       (** the release of a fetched pack; [None] for [markdown] alone *)
   runners : runner list;
-      (** the runners, in the order of [scan.packs.<name>.runners], with no name
-          twice; [[]] when the manifest gives none *)
+      (** the runners, one for each table under [scan.packs.<name>.runners], in
+          the order of the file; [[]] when the manifest gives none *)
 }
 (** One pack that the manifest names. *)
 
@@ -204,23 +203,24 @@ val load : string -> (t, load_error) result
 
 (** {1 Settings} *)
 
-val spec : t -> Major_minor.t option
-(** [spec manifest] is the version that [spec] states, or [None]. *)
-
-val target : t -> string
-(** [target manifest] is the target branch: the value of [target], or ["main"].
+val sinter_spec : t -> Major_minor.t option
+(** [sinter_spec manifest] is the version that [sinter-spec] states, or [None].
 *)
+
+val default_branch : t -> string
+(** [default_branch manifest] is the default branch: the value of
+    [default-branch], or ["main"]. *)
 
 val packs : t -> pack list
 (** [packs manifest] is the packs, sorted by name in byte order. The list is
     never empty. *)
 
-val ref_namespaces : t -> (string * Id_pattern.t) list
-(** [ref_namespaces manifest] is each declared ref namespace with its id
+val namespaces : t -> (string * Id_pattern.t) list
+(** [namespaces manifest] is each declared namespace of external ids with its id
     pattern, sorted by namespace in byte order. *)
 
-val rollout_cap : t -> bool
-(** [rollout_cap manifest] is the value of [check.rollout-cap], or [false]. *)
+val warn_only : t -> bool
+(** [warn_only manifest] is the value of [check.warn-only], or [false]. *)
 
 val written_tiers :
   t -> (Finding_class.gate * Finding_class.t * Finding_class.tier) list
@@ -232,9 +232,9 @@ val written_tiers :
 val tier :
   t -> Finding_class.gate -> Finding_class.t -> Finding_class.tier option
 (** [tier manifest gate finding_class] is the tier that applies to the class at
-    the gate: the tier that [check.tiers] writes; else [Warn] when the rollout
-    cap is on and the built-in tier is [Block]; else the built-in tier. It is
-    [None] when the class takes no tier at the gate. *)
+    the gate: the tier that [check.tiers] writes; else [Warn] when
+    [check.warn-only] is [true] and the built-in tier is [Block]; else the
+    built-in tier. It is [None] when the class takes no tier at the gate. *)
 
 val historical : t -> Path_set.t
 (** [historical manifest] is the path set that [check.historical] writes. *)
@@ -246,22 +246,19 @@ val is_historical : t -> string -> bool
 (** [is_historical manifest path] is [true] when the built-in member matches
     [path], or when [path] is in {!historical}. *)
 
-val ambient : t -> Path_set.t
-(** [ambient manifest] is the path set that [plan.ambient] writes. *)
+val exempt : t -> Path_set.t
+(** [exempt manifest] is the path set that [plan.exempt] writes. *)
 
 val lock_file : string
-(** The path of the lock file, [sinter.lock], a built-in ambient path. *)
+(** The path of the lock file, [sinter.lock], a built-in exempt path. *)
 
-val is_ambient :
+val is_exempt :
   t -> plan_file:(string -> bool) -> manifest:string option -> string -> bool
-(** [is_ambient manifest ~plan_file ~manifest:location path] is [true] when
-    [path] is a built-in ambient path, or in {!ambient}. The built-in ambient
-    paths are each path for which [plan_file] is [true], [location] when it is
+(** [is_exempt manifest ~plan_file ~manifest:location path] is [true] when
+    [path] is a built-in exempt path, or in {!exempt}. The built-in exempt paths
+    are each path for which [plan_file] is [true], [location] when it is
     [Some _], and {!lock_file}. [location] is the path of the manifest relative
     to the repository root, and [None] for a manifest outside the repository. *)
-
-val shared : t -> Path_set.t
-(** [shared manifest] is the path set that [plan.shared] writes. *)
 
 val location : t -> kind -> Path_set.t option
 (** [location manifest kind] is the default location of [kind], or [None] when
@@ -271,10 +268,10 @@ val approval_required : t -> kind list
 (** [approval_required manifest] is the kinds that need approval, in the order
     the manifest writes them. *)
 
-val harness_markers : t -> string list
-(** [harness_markers manifest] is the names that the manifest adds to the
-    built-in list of harness markers, in the order it writes them. *)
+val agent_markers : t -> string list
+(** [agent_markers manifest] is the names that the manifest adds to the built-in
+    list of agent markers, in the order it writes them. *)
 
-val coverage_attribution : t -> coverage_attribution
-(** [coverage_attribution manifest] is the value of
-    [evidence.coverage-attribution], or [Optional]. *)
+val test_coverage : t -> test_coverage
+(** [test_coverage manifest] is the value of [evidence.test-coverage], or
+    [Optional]. *)

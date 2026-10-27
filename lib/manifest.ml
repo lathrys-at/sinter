@@ -8,22 +8,21 @@ let settings =
     (fun (path, major, minor) ->
       (String.split_on_char '.' path, Major_minor.make major minor))
     [
-      ("spec", 1, 0);
-      ("target", 1, 0);
+      ("sinter-spec", 1, 0);
+      ("default-branch", 1, 0);
       ("scan.packs.<name>.files", 1, 0);
       ("scan.packs.<name>.version", 1, 0);
-      ("scan.packs.<name>.runners", 1, 0);
-      ("scan.packs.<name>.<runner>.<key>", 1, 0);
-      ("scan.refs.<ns>", 1, 0);
-      ("check.rollout-cap", 1, 0);
+      ("scan.packs.<name>.runners.<runner>", 1, 0);
+      ("scan.packs.<name>.runners.<runner>.<key>", 1, 0);
+      ("scan.namespaces.<ns>", 1, 0);
+      ("check.warn-only", 1, 0);
       ("check.historical", 1, 0);
       ("check.tiers.<gate>.<class>", 1, 0);
-      ("plan.ambient", 1, 0);
-      ("plan.shared", 1, 0);
+      ("plan.exempt", 1, 0);
       ("plan.locations.<kind>", 1, 0);
       ("ledger.approval-required", 1, 0);
-      ("ledger.harness-markers", 1, 0);
-      ("evidence.coverage-attribution", 1, 0);
+      ("ledger.agent-markers", 1, 0);
+      ("evidence.test-coverage", 1, 0);
     ]
 
 let varies name = String.starts_with ~prefix:"<" name
@@ -70,18 +69,18 @@ let kind_name = function
 let kinds = [ Req; Design; Decision; Plan ]
 let location_kinds = [ Req; Design; Decision ]
 
-type coverage_attribution = Optional | Required
+type test_coverage = Optional | Required
 type expected = A_string | A_version | True_or_false | Strings | A_table
 
 type problem =
   | Syntax of Toml.error
   | Not_a_version of { key : string list; text : string }
-  | Spec_too_new of Major_minor.t
-  | Spec_major_too_old of Major_minor.t
+  | Sinter_spec_too_new of Major_minor.t
+  | Sinter_spec_major_too_old of Major_minor.t
   | Key_too_new of {
       key : string list;
       since : Major_minor.t;
-      spec : Major_minor.t;
+      sinter_spec : Major_minor.t;
     }
   | Unknown_key of {
       name : string;
@@ -167,36 +166,34 @@ let expected_text = function
 let name_rule ~examples =
   "lower-case letters and digits, in words joined by '-', such as " ^ examples
 
-let pack_keys = [ "files"; "version"; "runners" ]
-
 let problem_message = function
   | Syntax error -> Toml.error_message error
   | Not_a_version { key; text } ->
       Printf.sprintf "%s takes %s, not %s"
         (Toml.quote (last key))
         (expected_text A_version) (Toml.basic_string text)
-  | Spec_too_new version ->
+  | Sinter_spec_too_new version ->
       Printf.sprintf
         "this manifest needs specification %s, and this sinter implements %s; \
          install a newer sinter"
         (Major_minor.to_string version)
         (Major_minor.to_string specification)
-  | Spec_major_too_old version ->
+  | Sinter_spec_major_too_old version ->
       Printf.sprintf
         "this manifest is for specification %s, and this sinter implements %s, \
          a new major version that can change the meaning of a key; read the \
          notes on the changes in specification %s, then update the manifest \
-         and its 'spec'"
+         and its 'sinter-spec'"
         (Major_minor.to_string version)
         (Major_minor.to_string specification)
         (Major_minor.to_string specification)
-  | Key_too_new { key; since; spec } ->
+  | Key_too_new { key; since; sinter_spec } ->
       Printf.sprintf
-        "%s needs specification %s, and the manifest states spec = %s; write \
-         spec = %s"
+        "%s needs specification %s, and the manifest states sinter-spec = %s; \
+         write sinter-spec = %s"
         (Toml.quote (Toml.render_path key))
         (Major_minor.to_string since)
-        (Toml.basic_string (Major_minor.to_string spec))
+        (Toml.basic_string (Major_minor.to_string sinter_spec))
         (Toml.basic_string (Major_minor.to_string since))
   | Unknown_key { name; table; nearest } ->
       Printf.sprintf "unknown key %s %s%s" (Toml.quote name) (in_table table)
@@ -215,7 +212,7 @@ let problem_message = function
         (Toml.quote name)
         (name_rule ~examples:"'ocaml' or 'tree-sitter'")
   | Bad_namespace name ->
-      Printf.sprintf "%s is not a ref namespace; a namespace is %s"
+      Printf.sprintf "%s is not a namespace; a namespace is %s"
         (Toml.quote name)
         (name_rule ~examples:"'gh' or 'jira'")
   | Unknown_gate { name; nearest } ->
@@ -256,11 +253,6 @@ let problem_message = function
       "the pack markdown is built into sinter and takes no version"
   | Markdown_runners ->
       "the pack markdown is built into sinter and has no runner"
-  | Bad_runner_name name when List.mem name pack_keys ->
-      Printf.sprintf
-        "%s cannot name a runner; 'files', 'version', and 'runners' are keys \
-         of a pack"
-        (Toml.quote name)
   | Bad_runner_name name ->
       Printf.sprintf "%s is not a runner name; a runner name is %s"
         (Toml.quote name)
@@ -342,46 +334,42 @@ type pack = {
 }
 
 type t = {
-  spec : Major_minor.t option;
-  target : string;
+  sinter_spec : Major_minor.t option;
+  default_branch : string;
   packs : pack list;
-  refs : (string * Id_pattern.t) list;
-  rollout_cap : bool;
+  namespaces : (string * Id_pattern.t) list;
+  warn_only : bool;
   tiers : (Finding_class.gate * Finding_class.t * Finding_class.tier) list;
   historical : Path_set.t;
-  ambient : Path_set.t;
-  shared : Path_set.t;
+  exempt : Path_set.t;
   locations : (kind * Path_set.t) list;
   approval_required : kind list;
-  harness_markers : string list;
-  coverage_attribution : coverage_attribution;
+  agent_markers : string list;
+  test_coverage : test_coverage;
 }
 
 type reading = {
   mutable names_errors : (Toml.position * problem) list;
   mutable value_errors : (Toml.position * problem) list;
-  mutable target : string option;
+  mutable default_branch : string option;
   mutable pack_keys : (string * Toml.position) list;
   mutable files : (string * Path_set.t option) list;
   mutable versions : (string * Major_minor.t option) list;
-  mutable runners : (string * (Toml.node * string) list) list;
-  mutable runner_settings : ((string * string) * Toml.table) list;
-  mutable refs : (string * Id_pattern.t) list;
-  mutable rollout_cap : bool;
+  mutable runners : (string * (Toml.key * Toml.table)) list;
+  mutable namespaces : (string * Id_pattern.t) list;
+  mutable warn_only : bool;
   mutable tiers :
     (Finding_class.gate * Finding_class.t * Finding_class.tier) list;
   mutable historical : Path_set.t;
-  mutable ambient : Path_set.t;
-  mutable shared : Path_set.t;
+  mutable exempt : Path_set.t;
   mutable locations : (kind * Path_set.t) list;
   mutable approval_required : kind list;
-  mutable harness_markers : string list;
-  mutable coverage_attribution : coverage_attribution;
+  mutable agent_markers : string list;
+  mutable test_coverage : test_coverage;
 }
 
 type place =
   | Fixed of (string * place) list
-  | Fixed_by of (Toml.table -> (string * place) list)
   | Varying of (Toml.key -> (place, problem) result)
   | Refused of problem
   | Kept of (Toml.table -> unit)
@@ -433,14 +421,6 @@ let first_repeated texts =
         else go (Names.add text seen) rest
   in
   go Names.empty texts
-
-let distinct texts =
-  List.fold_left
-    (fun (seen, kept) (node, text) ->
-      if Names.mem text seen then (seen, kept)
-      else (Names.add text seen, (node, text) :: kept))
-    (Names.empty, []) texts
-  |> snd |> List.rev
 
 let read_path_set reading ~key array members set =
   match Path_set.of_strings (List.map snd members) with
@@ -509,24 +489,6 @@ let words reading ~key choices name_of found =
         (first_repeated members);
       found read)
 
-let is_runner_name name = is_layout_name name && not (List.mem name pack_keys)
-
-let runner_names table =
-  match
-    List.find_opt (fun ((key : Toml.key), _) -> key.name = "runners") table
-  with
-  | Some (_, node) -> (
-      match Toml.value node with
-      | Toml.Array members ->
-          List.filter_map
-            (fun member ->
-              match Toml.value member with
-              | Toml.String name -> Some name
-              | _ -> None)
-            members
-      | _ -> [])
-  | None -> []
-
 let pack_place reading (key : Toml.key) =
   let name = key.name in
   let files_key = [ "scan"; "packs"; name; "files" ] in
@@ -561,32 +523,17 @@ let pack_place reading (key : Toml.key) =
       )
     and runners =
       ( "runners",
-        Texts
-          (fun _ members ->
-            List.iter
-              (fun (node, runner) ->
-                if not (is_runner_name runner) then
-                  value_error reading (start node) (Bad_runner_name runner))
-              members;
-            List.iter
-              (fun (node, member) ->
-                value_error reading (start node)
-                  (Repeated_member
-                     { key = [ "scan"; "packs"; name; "runners" ]; member }))
-              (first_repeated members);
-            reading.runners <- (name, members) :: reading.runners) )
-    in
-    Fixed_by
-      (fun table ->
-        files :: version :: runners
-        :: List.map
-             (fun runner ->
-               ( runner,
-                 Kept
+        Varying
+          (fun key ->
+            if is_layout_name key.name then
+              Ok
+                (Kept
                    (fun settings ->
-                     reading.runner_settings <-
-                       ((name, runner), settings) :: reading.runner_settings) ))
-             (runner_names table))
+                     reading.runners <-
+                       (name, (key, settings)) :: reading.runners))
+            else Error (Bad_runner_name key.name)) )
+    in
+    Fixed [ files; version; runners ]
 
 let tier_place reading gate =
   Varying
@@ -631,12 +578,12 @@ let tier_place reading gate =
 
 let layout reading =
   [
-    ("spec", Text (fun _ _ -> ()));
-    ( "target",
+    ("sinter-spec", Text (fun _ _ -> ()));
+    ( "default-branch",
       Text
         (fun node value ->
           match Branch_name.check value with
-          | Ok () -> reading.target <- Some value
+          | Ok () -> reading.default_branch <- Some value
           | Error error ->
               value_error reading
                 (inside node (Branch_name.error_offset error))
@@ -653,7 +600,7 @@ let layout reading =
                   Ok (pack_place reading key)
                 end
                 else Error (Bad_pack_name key.name)) );
-          ( "refs",
+          ( "namespaces",
             Varying
               (fun key ->
                 if is_layout_name key.name then
@@ -662,7 +609,8 @@ let layout reading =
                        (fun node value ->
                          match Id_pattern.of_string value with
                          | Ok pattern ->
-                             reading.refs <- (key.name, pattern) :: reading.refs
+                             reading.namespaces <-
+                               (key.name, pattern) :: reading.namespaces
                          | Error error ->
                              value_error reading
                                (inside node (Id_pattern.error_offset error))
@@ -672,7 +620,7 @@ let layout reading =
     ( "check",
       Fixed
         [
-          ("rollout-cap", Flag (fun value -> reading.rollout_cap <- value));
+          ("warn-only", Flag (fun value -> reading.warn_only <- value));
           ( "historical",
             path_set reading [ "check"; "historical" ] (fun set ->
                 reading.historical <- set) );
@@ -698,12 +646,9 @@ let layout reading =
     ( "plan",
       Fixed
         [
-          ( "ambient",
-            path_set reading [ "plan"; "ambient" ] (fun set ->
-                reading.ambient <- set) );
-          ( "shared",
-            path_set reading [ "plan"; "shared" ] (fun set ->
-                reading.shared <- set) );
+          ( "exempt",
+            path_set reading [ "plan"; "exempt" ] (fun set ->
+                reading.exempt <- set) );
           ( "locations",
             Varying
               (fun key ->
@@ -737,7 +682,7 @@ let layout reading =
           ( "approval-required",
             words reading ~key:[ "ledger"; "approval-required" ] kinds kind_name
               (fun found -> reading.approval_required <- found) );
-          ( "harness-markers",
+          ( "agent-markers",
             Texts
               (fun _ members ->
                 List.iter
@@ -749,19 +694,19 @@ let layout reading =
                   (fun (node, member) ->
                     value_error reading (start node)
                       (Repeated_member
-                         { key = [ "ledger"; "harness-markers" ]; member }))
+                         { key = [ "ledger"; "agent-markers" ]; member }))
                   (first_repeated members);
-                reading.harness_markers <- List.map snd members) );
+                reading.agent_markers <- List.map snd members) );
         ] );
     ( "evidence",
       Fixed
         [
-          ( "coverage-attribution",
+          ( "test-coverage",
             word reading
-              ~key:[ "evidence"; "coverage-attribution" ]
+              ~key:[ "evidence"; "test-coverage" ]
               [ Optional; Required ]
               (function Optional -> "optional" | Required -> "required")
-              (fun value -> reading.coverage_attribution <- value) );
+              (fun value -> reading.test_coverage <- value) );
         ] );
   ]
 
@@ -773,11 +718,9 @@ let rec walk reading ~path ~(key : Toml.key) place node =
   in
   match (place, Toml.value node) with
   | Fixed fields, Toml.Table table -> walk_fixed reading ~path fields table
-  | Fixed_by fields, Toml.Table table ->
-      walk_fixed reading ~path (fields table) table
   | Varying check, Toml.Table table -> walk_varying reading ~path check table
   | Kept found, Toml.Table table -> found table
-  | (Fixed _ | Fixed_by _ | Varying _ | Kept _), _ -> wrong A_table
+  | (Fixed _ | Varying _ | Kept _), _ -> wrong A_table
   | Refused problem, _ -> names_error reading key.at.start problem
   | Text found, Toml.String value -> found node value
   | Text _, _ -> wrong A_string
@@ -835,98 +778,96 @@ let sort errors =
     errors
   |> List.map (fun (position, problem) -> At (position, problem))
 
-let check_spec document =
+let check_sinter_spec document =
   match
-    List.find_opt (fun ((key : Toml.key), _) -> key.name = "spec") document
+    List.find_opt
+      (fun ((key : Toml.key), _) -> key.name = "sinter-spec")
+      document
   with
   | None -> Ok None
   | Some (_, node) -> (
       match Toml.value node with
       | Toml.String text -> (
           match Major_minor.of_string text with
-          | None -> Error (start node, Not_a_version { key = [ "spec" ]; text })
-          | Some spec when Major_minor.newer spec ~than:specification ->
-              Error (start node, Spec_too_new spec)
-          | Some spec when Major_minor.older_major spec ~than:specification ->
-              Error (start node, Spec_major_too_old spec)
-          | Some spec -> Ok (Some spec))
+          | None ->
+              Error (start node, Not_a_version { key = [ "sinter-spec" ]; text })
+          | Some sinter_spec
+            when Major_minor.newer sinter_spec ~than:specification ->
+              Error (start node, Sinter_spec_too_new sinter_spec)
+          | Some sinter_spec
+            when Major_minor.older_major sinter_spec ~than:specification ->
+              Error (start node, Sinter_spec_major_too_old sinter_spec)
+          | Some sinter_spec -> Ok (Some sinter_spec))
       | other ->
           Error
             ( start node,
               Wrong_type
                 {
-                  key = [ "spec" ];
+                  key = [ "sinter-spec" ];
                   expected = A_version;
                   found = Toml.Kind.of_value other;
                 } ))
 
-let rec keys_newer ~spec ~path table =
+let rec keys_newer ~sinter_spec ~path table =
   List.concat_map
     (fun ((key : Toml.key), node) ->
       let path = path @ [ key.name ] in
       let here =
         match since path with
-        | Some version when Major_minor.newer version ~than:spec ->
+        | Some version when Major_minor.newer version ~than:sinter_spec ->
             [
-              (key.at.start, Key_too_new { key = path; since = version; spec });
+              ( key.at.start,
+                Key_too_new { key = path; since = version; sinter_spec } );
             ]
         | _ -> []
       in
       match Toml.value node with
-      | Toml.Table table -> here @ keys_newer ~spec ~path table
+      | Toml.Table table -> here @ keys_newer ~sinter_spec ~path table
       | _ -> here)
     table
 
-let newer_keys ~spec document = sort (keys_newer ~spec ~path:[] document)
+let newer_keys ~sinter_spec document =
+  sort (keys_newer ~sinter_spec ~path:[] document)
 
 let new_reading () =
   {
     names_errors = [];
     value_errors = [];
-    target = None;
+    default_branch = None;
     pack_keys = [];
     files = [];
     versions = [];
     runners = [];
-    runner_settings = [];
-    refs = [];
-    rollout_cap = false;
+    namespaces = [];
+    warn_only = false;
     tiers = [];
     historical = Path_set.empty;
-    ambient = Path_set.empty;
-    shared = Path_set.empty;
+    exempt = Path_set.empty;
     locations = [];
     approval_required = [];
-    harness_markers = [];
-    coverage_attribution = Optional;
+    agent_markers = [];
+    test_coverage = Optional;
   }
 
 let check_runners_of_packs reading =
   let owners = ref By_name.empty in
   List.iter
-    (fun (pack, members) ->
-      List.iter
-        (fun (node, runner) ->
-          if is_runner_name runner then
-            match By_name.find_opt runner !owners with
-            | None -> owners := By_name.add runner pack !owners
-            | Some other ->
-                value_error reading (start node)
-                  (Runner_in_two_packs { runner; pack; other }))
-        (distinct members))
-    (List.sort (fun (a, _) (b, _) -> String.compare a b) reading.runners)
+    (fun (pack, ((key : Toml.key), _)) ->
+      match By_name.find_opt key.name !owners with
+      | None -> owners := By_name.add key.name pack !owners
+      | Some other ->
+          value_error reading key.at.start
+            (Runner_in_two_packs { runner = key.name; pack; other }))
+    (List.stable_sort
+       (fun (a, _) (b, _) -> String.compare a b)
+       (List.rev reading.runners))
 
 let runners_of reading pack =
-  List.assoc_opt pack reading.runners
-  |> Option.value ~default:[]
-  |> List.map (fun (node, name) : runner ->
-      {
-        name;
-        at = Toml.span node;
-        settings =
-          List.assoc_opt (pack, name) reading.runner_settings
-          |> Option.value ~default:[];
-      })
+  List.rev reading.runners
+  |> List.filter_map (fun (owner, ((key : Toml.key), settings)) ->
+      if String.equal owner pack then
+        Some ({ name = key.name; at = key.at; settings } : runner)
+      else None)
 
 let packs_of reading =
   let by_name pairs = By_name.of_seq (List.to_seq pairs) in
@@ -957,12 +898,12 @@ let of_string text =
   match Toml.parse text with
   | Error error -> Error (sort [ (Toml.error_position error, Syntax error) ])
   | Ok document -> (
-      match check_spec document with
+      match check_sinter_spec document with
       | Error error -> Error (sort [ error ])
-      | Ok spec ->
+      | Ok sinter_spec ->
           let newer =
-            match spec with
-            | Some spec -> newer_keys ~spec document
+            match sinter_spec with
+            | Some sinter_spec -> newer_keys ~sinter_spec document
             | None -> []
           in
           if newer <> [] then Error newer
@@ -979,19 +920,19 @@ let of_string text =
               else
                 Ok
                   {
-                    spec;
-                    target = Option.value reading.target ~default:"main";
+                    sinter_spec;
+                    default_branch =
+                      Option.value reading.default_branch ~default:"main";
                     packs;
-                    refs = List.sort compare reading.refs;
-                    rollout_cap = reading.rollout_cap;
+                    namespaces = List.sort compare reading.namespaces;
+                    warn_only = reading.warn_only;
                     tiers = List.sort compare reading.tiers;
                     historical = reading.historical;
-                    ambient = reading.ambient;
-                    shared = reading.shared;
+                    exempt = reading.exempt;
                     locations = reading.locations;
                     approval_required = reading.approval_required;
-                    harness_markers = reading.harness_markers;
-                    coverage_attribution = reading.coverage_attribution;
+                    agent_markers = reading.agent_markers;
+                    test_coverage = reading.test_coverage;
                   })
 
 type load_error = Missing | Unreadable of string | Invalid of error list
@@ -1011,11 +952,11 @@ let load path =
       | Ok manifest -> Ok manifest
       | Error errors -> Error (Invalid errors))
 
-let spec (manifest : t) = manifest.spec
-let target (manifest : t) = manifest.target
+let sinter_spec (manifest : t) = manifest.sinter_spec
+let default_branch (manifest : t) = manifest.default_branch
 let packs (manifest : t) = manifest.packs
-let ref_namespaces (manifest : t) = manifest.refs
-let rollout_cap (manifest : t) = manifest.rollout_cap
+let namespaces (manifest : t) = manifest.namespaces
+let warn_only (manifest : t) = manifest.warn_only
 let written_tiers (manifest : t) = manifest.tiers
 
 let tier (manifest : t) gate finding_class =
@@ -1028,7 +969,7 @@ let tier (manifest : t) gate finding_class =
           manifest.tiers
       with
       | Some (_, _, written) -> Some written
-      | None when manifest.rollout_cap && builtin = Finding_class.Block ->
+      | None when manifest.warn_only && builtin = Finding_class.Block ->
           Some Finding_class.Warn
       | None -> Some builtin)
 
@@ -1040,15 +981,14 @@ let is_historical (manifest : t) path =
   Glob.matches builtin_historical_glob path
   || Path_set.mem manifest.historical path
 
-let ambient (manifest : t) = manifest.ambient
+let exempt (manifest : t) = manifest.exempt
 let lock_file = "sinter.lock"
 
-let is_ambient (manifest : t) ~plan_file ~manifest:location path =
+let is_exempt (manifest : t) ~plan_file ~manifest:location path =
   plan_file path || location = Some path || path = lock_file
-  || Path_set.mem manifest.ambient path
+  || Path_set.mem manifest.exempt path
 
-let shared (manifest : t) = manifest.shared
 let location (manifest : t) kind = List.assoc_opt kind manifest.locations
 let approval_required (manifest : t) = manifest.approval_required
-let harness_markers (manifest : t) = manifest.harness_markers
-let coverage_attribution (manifest : t) = manifest.coverage_attribution
+let agent_markers (manifest : t) = manifest.agent_markers
+let test_coverage (manifest : t) = manifest.test_coverage

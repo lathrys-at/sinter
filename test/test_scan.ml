@@ -141,7 +141,7 @@ let a_tree_holds_the_files_that_are_not_utf_8_text_apart () =
     ([ ".plans/p.md"; "docs/a.md" ], [ ("binary.md", 10) ])
     (List.map fst tree.documents, tree.not_text)
 
-let a_tree_with_no_base_takes_the_merge_base_with_the_target () =
+let a_tree_with_no_base_takes_the_merge_base_with_the_default_branch () =
   let repo, tree = Lazy.force shared_tree in
   Alcotest.(check (pair string string))
     "the commit and the message"
@@ -242,9 +242,9 @@ let shallow repo revisions =
   Git_fixture.write repo ".git/shallow"
     (Git_fixture.git repo ("rev-parse" :: revisions))
 
-let a_shallow_clone_with_no_target_branch_is_an_error () =
+let a_shallow_clone_with_no_default_branch_is_an_error () =
   let repo =
-    repository [ ("sinter.toml", "target = \"trunk\"\n\n" ^ manifest) ]
+    repository [ ("sinter.toml", "default-branch = \"trunk\"\n\n" ^ manifest) ]
   in
   shallow repo [ "HEAD" ];
   Alcotest.(check string)
@@ -426,8 +426,8 @@ let each_error_says_what_is_wrong () =
       [ "the base 'nope' names no commit" ];
       [
         "no branch 'trunk' exists here or on origin; fetch it with git fetch \
-         origin trunk:refs/remotes/origin/trunk, or set 'target' in \
-         sinter.toml to the name of the main branch";
+         origin trunk:refs/remotes/origin/trunk, or set 'default-branch' in \
+         sinter.toml to the name of the default branch";
       ];
       [
         "HEAD and the branch 'main' have no common ancestor; name a base with \
@@ -457,7 +457,7 @@ let each_error_says_what_is_wrong () =
          Scan.Repository (Git.Git_not_found "no PATH");
          Scan.Repository (Git.Not_a_repository { dir = "/x"; detail = "d" });
          Scan.Repository (Git.Bad_revision "r");
-         Scan.Repository (Git.Target_not_found "m");
+         Scan.Repository (Git.Default_branch_not_found "m");
          Scan.Repository (Git.No_merge_base ("a", "b"));
          Scan.Repository
            (Git.Command_failed
@@ -477,7 +477,7 @@ let each_error_says_what_is_wrong () =
          Scan.Plan_not_read ".plans/p.md";
          Scan.Pack_not_available "ocaml";
          Scan.Bad_base "nope";
-         Scan.Target_not_found "trunk";
+         Scan.Default_branch_not_found "trunk";
          Scan.No_merge_base "main";
          Scan.Shallow_clone "trunk";
          Scan.No_head;
@@ -504,8 +504,8 @@ let tests =
       a_file_that_is_not_utf_8_text_gives_no_fact;
     case "a tree holds the files that are not UTF-8 text apart"
       a_tree_holds_the_files_that_are_not_utf_8_text_apart;
-    case "a tree with no base takes the merge base with the target"
-      a_tree_with_no_base_takes_the_merge_base_with_the_target;
+    case "a tree with no base takes the merge base with the default branch"
+      a_tree_with_no_base_takes_the_merge_base_with_the_default_branch;
     case "a tree with a base names its revision"
       a_tree_with_a_base_names_its_revision;
     case "the index of a tree is the first record of its scan"
@@ -521,8 +521,8 @@ let tests =
     case "a HEAD with no commit is an error" a_head_with_no_commit_is_an_error;
     case "a HEAD with no common ancestor is an error"
       a_head_with_no_common_ancestor_is_an_error;
-    case "a shallow clone with no target branch is an error"
-      a_shallow_clone_with_no_target_branch_is_an_error;
+    case "a shallow clone with no default branch is an error"
+      a_shallow_clone_with_no_default_branch_is_an_error;
     case "a shallow clone with no merge base is an error"
       a_shallow_clone_with_no_merge_base_is_an_error;
     case "a file that does not read is an error"

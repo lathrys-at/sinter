@@ -1,4 +1,4 @@
 check
 --json
 --gate
-merge
+review

@@ -237,7 +237,7 @@ the span of the record is the first paragraph of the section.
 | `ch` | string | code only: code hash ([vocabulary.md](vocabulary.md) section 6.2); omitted when the block attaches to nothing |
 | `xline` `xeline` | int | markdown only: the first and the last line of the extent of the section ([vocabulary.md](vocabulary.md) section 6) |
 
-## 5. Edge, ref, and promise records
+## 5. Edge, external, and promise records
 
 **edge** — `kind` is `satisfies`, `verifies`, `refines`, `cites`, or
 `supersedes`.
@@ -262,12 +262,12 @@ Example:
 {"col":5,"dst":"req:auth-lockout","ecol":31,"eline":40,"id":"verifies:test:src/auth/lockout.rs#tests::locks_after_five_failures->auth-lockout","kind":"verifies","line":40,"pack":"rust","path":"src/auth/lockout.rs","rev":2,"rung":"passing","src":"test:src/auth/lockout.rs#tests::locks_after_five_failures","target":"auth-lockout","v":1}
 ```
 
-**`ref`** — unlocated; one record per distinct ref.
+**`external`** — unlocated; one record per distinct external id.
 
 | field | type | meaning |
 |---|---|---|
 | `ns` | string | namespace |
-| `ref` | string | id within the namespace |
+| `name` | string | the id inside the namespace, for example `42` for `gh/42` |
 
 **`promise`**
 
@@ -300,10 +300,10 @@ site. It does not report coverage for single lines.
 
 | field | type | meaning |
 |---|---|---|
-| `test` | string | test fact id, or `*` for aggregate coverage |
+| `test` | string | test fact id, or `*` for the coverage of the whole run |
 | `site` | string | site fact id |
 | `hit` `of` | int | executable lines inside the site's attached definition that were hit / that exist |
-| `attributed` | bool | `false` if and only if `test` is `*` |
+| `attributed` | bool | `true` for the coverage of one test; `false` for the coverage of the whole run, where `test` is `*` |
 | `tree` | string | tree key |
 
 **`judgment`** — unlocated. A judge or an external checker writes it
@@ -369,11 +369,11 @@ is unlocated.
 
 | field | type | meaning |
 |---|---|---|
-| `gate` | string | `turn`, `merge`, or `target` |
+| `gate` | string | `turn`, `review`, or `merged` |
 | `class` | string | finding class |
 | `tier` | string | the tier that applies ([manifest.md](manifest.md) section 9.3): `off`, `warn`, or `block` |
 | `default` | bool | `true` when `check.tiers` does not write this pair |
-| `capped` | bool | `true` when the rollout cap lowered the tier |
+| `capped` | bool | `true` when `check.warn-only` lowered the tier |
 
 **`setting`** — one value of the manifest ([manifest.md](manifest.md)
 section 14.1). A setting fact that the manifest writes is located in
@@ -406,8 +406,7 @@ the repository is unlocated.
 | field | type | meaning |
 |---|---|---|
 | `added` `removed` | int | |
-| `ambient` | bool | *derived* |
-| `shared` | bool | *derived*: the hunk is under a shared path (`plan.shared`, [manifest.md](manifest.md) section 10.3) |
+| `exempt` | bool | *derived*: the hunk is under an exempt path (`plan.exempt`, [manifest.md](manifest.md) section 10.2) |
 | `planned` | array of string | *derived*: ids of the steps or rules whose scope covers the hunk; empty when no step and no rule covers the hunk |
 
 **`tombstone`** — base coordinates.
@@ -451,7 +450,7 @@ uses a position in the file only when no content can name the fact.
 | `test` | `test:<path>#<full name>` | the full name joins the names of the test's name path with the pack's name separator ([packs.md](packs.md) section 8.3). When two tests of one file have one full name, each later one in the order of the file adds `#2`, `#3`, and so on. The full name can contain spaces |
 | `site` | `site:<path>#<name>` | code: `<name>` is the name path of the attached definition; when two sites of one file have one name, each later one in the order of the file adds `#2`, `#3`, and so on ([packs.md](packs.md) section 6.5). A code site with no name has the positional id `site:<path>@L<line>C<column>`, from the position where its run starts, and its record carries `"positional":true`. Markdown: `<name>` is the slug of the section's heading; the section of level 0 has the id `site:<path>` |
 | edges | `<kind>:<src-id>-><target>` | `<target>` is the tag target. Parse from the right: a tag target cannot contain `->` |
-| `ref` | `ref:<ns>/<id>` | |
+| `external` | `external:<ns>/<id>` | |
 | `promise` | `promise:<step-id>:<word>:<target>` | parse from the right |
 | `run` | `run:<test-id>@<tree>` | |
 | `cov` | `cov:<test-id or *>@<site-id>` | |
@@ -493,7 +492,7 @@ excludes it.
 |---|---|---|
 | `tree` | string | tree key |
 | `base` | string | resolved base revision |
-| `target_branch` | string | the target branch |
+| `default_branch` | string | the default branch |
 | `manifest` | string | the path of the manifest: relative to the repository root when the manifest is in the repository, otherwise absolute |
 | `ledger` | string | ledger tip commit; omitted when the ref is absent |
 | `evidence` | bool | whether evidence exists for `tree` |
@@ -524,11 +523,11 @@ use the tiers of the `turn` gate.
 
 A language pack's fixture directory contains a small project, an
 `expected.jsonl` file, a fixture ledger, and real artifacts from a
-test runner and a coverage tool, with attribution. The verifier scans
-the fixture with the fixture's own ledger and evidence. It drops the
-header line from the output. It then compares the output with
-`expected.jsonl`; the two must be equal byte for byte. Because the
-comparison includes derived fields, the fixture tests the whole path
-from artifact import to evidence binding, not only parsing. A tool
-release that changes any derived field's semantics must regenerate
-every pack's fixture.
+test runner and a coverage tool, with the coverage of each test. The
+verifier scans the fixture with the fixture's own ledger and evidence.
+It drops the header line from the output. It then compares the output
+with `expected.jsonl`; the two must be equal byte for byte. Because
+the comparison includes derived fields, the fixture tests the whole
+path from artifact import to evidence binding, not only parsing. A
+tool release that changes any derived field's semantics must
+regenerate every pack's fixture.

@@ -1,19 +1,14 @@
-spec = "1.0"
+sinter-spec = "1.0"
 
 [scan]
 packs.markdown.files = ["**/*.md", "!test/**"]
-refs.gh = "[1-9][0-9]*"
+namespaces.gh = "[1-9][0-9]*"
 
 [check]
-rollout-cap = false
+warn-only = false
 
 [plan]
-ambient = [
-  "bridge/Cargo.lock",
-  "sinter.opam",
-  "sinter.opam.locked",
-]
-shared = [
+exempt = [
   ".gitignore",
   ".ocamlformat",
   "DCO",
@@ -23,7 +18,10 @@ shared = [
   "NOTICE",
   "REUSE.toml",
   "THIRD_PARTY.md",
+  "bridge/Cargo.lock",
   "bridge/Cargo.toml",
   "dune-project",
+  "sinter.opam",
+  "sinter.opam.locked",
 ]
 locations.decision = ["docs/decisions/"]

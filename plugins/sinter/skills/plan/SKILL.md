@@ -76,7 +76,7 @@ step will produce that item. Map the plan's outputs like this:
 | implement a requirement or a design item in code | `@satisfies <slug>` |
 | write a test for a requirement or a design item | `@verifies <slug>` |
 | refine a requirement or a design item | `@refines <slug>` |
-| cite an item or an external ref, such as an issue | `@cites <slug or ns/id>` |
+| cite an item or an external id, such as an issue | `@cites <slug or ns/id>` |
 
 A promise carries no revision. Never write `v1` or `vN` after a slug
 in a plan file. Every slug must match the slug pattern from step 1.

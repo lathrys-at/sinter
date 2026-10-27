@@ -103,13 +103,13 @@ Every entry carries:
 
 ### 4.2 The writers
 
-@req ledger-writers v2
+@req ledger-writers v3
 
 Four writers exist. The approval command writes `approval` entries, with
 their `approved-scope` and `approved-promise` lines. The decline command
 writes `decline`. The abandon command writes `abandoned`. A person
 runs these three commands. The fourth writer is the CI job on the
-target branch, which writes `completed` (section 8).
+default branch, which writes `completed` (section 8).
 
 ## 5. `approval`
 
@@ -205,13 +205,13 @@ when the person overrides their own earlier refusal.
 
 ### 8.1 The entry and its writer
 
-@req ledger-completed
+@req ledger-completed v2
 
 A `completed` entry closes a plan whose promises are all met
 ([vocabulary.md](vocabulary.md) section 10.5).
 
-The CI job on the target branch writes the entry. The job runs on
-every push to the target branch. It finds the open plans that are now
+The CI job on the default branch writes the entry. The job runs on
+every push to the default branch. It finds the open plans that are now
 on that branch. It checks each of those plans against the completion
 condition below. It appends one entry for each plan that passes the
 condition.
@@ -225,7 +225,7 @@ condition.
 
 ### 8.2 The completion condition
 
-@req ledger-completion-condition
+@req ledger-completion-condition v2
 
 A plan passes the condition when all of these statements are true:
 
@@ -234,12 +234,12 @@ A plan passes the condition when all of these statements are true:
   suspect.
 - When the job imports evidence: every promised `verifies` edge is at
   rung `passing`, or at rung `unmeasured` when
-  `evidence.coverage-attribution` is `"optional"`
+  `evidence.test-coverage` is `"optional"`
   ([manifest.md](manifest.md) section 12).
 - When the job imports no evidence: a promised `verifies` edge can be
-  at any rung. Rung enforcement happened earlier, at the gate `merge`.
+  at any rung. Rung enforcement happened earlier, at the gate `review`.
 
-An open plan on the target branch that fails this condition is the
+An open plan on the default branch that fails this condition is the
 finding `merged-incomplete`: a person merged a plan whose work is not
 complete. Two corrections remove the finding. The first is a smaller
 commitment set for the plan, with a new approval when the kind `plan`
@@ -360,11 +360,12 @@ new approval is needed. The consequences of the three clauses:
 ## 12. `pin` (deferred)
 
 A `pin` entry will endorse the current hash of external content. It
-adds three fields to the common fields of section 4: `approval`, `ref`,
-and `hash`. The example shows only the fields of the entry's own:
+adds three fields to the common fields of section 4: `approval`,
+`external`, and `hash`. The example shows only the fields of the
+entry's own:
 
 ```json
-{"approval":"…","hash":"…","kind":"pin","ref":"gh/42"}
+{"approval":"…","external":"gh/42","hash":"…","kind":"pin"}
 ```
 
 It is designed but deferred, together with the `@pin` directive.

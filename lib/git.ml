@@ -5,7 +5,7 @@ type error =
   | Git_not_found of string
   | Not_a_repository of { dir : string; detail : string }
   | Bad_revision of string
-  | Target_not_found of string
+  | Default_branch_not_found of string
   | No_merge_base of string * string
   | Command_failed of {
       args : string list;
@@ -711,7 +711,7 @@ let file_set t =
 let files t = Result.map (List.map (fun entry -> entry.path)) (file_set t)
 
 type source = Upstream | Local_branch | Origin_branch
-type target = { source : source; refname : string; commit : string }
+type default_branch = { source : source; refname : string; commit : string }
 
 let ref_format =
   "--format=%(refname)%00%(objecttype)%00%(objectname)%00%(upstream)"
@@ -724,10 +724,10 @@ let find refname entries =
     (fun (entry : Decode.ref_entry) -> String.equal entry.refname refname)
     entries
 
-let resolve_target t name =
+let resolve_default_branch t name =
   let local = "refs/heads/" ^ name in
   let origin = "refs/remotes/origin/" ^ name in
-  if String.contains name '\000' then Error (Target_not_found name)
+  if String.contains name '\000' then Error (Default_branch_not_found name)
   else
     let* found = refs t [ local; origin ] in
     let upstream_of entries =
@@ -751,7 +751,7 @@ let resolve_target t name =
         | Some { Decode.refname; kind = Decode.Commit; id; _ } ->
             Some { source; refname; commit = id }
         | _ -> None)
-    |> Option.to_result ~none:(Target_not_found name)
+    |> Option.to_result ~none:(Default_branch_not_found name)
 
 let merge_base t a b =
   match

@@ -3,4 +3,4 @@ packs.markdown.files = ["**/*.md"]
 
 [check]
 historic = ["x/"]
-rollout-cap = "yes"
+warn-only = "yes"

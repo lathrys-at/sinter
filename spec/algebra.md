@@ -52,7 +52,7 @@ kind or a category.
 |---|---|---|
 | `node` | `req` `design` `decision` `plan` `step` `test` `site` | yes |
 | `edge` | `satisfies` `verifies` `refines` `cites` `supersedes` | yes |
-| `ref` | `ref` | no |
+| `external` | `external` | no |
 | `promise` | `promise` | yes |
 | `evidence` | `run` `cov` `judgment` | no |
 | `config` | `rule` `gate` `setting` | see below |
@@ -78,17 +78,17 @@ Notes on individual kinds:
   fact that the manifest writes is located in the manifest. A default,
   a built-in member, and every fact of a manifest outside the
   repository are unlocated.
-- An edge's `src` is a node or a rule. An edge's `dst` is a node, a
-  ref, or unresolved. A rule's origin is a `cites` edge whose `src` is
-  the rule.
+- An edge's `src` is a node or a rule. An edge's `dst` is a node, an
+  external id, or unresolved. A rule's origin is a `cites` edge whose
+  `src` is the rule.
 - A `hunk` is one hunk of `git diff B`, in new-side coordinates.
 - A `tombstone` is a fact that is present in the fact set of `B` and
   absent from the fact set of `T`. It carries the old id, kind, and
   extent hash.
 
 "Located" facts carry `path`, `line`, `col`, `eline`, and `ecol`. The
-functions `path(…)`, `scope(…)`, `historical`, `ambient`, `shared`, and
-`acked(…)` return located facts only.
+functions `path(…)`, `scope(…)`, `historical`, `exempt`, and `acked(…)`
+return located facts only.
 
 ## 4. Syntax
 
@@ -134,8 +134,8 @@ Lexical rules:
   parameters are substituted as text before the expression is parsed
   (section 7). A parameter can therefore stand for an expression, a
   kind list, a name, or a glob.
-- **Keywords.** `all`, `active`, `historical`, `ambient`, `shared`,
-  and `base` are reserved as bare words. A saved definition must not shadow a
+- **Keywords.** `all`, `active`, `historical`, `exempt`, and `base`
+  are reserved as bare words. A saved definition must not shadow a
   built-in name.
 
 ## 5. Categories as types
@@ -145,12 +145,12 @@ evaluation:
 
 - `all` → every category. `kind(K)` → the categories of the kinds in
   `K`. A name selector → its kind's category. `path`, `historical`,
-  `ambient`, `shared`, `acked` → every located category. `changed` → every
+  `exempt`, `acked` → every located category. `changed` → every
   category, tombstones and hunks included. `active` → `{node}`.
   `findings` → `{finding}`.
 - `out`, `in` → `{edge}`. `src`, `dst`, `deps`, `rdeps`, `paths` →
-  `{node, ref, config}` (the `src` of a rule's origin edge is a rule).
-  `subject` → every category a finding can be about. `scope` → the
+  `{node, external, config}` (the `src` of a rule's origin edge is a
+  rule). `subject` → every category a finding can be about. `scope` → the
   located categories plus `hunk`; its argument also accepts `claim`.
   `promises`, `met` → `{promise}`. `done` → `{node}`. A predicate →
   the category set of its argument, intersected with what it accepts.
@@ -182,13 +182,12 @@ declaration. "Declaration" means a `req`, `design`, or `decision`.
 | `req(n)` `design(n)` `decision(n)` `plan(n)` `rule(n)` | facts of that kind whose slug or name matches `n` |
 | `step(p/s)` | steps whose plan slug matches `p` and step slug matches `s` |
 | `test(n)` | test nodes whose full name matches `n` ([packs.md](packs.md) section 8.3) |
-| `ref(ns/id)` | ref facts matching |
+| `external(ns/id)` | external facts matching |
 | `path(g)` | located facts whose `path` matches `g` |
 | `changed(b)` | see section 8; `b` is `base` or a revision |
 | `active` | the active plan and, when the session declares one, the active step; only open plans are candidates; `∅` when no plan is active |
 | `historical` | located facts under a historical path: a path of `check.historical`, its built-in member included ([manifest.md](manifest.md) section 9.4) |
-| `ambient` | located facts under an ambient path: a path of `plan.ambient`, its built-in members included (each plan file, the manifest, and the lock file `sinter.lock`; [manifest.md](manifest.md) section 10.2) |
-| `shared` | located facts under a shared path: a path of `plan.shared`, which every step of every plan can change ([manifest.md](manifest.md) section 10.3) |
+| `exempt` | located facts under an exempt path: a path of `plan.exempt`, its built-in members included (each plan file, the manifest, and the lock file `sinter.lock`; [manifest.md](manifest.md) section 10.2) |
 | `acked(t)` | the located facts `f` whose tag-bearing block carries a live `@ack` with the tag target `t`, where `t` applies to `f`. The tag target `t` applies to `f` when both of these conditions hold: the class name or rule name in `t` matches, and the ack's subject, when the ack gives one, equals `f` in the form that [vocabulary.md](vocabulary.md) section 7.4 gives |
 | `findings(C)` | finding facts whose class is in `C` |
 
@@ -197,7 +196,7 @@ declaration. "Declaration" means a `req`, `design`, or `decision`.
 | function | accepts | denotes |
 |---|---|---|
 | `out(K, S)` | `S`: node, config | edges `e` with `kind(e) ∈ K` and `src(e) ∈ S` |
-| `in(K, S)` | `S`: node, ref | edges `e` with `kind(e) ∈ K` and `dst(e) ∈ S` |
+| `in(K, S)` | `S`: node, external | edges `e` with `kind(e) ∈ K` and `dst(e) ∈ S` |
 | `src(E)` | edge | the sources of the edges in `E` |
 | `dst(E)` | edge | the facts that the tag targets of the edges in `E` resolve to; an edge whose tag target resolves to nothing contributes nothing |
 | `subject(F)` | finding | the subjects of the findings in `F`; a subject that is no fact ([jsonl.md](jsonl.md) section 9) contributes nothing |
@@ -211,8 +210,8 @@ citation is still a citation.
 | function | accepts | denotes |
 |---|---|---|
 | `deps(K, S)` | node, config | the least `X ⊇ S` with `dst(out(K, X)) ⊆ X` |
-| `rdeps(K, S)` | node, ref | the least `X ⊇ S` with `src(in(K, X)) ⊆ X` |
-| `paths(S, T)` | node, ref, config | `deps(edge, S) ^ rdeps(edge, T)`: every node on some path from `S` to `T` over any edge kind |
+| `rdeps(K, S)` | node, external | the least `X ⊇ S` with `src(in(K, X)) ⊆ X` |
+| `paths(S, T)` | node, external, config | `deps(edge, S) ^ rdeps(edge, T)`: every node on some path from `S` to `T` over any edge kind |
 
 ### 6.4 Plan functions
 
@@ -221,7 +220,7 @@ citation is still a citation.
 | `scope(S)` | plan, step, rule, claim | located facts and hunks whose `path` matches the effective scope of some member of `S`. A step's effective scope is the step's own `@scope` when the step declares one; otherwise it is the plan's scope. A plan's effective scope is the union of the effective scopes of its steps. A rule's scope is its `scope` field. `∅` when `S` holds no scope-bearing fact |
 | `promises(S)` | plan, step | promise facts whose step or plan is in `S` |
 | `met(P)` | promise | the promises in `P` that are met, as defined in [vocabulary.md](vocabulary.md) section 10.5 |
-| `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met; for a step with no promises, the first condition is instead that the step's scope intersects `changed(base)`. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unmeasured` when `evidence.coverage-attribution` is `"optional"` ([manifest.md](manifest.md) section 12). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
+| `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met; for a step with no promises, the first condition is instead that the step's scope intersects `changed(base)`. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unmeasured` when `evidence.test-coverage` is `"optional"` ([manifest.md](manifest.md) section 12). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
 
 ### 6.5 Status predicates
 
@@ -240,7 +239,7 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 | function | keeps `e ∈ E` iff |
 |---|---|
 | `suspect(E)` | `rev(e) ≠ ⊥`, `dst(e) ≠ ⊥`, `dst(e)` is a declaration, and `rev(dst(e)) ≠ rev(e)` |
-| `dangling(E)` | `dst(e) = ⊥`, and the tag target of `e` is well formed: no declaration has the slug. A tag target that fails its pattern, or a ref whose namespace is undeclared, is not dangling: it is `invalid-target` only ([vocabulary.md](vocabulary.md) section 4) |
+| `dangling(E)` | `dst(e) = ⊥`, and the tag target of `e` is well formed: no declaration has the slug. A tag target that fails its pattern, or an external id whose namespace is undeclared, is not dangling: it is `invalid-target` only ([vocabulary.md](vocabulary.md) section 4) |
 
 ### 6.7 Evidence predicates
 
@@ -267,18 +266,19 @@ for each `u ∈ tests(t)`; `skip` for each `u ∈ tests(t)` with
 empty. So a test that did not run counts as skipped, and a skipped
 test counts as a test that did not run.
 
-`cov(t, s)` is the set of attributed coverage facts for `(u, s)` with
-`u ∈ tests(t)`. Attributed coverage for `t` exists when the evidence
-set holds an attributed coverage fact for some `u ∈ tests(t)`.
-`agg(s)` is the aggregate coverage fact for `s`.
+`cov(t, s)` is the set of facts of the coverage of each test for
+`(u, s)` with `u ∈ tests(t)`. The coverage of each test exists for `t`
+when the evidence set holds a fact of the coverage of each test for
+some `u ∈ tests(t)`. `agg(s)` is the fact of the coverage of the whole
+run for `s`.
 
 | function | keeps `e ∈ E` iff |
 |---|---|
 | `wrong-source(E)` | `kind(t) ≠ test`: the source of the `@verifies` edge is not a test, so the edge has the wrong source ([vocabulary.md](vocabulary.md) section 7.2) |
 | `never-ran(E)` | the status of `t` is `skip`: a test of `t` did not run or was skipped, and no test of `t` failed |
 | `failed(E)` | the status of `t` is `fail` or `error` |
-| `unexercised(E)` | The status of `t` is `pass`, and `sites(e) ≠ ∅`, and one of these two holds: attributed coverage for `t` exists and each fact in `cov(t, s)` has `hit = 0`, for every site `s`; or only aggregate coverage exists and `agg(s).hit = 0` for every site `s`. In both cases the whole run executed no line in the sites, so the tests of `t` executed no line in the sites either |
-| `unmeasured(E)` | All three of these conditions hold: the status of `t` is `pass`; `sites(e) ≠ ∅`; no attributed coverage for `t` exists. And one of these two conditions holds: some `agg(s).hit > 0`; or the evidence set holds no coverage data at all |
+| `unexercised(E)` | The status of `t` is `pass`, and `sites(e) ≠ ∅`, and one of these two holds: the coverage of each test exists for `t` and each fact in `cov(t, s)` has `hit = 0`, for every site `s`; or only the coverage of the whole run exists and `agg(s).hit = 0` for every site `s`. In both cases the whole run executed no line in the sites, so the tests of `t` executed no line in the sites either |
+| `unmeasured(E)` | All three of these conditions hold: the status of `t` is `pass`; `sites(e) ≠ ∅`; the coverage of each test does not exist for `t`. And one of these two conditions holds: some `agg(s).hit > 0`; or the evidence set holds no coverage data at all |
 | `passing(E)` | the status of `t` is `pass`, and either `sites(e) = ∅` or some fact in some `cov(t, s)` has `hit > 0` |
 
 ### 6.8 Rule functions
@@ -347,7 +347,7 @@ defines "touched" for each category:
 | `hunk` | always |
 | `tombstone` | always |
 | `edge` | the edge is new, or its line intersects a hunk, or `dst(e)` is a tombstone — a citation of a declaration that vanished is changed even when its bytes are not |
-| `evidence` `ref` | never |
+| `evidence` `external` | never |
 
 `b` can be `base` (the `--base` value) or a git revision. To evaluate
 `changed(x)` for another revision, the tool needs a second fact set
@@ -413,19 +413,20 @@ states holds. Column `F` marks classes with a mechanical fix. A class
 that column `F` does not mark can still give a `fix`
 ([jsonl.md](jsonl.md) section 8), such as the `@ack` line for a
 finding. The `tiers` column gives each class's built-in tier at the
-gates `(turn, merge, target)` ([manifest.md](manifest.md) section
+gates `(turn, review, merged)` ([manifest.md](manifest.md) section
 9.1). A `—` means that the class takes no tier at that gate.
-The **rollout cap** (`check.rollout-cap`) lowers each `block` of the
-column to `warn`, at every gate. `sinter init` writes the cap, so a
-new repository starts under it. A tier that `check.tiers` writes
-passes the cap ([manifest.md](manifest.md) section 9.3).
+While `check.warn-only` is `true`, Sinter lowers each `block` of the
+column to `warn`, at every gate. `sinter init` writes
+`warn-only = true`, so a new repository starts with it. A tier that
+`check.tiers` writes still applies ([manifest.md](manifest.md) section
+9.3).
 
 | class | subject | definition | mode | A | F | tiers |
 |---|---|---|---|---|---|---|
 | `parse-error` | file | *engine*: a governed file with a parse failure ([packs.md](packs.md) section 5.2). In a file of a fetched pack, the file's facts are absent. In a markdown file, the facts stay, one finding sits at each error, and the tier of such a finding is `warn` where the class's tier is `block` | tree | · | · | warn, block, block |
 | `typo-tag` | line | *engine*: a tag line whose tag word ([vocabulary.md](vocabulary.md) section 3.1) is not in the vocabulary and lies within Damerau–Levenshtein distance 2 of a word of the vocabulary. The pack's foreign vocabulary is exempt. The `fix` names the nearest word of the vocabulary. When two words are equally near, it names the first in byte order, as [manifest.md](manifest.md) section 4.2 does for keys | tree | · | F | warn, warn, warn |
 | `ignored-tag` | line | *engine*: in markdown, a paragraph that a section or a list item holds directly, that is not the first paragraph of that section or list item, that no block quote holds, and whose first line is a tag line. The scanner reads no tag in it ([packs.md](packs.md) section 7.2) | tree | · | · | warn, warn, warn |
-| `invalid-target` | tag | *engine*: a tag target that fails its pattern: a slug that fails the slug pattern, or a ref whose namespace is undeclared or whose id fails the pattern of its namespace ([vocabulary.md](vocabulary.md) sections 4.1 and 4.2). Such a tag target is never `dangling` | tree | · | · | block, block, block |
+| `invalid-target` | tag | *engine*: a tag target that fails its pattern: a slug that fails the slug pattern, or an external id whose namespace is undeclared or whose id fails the pattern of its namespace ([vocabulary.md](vocabulary.md) sections 4.1 and 4.2). Such a tag target is never `dangling` | tree | · | · | block, block, block |
 | `duplicate` | tag or line | *engine*: two slugs in one namespace that are equal, or that differ only in case ([vocabulary.md](vocabulary.md) section 4.1): two declarations; two plans (closed plans included); or two steps of one plan. Order the facts of one such group by the byte order of their paths, and then by their lines. Each fact after the first gives one finding. Its subject is the tag of that fact or, for a step, the line of the step's heading ([jsonl.md](jsonl.md) section 9) | tree | · | · | block, block, block |
 | `scope-outside-plan` | step | *engine*: a step whose `@scope` is not contained in its plan's `@scope`. The tool decides containment on the plain globs ([manifest.md](manifest.md) section 7.2), by the rule of glob containment of [ledger.md](ledger.md) section 11: each plain glob of the step must be contained in a plain glob of the plan. A `!` glob of the step only narrows the step's scope, so it never breaks containment | tree | · | · | block, block, — |
 | `misplaced-plan` | tag | *engine*: a `@plan` tag that does not stand in the first tag block of a file under `.plans/`: a `@plan` outside `.plans/**`, or a `@plan` in a later block of a file under `.plans/` ([vocabulary.md](vocabulary.md) section 10.1) | tree | · | · | block, block, block |
@@ -444,7 +445,7 @@ passes the cap ([manifest.md](manifest.md) section 9.3).
 | `retired` | edge | `in(cites, all) - in(cites, inforce(all))`: the `cites` edges whose tag target resolves to a fact that is not in force — a rule's origin edge included. When the cited fact has successors ([vocabulary.md](vocabulary.md) section 8.2), the `detail` names the cited fact and then its successors, in the byte order of their ids, for example `decision:a is superseded by decision:b, decision:c`. The `fix` is then the citation of a successor that replaces the edge: `@cites`, the slug of the successor, and the current revision of the successor when the edge carries a revision. With several successors, the `fix` gives one such citation for each, in the same order, for example `@cites b v2 or @cites c v1`. Ackable only when the cited fact has no successor; the `fix` is then the `@ack` line for the finding | tree | A* | · | warn, block, block |
 | `stale-ack` | ack | *engine*: an `@ack` whose hash no longer matches its block, or whose tag target names neither an ackable finding nor an obligation of a rule in that block ([vocabulary.md](vocabulary.md) section 7.4) | tree | · | F | block, block, block |
 | `wrong-source` | edge | `wrong-source(kind(verifies)) + (kind(refines\|supersedes) - out(refines\|supersedes, kind(req\|design\|decision\|rule)))`: a citation whose kind needs a certain source and that does not have one ([vocabulary.md](vocabulary.md) section 7.2). A `@verifies` needs a test; a `@refines` or a `@supersedes` needs an enclosing declaration | tree | · | · | block, block, block |
-| `never-ran` | edge | `never-ran(kind(verifies)) ^ scope(inforce(kind(plan)))` at `turn`; `never-ran(kind(verifies))` at `merge` and `target` | tree | · | · | warn, block, block |
+| `never-ran` | edge | `never-ran(kind(verifies)) ^ scope(inforce(kind(plan)))` at `turn`; `never-ran(kind(verifies))` at `review` and `merged` | tree | · | · | warn, block, block |
 | `failed` | edge | `failed(kind(verifies))` | tree | · | · | block, block, block |
 | `unexercised` | edge | `unexercised(kind(verifies))` | tree | A | · | warn, block, block |
 | `unmeasured` | edge | `unmeasured(kind(verifies))` | tree | · | · | off, warn, warn |
@@ -457,10 +458,10 @@ passes the cap ([manifest.md](manifest.md) section 9.3).
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets. Two scopes intersect when a plain glob of one contains a plain glob of the other, or is contained in it, by the rule of glob containment of [ledger.md](ledger.md) section 11 | tree | · | · | warn, warn, — |
 | `waiting-on` | promise | `waiting(promises(kind(plan)))` — reported in place of `dangling`, with the claim and step named | tree | · | · | off, warn, — |
 | `branch-overlap` | step | *engine*: a step's scope intersects the scope of another branch's claim | tree | · | · | warn, warn, — |
-| `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - ambient - shared`. The engine also exempts hunks that are wholly mechanical repairs — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
+| `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - exempt`. The engine also exempts hunks that are wholly mechanical repairs — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's `expect` is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
 | `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 14.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
-| `merged-incomplete` | plan | *engine*: an open plan on the target branch that fails the completion condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |
+| `merged-incomplete` | plan | *engine*: an open plan on the default branch that fails the completion condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |
 | `ledger-broken` | ledger | *engine*: ledger verification fails | tree | · | · | —, —, block |
 | `pack-mismatch` | pack | *engine*: the hash of a fetched pack in the cache does not match the hash that the lock file `sinter.lock` fixes for it. The built-in pack `markdown` is not in the lock file. The class takes no tier at any gate: the tool stops with exit code 3 | tree | · | · | — |
 

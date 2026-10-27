@@ -208,7 +208,7 @@ let scan_cmd =
          insignificant whitespace.";
       `P
         "The first line is the index record. It names the tree key of the \
-         working tree, the base commit, the target branch, the manifest, and \
+         working tree, the base commit, the default branch, the manifest, and \
          the version of the tool. The facts follow, sorted by kind, path, \
          line, column, and id; the facts with no path come last, sorted by id.";
       `P
@@ -229,7 +229,7 @@ let scan_cmd =
   let base =
     let doc =
       "The base commit, as a git revision. Without this option, the base is \
-       the merge base of HEAD and the target branch of the manifest."
+       the merge base of HEAD and the default branch of the manifest."
     in
     Arg.(value & opt (some string) None & info [ "base" ] ~docv:"REVISION" ~doc)
   in
@@ -306,7 +306,7 @@ let check_cmd =
       `S Manpage.s_examples;
       `Pre "  sinter check";
       `P "Report every finding of the working tree, with no tier.";
-      `Pre "  sinter check --gate merge";
+      `Pre "  sinter check --gate review";
       `P
         "Report the findings that matter before a merge, and exit with code 1 \
          when one of them blocks. Run this in CI on a pull request.";
@@ -327,16 +327,16 @@ let check_cmd =
   let base =
     let doc =
       "The base commit, as a git revision. Without this option, the base is \
-       the merge base of HEAD and the target branch of the manifest."
+       the merge base of HEAD and the default branch of the manifest."
     in
     Arg.(value & opt (some string) None & info [ "base" ] ~docv:"REVISION" ~doc)
   in
   let gate =
     let doc =
       "The point at which the check runs: $(b,turn), when an agent finishes a \
-       turn and hands back its work; $(b,merge), on a change before it merges \
-       into the target branch, for example on a pull request; or $(b,target), \
-       on the target branch after a merge."
+       turn and hands back its work; $(b,review), on a change before it merges \
+       into the default branch, for example on a pull request; or $(b,merged), \
+       on the default branch after a merge."
     in
     let gates =
       List.map
@@ -413,7 +413,7 @@ let cmd =
       `S Manpage.s_examples;
       `Pre "  sinter check";
       `P "Report every finding of the working tree.";
-      `Pre "  sinter check --gate merge";
+      `Pre "  sinter check --gate review";
       `P
         "Report the findings that matter before a merge, and exit with code 1 \
          when one of them blocks.";

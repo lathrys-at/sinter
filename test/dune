@@ -46,5 +46,5 @@
  (dirs :standard .plans))
 
 (subdir
- cases/check-under-the-rollout-cap-blocks-nothing/tree
+ cases/check-under-warn-only-blocks-nothing/tree
  (dirs :standard .plans))

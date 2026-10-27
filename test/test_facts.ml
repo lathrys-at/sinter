@@ -15,7 +15,9 @@ let document text =
   | Error _ -> Alcotest.fail "the text gives no document"
 
 let markdown =
-  "[scan]\npacks.markdown.files = [\"**/*.md\"]\nrefs.gh = \"[1-9][0-9]*\"\n"
+  "[scan]\n\
+   packs.markdown.files = [\"**/*.md\"]\n\
+   namespaces.gh = \"[1-9][0-9]*\"\n"
 
 let manifest ?(extra = "") () =
   match Manifest.of_string (markdown ^ extra) with
@@ -270,45 +272,48 @@ let a_malformed_target_is_not_dangling () =
   check_field records "cites:site:a.md#a->-x" "dangling" (bool false);
   check_field records "cites:site:a.md#a->-x" "dst" None
 
-let a_ref_of_a_declared_namespace_resolves () =
+let an_external_id_of_a_declared_namespace_resolves () =
   let records =
     records
       [ ("a.md", "# A\n\n@cites gh/12\n@cites gh/12 again\n@cites gh/3\n") ]
   in
-  check_field records "cites:site:a.md#a->gh/12" "dst" (str "ref:gh/12");
+  check_field records "cites:site:a.md#a->gh/12" "dst" (str "external:gh/12");
   Alcotest.(check (list string))
-    "one record per distinct ref, after the located records"
+    "one record per distinct external id, after the located records"
     [
-      "{\"id\":\"ref:gh/12\",\"kind\":\"ref\",\"ns\":\"gh\",\"pack\":\"markdown\",\"ref\":\"12\",\"v\":1}";
-      "{\"id\":\"ref:gh/3\",\"kind\":\"ref\",\"ns\":\"gh\",\"pack\":\"markdown\",\"ref\":\"3\",\"v\":1}";
+      "{\"id\":\"external:gh/12\",\"kind\":\"external\",\"name\":\"12\",\"ns\":\"gh\",\"pack\":\"markdown\",\"v\":1}";
+      "{\"id\":\"external:gh/3\",\"kind\":\"external\",\"name\":\"3\",\"ns\":\"gh\",\"pack\":\"markdown\",\"v\":1}";
     ]
     (List.filteri
        (fun index _ -> index >= 4)
        (List.map Jsonl.to_string records))
 
-let a_resolved_ref_is_not_dangling () =
+let a_resolved_external_id_is_not_dangling () =
   check_field
     (records [ ("a.md", "# A\n\n@cites gh/12\n") ])
     "cites:site:a.md#a->gh/12" "dangling" (bool false)
 
-let refs_come_in_the_order_of_their_ids () =
+let external_ids_come_in_the_order_of_their_ids () =
   Alcotest.(check (list string))
-    "the ids of the refs, in byte order"
-    [ "ref:a-b/1"; "ref:a/1"; "ref:gh/2" ]
+    "the ids of the external ids, in byte order"
+    [ "external:a-b/1"; "external:a/1"; "external:gh/2" ]
     (List.filter
-       (fun id -> String.starts_with ~prefix:"ref:" id)
+       (fun id -> String.starts_with ~prefix:"external:" id)
        (ids
-          (records ~extra:"refs.a = \"[0-9]\"\nrefs.a-b = \"[0-9]\"\n"
+          (records
+             ~extra:"namespaces.a = \"[0-9]\"\nnamespaces.a-b = \"[0-9]\"\n"
              [ ("a.md", "# A\n\n@cites gh/2\n@cites a/1\n@cites a-b/1\n") ])))
 
-let a_ref_that_does_not_resolve_gives_no_record () =
+let an_external_id_that_does_not_resolve_gives_no_record () =
   let records = records [ ("a.md", "# A\n\n@cites jira/12\n@cites gh/0x\n") ] in
   check_field records "cites:site:a.md#a->jira/12" "dst" None;
   check_field records "cites:site:a.md#a->jira/12" "dangling" (bool false);
   check_field records "cites:site:a.md#a->gh/0x" "dangling" (bool false);
   Alcotest.(check (list string))
-    "no ref record" []
-    (List.filter (fun id -> String.starts_with ~prefix:"ref:" id) (ids records))
+    "no external record" []
+    (List.filter
+       (fun id -> String.starts_with ~prefix:"external:" id)
+       (ids records))
 
 let a_pin_to_another_revision_is_suspect () =
   let records =
@@ -661,7 +666,7 @@ let a_step_with_no_promise_is_done_when_the_diff_changes_its_scope () =
     (records [ (".plans/p.md", refactor) ])
     "step:p/clean" "refactor" (bool true)
 
-let a_ref_meets_a_promised_citation () =
+let an_external_id_meets_a_promised_citation () =
   check_field
     (records
        [
@@ -795,9 +800,9 @@ let a_plan_tag_outside_plans_gives_no_plan () =
 let the_index_names_the_tree_and_the_base () =
   Alcotest.(check string)
     "the index record"
-    "{\"base\":\"b\",\"evidence\":false,\"kind\":\"index\",\"manifest\":\"sinter.toml\",\"mode\":\"tree\",\"packs\":[],\"target_branch\":\"main\",\"tool\":\"v1\",\"tree\":\"t\",\"v\":1}"
+    "{\"base\":\"b\",\"default_branch\":\"main\",\"evidence\":false,\"kind\":\"index\",\"manifest\":\"sinter.toml\",\"mode\":\"tree\",\"packs\":[],\"tool\":\"v1\",\"tree\":\"t\",\"v\":1}"
     (Jsonl.to_string
-       (Facts.index ~tree:"t" ~base:"b" ~target_branch:"main"
+       (Facts.index ~tree:"t" ~base:"b" ~default_branch:"main"
           ~manifest:"sinter.toml" ~tool:"v1"))
 
 module Gen = QCheck2.Gen
@@ -1156,13 +1161,13 @@ let edges_give_what_their_targets_resolve_to () =
   in
   let target = function
     | Facts.Declaration index -> Printf.sprintf "declaration %d" index
-    | Facts.Ref { ns; id } -> Printf.sprintf "ref %s %s" ns id
+    | Facts.External { ns; id } -> Printf.sprintf "external %s %s" ns id
     | Facts.Unresolved { dangling } -> Printf.sprintf "unresolved %b" dangling
   in
   Alcotest.(check (list string))
     "word, path, span, src, source, target, rev, desc, block, resolution"
     [
-      "cites docs/a.md 4:1-4:18 req:a 0 gh/4 - Text. 0 ref gh 4";
+      "cites docs/a.md 4:1-4:18 req:a 0 gh/4 - Text. 0 external gh 4";
       "refines docs/a.md 8:1-8:14 req:a 0 a 1  1 declaration 0";
       "cites docs/b.md 5:3-5:14 site:docs/b.md#b - zz/1 -  0 unresolved false";
       "cites docs/b.md 6:3-6:17 site:docs/b.md#b - nothing -  1 unresolved true";
@@ -1435,7 +1440,7 @@ let scanned_meeting facts (promise : Facts.promise) =
             match (target, edge.rev) with
             | Facts.Declaration index, Some rev ->
                 declarations.(index).rev = rev
-            | Facts.Declaration _, None | Facts.Ref _, _ -> true
+            | Facts.Declaration _, None | Facts.External _, _ -> true
             | Facts.Unresolved _, _ -> false
           in
           if
@@ -1703,13 +1708,14 @@ let tests =
     case "a target that differs only in case is dangling"
       a_target_that_differs_only_in_case_is_dangling;
     case "a malformed target is not dangling" a_malformed_target_is_not_dangling;
-    case "a ref of a declared namespace resolves"
-      a_ref_of_a_declared_namespace_resolves;
-    case "a resolved ref is not dangling" a_resolved_ref_is_not_dangling;
-    case "refs come in the order of their ids"
-      refs_come_in_the_order_of_their_ids;
-    case "a ref that does not resolve gives no record"
-      a_ref_that_does_not_resolve_gives_no_record;
+    case "an external id of a declared namespace resolves"
+      an_external_id_of_a_declared_namespace_resolves;
+    case "a resolved external id is not dangling"
+      a_resolved_external_id_is_not_dangling;
+    case "external ids come in the order of their ids"
+      external_ids_come_in_the_order_of_their_ids;
+    case "an external id that does not resolve gives no record"
+      an_external_id_that_does_not_resolve_gives_no_record;
     case "a pin to another revision is suspect"
       a_pin_to_another_revision_is_suspect;
     case "a verifies edge in markdown has the wrong source"
@@ -1760,7 +1766,8 @@ let tests =
       a_verifies_promise_is_never_met_in_markdown;
     case "a step with no promise is done when the diff changes its scope"
       a_step_with_no_promise_is_done_when_the_diff_changes_its_scope;
-    case "a ref meets a promised citation" a_ref_meets_a_promised_citation;
+    case "an external id meets a promised citation"
+      an_external_id_meets_a_promised_citation;
     case "only a verifies edge in the scope keeps a step from done"
       only_a_verifies_edge_in_the_scope_keeps_a_step_from_done;
     case "a verifies edge in the scope keeps a step from done"

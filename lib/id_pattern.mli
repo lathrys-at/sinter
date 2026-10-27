@@ -1,7 +1,8 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(** Id patterns: small regular expressions that match the whole id of a ref.
+(** Id patterns: small regular expressions that match the whole id inside the
+    namespace of an external id.
 
     A pattern is built from these parts:
 

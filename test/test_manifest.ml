@@ -25,16 +25,18 @@ let reports name text expected =
 let the_smallest_manifest_takes_every_default () =
   let manifest = read markdown in
   Alcotest.(check (option string))
-    "spec" None
-    (Option.map Major_minor.to_string (Manifest.spec manifest));
-  Alcotest.(check string) "target" "main" (Manifest.target manifest);
-  Alcotest.(check bool) "rollout-cap" false (Manifest.rollout_cap manifest);
+    "sinter-spec" None
+    (Option.map Major_minor.to_string (Manifest.sinter_spec manifest));
+  Alcotest.(check string)
+    "default-branch" "main"
+    (Manifest.default_branch manifest);
+  Alcotest.(check bool) "warn-only" false (Manifest.warn_only manifest);
   Alcotest.(check bool)
-    "coverage-attribution" true
-    (Manifest.coverage_attribution manifest = Manifest.Optional);
+    "test-coverage" true
+    (Manifest.test_coverage manifest = Manifest.Optional);
   Alcotest.(check int)
-    "no ref namespace" 0
-    (List.length (Manifest.ref_namespaces manifest));
+    "no namespace" 0
+    (List.length (Manifest.namespaces manifest));
   Alcotest.(check int)
     "no written tier" 0
     (List.length (Manifest.written_tiers manifest));
@@ -42,11 +44,8 @@ let the_smallest_manifest_takes_every_default () =
     "no historical member" true
     (Path_set.is_empty (Manifest.historical manifest));
   Alcotest.(check bool)
-    "no ambient member" true
-    (Path_set.is_empty (Manifest.ambient manifest));
-  Alcotest.(check bool)
-    "no shared member" true
-    (Path_set.is_empty (Manifest.shared manifest));
+    "no exempt member" true
+    (Path_set.is_empty (Manifest.exempt manifest));
   Alcotest.(check bool)
     "no location" true
     (List.for_all
@@ -56,8 +55,8 @@ let the_smallest_manifest_takes_every_default () =
     "no kind needs approval" 0
     (List.length (Manifest.approval_required manifest));
   Alcotest.(check (list string))
-    "no harness marker" []
-    (Manifest.harness_markers manifest)
+    "no agent marker" []
+    (Manifest.agent_markers manifest)
 
 let members set = List.map Path_set.member_to_string (Path_set.members set)
 
@@ -69,7 +68,7 @@ let pack_summary (pack : Manifest.pack) =
     | Some version -> Major_minor.to_string version)
 
 let sinter_example =
-  {|spec = "1.0"
+  {|sinter-spec = "1.0"
 
 [scan]
 packs.markdown.files = ["**/*.md"]
@@ -77,24 +76,22 @@ packs.ocaml.files = ["**/*.ml", "**/*.mli"]
 packs.ocaml.version = "1.0"
 packs.rust.files = ["**/*.rs"]
 packs.rust.version = "1.0"
-refs.gh = "[1-9][0-9]*"
+namespaces.gh = "[1-9][0-9]*"
 
 [check]
-rollout-cap = true
+warn-only = true
 
 [plan]
-ambient = [
-  "bridge/Cargo.lock",
-  "sinter.opam",
-  "sinter.opam.locked",
-]
-shared = [
+exempt = [
   ".gitignore",
   "LICENSES/",
   "REUSE.toml",
   "THIRD_PARTY.md",
+  "bridge/Cargo.lock",
   "bridge/Cargo.toml",
   "dune-project",
+  "sinter.opam",
+  "sinter.opam.locked",
 ]
 locations.decision = ["docs/decisions/"]
 |}
@@ -102,34 +99,33 @@ locations.decision = ["docs/decisions/"]
 let the_example_of_sinter_reads () =
   let manifest = read sinter_example in
   Alcotest.(check (option string))
-    "spec" (Some "1.0")
-    (Option.map Major_minor.to_string (Manifest.spec manifest));
+    "sinter-spec" (Some "1.0")
+    (Option.map Major_minor.to_string (Manifest.sinter_spec manifest));
   Alcotest.(check (list string))
     "packs"
     [ "markdown **/*.md -"; "ocaml **/*.ml,**/*.mli 1.0"; "rust **/*.rs 1.0" ]
     (List.map pack_summary (Manifest.packs manifest));
   Alcotest.(check (list (pair string string)))
-    "refs"
+    "namespaces"
     [ ("gh", "[1-9][0-9]*") ]
     (List.map
        (fun (ns, pattern) -> (ns, Id_pattern.to_string pattern))
-       (Manifest.ref_namespaces manifest));
-  Alcotest.(check bool) "rollout-cap" true (Manifest.rollout_cap manifest);
+       (Manifest.namespaces manifest));
+  Alcotest.(check bool) "warn-only" true (Manifest.warn_only manifest);
   Alcotest.(check (list string))
-    "ambient"
-    [ "bridge/Cargo.lock"; "sinter.opam"; "sinter.opam.locked" ]
-    (members (Manifest.ambient manifest));
-  Alcotest.(check (list string))
-    "shared"
+    "exempt"
     [
       ".gitignore";
       "LICENSES/";
       "REUSE.toml";
       "THIRD_PARTY.md";
+      "bridge/Cargo.lock";
       "bridge/Cargo.toml";
       "dune-project";
+      "sinter.opam";
+      "sinter.opam.locked";
     ]
-    (members (Manifest.shared manifest));
+    (members (Manifest.exempt manifest));
   Alcotest.(check (option (list string)))
     "the location of decisions" (Some [ "docs/decisions/" ])
     (Option.map members (Manifest.location manifest Manifest.Decision));
@@ -138,32 +134,37 @@ let the_example_of_sinter_reads () =
     (Option.map members (Manifest.location manifest Manifest.Req))
 
 let typescript_example =
-  {|spec = "1.0"
+  {|sinter-spec = "1.0"
 
 [scan]
 packs.markdown.files = ["**/*.md", "!test/fixtures/"]
 packs.typescript.files = ["**/*.ts", "!**/*.d.ts"]
 packs.typescript.version = "1.0"
-packs.typescript.runners = ["vitest"]
-refs.gh = "[1-9][0-9]*"
-refs.jira = "[A-Z]+-[1-9][0-9]*"
+packs.typescript.runners.vitest = {}
+namespaces.gh = "[1-9][0-9]*"
+namespaces.jira = "[A-Z]+-[1-9][0-9]*"
 
 [check]
-rollout-cap = true
+warn-only = true
 historical = ["docs/devlog/"]
-tiers.merge.dangling = "block"
-tiers.target.dangling = "block"
+tiers.review.dangling = "block"
+tiers.merged.dangling = "block"
 
 [plan]
-ambient = ["package-lock.json"]
-shared = [".gitignore", "LICENSE", "package.json", "tsconfig.json"]
+exempt = [
+  ".gitignore",
+  "LICENSE",
+  "package-lock.json",
+  "package.json",
+  "tsconfig.json",
+]
 locations.decision = ["docs/decisions/"]
 
 [ledger]
 approval-required = ["req"]
 
 [evidence]
-coverage-attribution = "required"
+test-coverage = "required"
 |}
 
 let the_example_of_a_typescript_project_reads () =
@@ -182,7 +183,7 @@ let the_example_of_a_typescript_project_reads () =
        (Manifest.packs manifest));
   Alcotest.(check (list string))
     "the namespaces, sorted" [ "gh"; "jira" ]
-    (List.map fst (Manifest.ref_namespaces manifest));
+    (List.map fst (Manifest.namespaces manifest));
   Alcotest.(check (list string))
     "historical" [ "docs/devlog/" ]
     (members (Manifest.historical manifest));
@@ -193,8 +194,8 @@ let the_example_of_a_typescript_project_reads () =
     "approval" true
     (Manifest.approval_required manifest = [ Manifest.Req ]);
   Alcotest.(check bool)
-    "coverage-attribution" true
-    (Manifest.coverage_attribution manifest = Manifest.Required)
+    "test-coverage" true
+    (Manifest.test_coverage manifest = Manifest.Required)
 
 let tier =
   Alcotest.testable
@@ -209,23 +210,23 @@ let the_tier_that_applies_follows_the_three_rules () =
     Alcotest.check tier name expected
       (Manifest.tier manifest gate finding_class)
   in
-  check "a written tier passes the cap" (Some Finding_class.Block)
-    Finding_class.Merge Finding_class.Dangling;
-  check "the cap lowers a built-in block" (Some Finding_class.Warn)
+  check "a written tier applies under warn-only" (Some Finding_class.Block)
+    Finding_class.Review Finding_class.Dangling;
+  check "warn-only lowers a built-in block" (Some Finding_class.Warn)
     Finding_class.Turn Finding_class.Dangling;
-  check "the cap leaves a built-in warn" (Some Finding_class.Warn)
+  check "warn-only leaves a built-in warn" (Some Finding_class.Warn)
     Finding_class.Turn Finding_class.Typo_tag;
-  check "the cap leaves a built-in off" (Some Finding_class.Off)
+  check "warn-only leaves a built-in off" (Some Finding_class.Off)
     Finding_class.Turn Finding_class.Awaiting_approval;
-  check "a class with no tier at the gate" None Finding_class.Target
+  check "a class with no tier at the gate" None Finding_class.Merged
     Finding_class.Scope_outside_plan;
-  check "pack-mismatch takes no tier" None Finding_class.Merge
+  check "pack-mismatch takes no tier" None Finding_class.Review
     Finding_class.Pack_mismatch
 
-let without_the_cap_the_built_in_tier_applies () =
+let without_warn_only_the_built_in_tier_applies () =
   let manifest = read (markdown ^ "[check]\ntiers.turn.dangling = \"off\"\n") in
   Alcotest.check tier "a built-in block stays" (Some Finding_class.Block)
-    (Manifest.tier manifest Finding_class.Merge Finding_class.Dangling);
+    (Manifest.tier manifest Finding_class.Review Finding_class.Dangling);
   Alcotest.check tier "a written off" (Some Finding_class.Off)
     (Manifest.tier manifest Finding_class.Turn Finding_class.Dangling);
   Alcotest.check tier "a written tier for another class does not apply"
@@ -237,13 +238,13 @@ let written_tiers_are_sorted () =
     read
       (markdown
      ^ "[check]\n\
-        tiers.target.suspect = \"warn\"\n\
+        tiers.merged.suspect = \"warn\"\n\
         tiers.turn.dangling = \"off\"\n\
         tiers.turn.parse-error = \"block\"\n")
   in
   Alcotest.(check (list string))
     "gate, then class"
-    [ "turn parse-error block"; "turn dangling off"; "target suspect warn" ]
+    [ "turn parse-error block"; "turn dangling off"; "merged suspect warn" ]
     (List.map
        (fun (gate, finding_class, tier) ->
          String.concat " "
@@ -261,7 +262,7 @@ let built_in_paths_join_the_written_ones () =
      ^ "[check]\n\
         historical = [\"docs/devlog/\", \"!docs/devlog/keep.md\"]\n\
         [plan]\n\
-        ambient = [\"gen/\", \"!.plans/**\"]\n")
+        exempt = [\"gen/\", \"!.plans/**\"]\n")
   in
   let historical = Manifest.is_historical manifest in
   Alcotest.(check bool)
@@ -272,21 +273,21 @@ let built_in_paths_join_the_written_ones () =
     "a written ! glob" false
     (historical "docs/devlog/keep.md");
   Alcotest.(check bool) "a plan file" false (historical ".plans/a.md");
-  let ambient =
-    Manifest.is_ambient manifest
+  let exempt =
+    Manifest.is_exempt manifest
       ~plan_file:(fun path -> path = ".plans/a.md")
       ~manifest:(Some "conf/sinter.toml")
   in
-  Alcotest.(check bool) "a plan file is ambient" true (ambient ".plans/a.md");
+  Alcotest.(check bool) "a plan file is exempt" true (exempt ".plans/a.md");
   Alcotest.(check bool)
-    "the manifest is ambient" true
-    (ambient "conf/sinter.toml");
-  Alcotest.(check bool) "the lock file is ambient" true (ambient "sinter.lock");
-  Alcotest.(check bool) "a written member" true (ambient "gen/x.ml");
-  Alcotest.(check bool) "another file" false (ambient "src/x.ml");
+    "the manifest is exempt" true
+    (exempt "conf/sinter.toml");
+  Alcotest.(check bool) "the lock file is exempt" true (exempt "sinter.lock");
+  Alcotest.(check bool) "a written member" true (exempt "gen/x.ml");
+  Alcotest.(check bool) "another file" false (exempt "src/x.ml");
   Alcotest.(check bool)
     "a manifest outside the repository" false
-    (Manifest.is_ambient manifest
+    (Manifest.is_exempt manifest
        ~plan_file:(fun _ -> false)
        ~manifest:None "sinter.toml");
   Alcotest.(check string)
@@ -294,18 +295,18 @@ let built_in_paths_join_the_written_ones () =
     Manifest.builtin_historical;
   Alcotest.(check string) "the lock file" "sinter.lock" Manifest.lock_file
 
-let harness_markers_keep_their_order () =
+let agent_markers_keep_their_order () =
   let manifest =
     read
       (markdown
      ^ "[ledger]\n\
-        harness-markers = [\"B_1\", \"_a\", \"CLAUDECODE\", \"z\", \"Zz_09\", \
+        agent-markers = [\"B_1\", \"_a\", \"CLAUDECODE\", \"z\", \"Zz_09\", \
         \"A9\"]\n")
   in
   Alcotest.(check (list string))
     "the markers"
     [ "B_1"; "_a"; "CLAUDECODE"; "z"; "Zz_09"; "A9" ]
-    (Manifest.harness_markers manifest)
+    (Manifest.agent_markers manifest)
 
 let approval_kinds_keep_their_order () =
   let manifest =
@@ -340,10 +341,11 @@ let every_location_kind_reads () =
        (fun kind -> Option.map members (Manifest.location manifest kind))
        Manifest.[ Req; Design; Decision; Plan ])
 
-let a_target_branch_reads () =
+let a_default_branch_reads () =
   Alcotest.(check string)
-    "target" "release/1.0"
-    (Manifest.target (read ("target = \"release/1.0\"\n" ^ markdown)))
+    "default-branch" "release/1.0"
+    (Manifest.default_branch
+       (read ("default-branch = \"release/1.0\"\n" ^ markdown)))
 
 let an_empty_array_is_an_absent_key () =
   let manifest =
@@ -369,17 +371,17 @@ let an_empty_array_is_an_absent_key () =
 let every_form_of_toml_means_the_same () =
   let forms =
     [
-      "[check.tiers.merge]\n\
+      "[check.tiers.review]\n\
        dangling = \"warn\"\n\
        [scan.packs.markdown]\n\
        files = [\"a\"]\n";
       "[check]\n\
-       tiers.merge.dangling = \"warn\"\n\
+       tiers.review.dangling = \"warn\"\n\
        [scan]\n\
        packs.markdown.files = ['a']\n";
-      "check = { tiers = { merge = { dangling = \"warn\" } } }\n\
+      "check = { tiers = { review = { dangling = \"warn\" } } }\n\
        scan.packs.markdown = { files = [\"a\"] }\n";
-      "\"check\".'tiers'.\"merge\".dangling = \"warn\"\n\
+      "\"check\".'tiers'.\"review\".dangling = \"warn\"\n\
        scan . packs . markdown . files = [\n\
       \  \"a\", # a comment\n\
        ]\n";
@@ -389,7 +391,7 @@ let every_form_of_toml_means_the_same () =
     (fun text ->
       let manifest = read text in
       Alcotest.check tier text (Some Finding_class.Warn)
-        (Manifest.tier manifest Finding_class.Merge Finding_class.Dangling);
+        (Manifest.tier manifest Finding_class.Review Finding_class.Dangling);
       Alcotest.(check (list string))
         text [ "markdown a -" ]
         (List.map pack_summary (Manifest.packs manifest)))
@@ -410,38 +412,39 @@ let a_syntax_error_reports_the_toml_reader () =
        'a.b.c', which a table header made; write 'x' under the header [a.b.c]";
     ]
 
-let spec_errors () =
-  reports "a newer version" "spec = \"1.2\"\nfoo = 1\n"
+let sinter_spec_errors () =
+  reports "a newer version" "sinter-spec = \"1.2\"\nfoo = 1\n"
     [
-      "sinter.toml:1:8: this manifest needs specification 1.2, and this sinter \
-       implements 1.0; install a newer sinter";
+      "sinter.toml:1:15: this manifest needs specification 1.2, and this \
+       sinter implements 1.0; install a newer sinter";
     ];
-  reports "an older major version" "spec = \"0.9\"\n"
+  reports "an older major version" "sinter-spec = \"0.9\"\n"
     [
-      "sinter.toml:1:8: this manifest is for specification 0.9, and this \
+      "sinter.toml:1:15: this manifest is for specification 0.9, and this \
        sinter implements 1.0, a new major version that can change the meaning \
        of a key; read the notes on the changes in specification 1.0, then \
-       update the manifest and its 'spec'";
+       update the manifest and its 'sinter-spec'";
     ];
-  reports "a patch number" "spec = \"1.0.0\"\n"
+  reports "a patch number" "sinter-spec = \"1.0.0\"\n"
     [
-      "sinter.toml:1:8: 'spec' takes a version of the form MAJOR.MINOR, such \
-       as \"1.0\", not \"1.0.0\"";
+      "sinter.toml:1:15: 'sinter-spec' takes a version of the form \
+       MAJOR.MINOR, such as \"1.0\", not \"1.0.0\"";
     ];
-  reports "an integer" "spec = 1\n"
+  reports "an integer" "sinter-spec = 1\n"
     [
-      "sinter.toml:1:8: 'spec' takes a version of the form MAJOR.MINOR, such \
-       as \"1.0\", not an integer";
+      "sinter.toml:1:15: 'sinter-spec' takes a version of the form \
+       MAJOR.MINOR, such as \"1.0\", not an integer";
     ];
   reports "a minor version of the same major"
-    ("spec = \"1.0\"\n" ^ markdown)
+    ("sinter-spec = \"1.0\"\n" ^ markdown)
     [ "no error" ]
 
 let the_version_comes_before_the_names () =
-  reports "an unknown key after a newer version" "spec = \"2.0\"\n[chek]\n"
+  reports "an unknown key after a newer version"
+    "sinter-spec = \"2.0\"\n[chek]\n"
     [
-      "sinter.toml:1:8: this manifest needs specification 2.0, and this sinter \
-       implements 1.0; install a newer sinter";
+      "sinter.toml:1:15: this manifest needs specification 2.0, and this \
+       sinter implements 1.0; install a newer sinter";
     ]
 
 let unknown_keys () =
@@ -461,18 +464,51 @@ let unknown_keys () =
     "[scan]\npakcs.markdown.files = [\"**/*.md\"]\n"
     [ "sinter.toml:2:1: unknown key 'pakcs' in [scan]; did you mean 'packs'?" ];
   reports "a later part of a dotted key in error"
-    (markdown ^ "[check]\ntiers.merge.danglng = \"block\"\n")
+    (markdown ^ "[check]\ntiers.review.danglng = \"block\"\n")
     [
-      "sinter.toml:4:13: unknown finding class 'danglng' in \
-       [check.tiers.merge]; did you mean 'dangling'?";
+      "sinter.toml:4:14: unknown finding class 'danglng' in \
+       [check.tiers.review]; did you mean 'dangling'?";
     ];
   reports "a key in a pack table" "[scan.packs.ocaml]\nfile = [\"a\"]\n"
     [
       "sinter.toml:2:1: unknown key 'file' in [scan.packs.ocaml]; did you mean \
        'files'?";
     ];
-  reports "a tie goes to the first name in byte order" "[plan]\nshare = []\n"
-    [ "sinter.toml:2:1: unknown key 'share' in [plan]; did you mean 'shared'?" ]
+  reports "a tie goes to the first name in byte order" "[chan]\n"
+    [
+      "sinter.toml:1:2: unknown key 'chan' at the top level; did you mean \
+       'plan'?";
+    ]
+
+let an_old_name_is_an_unknown_name () =
+  reports "target" "target = \"trunk\"\n"
+    [ "sinter.toml:1:1: unknown key 'target' at the top level" ];
+  reports "the gate merge" "[check.tiers.merge]\n"
+    [
+      "sinter.toml:1:14: unknown gate 'merge' in [check.tiers]; did you mean \
+       'merged'?";
+    ];
+  reports "the gate target" "[check.tiers.target]\n"
+    [
+      "sinter.toml:1:14: unknown gate 'target' in [check.tiers]; the gates are \
+       'turn', 'review', or 'merged'";
+    ];
+  reports "scan.refs" "[scan]\nrefs.gh = \"[1-9][0-9]*\"\n"
+    [ "sinter.toml:2:1: unknown key 'refs' in [scan]" ];
+  reports "plan.ambient and plan.shared" "[plan]\nambient = []\nshared = []\n"
+    [
+      "sinter.toml:2:1: unknown key 'ambient' in [plan]";
+      "sinter.toml:3:1: unknown key 'shared' in [plan]";
+    ];
+  reports "spec" "spec = \"1.0\"\n"
+    [ "sinter.toml:1:1: unknown key 'spec' at the top level" ];
+  reports "check.rollout-cap" "[check]\nrollout-cap = true\n"
+    [ "sinter.toml:2:1: unknown key 'rollout-cap' in [check]" ];
+  reports "ledger.harness-markers" "[ledger]\nharness-markers = [\"A\"]\n"
+    [ "sinter.toml:2:1: unknown key 'harness-markers' in [ledger]" ];
+  reports "evidence.coverage-attribution"
+    "[evidence]\ncoverage-attribution = \"required\"\n"
+    [ "sinter.toml:2:1: unknown key 'coverage-attribution' in [evidence]" ]
 
 let a_name_with_a_control_character_is_escaped () =
   reports "an unknown key" "\"a\\nb\" = 1\n"
@@ -489,35 +525,36 @@ let a_name_with_a_control_character_is_escaped () =
        lower-case letters and digits, in words joined by '-', such as 'ocaml' \
        or 'tree-sitter'";
       "sinter.toml:5:1: unknown gate \"m\\u007Fe\" in [check.tiers]; the gates \
-       are 'turn', 'merge', or 'target'";
+       are 'turn', 'review', or 'merged'";
     ]
 
 let keys_at_the_wrong_place () =
-  reports "a top-level key under a table" "[evidence]\ntarget = \"trunk\"\n"
+  reports "a top-level key under a table"
+    "[evidence]\ndefault-branch = \"trunk\"\n"
     [
-      "sinter.toml:2:1: 'target' belongs at the top level, above the first \
-       table header";
+      "sinter.toml:2:1: 'default-branch' belongs at the top level, above the \
+       first table header";
     ];
   reports "a table under another table" "[plan]\ncheck = 1\n"
     [
       "sinter.toml:2:1: 'check' is a table of the top level; write its keys \
        under the header [check]";
     ];
-  reports "a key of another table" "[scan]\nrollout-cap = true\n"
-    [ "sinter.toml:2:1: 'rollout-cap' belongs in [check]" ];
+  reports "a key of another table" "[scan]\nwarn-only = true\n"
+    [ "sinter.toml:2:1: 'warn-only' belongs in [check]" ];
   reports "a key of a pack" "files = []\n"
     [ "sinter.toml:1:1: 'files' belongs in [scan.packs.<name>]" ];
-  reports "a fixed name where a gate goes" "[check.tiers]\nrollout-cap = true\n"
-    [ "sinter.toml:2:1: 'rollout-cap' belongs in [check]" ];
+  reports "a fixed name where a gate goes" "[check.tiers]\nwarn-only = true\n"
+    [ "sinter.toml:2:1: 'warn-only' belongs in [check]" ];
   reports "a fixed name where a class goes"
-    "[check.tiers.merge]\nhistorical = []\n"
+    "[check.tiers.review]\nhistorical = []\n"
     [ "sinter.toml:2:1: 'historical' belongs in [check]" ];
-  reports "a fixed name where a kind goes" "[plan.locations]\nshared = []\n"
-    [ "sinter.toml:2:1: 'shared' belongs in [plan]" ]
+  reports "a fixed name where a kind goes" "[plan.locations]\nexempt = []\n"
+    [ "sinter.toml:2:1: 'exempt' belongs in [plan]" ]
 
 let wrong_types () =
-  reports "a string for a boolean" "[check]\nrollout-cap = \"yes\"\n"
-    [ "sinter.toml:2:15: 'rollout-cap' takes true or false, not a string" ];
+  reports "a string for a boolean" "[check]\nwarn-only = \"yes\"\n"
+    [ "sinter.toml:2:13: 'warn-only' takes true or false, not a string" ];
   reports "a member that is not a string" "[check]\nhistorical = [\"a\", 1]\n"
     [
       "sinter.toml:2:20: 'historical' takes an array of strings, and this \
@@ -527,16 +564,18 @@ let wrong_types () =
     [ "sinter.toml:1:8: 'scan' takes a table, not an integer" ];
   reports "an array of tables for a table" "[[check]]\n"
     [ "sinter.toml:1:3: 'check' takes a table, not an array of tables" ];
-  reports "a table for a string" "[target]\n"
-    [ "sinter.toml:1:2: 'target' takes a string, not a table" ];
+  reports "a table for a string" "[default-branch]\n"
+    [ "sinter.toml:1:2: 'default-branch' takes a string, not a table" ];
   reports "a string for an array" "[check]\nhistorical = \"docs/\"\n"
     [ "sinter.toml:2:14: 'historical' takes an array of strings, not a string" ];
   reports "a float, a date, and a boolean"
-    "target = 1.5\n[check]\nrollout-cap = 1979-05-27\nhistorical = [true]\n"
+    "default-branch = 1.5\n\
+     [check]\n\
+     warn-only = 1979-05-27\n\
+     historical = [true]\n"
     [
-      "sinter.toml:1:10: 'target' takes a string, not a float";
-      "sinter.toml:3:15: 'rollout-cap' takes true or false, not a date or a \
-       time";
+      "sinter.toml:1:18: 'default-branch' takes a string, not a float";
+      "sinter.toml:3:13: 'warn-only' takes true or false, not a date or a time";
       "sinter.toml:4:15: 'historical' takes an array of strings, and this \
        member is a boolean";
     ]
@@ -551,15 +590,15 @@ let names_that_vary () =
   reports "a gate far from every gate" "[check.tiers.pr]\n"
     [
       "sinter.toml:1:14: unknown gate 'pr' in [check.tiers]; the gates are \
-       'turn', 'merge', or 'target'";
+       'turn', 'review', or 'merged'";
     ];
   reports "a class with no tier at the gate"
-    "[check.tiers.target]\nscope-outside-plan = \"warn\"\n"
+    "[check.tiers.merged]\nscope-outside-plan = \"warn\"\n"
     [
-      "sinter.toml:2:1: 'scope-outside-plan' takes no tier at the gate 'target'";
+      "sinter.toml:2:1: 'scope-outside-plan' takes no tier at the gate 'merged'";
     ];
   reports "config-changed, pack-mismatch, and an unknown class"
-    "[check.tiers.merge]\n\
+    "[check.tiers.review]\n\
      config-changed = \"warn\"\n\
      pack-mismatch = \"warn\"\n\
      xyz = \"warn\"\n"
@@ -567,20 +606,20 @@ let names_that_vary () =
       "sinter.toml:2:1: 'config-changed' takes no tier; it always reports and \
        never blocks";
       "sinter.toml:3:1: 'pack-mismatch' takes no tier at any gate";
-      "sinter.toml:4:1: unknown finding class 'xyz' in [check.tiers.merge]; \
+      "sinter.toml:4:1: unknown finding class 'xyz' in [check.tiers.review]; \
        'tiers' names built-in finding classes only";
     ];
   reports "config-changed is never a suggestion"
-    "[check.tiers.merge]\nconfig-chnged = \"warn\"\n"
+    "[check.tiers.review]\nconfig-chnged = \"warn\"\n"
     [
       "sinter.toml:2:1: unknown finding class 'config-chnged' in \
-       [check.tiers.merge]; 'tiers' names built-in finding classes only";
+       [check.tiers.review]; 'tiers' names built-in finding classes only";
     ];
   reports "the suggestion is a class that takes a tier at the gate"
-    "[check.tiers.target]\nbad-scop = \"warn\"\n"
+    "[check.tiers.merged]\nbad-scop = \"warn\"\n"
     [
       "sinter.toml:2:1: unknown finding class 'bad-scop' in \
-       [check.tiers.target]; 'tiers' names built-in finding classes only";
+       [check.tiers.merged]; 'tiers' names built-in finding classes only";
     ];
   reports "kinds of locations"
     "[plan.locations]\ndecisions = [\"docs/\"]\nplan = [\"x\"]\nfoo = []\n"
@@ -595,7 +634,7 @@ let names_that_vary () =
   reports "pack names and namespaces"
     "[scan.packs.Markdown]\n\
      files = [\"a\"]\n\
-     [scan.refs]\n\
+     [scan.namespaces]\n\
      GH = \"x\"\n\
      \"a-\" = \"x\"\n\
      \"-a\" = \"x\"\n\
@@ -607,29 +646,28 @@ let names_that_vary () =
       "sinter.toml:1:13: 'Markdown' is not a pack name; a pack name is \
        lower-case letters and digits, in words joined by '-', such as 'ocaml' \
        or 'tree-sitter'";
-      "sinter.toml:4:1: 'GH' is not a ref namespace; a namespace is lower-case \
+      "sinter.toml:4:1: 'GH' is not a namespace; a namespace is lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:5:1: 'a-' is not a ref namespace; a namespace is lower-case \
+      "sinter.toml:5:1: 'a-' is not a namespace; a namespace is lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:6:1: '-a' is not a ref namespace; a namespace is lower-case \
+      "sinter.toml:6:1: '-a' is not a namespace; a namespace is lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:7:1: '' is not a ref namespace; a namespace is lower-case \
+      "sinter.toml:7:1: '' is not a namespace; a namespace is lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:8:1: '1a' is not a ref namespace; a namespace is lower-case \
+      "sinter.toml:8:1: '1a' is not a namespace; a namespace is lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:9:1: 'aB' is not a ref namespace; a namespace is lower-case \
+      "sinter.toml:9:1: 'aB' is not a namespace; a namespace is lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:10:1: 'a_b' is not a ref namespace; a namespace is \
-       lower-case letters and digits, in words joined by '-', such as 'gh' or \
-       'jira'";
+      "sinter.toml:10:1: 'a_b' is not a namespace; a namespace is lower-case \
+       letters and digits, in words joined by '-', such as 'gh' or 'jira'";
     ];
   reports "names with words and digits"
     (markdown
    ^ "packs.tree-sitter2.files = [\"a\"]\n\
       packs.tree-sitter2.version = \"1.0\"\n\
-      refs.a1-b2 = \"x\"\n\
-      refs.z9-a0 = \"x\"\n\
-      refs.z = \"x\"\n")
+      namespaces.a1-b2 = \"x\"\n\
+      namespaces.z9-a0 = \"x\"\n\
+      namespaces.z = \"x\"\n")
     [ "no error" ];
   reports "a version for markdown"
     "[scan.packs.markdown]\nfiles = [\"**/*.md\"]\nversion = \"1.0\"\n"
@@ -639,22 +677,22 @@ let names_that_vary () =
     ]
 
 let values () =
-  reports "a target that is not a branch name"
-    ("target = \"a..b\"\n" ^ markdown)
+  reports "a default branch that is not a branch name"
+    ("default-branch = \"a..b\"\n" ^ markdown)
     [
-      "sinter.toml:1:12: \"a..b\" is not a branch name; a branch name cannot \
+      "sinter.toml:1:20: \"a..b\" is not a branch name; a branch name cannot \
        hold '..'";
     ];
   reports "a column counts code points"
-    ("target = \"\xc3\xa9..b\"\n" ^ markdown)
+    ("default-branch = \"\xc3\xa9..b\"\n" ^ markdown)
     [
-      "sinter.toml:1:12: \"\xc3\xa9..b\" is not a branch name; a branch name \
+      "sinter.toml:1:20: \"\xc3\xa9..b\" is not a branch name; a branch name \
        cannot hold '..'";
     ];
   reports "an escape puts the error at the string"
-    ("target = \"a\\u002e.b\"\n" ^ markdown)
+    ("default-branch = \"a\\u002e.b\"\n" ^ markdown)
     [
-      "sinter.toml:1:10: \"a..b\" is not a branch name; a branch name cannot \
+      "sinter.toml:1:18: \"a..b\" is not a branch name; a branch name cannot \
        hold '..'";
     ];
   reports "globs, packs, and patterns"
@@ -664,8 +702,8 @@ let values () =
      packs.y.version = \"1\"\n\
      packs.z.files = []\n\
      packs.w.files = [\"a\"]\n\
-     refs.gh = \".x\"\n\
-     refs.jira = \"[0-9]*\"\n"
+     namespaces.gh = \".x\"\n\
+     namespaces.jira = \"[0-9]*\"\n"
     [
       "sinter.toml:2:30: \"src/**.ts\" is not a glob: the segment '**.ts' \
        holds '**' and other characters; write '**/*.ts'";
@@ -684,9 +722,9 @@ let values () =
        repository uses, such as \"1.0\"";
       "sinter.toml:6:7: the pack w needs 'version', the release that the \
        repository uses, such as \"1.0\"";
-      "sinter.toml:7:12: '.' is not in the id pattern language; put it in a \
+      "sinter.toml:7:18: '.' is not in the id pattern language; put it in a \
        class, for example [.]";
-      "sinter.toml:8:14: the pattern matches an empty id";
+      "sinter.toml:8:20: the pattern matches an empty id";
     ];
   reports "a pack with files and a bad version"
     (markdown
@@ -710,37 +748,37 @@ let values () =
   reports "words"
     (markdown
    ^ "[check]\n\
-      tiers.merge.dangling = \"blok\"\n\
+      tiers.review.dangling = \"blok\"\n\
       [ledger]\n\
       approval-required = [\"reqs\", \"req\", \"req\"]\n\
-      harness-markers = [\"MY-VAR\", \"A\", \"A\", \"1A\", \"\"]\n\
+      agent-markers = [\"MY-VAR\", \"A\", \"A\", \"1A\", \"\"]\n\
       [evidence]\n\
-      coverage-attribution = \"requird\"\n")
+      test-coverage = \"requird\"\n")
     [
-      "sinter.toml:4:24: 'dangling' takes \"off\", \"warn\", or \"block\", not \
+      "sinter.toml:4:25: 'dangling' takes \"off\", \"warn\", or \"block\", not \
        \"blok\"; did you mean \"block\"?";
       "sinter.toml:6:22: 'approval-required' takes \"req\", \"design\", \
        \"decision\", or \"plan\", not \"reqs\"; did you mean \"req\"?";
       "sinter.toml:6:37: \"req\" occurs twice in 'approval-required'";
-      "sinter.toml:7:20: \"MY-VAR\" is not a name of an environment variable; \
+      "sinter.toml:7:18: \"MY-VAR\" is not a name of an environment variable; \
        a name holds letters, digits, and '_', and does not start with a digit";
-      "sinter.toml:7:35: \"A\" occurs twice in 'harness-markers'";
-      "sinter.toml:7:40: \"1A\" is not a name of an environment variable; a \
+      "sinter.toml:7:33: \"A\" occurs twice in 'agent-markers'";
+      "sinter.toml:7:38: \"1A\" is not a name of an environment variable; a \
        name holds letters, digits, and '_', and does not start with a digit";
-      "sinter.toml:7:46: \"\" is not a name of an environment variable; a name \
+      "sinter.toml:7:44: \"\" is not a name of an environment variable; a name \
        holds letters, digits, and '_', and does not start with a digit";
-      "sinter.toml:9:24: 'coverage-attribution' takes \"optional\" or \
-       \"required\", not \"requird\"; did you mean \"required\"?";
+      "sinter.toml:9:17: 'test-coverage' takes \"optional\" or \"required\", \
+       not \"requird\"; did you mean \"required\"?";
     ];
   reports "a word far from every word"
-    (markdown ^ "[evidence]\ncoverage-attribution = \"x\"\n")
+    (markdown ^ "[evidence]\ntest-coverage = \"x\"\n")
     [
-      "sinter.toml:4:24: 'coverage-attribution' takes \"optional\" or \
-       \"required\", not \"x\"";
+      "sinter.toml:4:17: 'test-coverage' takes \"optional\" or \"required\", \
+       not \"x\"";
     ]
 
 let a_manifest_with_no_pack () =
-  reports "no pack" "[check]\nrollout-cap = true\n"
+  reports "no pack" "[check]\nwarn-only = true\n"
     [
       "sinter.toml names no pack; add a line such as packs.markdown.files = \
        [\"**/*.md\"] under [scan]";
@@ -753,14 +791,10 @@ let a_manifest_with_no_pack () =
 
 let the_names_come_before_the_values () =
   reports "an unknown key and a bad glob"
-    "[check]\n\
-     foo = 1\n\
-     rollout-cap = 1\n\
-     [scan]\n\
-     packs.markdown.files = [\"a?\"]\n"
+    "[check]\nfoo = 1\nwarn-only = 1\n[scan]\npacks.markdown.files = [\"a?\"]\n"
     [
       "sinter.toml:2:1: unknown key 'foo' in [check]";
-      "sinter.toml:3:15: 'rollout-cap' takes true or false, not an integer";
+      "sinter.toml:3:13: 'warn-only' takes true or false, not an integer";
     ]
 
 let a_large_manifest_reads_quickly () =
@@ -776,14 +810,14 @@ let a_large_manifest_reads_quickly () =
   let manifest =
     read
       (markdown ^ packs ^ "[check]\nhistorical = " ^ strings "\"d%d/\"" 2_000
-     ^ "\n[ledger]\nharness-markers = " ^ strings "\"M%d\"" 2_000 ^ "\n")
+     ^ "\n[ledger]\nagent-markers = " ^ strings "\"M%d\"" 2_000 ^ "\n")
   in
   Alcotest.(check int) "packs" 1_001 (List.length (Manifest.packs manifest));
   Alcotest.(check int)
     "markers" 2_000
-    (List.length (Manifest.harness_markers manifest));
+    (List.length (Manifest.agent_markers manifest));
   let repeated =
-    markdown ^ "[ledger]\nharness-markers = " ^ strings "\"M%d\"" 2_000
+    markdown ^ "[ledger]\nagent-markers = " ^ strings "\"M%d\"" 2_000
     ^ "\n[check]\nhistorical = " ^ strings "\"d%d/\"" 1_999
     |> fun text -> String.sub text 0 (String.length text - 1) ^ ", \"d0/\"]\n"
   in
@@ -825,20 +859,22 @@ let the_example_messages_of_the_specification () =
   in
   check "[check]\nhistoric = 1\n"
     "unknown key 'historic' in [check]; did you mean 'historical'?";
-  check "[evidence]\ntarget = \"trunk\"\n"
-    "'target' belongs at the top level, above the first table header";
-  check "[check]\nrollout-cap = \"x\"\n"
-    "'rollout-cap' takes true or false, not a string";
+  check "[evidence]\ndefault-branch = \"trunk\"\n"
+    "'default-branch' belongs at the top level, above the first table header";
+  check "[check]\nwarn-only = \"x\"\n"
+    "'warn-only' takes true or false, not a string";
   check "[scan.packs.markdown]\nfiles = [\"a\"]\nversion = \"1.0\"\n"
     "the pack markdown is built into sinter and takes no version";
-  check "[check.tiers.merge]\nconfig-changed = \"warn\"\n"
+  check "[check.tiers.review]\nconfig-changed = \"warn\"\n"
     "'config-changed' takes no tier; it always reports and never blocks";
-  check "[check.tiers.target]\nscope-outside-plan = \"warn\"\n"
-    "'scope-outside-plan' takes no tier at the gate 'target'";
+  check "[check.tiers.merged]\nscope-outside-plan = \"warn\"\n"
+    "'scope-outside-plan' takes no tier at the gate 'merged'";
   check
-    (markdown ^ "refs.gh = \".\"\n")
+    (markdown ^ "namespaces.gh = \".\"\n")
     "'.' is not in the id pattern language; put it in a class, for example [.]";
-  check (markdown ^ "refs.gh = \"[0-9]*\"\n") "the pattern matches an empty id"
+  check
+    (markdown ^ "namespaces.gh = \"[0-9]*\"\n")
+    "the pattern matches an empty id"
 
 let rec value_text node =
   match Toml.value node with
@@ -886,19 +922,19 @@ let runners_keep_their_order_and_their_settings () =
       (markdown
      ^ "packs.ts.files = [\"**/*.ts\"]\n\
         packs.ts.version = \"1.0\"\n\
-        packs.ts.runners = [\"vitest\", \"jest\"]\n\
-        packs.ts.vitest.config = \"vitest.config.ts\"\n\
-        packs.ts.vitest.coverage = true\n\
-        packs.ts.vitest.reporters = [\"junit\", 'json']\n\
-        packs.ts.vitest.retries = 2\n\
-        packs.ts.vitest.env.CI = \"1\"\n")
+        packs.ts.runners.vitest.config = \"vitest.config.ts\"\n\
+        packs.ts.runners.vitest.coverage = true\n\
+        packs.ts.runners.vitest.reporters = [\"junit\", 'json']\n\
+        packs.ts.runners.vitest.retries = 2\n\
+        packs.ts.runners.vitest.env.CI = \"1\"\n\
+        packs.ts.runners.jest = {}\n")
   in
   Alcotest.(check (list string))
     "the runners of ts"
     [
-      "vitest 5:21-5:29 config@6:17=\"vitest.config.ts\" coverage@7:17=true \
-       reporters@8:17=[\"junit\",\"json\"] retries@9:17=2 env@10:17={CI=\"1\"}";
-      "jest 5:31-5:37";
+      "vitest 5:18-5:24 config@5:25=\"vitest.config.ts\" coverage@6:25=true \
+       reporters@7:25=[\"junit\",\"json\"] retries@8:25=2 env@9:25={CI=\"1\"}";
+      "jest 10:18-10:22";
     ]
     (runners_of manifest "ts");
   Alcotest.(check (list string))
@@ -913,27 +949,29 @@ let a_pack_with_no_runners_has_none () =
         packs.ts.version = \"1.0\"\n\
         packs.go.files = [\"b\"]\n\
         packs.go.version = \"1.0\"\n\
-        packs.go.runners = []\n")
+        packs.go.runners = {}\n")
   in
   Alcotest.(check (list string)) "no runners key" [] (runners_of manifest "ts");
-  Alcotest.(check (list string)) "an empty array" [] (runners_of manifest "go")
+  Alcotest.(check (list string)) "an empty table" [] (runners_of manifest "go")
 
-let the_runners_key_can_follow_the_runner_tables () =
+let every_form_of_a_runner_table_reads_the_same () =
   let forms =
     [
-      "[scan.packs.ts.vitest]\n\
+      "[scan.packs.ts.runners.vitest]\n\
        mode = \"run\"\n\
        [scan.packs.ts]\n\
        files = [\"a\"]\n\
-       version = \"1.0\"\n\
-       runners = [\"vitest\"]\n";
+       version = \"1.0\"\n";
       "[scan]\n\
-       packs.ts.vitest = { mode = \"run\" }\n\
+       packs.ts.runners.vitest = { mode = \"run\" }\n\
        packs.ts.files = [\"a\"]\n\
-       packs.ts.version = \"1.0\"\n\
-       packs.ts.runners = [\"vitest\"]\n";
-      "scan.packs.ts = { vitest.mode = \"run\", files = [\"a\"], version = \
-       \"1.0\", runners = [\"vitest\"] }\n";
+       packs.ts.version = \"1.0\"\n";
+      "scan.packs.ts = { runners.vitest.mode = \"run\", files = [\"a\"], \
+       version = \"1.0\" }\n";
+      "[scan.packs.ts]\n\
+       files = [\"a\"]\n\
+       version = \"1.0\"\n\
+       runners = { vitest = { mode = \"run\" } }\n";
     ]
   in
   List.iter
@@ -954,31 +992,36 @@ let the_runners_key_can_follow_the_runner_tables () =
 let a_dotted_key_can_add_a_key_to_a_table_above_a_header_table () =
   let manifest =
     read
-      "[scan.packs.ts.vitest]\n\
+      "[scan.packs.ts.runners.vitest]\n\
        mode = \"run\"\n\
        [scan]\n\
        packs.ts.files = [\"a\"]\n\
-       packs.ts.version = \"1.0\"\n\
-       packs.ts.runners = [\"vitest\"]\n"
+       packs.ts.version = \"1.0\"\n"
   in
   Alcotest.(check (list string))
     "the runners of ts"
-    [ "vitest 6:21-6:29 mode@2:1=\"run\"" ]
+    [ "vitest 1:24-1:30 mode@2:1=\"run\"" ]
     (runners_of manifest "ts")
 
-let a_runner_can_take_the_name_of_another_place () =
+let a_runner_can_take_any_name_of_the_layout () =
   let manifest =
     read
       (markdown
      ^ "packs.ts.files = [\"a\"]\n\
         packs.ts.version = \"1.0\"\n\
-        packs.ts.runners = [\"check\", \"target\", \"refs\"]\n\
-        packs.ts.check.mode = 1\n\
-        packs.ts.target = {}\n")
+        packs.ts.runners.files = {}\n\
+        packs.ts.runners.version.mode = 1\n\
+        packs.ts.runners.runners = {}\n\
+        packs.ts.runners.check = {}\n")
   in
   Alcotest.(check (list string))
     "the runners"
-    [ "check 5:21-5:28 mode@6:16=1"; "target 5:30-5:38"; "refs 5:40-5:46" ]
+    [
+      "files 5:18-5:23";
+      "version 6:18-6:25 mode@6:26=1";
+      "runners 7:18-7:25";
+      "check 8:18-8:23";
+    ]
     (runners_of manifest "ts")
 
 let ts = "packs.ts.files = [\"a\"]\npacks.ts.version = \"1.0\"\n"
@@ -986,129 +1029,99 @@ let ts = "packs.ts.files = [\"a\"]\npacks.ts.version = \"1.0\"\n"
 let runner_errors () =
   reports "bad runner names"
     (markdown ^ ts
-   ^ "packs.ts.runners = [\"Vitest\", \"-a\", \"\", \"a_b\", \"files\", \
-      \"version\", \"runners\", \"x\\ny\"]\n")
+   ^ "packs.ts.runners.Vitest = {}\n\
+      packs.ts.runners.-a = {}\n\
+      packs.ts.runners.\"\" = {}\n\
+      packs.ts.runners.a_b = {}\n\
+      packs.ts.runners.\"x\\ny\" = {}\n")
     [
-      "sinter.toml:5:21: 'Vitest' is not a runner name; a runner name is \
+      "sinter.toml:5:18: 'Vitest' is not a runner name; a runner name is \
        lower-case letters and digits, in words joined by '-', such as 'vitest' \
        or 'cargo-nextest'";
-      "sinter.toml:5:31: '-a' is not a runner name; a runner name is \
+      "sinter.toml:6:18: '-a' is not a runner name; a runner name is \
        lower-case letters and digits, in words joined by '-', such as 'vitest' \
        or 'cargo-nextest'";
-      "sinter.toml:5:37: '' is not a runner name; a runner name is lower-case \
+      "sinter.toml:7:18: '' is not a runner name; a runner name is lower-case \
        letters and digits, in words joined by '-', such as 'vitest' or \
        'cargo-nextest'";
-      "sinter.toml:5:41: 'a_b' is not a runner name; a runner name is \
+      "sinter.toml:8:18: 'a_b' is not a runner name; a runner name is \
        lower-case letters and digits, in words joined by '-', such as 'vitest' \
        or 'cargo-nextest'";
-      "sinter.toml:5:48: 'files' cannot name a runner; 'files', 'version', and \
-       'runners' are keys of a pack";
-      "sinter.toml:5:57: 'version' cannot name a runner; 'files', 'version', \
-       and 'runners' are keys of a pack";
-      "sinter.toml:5:68: 'runners' cannot name a runner; 'files', 'version', \
-       and 'runners' are keys of a pack";
-      "sinter.toml:5:79: \"x\\ny\" is not a runner name; a runner name is \
+      "sinter.toml:9:18: \"x\\ny\" is not a runner name; a runner name is \
        lower-case letters and digits, in words joined by '-', such as 'vitest' \
        or 'cargo-nextest'";
     ];
-  reports "a runner twice"
-    (markdown ^ ts ^ "packs.ts.runners = [\"vitest\", \"jest\", \"vitest\"]\n")
-    [ "sinter.toml:5:39: \"vitest\" occurs twice in 'runners'" ];
   reports "a runner in three packs, written out of byte order"
     (markdown
    ^ "packs.c.files = [\"c\"]\n\
       packs.c.version = \"1.0\"\n\
-      packs.c.runners = [\"vitest\"]\n\
+      packs.c.runners.vitest = {}\n\
       packs.a.files = [\"a\"]\n\
       packs.a.version = \"1.0\"\n\
-      packs.a.runners = [\"jest\", \"vitest\"]\n\
+      packs.a.runners.jest = {}\n\
+      packs.a.runners.vitest = {}\n\
       packs.b.files = [\"b\"]\n\
       packs.b.version = \"1.0\"\n\
-      packs.b.runners = [\"vitest\", \"vitest\", \"mocha\"]\n")
+      packs.b.runners.vitest.mode = 1\n\
+      packs.b.runners.mocha = {}\n")
     [
-      "sinter.toml:5:20: 'vitest' is in the runners of two packs, a and c; \
+      "sinter.toml:5:17: 'vitest' is in the runners of two packs, a and c; \
        remove it from one of them";
-      "sinter.toml:11:20: 'vitest' is in the runners of two packs, a and b; \
+      "sinter.toml:12:17: 'vitest' is in the runners of two packs, a and b; \
        remove it from one of them";
-      "sinter.toml:11:30: \"vitest\" occurs twice in 'runners'";
     ];
   reports "a bad name in two packs counts once"
     (markdown ^ ts
-   ^ "packs.ts.runners = [\"X\"]\n\
+   ^ "packs.ts.runners.X = {}\n\
       packs.go.files = [\"b\"]\n\
       packs.go.version = \"1.0\"\n\
-      packs.go.runners = [\"X\"]\n")
+      packs.go.runners.X = {}\n")
     [
-      "sinter.toml:5:21: 'X' is not a runner name; a runner name is lower-case \
+      "sinter.toml:5:18: 'X' is not a runner name; a runner name is lower-case \
        letters and digits, in words joined by '-', such as 'vitest' or \
        'cargo-nextest'";
-      "sinter.toml:8:21: 'X' is not a runner name; a runner name is lower-case \
+      "sinter.toml:8:18: 'X' is not a runner name; a runner name is lower-case \
        letters and digits, in words joined by '-', such as 'vitest' or \
        'cargo-nextest'";
     ];
   reports "runners for markdown"
-    "[scan.packs.markdown]\n\
-     files = [\"**/*.md\"]\n\
-     runners = [\"x\"]\n\
-     x.mode = 1\n"
+    "[scan.packs.markdown]\nfiles = [\"**/*.md\"]\nrunners.x = {}\nx.mode = 1\n"
     [
       "sinter.toml:3:1: the pack markdown is built into sinter and has no \
        runner";
       "sinter.toml:4:1: unknown key 'x' in [scan.packs.markdown]";
     ];
-  reports "a table that names no runner of the pack"
+  reports "a runner table under the pack and not under runners"
     (markdown ^ ts
-   ^ "packs.ts.runners = [\"vitest\"]\n\
-      packs.ts.vitst.mode = 1\n\
-      packs.ts.jest.mode = 1\n\
-      packs.ts.runner = []\n")
+   ^ "packs.ts.runners.vitest = {}\n\
+      packs.ts.vitest.mode = 1\n\
+      packs.ts.runner = {}\n")
     [
-      "sinter.toml:6:10: unknown key 'vitst' in [scan.packs.ts]; did you mean \
-       'vitest'?";
-      "sinter.toml:7:10: unknown key 'jest' in [scan.packs.ts]";
-      "sinter.toml:8:10: unknown key 'runner' in [scan.packs.ts]; did you mean \
+      "sinter.toml:6:10: unknown key 'vitest' in [scan.packs.ts]";
+      "sinter.toml:7:10: unknown key 'runner' in [scan.packs.ts]; did you mean \
        'runners'?";
     ];
-  reports "a runner of another pack"
-    (markdown ^ ts
-   ^ "packs.go.files = [\"b\"]\n\
-      packs.go.version = \"1.0\"\n\
-      packs.go.runners = [\"gotest\"]\n\
-      packs.ts.gotest.mode = 1\n")
-    [ "sinter.toml:8:10: unknown key 'gotest' in [scan.packs.ts]" ];
   reports "a runner that is not a table"
     (markdown ^ ts
-   ^ "packs.ts.runners = [\"vitest\", \"jest\", \"mocha\"]\n\
-      packs.ts.vitest = 1\n\
-      packs.ts.jest = [{ a = 1 }]\n\
-      [[scan.packs.ts.mocha]]\n")
+   ^ "packs.ts.runners.vitest = 1\n\
+      packs.ts.runners.jest = [{ a = 1 }]\n\
+      [[scan.packs.ts.runners.mocha]]\n")
     [
-      "sinter.toml:6:19: 'vitest' takes a table, not an integer";
-      "sinter.toml:7:17: 'jest' takes a table, not an array";
-      "sinter.toml:8:17: 'mocha' takes a table, not an array of tables";
+      "sinter.toml:5:27: 'vitest' takes a table, not an integer";
+      "sinter.toml:6:25: 'jest' takes a table, not an array";
+      "sinter.toml:7:25: 'mocha' takes a table, not an array of tables";
     ];
-  reports "runners that are not an array give no runner"
-    (markdown ^ ts ^ "packs.ts.runners = \"vitest\"\npacks.ts.vitest.mode = 1\n")
-    [
-      "sinter.toml:5:20: 'runners' takes an array of strings, not a string";
-      "sinter.toml:6:10: unknown key 'vitest' in [scan.packs.ts]";
-    ];
-  reports "a member that is not a string leaves the others"
-    (markdown ^ ts
-   ^ "packs.ts.runners = [\"vitest\", 17]\npacks.ts.vitest.mode = 1\n")
-    [
-      "sinter.toml:5:31: 'runners' takes an array of strings, and this member \
-       is an integer";
-    ];
+  reports "an array of runner names is not a table"
+    (markdown ^ ts ^ "packs.ts.runners = [\"vitest\"]\n")
+    [ "sinter.toml:5:20: 'runners' takes a table, not an array" ];
   reports "a bad name with its table"
-    (markdown ^ ts
-   ^ "packs.ts.runners = [\"Vitest\"]\npacks.ts.Vitest.mode = 1\n")
+    (markdown ^ ts ^ "packs.ts.runners.Vitest.mode = 1\n")
     [
-      "sinter.toml:5:21: 'Vitest' is not a runner name; a runner name is \
+      "sinter.toml:5:18: 'Vitest' is not a runner name; a runner name is \
        lower-case letters and digits, in words joined by '-', such as 'vitest' \
        or 'cargo-nextest'";
     ];
-  reports "a runner key out of a pack" "runners = []\n[check]\nrunners = []\n"
+  reports "a runner key out of a pack" "runners = {}\n[check]\nrunners = {}\n"
     [
       "sinter.toml:1:1: 'runners' belongs in [scan.packs.<name>]";
       "sinter.toml:3:1: 'runners' belongs in [scan.packs.<name>]";
@@ -1116,11 +1129,15 @@ let runner_errors () =
   reports "the names come before the runner values"
     "[scan.packs.markdown]\n\
      files = [\"a\"]\n\
-     runners = []\n\
-     [scan.packs.ts]\n\
+     runners = {}\n\
+     [scan.packs.a]\n\
      files = [\"a\"]\n\
      version = \"1.0\"\n\
-     runners = [\"X\"]\n"
+     runners.vitest = {}\n\
+     [scan.packs.b]\n\
+     files = [\"b\"]\n\
+     version = \"1.0\"\n\
+     runners.vitest = {}\n"
     [
       "sinter.toml:3:1: the pack markdown is built into sinter and has no \
        runner";
@@ -1133,14 +1150,14 @@ let every_problem_has_a_message () =
   let check name expected problem =
     Alcotest.(check string) name expected (message problem)
   in
-  check "a key newer than spec"
-    "'check.foo' needs specification 1.1, and the manifest states spec = \
-     \"1.0\"; write spec = \"1.1\""
+  check "a key newer than sinter-spec"
+    "'check.foo' needs specification 1.1, and the manifest states sinter-spec \
+     = \"1.0\"; write sinter-spec = \"1.1\""
     (Manifest.Key_too_new
        {
          key = [ "check"; "foo" ];
          since = Major_minor.make 1 1;
-         spec = Major_minor.make 1 0;
+         sinter_spec = Major_minor.make 1 0;
        });
   check "a wrong type of no key" "'' takes a string, not an integer"
     (Manifest.Wrong_type
@@ -1149,8 +1166,8 @@ let every_problem_has_a_message () =
     "'' takes an array of strings, and this member is a float"
     (Manifest.Wrong_member_type { key = []; found = Toml.Kind.Float });
   check "an unknown gate with no near name"
-    "unknown gate 'x' in [check.tiers]; the gates are 'turn', 'merge', or \
-     'target'"
+    "unknown gate 'x' in [check.tiers]; the gates are 'turn', 'review', or \
+     'merged'"
     (Manifest.Unknown_gate { name = "x"; nearest = None });
   check "a word of a single choice" "'k' takes \"a\", not \"b\""
     (Manifest.Unknown_value
@@ -1195,30 +1212,32 @@ let a_runner_message_stays_on_one_line () =
        (Manifest.Runner_in_two_packs
           { runner = "a\tb"; pack = "e\nf"; other = "c d" }));
   Alcotest.(check string)
-    "a name that differs from a key of a pack in case"
+    "a name with an upper-case letter"
     "'Files' is not a runner name; a runner name is lower-case letters and \
      digits, in words joined by '-', such as 'vitest' or 'cargo-nextest'"
     (message (Manifest.Bad_runner_name "Files"))
 
-let newer_keys_names_each_key_newer_than_spec () =
-  match Toml.parse "target = \"a\"\n[check]\nrollout-cap = true\nfoo = 1\n" with
+let newer_keys_names_each_key_newer_than_sinter_spec () =
+  match
+    Toml.parse "default-branch = \"a\"\n[check]\nwarn-only = true\nfoo = 1\n"
+  with
   | Error _ -> Alcotest.fail "the text does not parse"
   | Ok document ->
       Alcotest.(check (list string))
         "the keys newer than 0.9"
         [
-          "s:1:1: 'target' needs specification 1.0, and the manifest states \
-           spec = \"0.9\"; write spec = \"1.0\"";
-          "s:3:1: 'check.rollout-cap' needs specification 1.0, and the \
-           manifest states spec = \"0.9\"; write spec = \"1.0\"";
+          "s:1:1: 'default-branch' needs specification 1.0, and the manifest \
+           states sinter-spec = \"0.9\"; write sinter-spec = \"1.0\"";
+          "s:3:1: 'check.warn-only' needs specification 1.0, and the manifest \
+           states sinter-spec = \"0.9\"; write sinter-spec = \"1.0\"";
         ]
         (List.map
            (Manifest.render ~path:"s")
-           (Manifest.newer_keys ~spec:(Major_minor.make 0 9) document));
+           (Manifest.newer_keys ~sinter_spec:(Major_minor.make 0 9) document));
       Alcotest.(check int)
         "no key is newer than 1.0" 0
         (List.length
-           (Manifest.newer_keys ~spec:(Major_minor.make 1 0) document))
+           (Manifest.newer_keys ~sinter_spec:(Major_minor.make 1 0) document))
 
 let render_names_the_path_and_the_place () =
   Alcotest.(check string)
@@ -1254,7 +1273,7 @@ let rows () =
 
 let since_is_that_of_the_specification () =
   let rows = rows () in
-  Alcotest.(check int) "the number of keys" 16 (List.length rows);
+  Alcotest.(check int) "the number of keys" 15 (List.length rows);
   List.iter
     (fun (key, since) ->
       let path =
@@ -1276,15 +1295,16 @@ let since_of_no_setting_is_none () =
     [
       [];
       [ "scan" ];
-      [ "check"; "tiers"; "merge" ];
+      [ "check"; "tiers"; "review" ];
       [ "foo" ];
-      [ "spec"; "x" ];
+      [ "sinter-spec"; "x" ];
       [ "check"; "tiers"; "a"; "b"; "c" ];
       [ "scan"; "packs"; "ts"; "files"; "x" ];
       [ "scan"; "packs"; "ts"; "version"; "x" ];
-      [ "scan"; "packs"; "ts"; "runners"; "x" ];
+      [ "scan"; "packs"; "ts"; "runners" ];
+      [ "scan"; "packs"; "ts"; "runners"; "x"; "a"; "b" ];
       [ "scan"; "packs"; "ts"; "vitest" ];
-      [ "scan"; "packs"; "ts"; "vitest"; "a"; "b" ];
+      [ "scan"; "packs"; "ts"; "vitest"; "a" ];
     ]
 
 let a_name_that_varies_is_any_name_but_a_fixed_one () =
@@ -1295,10 +1315,11 @@ let a_name_that_varies_is_any_name_but_a_fixed_one () =
         (Option.map Major_minor.to_string (Manifest.since path)))
     [
       [ "scan"; "packs"; "files"; "files" ];
-      [ "scan"; "packs"; "runners"; "runners" ];
-      [ "scan"; "packs"; "ts"; "check"; "files" ];
-      [ "scan"; "packs"; "ts"; "files-2"; "x" ];
-      [ "check"; "tiers"; "rollout-cap"; "files" ];
+      [ "scan"; "packs"; "runners"; "runners"; "runners" ];
+      [ "scan"; "packs"; "ts"; "runners"; "check"; "files" ];
+      [ "scan"; "packs"; "ts"; "runners"; "files" ];
+      [ "scan"; "packs"; "ts"; "runners"; "files-2"; "x" ];
+      [ "check"; "tiers"; "warn-only"; "files" ];
     ]
 
 let the_implemented_version_is_1_0 () =
@@ -1377,37 +1398,38 @@ let line =
       "[ledger]";
       "[evidence]";
       "[scan.packs.markdown]";
-      "[check.tiers.merge]";
+      "[check.tiers.review]";
       "[[check]]";
-      "spec = \"1.0\"";
-      "spec = \"9.0\"";
-      "target = \"main\"";
-      "target = \"a..b\"";
+      "sinter-spec = \"1.0\"";
+      "sinter-spec = \"9.0\"";
+      "default-branch = \"main\"";
+      "default-branch = \"a..b\"";
       "packs.markdown.files = [\"**/*.md\"]";
       "packs.ocaml.files = [\"**/*.ml\"]";
       "packs.ocaml.version = \"1.0\"";
-      "packs.ocaml.runners = [\"dune-test\", \"check\"]";
-      "packs.ocaml.dune-test.mode = 1";
+      "packs.ocaml.runners.dune-test = {}";
+      "packs.ocaml.runners.dune-test.mode = 1";
       "packs.rust.runners = [\"dune-test\", \"X\", \"files\", 1]";
-      "[scan.packs.ocaml.check]";
+      "packs.rust.runners.X = {}";
+      "[scan.packs.ocaml.runners.check]";
       "[scan.packs.ocaml]";
-      "runners = [\"a\", \"a\"]";
+      "runners.a = {}";
       "dune-test = 2";
       "files = [\"a\", \"!b\"]";
       "version = \"1\"";
-      "refs.gh = \"[1-9][0-9]*\"";
-      "refs.x = \".\"";
-      "rollout-cap = true";
-      "rollout-cap = 1";
+      "namespaces.gh = \"[1-9][0-9]*\"";
+      "namespaces.x = \".\"";
+      "warn-only = true";
+      "warn-only = 1";
       "historical = [\"docs/\"]";
-      "tiers.merge.dangling = \"block\"";
+      "tiers.review.dangling = \"block\"";
       "dangling = \"warn\"";
       "config-changed = \"warn\"";
-      "ambient = [\"a\", 2]";
+      "exempt = [\"a\", 2]";
       "locations.decision = [\"d/\"]";
       "approval-required = [\"req\"]";
-      "harness-markers = [\"A\"]";
-      "coverage-attribution = \"required\"";
+      "agent-markers = [\"A\"]";
+      "test-coverage = \"required\"";
       "historic = 1";
       "a = {";
       "b.c = 'x'";
@@ -1482,7 +1504,7 @@ let settings =
     let globs = some_of [ "docs/"; "a/**/b"; "*.md"; "x" ] in
     let pairs =
       [
-        oneof_list [ []; [ ([ "target" ], "\"trunk\"") ] ];
+        oneof_list [ []; [ ([ "default-branch" ], "\"trunk\"") ] ];
         return
           [
             ( [ "scan"; "packs"; "markdown"; "files" ],
@@ -1493,23 +1515,23 @@ let settings =
           | [] -> []
           | pair ->
               pair @ [ ([ "scan"; "packs"; "ocaml"; "version" ], "\"1.2\"") ] );
-        optional [ "scan"; "refs"; "gh" ] "\"[1-9][0-9]*\"";
-        map (fun b -> [ ([ "check"; "rollout-cap" ], string_of_bool b) ]) bool;
+        optional [ "scan"; "namespaces"; "gh" ] "\"[1-9][0-9]*\"";
+        map (fun b -> [ ([ "check"; "warn-only" ], string_of_bool b) ]) bool;
         map
           (fun g ->
             if g = [] then [] else [ ([ "check"; "historical" ], strings g) ])
           globs;
         some_of
           [
-            ("merge", "dangling", "warn");
+            ("review", "dangling", "warn");
             ("turn", "suspect", "off");
-            ("target", "cycle", "block");
+            ("merged", "cycle", "block");
           ]
         >|= List.map (fun (gate, cls, tier) ->
             ([ "check"; "tiers"; gate; cls ], Printf.sprintf "%S" tier));
         map
           (fun g ->
-            if g = [] then [] else [ ([ "plan"; "ambient" ], strings g) ])
+            if g = [] then [] else [ ([ "plan"; "exempt" ], strings g) ])
           globs;
         map
           (fun g ->
@@ -1521,7 +1543,7 @@ let settings =
             if k = [] then []
             else [ ([ "ledger"; "approval-required" ], strings k) ])
           (some_of [ "req"; "plan" ]);
-        optional [ "evidence"; "coverage-attribution" ] "\"required\"";
+        optional [ "evidence"; "test-coverage" ] "\"required\"";
       ]
     in
     flatten_list pairs >|= List.concat)
@@ -1596,23 +1618,23 @@ let render_inline settings =
 let summary manifest =
   String.concat "\n"
     ([
-       Manifest.target manifest;
-       string_of_bool (Manifest.rollout_cap manifest);
+       Manifest.default_branch manifest;
+       string_of_bool (Manifest.warn_only manifest);
        String.concat "," (members (Manifest.historical manifest));
-       String.concat "," (members (Manifest.ambient manifest));
+       String.concat "," (members (Manifest.exempt manifest));
        (match Manifest.location manifest Manifest.Decision with
        | None -> "-"
        | Some set -> String.concat "," (members set));
        String.concat ","
          (List.map Manifest.kind_name (Manifest.approval_required manifest));
-       (match Manifest.coverage_attribution manifest with
+       (match Manifest.test_coverage manifest with
        | Manifest.Optional -> "optional"
        | Required -> "required");
      ]
     @ List.map pack_summary (Manifest.packs manifest)
     @ List.map
         (fun (ns, p) -> ns ^ "=" ^ Id_pattern.to_string p)
-        (Manifest.ref_namespaces manifest)
+        (Manifest.namespaces manifest)
     @ List.map
         (fun (g, c, t) ->
           String.concat " "
@@ -1653,12 +1675,12 @@ let runner_pool =
     "go-test";
     "r2";
     "check";
-    "target";
+    "default-branch";
     "plan";
   ]
 
 let pack_pool = [ "c"; "go"; "ocaml"; "rust"; "typescript" ]
-let setting_keys = [ "mode"; "args"; "files"; "target"; "rollout-cap" ]
+let setting_keys = [ "mode"; "args"; "files"; "default-branch"; "warn-only" ]
 
 let setting_values =
   [
@@ -1681,6 +1703,17 @@ type runners_model = {
 }
 
 let take n list = List.filteri (fun i _ -> i < n) list
+
+let rec has_prefix prefix path =
+  match (prefix, path) with
+  | [], _ -> true
+  | p :: ps, n :: ns -> p = n && has_prefix ps ns
+  | _ :: _, [] -> false
+
+let without prefix settings =
+  List.filter (fun (path, _) -> not (has_prefix prefix path)) settings
+
+let runners_key pack rest = "scan" :: "packs" :: pack :: "runners" :: rest
 
 let runners_model =
   Gen.(
@@ -1706,7 +1739,7 @@ let runners_model =
         (List.map
            (fun key ->
              oneof_list setting_values >|= fun value ->
-             ([ "scan"; "packs"; pack; runner; key ], value))
+             (runners_key pack [ runner; key ], value))
            (take n keys))
     in
     flatten_list
@@ -1718,33 +1751,35 @@ let runners_model =
     bool >|= fun empty ->
     { packs; empty; runner_settings = List.concat settings })
 
-let manifest_settings members runner_settings =
+let runner_entries model =
+  List.concat_map
+    (fun (pack, runners) ->
+      if runners = [] then
+        if model.empty then [ (runners_key pack [], "{}") ] else []
+      else
+        List.filter_map
+          (fun runner ->
+            if
+              List.exists
+                (fun (path, _) -> has_prefix (runners_key pack [ runner ]) path)
+                model.runner_settings
+            then None
+            else Some (runners_key pack [ runner ], "{}"))
+          runners)
+    model.packs
+  @ model.runner_settings
+
+let manifest_settings packs entries =
   ([ "scan"; "packs"; "markdown"; "files" ], "[\"**/*.md\"]")
   :: List.concat_map
-       (fun (pack, texts) ->
+       (fun pack ->
          [
            ( [ "scan"; "packs"; pack; "files" ],
              Printf.sprintf "[\"**/*.%s\"]" pack );
            ([ "scan"; "packs"; pack; "version" ], "\"1.0\"");
-         ]
-         @
-         match texts with
-         | None -> []
-         | Some texts ->
-             [
-               ( [ "scan"; "packs"; pack; "runners" ],
-                 "[" ^ String.concat ", " texts ^ "]" );
-             ])
-       members
-  @ runner_settings
-
-let valid_members model =
-  List.map
-    (fun (pack, runners) ->
-      ( pack,
-        if runners = [] && not model.empty then None
-        else Some (List.map Toml.basic_string runners) ))
-    model.packs
+         ])
+       packs
+  @ entries
 
 let rendered settings =
   Gen.(
@@ -1796,14 +1831,15 @@ let runners_read_as_written =
     ~print:(fun (_, _, text) -> text)
     Gen.(
       runners_model >>= fun model ->
-      rendered (manifest_settings (valid_members model) model.runner_settings)
+      rendered
+        (manifest_settings (List.map fst model.packs) (runner_entries model))
       >|= fun (settings, text) -> (model, settings, text))
     (fun (model, settings, text) ->
       let in_the_file pack runner =
         List.filter_map
           (function
-            | [ "scan"; "packs"; p; r; key ], value when p = pack && r = runner
-              -> (
+            | [ "scan"; "packs"; p; "runners"; r; key ], value
+              when p = pack && r = runner -> (
                 match Toml.parse ("v = " ^ value) with
                 | Ok [ (_, node) ] -> Some (key, value_text node)
                 | _ -> Some (key, "not a TOML value: " ^ value))
@@ -1814,13 +1850,16 @@ let runners_read_as_written =
       List.length packs = List.length model.packs + 1
       && List.for_all
            (fun (pack : Manifest.pack) ->
-             List.map
-               (fun (runner : Manifest.runner) -> runner.name)
-               pack.runners
-             = Option.value ~default:[] (List.assoc_opt pack.name model.packs)
+             List.sort compare
+               (List.map
+                  (fun (runner : Manifest.runner) -> runner.name)
+                  pack.runners)
+             = List.sort compare
+                 (Option.value ~default:[]
+                    (List.assoc_opt pack.name model.packs))
              && List.for_all
                   (fun (runner : Manifest.runner) ->
-                    text_of text runner.at = Toml.basic_string runner.name
+                    text_of text runner.at = Toml.render_path [ runner.name ]
                     && List.map
                          (fun ((key : Toml.key), node) ->
                            (key.name, value_text node))
@@ -1871,36 +1910,8 @@ let locate text = function
           | [] -> None)
       | _ -> None)
 
-let insert_at i x list =
-  take i list @ (x :: List.filteri (fun j _ -> j >= i) list)
-
-let with_members pack texts members =
-  List.map (fun (p, t) -> if p = pack then (p, texts) else (p, t)) members
-
-let rec has_prefix prefix path =
-  match (prefix, path) with
-  | [], _ -> true
-  | p :: ps, n :: ns -> p = n && has_prefix ps ns
-  | _ :: _, [] -> false
-
-let without prefix settings =
-  List.filter (fun (path, _) -> not (has_prefix prefix path)) settings
-
 let bad_runner_names =
-  [
-    "Vitest";
-    "1x";
-    "x-";
-    "-x";
-    "x--y";
-    "x_y";
-    "";
-    "a.b";
-    "\xc3\xa9";
-    "files";
-    "version";
-    "runners";
-  ]
+  [ "Vitest"; "1x"; "x-"; "-x"; "x--y"; "x_y"; ""; "a.b"; "\xc3\xa9" ]
 
 let stray_names runners =
   let in_use =
@@ -1918,10 +1929,7 @@ let stray_names runners =
       String.length name >= 3 && not (List.mem name in_use))
 
 let faults model =
-  let members = valid_members model in
-  let settings = model.runner_settings in
-  let key pack rest = "scan" :: "packs" :: pack :: rest in
-  let texts = List.map Toml.basic_string in
+  let entries = runner_entries model in
   let owned =
     List.concat_map
       (fun (pack, runners) -> List.map (fun runner -> (pack, runner)) runners)
@@ -1929,85 +1937,50 @@ let faults model =
   in
   let open Gen in
   let bad_name =
-    oneof_list model.packs >>= fun (pack, runners) ->
+    oneof_list model.packs >>= fun (pack, _) ->
     oneof_list bad_runner_names >>= fun bad ->
-    int_bound (List.length runners) >>= fun i ->
-    bool >|= fun with_table ->
-    ( with_members pack (Some (texts (insert_at i bad runners))) members,
-      (if
-         with_table && bad <> ""
-         && String.for_all is_word_char bad
-         && not (List.mem bad [ "files"; "version"; "runners" ])
-       then settings @ [ (key pack [ bad; "mode" ], "1") ]
-       else settings),
+    bool >|= fun with_setting ->
+    ( List.filter (fun (path, _) -> path <> runners_key pack []) entries
+      @ [
+          (if with_setting then (runners_key pack [ bad; "mode" ], "1")
+           else (runners_key pack [ bad ], "{}"));
+        ],
       Manifest.Bad_runner_name bad,
-      Only (Toml.basic_string bad) )
+      Only (Toml.render_path [ bad ]) )
   and stray_table =
     oneof_list model.packs >>= fun (pack, runners) ->
     oneof_list (stray_names runners) >|= fun name ->
-    ( members,
-      settings @ [ (key pack [ name; "mode" ], "1") ],
+    ( entries @ [ ([ "scan"; "packs"; pack; name; "mode" ], "1") ],
       Manifest.Unknown_key
         {
           name;
-          table = key pack [];
-          nearest =
-            Edit_distance.nearest name
-              ("files" :: "version" :: "runners" :: runners);
+          table = [ "scan"; "packs"; pack ];
+          nearest = Edit_distance.nearest name [ "files"; "version"; "runners" ];
         },
       Only name )
   and markdown_runners =
-    oneof_list [ "[\"md-runner\"]"; "'md-runner'" ] >|= fun value ->
-    ( members,
-      settings @ [ (key "markdown" [ "runners" ], value) ],
+    oneof_list [ "{ md-runner = {} }"; "[\"md-runner\"]"; "'md-runner'" ]
+    >|= fun value ->
+    ( entries @ [ (runners_key "markdown" [], value) ],
       Manifest.Markdown_runners,
       Before ("runners", "md-runner") )
-  and runners_not_an_array =
+  and runners_not_a_table =
     oneof_list model.packs >>= fun (pack, _) ->
     oneof_list
       [
         ("'one'", Toml.Kind.String);
         ("44", Toml.Kind.Integer);
-        ("{ x = 1 }", Toml.Kind.Table);
+        ("[\"vitest\"]", Toml.Kind.Array);
         ("08:00:00", Toml.Kind.Datetime);
         ("false", Toml.Kind.Boolean);
       ]
     >|= fun (value, found) ->
-    ( with_members pack None members,
-      without (key pack []) settings @ [ (key pack [ "runners" ], value) ],
+    ( without (runners_key pack []) entries @ [ (runners_key pack [], value) ],
       Manifest.Wrong_type
-        { key = key pack [ "runners" ]; expected = Manifest.Strings; found },
-      Only value )
-  and member_not_a_string =
-    oneof_list model.packs >>= fun (pack, runners) ->
-    oneof_list
-      [
-        ("17", Toml.Kind.Integer);
-        ("false", Toml.Kind.Boolean);
-        ("{ x = 1 }", Toml.Kind.Table);
-        ("[ 'a' ]", Toml.Kind.Array);
-        ("2.5", Toml.Kind.Float);
-      ]
-    >>= fun (value, found) ->
-    int_bound (List.length runners) >|= fun i ->
-    ( with_members pack (Some (insert_at i value (texts runners))) members,
-      settings,
-      Manifest.Wrong_member_type { key = key pack [ "runners" ]; found },
+        { key = runners_key pack []; expected = Manifest.A_table; found },
       Only value )
   in
-  let with_runners =
-    List.filter (fun (_, runners) -> runners <> []) model.packs
-  in
-  let repeated () =
-    oneof_list with_runners >>= fun (pack, runners) ->
-    int_bound (List.length runners - 1) >>= fun first ->
-    int_range (first + 1) (List.length runners) >|= fun i ->
-    let runner = List.nth runners first in
-    ( with_members pack (Some (texts (insert_at i runner runners))) members,
-      settings,
-      Manifest.Repeated_member { key = key pack [ "runners" ]; member = runner },
-      Last (Toml.basic_string runner) )
-  and not_a_table () =
+  let not_a_table () =
     oneof_list owned >>= fun (pack, runner) ->
     oneof_list
       [
@@ -2019,38 +1992,36 @@ let faults model =
         ("07:32:00", Toml.Kind.Datetime);
       ]
     >|= fun (value, found) ->
-    ( members,
-      without (key pack [ runner ]) settings @ [ (key pack [ runner ], value) ],
+    ( without (runners_key pack [ runner ]) entries
+      @ [ (runners_key pack [ runner ], value) ],
       Manifest.Wrong_type
-        { key = key pack [ runner ]; expected = Manifest.A_table; found },
+        {
+          key = runners_key pack [ runner ];
+          expected = Manifest.A_table;
+          found;
+        },
       Only value )
-  and in_two_packs () =
-    oneof_list owned >>= fun (pack, runner) ->
-    oneof_list (List.filter (fun (p, _) -> p <> pack) model.packs)
-    >>= fun (other, runners) ->
-    int_bound (List.length runners) >|= fun i ->
-    let copy = "'" ^ runner ^ "'" in
-    let later, earlier, token =
-      if String.compare other pack > 0 then (other, pack, copy)
-      else (pack, other, Toml.basic_string runner)
-    in
-    ( with_members other (Some (insert_at i copy (texts runners))) members,
-      settings,
-      Manifest.Runner_in_two_packs { runner; pack = later; other = earlier },
-      Only token )
+  and in_two_packs pairs =
+    oneof_list pairs >|= fun (pack, runner, later) ->
+    ( without (runners_key later []) entries
+      @ [ (runners_key later [], "{ '" ^ runner ^ "' = {} }") ],
+      Manifest.Runner_in_two_packs { runner; pack = later; other = pack },
+      Only ("'" ^ runner ^ "'") )
+  in
+  let pairs =
+    List.concat_map
+      (fun (pack, runner) ->
+        List.filter_map
+          (fun (later, _) ->
+            if String.compare later pack > 0 then Some (pack, runner, later)
+            else None)
+          model.packs)
+      owned
   in
   oneof
-    ([
-       bad_name;
-       stray_table;
-       markdown_runners;
-       runners_not_an_array;
-       member_not_a_string;
-     ]
-    @ (if with_runners = [] then [] else [ repeated (); not_a_table () ])
-    @
-    if owned = [] || List.length model.packs < 2 then []
-    else [ in_two_packs () ])
+    ([ bad_name; stray_table; markdown_runners; runners_not_a_table ]
+    @ (if owned = [] then [] else [ not_a_table () ])
+    @ if pairs = [] then [] else [ in_two_packs pairs ])
 
 let one_fault_gives_its_one_error =
   property ~count:300
@@ -2059,10 +2030,10 @@ let one_fault_gives_its_one_error =
     ~print:(fun (text, problem, _) ->
       text ^ "\nthe error that was expected: " ^ message problem)
     Gen.(
-      runners_model >>= faults
-      >>= fun (members, runner_settings, problem, at) ->
-      rendered (manifest_settings members runner_settings) >|= fun (_, text) ->
-      (text, problem, at))
+      runners_model >>= fun model ->
+      faults model >>= fun (entries, problem, at) ->
+      rendered (manifest_settings (List.map fst model.packs) entries)
+      >|= fun (_, text) -> (text, problem, at))
     (fun (text, problem, at) ->
       match (locate text at, Manifest.of_string text) with
       | Some position, Error errors ->
@@ -2080,22 +2051,23 @@ let tests =
       the_example_of_a_typescript_project_reads;
     case "the tier that applies follows the three rules"
       the_tier_that_applies_follows_the_three_rules;
-    case "without the cap the built-in tier applies"
-      without_the_cap_the_built_in_tier_applies;
+    case "without warn-only the built-in tier applies"
+      without_warn_only_the_built_in_tier_applies;
     case "written tiers are sorted" written_tiers_are_sorted;
     case "built-in paths join the written ones"
       built_in_paths_join_the_written_ones;
-    case "harness markers keep their order" harness_markers_keep_their_order;
+    case "agent markers keep their order" agent_markers_keep_their_order;
     case "approval kinds keep their order" approval_kinds_keep_their_order;
     case "every location kind reads" every_location_kind_reads;
-    case "a target branch reads" a_target_branch_reads;
+    case "a default branch reads" a_default_branch_reads;
     case "an empty array is an absent key" an_empty_array_is_an_absent_key;
     case "every form of TOML means the same" every_form_of_toml_means_the_same;
     case "a syntax error reports the TOML reader"
       a_syntax_error_reports_the_toml_reader;
-    case "spec errors" spec_errors;
+    case "sinter-spec errors" sinter_spec_errors;
     case "the version comes before the names" the_version_comes_before_the_names;
     case "unknown keys" unknown_keys;
+    case "an old name is an unknown name" an_old_name_is_an_unknown_name;
     case "a name with a control character is escaped"
       a_name_with_a_control_character_is_escaped;
     case "keys at the wrong place" keys_at_the_wrong_place;
@@ -2112,12 +2084,12 @@ let tests =
     case "runners keep their order and their settings"
       runners_keep_their_order_and_their_settings;
     case "a pack with no runners has none" a_pack_with_no_runners_has_none;
-    case "the runners key can follow the runner tables"
-      the_runners_key_can_follow_the_runner_tables;
+    case "every form of a runner table reads the same"
+      every_form_of_a_runner_table_reads_the_same;
     case "a dotted key can add a key to a table above a header table"
       a_dotted_key_can_add_a_key_to_a_table_above_a_header_table;
-    case "a runner can take the name of another place"
-      a_runner_can_take_the_name_of_another_place;
+    case "a runner can take any name of the layout"
+      a_runner_can_take_any_name_of_the_layout;
     case "runner errors" runner_errors;
     case "every problem has a message" every_problem_has_a_message;
     case "render names the path and the place"
@@ -2139,8 +2111,8 @@ let tests =
       load_of_a_path_under_a_file_is_missing;
     case "load of a file it cannot open is unreadable"
       load_of_a_file_it_cannot_open_is_unreadable;
-    case "newer_keys names each key newer than spec"
-      newer_keys_names_each_key_newer_than_spec;
+    case "newer_keys names each key newer than sinter-spec"
+      newer_keys_names_each_key_newer_than_sinter_spec;
     of_string_answers_any_text;
     every_form_and_order_reads_the_same;
     runners_read_as_written;
