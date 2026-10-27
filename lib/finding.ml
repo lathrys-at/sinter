@@ -45,14 +45,24 @@ type t = {
 let is_control c = (c < ' ' && c <> '\t') || c = '\x7f'
 
 let escape text =
-  String.concat ""
-    (List.map
-       (function
-         | '\r' -> "\\r"
-         | '\n' -> "\\n"
-         | c when is_control c -> Printf.sprintf "\\x%02x" (Char.code c)
-         | c -> String.make 1 c)
-       (List.of_seq (String.to_seq text)))
+  if String.exists is_control text then (
+    let buffer =
+      Buffer.create
+        (String.length text
+         [@mutaml.skip
+           "the number is only the first size of a buffer that grows as it \
+            needs, and no output reads it"])
+    in
+    String.iter
+      (function
+        | '\r' -> Buffer.add_string buffer "\\r"
+        | '\n' -> Buffer.add_string buffer "\\n"
+        | c when is_control c ->
+            Buffer.add_string buffer (Printf.sprintf "\\x%02x" (Char.code c))
+        | c -> Buffer.add_char buffer c)
+      text;
+    Buffer.contents buffer)
+  else text
 
 let checked name text =
   if String.equal text "" then

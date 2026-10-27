@@ -96,9 +96,9 @@ let escape_leaves_no_control_character_but_the_tab =
       not (String.exists control (Finding.escape text)))
 
 let escape_keeps_a_text_with_no_control_character =
-  property ~name:"escape keeps a text with no control character"
+  property ~name:"escape gives back a text with no control character itself"
     ~print:String.escaped any_text (fun text ->
-      String.exists control text || String.equal (Finding.escape text) text)
+      String.exists control text || Finding.escape text == text)
 
 let make_takes_any_text_that_is_not_empty =
   property ~name:"make takes any text that is not empty, as one line"

@@ -112,7 +112,8 @@ val escape : string -> string
     written as two or four characters: [\r] for a carriage return, [\n] for a
     line feed, and [\x] and two lowercase hexadecimal digits for any other, for
     example [\x00] or [\x7f]. Every other byte stays as it is. The result holds
-    no control character but the tab. *)
+    no control character but the tab. When [text] holds no such character, the
+    result is [text] itself, not a copy. *)
 
 val id : t -> string
 (** [id finding] is [finding:<class>:<subject id>]. *)
