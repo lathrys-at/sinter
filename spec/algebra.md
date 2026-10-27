@@ -347,18 +347,28 @@ makes with these options:
 - the Myers algorithm;
 - the indent heuristic;
 - no context lines;
-- no effect of the user's git configuration.
+- no effect of the user's git configuration on these options.
 
 The diff compares the file set of the working tree with the file set
-of the base ([manifest.md](manifest.md) section 7.3), by content. A
+of the base ([manifest.md](manifest.md) section 7.3), by content. The
+content of a file on disk is the content that git stores for it: git
+applies the clean filter and the end-of-line conversion of the file,
+as `git add` does. So a file that differs from its blob only by such a
+conversion has no change. A
 path of the working tree that the base holds is compared with its blob
 in the base, whether git tracks the file or not, and whatever the
 index of git holds. A tool can do this with a temporary index in which
 git tracks every file of the file set. A path that the base does not
 hold is wholly added, and a path that only the base holds is wholly
-deleted. So the diff depends only on the files on disk and on the base
-commit. [jsonl.md](jsonl.md) section 7 gives the hunks
-of the diff.
+deleted. So the diff depends only on the files on disk, on the base
+commit, and on the conversions that git applies when it stores a file.
+[jsonl.md](jsonl.md) section 7 gives the hunks of the diff.
+
+An end-of-line conversion keeps the number of lines of a file. A clean
+filter or a working-tree encoding can change it. In such a file, the
+line numbers of the hunks are line numbers of the stored content, not
+of the file on disk. So the positions that diff mode moves through the
+hunks (section 8.2) can be wrong in that file.
 
 The table below defines "touched" for each category:
 
