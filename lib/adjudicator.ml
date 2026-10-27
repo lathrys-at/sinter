@@ -154,6 +154,16 @@ let unbumped ~base ~same facts =
                ~fix:
                  (Printf.sprintf "@%s %s v%d" declaration.kind declaration.slug
                     (highest.rev + 1))
+               ?mark:
+                 (let label =
+                    Printf.sprintf "changed since the base, still v%d"
+                      declaration.rev
+                  in
+                  match
+                    Finding.part declaration.tag Tag_line.Revision label
+                  with
+                  | Some _ as marked -> marked
+                  | None -> Finding.part declaration.tag Tag_line.Word label)
                ())
       | Some _ | None -> None)
     candidates
@@ -236,6 +246,16 @@ let renamed ~base ~same ~tombstones facts =
                      (Option.fold ~none:""
                         ~some:(fun _ -> Printf.sprintf " v%d" next.rev)
                         edge.rev))
+                ?mark:
+                  (Finding.part edge.tag Tag_line.Target
+                     "renamed since the base")
+                ~related:
+                  [
+                    {
+                      Finding.label = "declared here now";
+                      place = Some (place next);
+                    };
+                  ]
                 ())
             (successor edge.target_text)
       | Facts.Unresolved { dangling = false }
@@ -294,6 +314,9 @@ let promise_collisions ~base ~same facts =
                ~detail:
                  (Printf.sprintf "the base already declares %s"
                     (Facts.declaration_id first))
+               ?mark:
+                 (Finding.part promise.tag Tag_line.Target
+                    "the base declares this slug")
                ())
       | Some _ | None -> None)
     candidates

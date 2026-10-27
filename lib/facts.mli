@@ -85,6 +85,7 @@ type declaration = private {
   status : string option;
       (** the status word that applies: [deprecated], [rejected], or [deferred]
       *)
+  tag : Markdown.tag;  (** the tag line, as the document of the file holds it *)
 }
 (** One declaration of a file that is not a plan file. *)
 
@@ -115,6 +116,7 @@ type edge = private {
   block_index : int;
       (** the index of the block of the tag line in the blocks of its document
       *)
+  tag : Markdown.tag;  (** the tag line, as the document of the file holds it *)
 }
 (** One edge. *)
 
@@ -132,9 +134,14 @@ type ack = private {
 }
 (** One [@ack] tag line whose block has a declaration or a site. *)
 
-type promise = private { word : string; target : string; span : Markdown.span }
-(** One promise: the word and the tag target of its first tag line, and the span
-    of that line. *)
+type promise = private {
+  word : string;
+  target : string;
+  span : Markdown.span;
+  tag : Markdown.tag;
+}
+(** One promise: the word and the tag target of its first tag line, the span of
+    that line, and that line as the document of the plan file holds it. *)
 
 type step = private {
   slug : string;
@@ -153,6 +160,8 @@ type plan = private {
   title : string option;
   scope : string list;  (** the globs of the [@scope] of the plan *)
   steps : step list;  (** in the order of the file *)
+  tag : Markdown.tag;
+      (** the tag line of [@plan], as the document of the file holds it *)
 }
 (** One plan file. *)
 

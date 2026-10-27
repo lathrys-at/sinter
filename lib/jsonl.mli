@@ -7,20 +7,27 @@
     keys are sorted by UTF-16 code units. The line holds no insignificant
     whitespace, and it ends with LF.
 
-    A value is a string, an integer, a boolean, or a flat array of one of those
-    three. A float, a null, and a nested object are not values. *)
+    A value is a string, an integer, a boolean, a flat array of one of those
+    three, or an array of flat objects. A flat object holds fields whose values
+    are strings, integers, or booleans; its keys are sorted as the keys of a
+    record are. A float and a null are not values, and an object is a value only
+    as a member of an array of objects. *)
 
-(** One value that is not an array. *)
+(** One value that is neither an array nor an object. *)
 type scalar = String of string | Int of int | Bool of bool
 
-(** One value of a field. An array holds scalars only. *)
-type value = Scalar of scalar | Array of scalar list
+type flat = (string * scalar) list
+(** One flat object. Each pair is a field name and a value. The order of the
+    pairs does not matter: the writer sorts them. *)
+
+(** One value of a field. An array holds scalars only, or flat objects only. *)
+type value = Scalar of scalar | Array of scalar list | Objects of flat list
 
 type record = (string * value) list
 (** One fact. Each pair is a field name and a value. The order of the pairs does
     not matter: the writer sorts them. *)
 
-(** These five make one field value each. None of them checks its argument.
+(** These six make one field value each. None of them checks its argument.
     {!to_string} refuses a string that is not valid UTF-8, and an integer
     outside the range that a record allows. *)
 
@@ -29,13 +36,15 @@ val int : int -> value
 val bool : bool -> value
 val strings : string list -> value
 val ints : int list -> value
+val objects : flat list -> value
 
 val to_string : record -> string
 (** [to_string record] is the canonical line for [record], without the LF.
 
     @raise Invalid_argument
-      if the record holds the same field name twice, if an integer is outside
-      the range [-(2^53-1)] to [2^53-1], or if a string is not valid UTF-8. *)
+      if the record or one of its objects holds the same field name twice, if an
+      integer is outside the range [-(2^53-1)] to [2^53-1], or if a string is
+      not valid UTF-8. *)
 
 val output : out_channel -> record -> unit
 (** [output channel record] writes the canonical line for [record] to [channel],

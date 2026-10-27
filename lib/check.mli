@@ -53,7 +53,11 @@ val record : mode:Mode.t -> entry -> Jsonl.record
     holds the fields [v], [kind], [id], [class], [subject], [ack_subject],
     [ackable], and [mode] (the {!Mode.name} of [mode]); [detail] and [fix] when
     the finding has them; [path], [line], [col], [eline], and [ecol] when it has
-    a place; and [gate] and [tier] when the entry has a tier. *)
+    a place; [mcol], [mecol], and [label] when it has a mark; [related] when it
+    has one related place or more, an array of objects in the order of
+    {!Finding.t.related}, each with [label], and with [path], [line], [col],
+    [eline], and [ecol] when the place is in a file; and [gate] and [tier] when
+    the entry has a tier. *)
 
 (** {1 The check} *)
 

@@ -64,3 +64,32 @@
   that the record does not list: the gates `pr` and `main`, `enforce`,
   `refuse_env`, `evidence.require_attribution`, and `ref-state`. The
   pack descriptor of `spec/packs.md` keeps its own key `spec`.
+
+## Show the parts of a tag and the related places
+
+- A fact finds its tag through a field `tag : Markdown.tag` on the
+  records of a declaration, an edge, a promise, and a plan. The brief
+  allowed int columns or an index from a fact to its tag, whichever is
+  smaller. The field is a reference, the one-word form of that index:
+  it needs no lookup from a path, and no column is computed until a
+  finding asks. Two int columns would cost two words for each fact and
+  a count of characters for every fact. The lead accepted the field.
+- A step is no tag line, so a `duplicate` of a step has no mark.
+- `unbumped` marks the revision of the declaration, or its word when
+  the tag gives no revision.
+- A `retired` finding names the cited item, with its status or with
+  "superseded", and each successor. The status tag line is not at
+  hand, so the label of the cited item names the status.
+- Left for later, because each needs data threaded through `Facts`:
+  the paragraph that Sinter reads, for `ignored-tag`; the declaration
+  with another spelling, for `dangling`; the status tag and the
+  retiring edge, for `retired`; the `@scope` lines and their globs,
+  for `scope-outside-plan` and `promise-out-of-scope`; the edges of a
+  `cycle`; and the parts of an `@ack`.
+- `Finding.escape` returns its argument when the text holds no
+  control character, instead of a copy. The brief did not ask for it.
+  The marks and the related places made the findings phase allocate
+  30 to 41 percent more words on the benchmark, and the copy of each
+  detail, fix, and label was the largest part of that. With the
+  change, the findings phase allocates fewer words than before the
+  step.

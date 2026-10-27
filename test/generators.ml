@@ -89,15 +89,6 @@ let scalar =
       Gen.map (fun b -> Jsonl.Bool b) Gen.bool;
     ]
 
-let value =
-  Gen.oneof
-    [
-      Gen.map (fun s -> Jsonl.Scalar s) scalar;
-      Gen.map
-        (fun l -> Jsonl.Array l)
-        (Gen.list_size (Gen.int_range 0 4) scalar);
-    ]
-
 let record_key = Gen.oneof [ key; utf_8_string ]
 
 let with_distinct_names pairs =
@@ -108,6 +99,22 @@ let with_distinct_names pairs =
         else (name, value) :: keep (name :: seen) rest
   in
   keep [] pairs
+
+let flat =
+  Gen.map with_distinct_names
+    (Gen.list_size (Gen.int_range 0 4) (Gen.pair record_key scalar))
+
+let value =
+  Gen.oneof
+    [
+      Gen.map (fun s -> Jsonl.Scalar s) scalar;
+      Gen.map
+        (fun l -> Jsonl.Array l)
+        (Gen.list_size (Gen.int_range 0 4) scalar);
+      Gen.map
+        (fun l -> Jsonl.Objects l)
+        (Gen.list_size (Gen.int_range 0 3) flat);
+    ]
 
 let record =
   Gen.map with_distinct_names
@@ -122,27 +129,43 @@ let insert record index pair =
   in
   place 0 record
 
-let record_with_a_repeated_field =
+let fields_with_a_repeated_name item =
   let open Gen in
   let* fields =
-    map with_distinct_names (list_size (int_range 1 5) (pair record_key value))
+    map with_distinct_names (list_size (int_range 1 5) (pair record_key item))
   in
   let* which = int_range 0 (List.length fields - 1) in
-  let* replacement = value in
+  let* replacement = item in
   let+ index = int_range 0 (List.length fields) in
   let name, _ = List.nth fields which in
   insert fields index (name, replacement)
+
+let record_with_a_repeated_field =
+  let open Gen in
+  let* in_an_object = bool in
+  if in_an_object then
+    let* fields = record in
+    let* name = record_key in
+    let* broken = fields_with_a_repeated_name scalar in
+    let+ index = int_range 0 (List.length fields) in
+    let name =
+      if List.mem_assoc name fields then name ^ "\xef\xbf\xbd" else name
+    in
+    insert fields index (name, Jsonl.Objects [ broken ])
+  else fields_with_a_repeated_name value
 
 let record_with_an_integer_out_of_range =
   let open Gen in
   let* fields = record in
   let* name = record_key in
   let* out_of_range = jsonl_int_out_of_range in
-  let* in_an_array = bool in
+  let* where = int_range 0 2 in
   let+ index = int_range 0 (List.length fields) in
   let broken =
-    if in_an_array then Jsonl.Array [ Jsonl.Int out_of_range ]
-    else Jsonl.Scalar (Jsonl.Int out_of_range)
+    match where with
+    | 0 -> Jsonl.Scalar (Jsonl.Int out_of_range)
+    | 1 -> Jsonl.Array [ Jsonl.Int out_of_range ]
+    | _ -> Jsonl.Objects [ [ ("n", Jsonl.Int out_of_range) ] ]
   in
   let name =
     if List.mem_assoc name fields then name ^ "\xef\xbf\xbd" else name
@@ -154,7 +177,7 @@ let record_with_a_string_that_is_not_utf_8 =
   let* fields = record in
   let* name = record_key in
   let* bad = not_utf_8_string in
-  let* where = int_range 0 2 in
+  let* where = int_range 0 4 in
   let+ index = int_range 0 (List.length fields) in
   let name =
     if List.mem_assoc name fields then name ^ "\xef\xbf\xbd" else name
@@ -162,7 +185,10 @@ let record_with_a_string_that_is_not_utf_8 =
   match where with
   | 0 -> insert fields index (bad, Jsonl.Scalar (Jsonl.Bool true))
   | 1 -> insert fields index (name, Jsonl.Scalar (Jsonl.String bad))
-  | _ -> insert fields index (name, Jsonl.Array [ Jsonl.String bad ])
+  | 2 -> insert fields index (name, Jsonl.Array [ Jsonl.String bad ])
+  | 3 -> insert fields index (name, Jsonl.Objects [ [ (bad, Jsonl.Bool true) ] ])
+  | _ ->
+      insert fields index (name, Jsonl.Objects [ [ ("s", Jsonl.String bad) ] ])
 
 let print_scalar = function
   | Jsonl.String s -> Printf.sprintf "String %S" s
@@ -173,6 +199,20 @@ let print_value = function
   | Jsonl.Scalar s -> print_scalar s
   | Jsonl.Array items ->
       "Array [" ^ String.concat "; " (List.map print_scalar items) ^ "]"
+  | Jsonl.Objects items ->
+      "Objects ["
+      ^ String.concat "; "
+          (List.map
+             (fun fields ->
+               "["
+               ^ String.concat "; "
+                   (List.map
+                      (fun (name, value) ->
+                        Printf.sprintf "(%S, %s)" name (print_scalar value))
+                      fields)
+               ^ "]")
+             items)
+      ^ "]"
 
 let print_record fields =
   "["

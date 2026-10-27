@@ -407,6 +407,108 @@ let a_record_leaves_out_what_a_finding_does_not_have () =
        (Check.record ~mode:Mode.Diff
           { finding = finding Finding_class.Parse_error file; tier = None }))
 
+let a_record_holds_the_mark_and_the_related_places () =
+  let finding =
+    Finding.make Finding_class.Suspect edge ~place:(place ())
+      ~mark:{ Finding.start = 4; stop = 6; label = "names v1" }
+      ~related:
+        [
+          { Finding.label = "on another branch"; place = None };
+          { Finding.label = "now at v2"; place = Some (place ~path:"b.md" ()) };
+        ]
+      ()
+  in
+  Alcotest.(check string)
+    "the record"
+    "{\"ack_subject\":\"x\",\"ackable\":false,\"class\":\"suspect\",\"col\":2,\"ecol\":9,\"eline\":4,\"id\":\"finding:suspect:cites:site:docs/a.md->x\",\"kind\":\"finding\",\"label\":\"names \
+     v1\",\"line\":3,\"mcol\":4,\"mecol\":6,\"mode\":\"tree\",\"path\":\"docs/a.md\",\"related\":[{\"col\":2,\"ecol\":9,\"eline\":4,\"label\":\"now \
+     at v2\",\"line\":3,\"path\":\"b.md\"},{\"label\":\"on another \
+     branch\"}],\"subject\":\"cites:site:docs/a.md->x\",\"v\":1}"
+    (Jsonl.to_string (Check.record ~mode:Mode.Tree { finding; tier = None }))
+
+let mark_gen =
+  Gen.(
+    map3
+      (fun start length label ->
+        { Finding.start; stop = start + length; label })
+      (int_range 99 120) (int_range 1 3) word)
+
+let related_gen =
+  Gen.(
+    map
+      (fun related ->
+        List.sort_uniq
+          (fun (a : Finding.related) (b : Finding.related) ->
+            compare
+              (Finding.escape a.label, a.place)
+              (Finding.escape b.label, b.place))
+          related)
+      (list_size (int_range 0 3)
+         (map2
+            (fun label place -> { Finding.label; place })
+            word (option place_gen))))
+
+let marked_finding_gen =
+  Gen.(
+    map
+      (fun (c, subject, (place, mark), related) ->
+        Finding.make c subject ?place ?mark ~related ())
+      (quad
+         (oneof_list Finding_class.all)
+         subject
+         (oneof
+            [
+              map (fun place -> (place, None)) (option place_gen);
+              map2
+                (fun place mark ->
+                  ( Some
+                      {
+                        place with
+                        Finding.span =
+                          { Markdown.start = at 1 1; stop = at 2 1 };
+                      },
+                    Some mark ))
+                place_gen mark_gen;
+            ])
+         related_gen))
+
+let a_record_writes_the_mark_and_the_related_places_it_has =
+  property "a record writes the mark and the related places that it has"
+    marked_finding_gen print_finding (fun finding ->
+      let record = Check.record ~mode:Mode.Tree { finding; tier = None } in
+      ignore (Jsonl.to_string record);
+      let has name = List.mem_assoc name record in
+      let marked = Option.is_some finding.mark in
+      has "mcol" = marked
+      && has "mecol" = marked
+      && has "label" = marked
+      &&
+      match (List.assoc_opt "related" record, finding.related) with
+      | None, [] -> true
+      | Some (Jsonl.Objects objects), (_ :: _ as related) ->
+          List.length objects = List.length related
+          && List.for_all2
+               (fun fields (related : Finding.related) ->
+                 List.assoc_opt "label" fields
+                 = Some (Jsonl.String related.label)
+                 && List.for_all
+                      (fun name ->
+                        List.mem_assoc name fields
+                        = Option.is_some related.place)
+                      [ "path"; "line"; "col"; "eline"; "ecol" ])
+               objects related
+      | _ -> false)
+
+let the_text_reads_no_mark_and_no_related_place =
+  property "the text form reads no mark and no related place" marked_finding_gen
+    print_finding (fun finding ->
+      let plain =
+        Finding.make finding.finding_class finding.subject ?place:finding.place
+          ?detail:finding.detail ?fix:finding.fix ()
+      in
+      Check.text { finding; tier = None }
+      = Check.text { finding = plain; tier = None })
+
 let a_record_is_canonical_and_names_a_gate_only_with_a_tier =
   property "a record is canonical, and names a gate only with a tier"
     Gen.(pair finding_gen (option (oneof_list [ warn; block ])))
@@ -589,6 +691,10 @@ let tests =
     case "a record leaves out what a finding does not have"
       a_record_leaves_out_what_a_finding_does_not_have;
     a_record_is_canonical_and_names_a_gate_only_with_a_tier;
+    case "a record holds the mark and the related places"
+      a_record_holds_the_mark_and_the_related_places;
+    a_record_writes_the_mark_and_the_related_places_it_has;
+    the_text_reads_no_mark_and_no_related_place;
     case "a check reads the repository and reports at its gate"
       a_check_reads_the_repository_and_reports_at_its_gate;
   ]

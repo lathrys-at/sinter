@@ -558,10 +558,92 @@ let renamed_to_holds_for_the_edges_that_renamed_reports =
           = Option.map Option.some fix)
         (Facts.edges tree))
 
+let parts (finding : Finding.t) =
+  String.concat " / "
+    ((match finding.place with
+     | Some { path; span } -> Printf.sprintf "%s:%d" path span.start.line
+     | None -> "-")
+    :: (match finding.mark with
+    | Some { start; stop; label } -> Printf.sprintf "%d-%d %s" start stop label
+    | None -> "no mark")
+    :: List.map
+         (fun ({ label; place } : Finding.related) ->
+           match place with
+           | Some { path; span } ->
+               Printf.sprintf "%s at %s:%d:%d-%d:%d" label path span.start.line
+                 span.start.column span.stop.line span.stop.column
+           | None -> label)
+         finding.related)
+
+let unbumped_marks_the_revision_or_the_word () =
+  Alcotest.check strings "the marks"
+    [
+      "docs/a.md:3 / 13-15 changed since the base, still v2";
+      "docs/a.md:7 / 1-5 changed since the base, still v1";
+    ]
+    (List.map parts
+       (Adjudicator.classes
+          ~base:
+            (facts
+               [
+                 ( "docs/a.md",
+                   "# A\n\n@req edited v2 Old.\n\n## B\n\n@req bare Old.\n" );
+               ])
+          (facts
+             [
+               ( "docs/a.md",
+                 "# A\n\n@req edited v2 New.\n\n## B\n\n@req bare New.\n" );
+             ])
+          []))
+
+let renamed_marks_the_target_and_names_the_new_declaration () =
+  let base =
+    [
+      ("docs/spec.md", "# Spec\n\n@req lockout v1 Lock it.\n");
+      ("docs/use.md", "# Use\n\n- @cites lockout v1\n");
+    ]
+  and tree =
+    [
+      ("docs/moved.md", "# Spec\n\n@req account-lockout v2 Lock it.\n");
+      ("docs/use.md", "# Use\n\n- @cites lockout v1\n");
+    ]
+  in
+  let tree_facts = facts tree in
+  Alcotest.check strings "the marks"
+    [
+      "docs/use.md:3 / 10-17 renamed since the base / declared here now at \
+       docs/moved.md:3:1-3:33";
+    ]
+    (List.filter_map
+       (fun (finding : Finding.t) ->
+         if finding.finding_class = Finding_class.Renamed then
+           Some (parts finding)
+         else None)
+       (Adjudicator.classes ~base:(facts base) tree_facts []))
+
+let promise_collision_marks_the_target () =
+  let plan steps = "# P\n\n@plan p\n@scope docs/**\n\n" ^ steps in
+  Alcotest.check strings "the marks"
+    [ ".plans/p.md:8 / 6-11 the base declares this slug" ]
+    (List.map parts
+       (Adjudicator.classes
+          ~base:(facts [ ("docs/a.md", "# A\n\n@design taken v1\n") ])
+          (facts
+             [
+               ("docs/a.md", "# A\n\n@design taken v1\n");
+               (".plans/p.md", plan "## New\n\n@req taken\n");
+             ])
+          []))
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
   [
+    case "unbumped marks the revision or the word"
+      unbumped_marks_the_revision_or_the_word;
+    case "renamed marks the target and names the new declaration"
+      renamed_marks_the_target_and_names_the_new_declaration;
+    case "promise-collision marks the target" promise_collision_marks_the_target;
     case "a tombstone names each fact that the working tree lacks"
       a_tombstone_names_each_fact_that_the_working_tree_lacks;
     case "two facts of one id give one tombstone"

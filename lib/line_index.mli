@@ -57,6 +57,16 @@ val line_of : t -> int -> int
       if [offset] is not from 0 to the length of the text, or if the text has no
       line. *)
 
+val characters : string -> int -> int -> int
+(** [characters text start stop] is the number of characters that start in the
+    bytes of [text] from offset [start] to offset [stop - 1]: the number of
+    those bytes that do not continue a UTF-8 sequence. It is the count that a
+    column takes.
+
+    @raise Invalid_argument
+      if [start] is below 0, [stop] is below [start], or [stop] is past the
+      length of [text]. *)
+
 val position : t -> int -> position
 (** [position index offset] is the place of the byte at [offset]: its line, and
     the column of the character that the byte belongs to. A byte of the byte
