@@ -152,17 +152,32 @@ findings, and a project can adopt Sinter one step at a time. A project
 that wants to raise its standard over time writes a rule or a setting
 of the manifest, never a one-time change to the whole repository.
 
-## 3. The Graph
+## 3. The graph
 
-### 3.1 Tags in the Repo's Own Text
+### 3.1 Tags in the repository's own text
 
-These facts live as **doctags** in comments and markdown — no sidecar files. Colocation is the anti-divergence mechanism: a tag in a doc comment moves with the function, is reviewed in the same diff, dies when the code dies. The graph is a compiled artifact: a scanner extracts tags into an ephemeral index. Plain text in git is the sole source of truth.
+The facts live as **doctags**: tags in comments and in markdown, in
+the files that a project already keeps. A tag in the documentation
+comment of a function moves with the function, shows in the same diff
+for review, and goes away when the code goes away. So the facts and
+the code do not drift apart, and no separate file can fall out of
+date. The **graph** is the set of all these facts. Sinter reads it
+again from the text each time it runs, and plain text in git is the
+only source of truth.
 
-The scanner is **tree-sitter**, so it never scans raw text. Each file is parsed with its language pack (§5.2), and tags are recognized only inside nodes the pack designates as tag-bearing — comment nodes in code, the leading paragraph of a section in markdown. String literals, code fences, and `[[nodiscard]]`-style lookalikes are never scanned, because they are never those nodes. A comment attaches to the next named definition (function, struct, `it(...)` call — the pack says which), which is what makes test binding possible (§4).
+Sinter parses each file with **tree-sitter**, a library that turns
+source code into a syntax tree, and reads tags only in the nodes that
+the language pack marks as **tag-bearing** (section 5.2). It never
+searches raw text. So a tag in a string literal or in a code fence
+never counts. A comment attaches to the next definition, such as a
+function or a test, and that attachment is what binds a test to a
+requirement (section 4). `spec/vocabulary.md` section 2 and
+`spec/packs.md` sections 6 and 7 give the rules.
 
 ### 3.2 Grammar
 
-One shape: `@word target [vN]`, then description.
+Every tag has one shape: `@word target [vN]`, then an optional
+description.
 
 ```markdown
 ## Lock account after 5 failed attempts
@@ -183,92 +198,215 @@ fn enforce_lockout(...) { ... }
 fn locks_after_five_failures() { ... }
 ```
 
-- **Description.** A tag's *inline* description is the remainder of its own line. A block's *trailing prose* — non-`@` lines after the last tag line, up to a blank line or the end of the tag-bearing node — belongs to the block's declaration if it has one, otherwise to the block's first tag. (In the example above, "Five consecutive failures…" describes `auth-lockout`, not `@refines`.) Descriptions are used when compiling human-facing output and are part of the extent; otherwise the tool ignores them. Any `@`-prefixed line is a tag line, ours or not; unknown tags are simply not ours (a warn-tier `typo-tag` finding fires for unknown tags within edit distance 2 of the vocabulary — minus each pack's declared **foreign vocabulary**: tag words other toolchains own (`@see`, `@param`, `@returns` in JSDoc, Doxygen, odoc) are never typo candidates — since a typo's failure mode is a silently absent edge).
-- **Targets** are slugs (`auth-lockout`), unique across the citable declaration kinds — a citation names no type, so `req`, `design`, and `decision` share one namespace; plan slugs are their own namespace (a plan routinely shares its slug with the requirement it promises) and permanent — a dead plan keeps its slug, and reuse is a `duplicate` — and step slugs are scoped to their plan — or external ids (`gh/42`) whose namespace the manifest declares. A slug matches `[a-z0-9]+(-[a-z0-9]+)*`; an external id matches `<ns>/<id>` where `ns` is a declared namespace and `id` matches that namespace's pattern. A citation never names a type; the declaration owns it. Duplicate slugs are a finding (`duplicate`), as is a slug or external id that fails the pattern (`invalid-target`).
-- **`vN`** is the revision, `v` followed by a positive integer, starting at `v1`. It is load-bearing for suspect detection (§3.5). Mandatory on `@satisfies`, `@verifies`, `@refines`, and `@supersedes` (unpinned would silently opt out of suspect detection — finding `unpinned`), optional on `@cites`, absent on promises (the target doesn't exist yet), and defaulting to `v1` when omitted on a declaration — friendly to first tagging; the first `unbumped` patch writes it out. A bump must strictly increase the revision relative to the base; the emitted patch always uses `+1`.
-- **No titles.** In markdown the heading is the title; in code, declarations don't appear.
-- **Identity is the slug.** Rename is death-plus-birth; the adjudicator detects the resulting dangling citations in the same diff and emits a fix-up patch. No hidden machine IDs. Renaming an approved item yields an unapproved slug even with untouched content — correct, so the delta presentation renders it as "rename only, hash unchanged" to make the new approval a glance.
+`spec/vocabulary.md` sections 3 to 5 give the rules. The reasons:
+
+- **Unknown words.** Every line that starts with `@` is a tag line, but
+  only the words of the vocabulary have a meaning. A near miss of a word
+  gives the warning `typo-tag`, because a typo silently removes a
+  citation from the graph. Other tools own some words, such as `@param`.
+  Each pack lists those words as its **foreign vocabulary**, and they
+  never count as typos.
+- **Targets.** A citation never names the kind of its target, so the
+  kinds `req`, `design`, and `decision` share one namespace of slugs.
+  Plans have their own namespace, because a plan often has the slug of
+  the requirement that it promises.
+- **Revisions.** The detection of suspect citations depends on the
+  revision (section 3.5). So a citation that needs one and lacks it is
+  the finding `unpinned`, because it would silently escape that
+  detection. A declaration without a revision is `v1`, so a project
+  can start to tag with no ceremony.
+- **No titles.** In markdown, the heading is the title.
+- **The slug is the identity.** Sinter keeps no hidden machine ids. To
+  rename an item is to delete it and to declare a new one. When the
+  new declaration has the same extent hash, Sinter offers a mechanical
+  fix for the old citations (finding `renamed`). A renamed item needs
+  a new approval, because an approval belongs to a slug. The text that
+  `sinter approve` shows calls the change "rename only, hash
+  unchanged", so the new approval takes a glance.
 
 ### 3.3 Vocabulary
 
-Fourteen words. One more (`@pin`) is designed but deferred.
+The vocabulary has fifteen words, and `@pin` is designed but
+deferred. `spec/vocabulary.md` section 7 defines each word.
 
-**Declarations** — this text defines a thing.
+**Declarations** say: this text defines a thing. `@req` declares a
+requirement, `@design` a design item, `@decision` a decision, `@plan` a
+plan (section 6), and `@rule` a rule (section 7). `@design` differs from
+`@req` only in its purpose, the architecture between the requirements
+and the code, and in how strictly it needs approval. The chain from
+requirement to design to code is a property of the graph: the design
+item `@refines` the requirement, and the code `@satisfies` the design
+item. The kind is on the tag and not on a path, so a project can keep
+its design documents anywhere.
 
-| tag | where | what the tool checks |
-|---|---|---|
-| `@req <slug> vN` | requirements docs | satisfied? verified? approved at this rev? text changed without a bump? |
-| `@design <slug> vN` | design docs | same checks as `@req`; approval strictness is a per-type manifest setting |
-| `@decision <slug> vN` | decision records | text changed without a bump? still cited after retirement? never deleted (§3.6) |
-| `@plan <slug>` | plan files | see §6 |
+**Citations** say: this relates to that. `@satisfies` links code to a
+requirement, `@verifies` links a test to it, `@refines` links two
+requirements or design items, `@cites` links anything to anything,
+and `@supersedes` replaces a declaration. Each citation is an
+**edge** of the graph, from its source to its target. A source needs
+a name only when another part of Sinter must address it. So a
+`@satisfies` in code has a source with no name, a **site**: the file
+and the extent of the comment. A test must be addressed, because
+evidence binds to it, but the syntax tree already names the test, so
+it needs no declaration either.
 
-`@design` differs from `@req` only in what it is for — architecture between requirements and code — and in how strictly it is approved. The chain req → design → code is a graph property (design `@refines` req; code `@satisfies` design), and the type lives on the tag rather than on a path, so design documents live wherever a project keeps them.
+**Status tags** take an item out of force. `@deprecated` says that the
+item no longer applies and nothing replaces it. `@rejected` marks a
+decision that was considered and not chosen; its record stays, so that
+nobody argues the choice again. `@deferred` marks a decision that is not
+made yet. A status tag has effect only in the tag block of a
+declaration, so the `@deprecated` of JSDoc in a code comment is safe.
+Sinter has no tag for "done".
 
-**Citations** — this relates to that.
+An item is **in force** when no status tag and no effective
+`@supersedes` retires it; otherwise it is **retired**
+(`spec/vocabulary.md` section 8). A `@supersedes` is **effective** when
+its source carries no status tag and, where approval applies, is
+approved. Supersession is an edge, not a status. So the retirement of
+the old item takes effect with the approval of its successor, and the
+old item needs no approval of its own. A successor that nobody approved
+retires nothing yet, on purpose. In a chain, every item before the last
+one is retired (record `supersession-chains`).
 
-| tag | source → target | source | what the tool checks |
-|---|---|---|---|
-| `@satisfies <slug> vN` | code site → req or design | anonymous (file + extent) | target exists, rev current, target approved; feeds coverage |
-| `@verifies <slug> vN` | test → req or design | the attached test, identified from the AST | all of the above, plus the evidence ladder (§4) |
-| `@refines <slug> vN` | req or design → req or design | enclosing declaration | target exists, rev current; builds the hierarchy |
-| `@cites <slug or external id> [vN]` | anything → any declaration or external id | anonymous | target exists; if a decision, still in force |
-| `@supersedes <slug> vN` | T → T, same type | enclosing declaration | endpoint types match; an effective edge retires its target |
+**Directives** record a judgment at one place. `@ack` records that a
+person or an agent accepted a finding, or met the obligation of a
+rule, for one block of text as it stood. The ack holds the hash of the
+block (section 3.4), and it is **void** when the text changes or when
+the finding that it names goes away. A void ack is itself a finding
+(`stale-ack`), so a judgment never outlives what it judged.
+`sinter check` prints the exact line to paste, and the report lists
+every ack beside what it accepted. `spec/vocabulary.md` section 7.4
+gives the rules.
 
-The source rule follows one principle: *a name is needed exactly when other machinery must address the node; location suffices for everything that merely reads.* Coverage reports render anonymous sources as links. Tests are the case where machinery must address the node — and the AST already names them, so no declaration is needed.
-
-**Status** — we stopped standing behind this. Goes inside the declaration's extent; outside one it is inert, which is what makes code comments safe ground for JSDoc's and odoc's own `@deprecated`. There is no "done" status anywhere.
-
-| tag | applies to | effect |
-|---|---|---|
-| `@deprecated` | req, design, decision | no longer applies, nothing replaces it |
-| `@rejected` | decision | considered and not chosen; the record stays so nobody re-argues it |
-| `@deferred` | decision | undecided; the description says what would settle it |
-
-An item is **in force** iff it carries no status tag and no effective `@supersedes` targets it. A `@supersedes` edge is **effective** iff its source is itself in force and — for approval-gated types — approved at its current revision. Supersession is an edge, not a status, so the retirement rides the successor's approval turn instead of needing a second approval on the old item; an unapproved successor retires nothing yet, which is the point.
-
-**Directives** — recorded judgment at a site.
-
-| tag | effect |
-|---|---|
-| `@ack <finding> <hash>` | a judgment recorded at this site: the named finding is accepted, or the named rule is satisfied, for the text as hashed |
-| `@pin <external id>` *(deferred)* | arms an upstream-drift check on external content, endorsed through the approval flow |
-
-`@ack` is one mechanism for two jobs. Its grammar is `@ack <target> <hash>` where `<hash>` is the last token and `<target>` is everything between: a finding class with an optional subject (`retired cache-ttl`, `unexercised`) or a rule name (`ste-docs`) — exactly what `check` reported. The hash is the first eight or more hex digits of the block hash (§3.4). An ack is *live* iff the hash matches the block's current hash **and** the target still names something: an obligation of that rule at this site, or a finding of that class (with that subject, if given) at this site. It is void the moment either goes stale: the text changes, or the finding it names no longer exists. Liveness is judged against the *pre-ack* result — a rule's obligations are its trigger alone, a finding class its raw definition before ack subtraction, which is an engine step (§12.8) — so an ack cannot void itself by succeeding. Either way the void ack is itself a finding, so a judgment can never outlive what it judged. `check` prints the exact line to paste, so the ceremony is a copy, and the report lists every ack next to what it accepted or cleared. It is a *targeted* judgment, never a generic ignore: in Luria's first propagation wave, 42 of 70 findings were correct citations of retired records; without a way to say so, the only path to green is un-retiring things — the record lying to quiet a linter. A finding is ackable iff its honest resolution can be a judgment rather than an edit: retired citations, rule obligations whose `expect` is an `@ack`, and unexercised tests (an integration test may exercise a site through a path coverage cannot see) are; suspect and dangling citations are not, because their resolution is a mechanical edit the tool already emits.
-
-**Plan-only:** `@scope <globs>`. Headings are steps (§6.1).
+An ack accepts one finding at one place, never findings in general.
+The need for it came from Luria. In Luria's first wave of findings
+after a change, 42 of 70 findings were correct citations of retired
+records. Without a way to say so, the only way to a clean check was to
+bring the retired records back in force: the record would lie to quiet
+a linter. So a finding is **ackable** when its honest resolution can
+be a judgment instead of an edit. An unexercised test is one example,
+because an integration test can reach code along a path that coverage
+cannot see. `spec/algebra.md` section 9 marks the ackable classes. A
+citation of an item that has a successor moves to the successor
+instead (record `cite-the-successor`).
 
 ### 3.4 Extent
 
-An item's extent is what its revision covers. In code: the comment block, **excluding the attached code** — meaning lives in the comment and rev discipline polices it; behavior lives in the code and evidence polices it. In markdown: a tag block in the leading paragraph of a section claims the **whole section** as extent, up to the next same-or-higher heading — which is what makes prose governable. Two boundary rules: adjacency never merges (an extent ends where the next declaration begins), and a nested section declaration carves its section *out* of the enclosing extent — otherwise every leaf edit needs bumps up the whole ancestor chain. Prose outside any extent is visibly ungoverned, which is at least honest. Residual gap, half-closed: code drifting from an unchanged comment is not something a deterministic check can *prove*. But each site also carries a **code hash** `ch` over the attached definition's body (pack-normalized the same way). `ch` changed while `xh` is unchanged is a warn-tier `code-drift` finding — not evidence of drift, but the exact sampling frame the fresh-context judge (§8) draws from, and a count the report can show. "We sample" becomes "we sample *these*."
+The **extent** of an item is the text that its revision covers
+(`spec/vocabulary.md` section 6). In code, it is the comment, without
+the attached code: the meaning lives in the comment, and revision
+discipline checks it; the behavior lives in the code, and evidence
+checks it. In markdown, a declaration claims its whole section, and this
+rule is what lets Sinter govern prose. A declaration in a nested section
+takes that section out of the enclosing extent; otherwise each edit of a
+small section would need a bump of every section above it. Prose outside
+every extent is visibly not governed, which is at least honest.
 
-**The extent hash** is SHA-256 over the extent's *pack-normalized text*: the pack's query yields the comment's content lines with sigils (`///`, `#`, `*`) and leading indentation removed, trailing whitespace removed, line endings as LF, `@ack` lines dropped, the declaration's own `@word slug vN` prefix dropped from its tag line (so a rename, or a bare bump with no text change, leaves the hash equal — which is what lets the approval delta render "rename only, hash unchanged" and lets `renamed` fix-ups be mechanical), the `vN` token dropped from every citation line (so a re-pin after an upstream bump is hash-neutral: pin currency is `suspect`'s business, not approval's, and `sinter patch suspect` never cascades `unbumped` and new approvals up the graph), and a final LF. Markdown sections normalize the same way minus sigils. This is still the text domain — no parsing, no reflow, no semantic anything — but it means `rustfmt` re-indenting a doc comment or a human recording a judgment inside a section does not need a bump. Every other byte change does. The same normalized text, hashed, is the block hash `@ack` pins (§3.3); one hash function, one exclusion rule, two consumers.
+**The extent hash** is the SHA-256 of the extent's normalized text
+(`spec/vocabulary.md` section 6.1). Normalization leaves out what does
+not change the meaning, and each part has a reason:
 
-### 3.5 Revision Discipline & Suspect Links
+- A formatter can indent a doc comment again, and a person can record
+  an ack inside a section, with no bump.
+- A rename, or a bump with no other change, leaves the hash equal, so
+  the fix for `renamed` can be mechanical.
+- A new pin of a citation leaves the hash equal. Whether a pin is
+  current is the business of `suspect`, not of approval, so a new pin
+  never sets off new bumps and new approvals up the graph.
 
-Stored fingerprints want a write path, which is banned. OpenFastTrace's manual-revision model fits plain text: citations pin `v2`; bumping the declaration to `v3` makes every pinned citation suspect, visible in ordinary diffs. OFT's known gap: nothing forces the bump when meaning changes.
+Normalization stays in the domain of text: it parses nothing and reads
+no meaning. The same normalization of a block gives the hash that an
+`@ack` records, so one rule serves both uses.
 
-**The diff adjudicator closes exactly that gap:** the turn report or CI sees "extent changed, rev didn't" — flagged at hand-back, blocked at CI. Every extent edit needs a bump — there is no editorial escape hatch, because a self-reported "this didn't change meaning" is a second self-report channel to spot-check, and a typo-driven bump costs one emitted re-pin patch. Stateless, deterministic. A bump also un-approves the item until it is approved again (§6.4): one mechanism, two consequences.
+**A gap that is half closed.** No check with fixed rules can prove
+that code drifted from a comment that did not change. But each site in
+code also has a **code hash** of the attached definition. When the
+code hash changes and the comment's hash does not, Sinter reports the
+warning `code-drift`. It is not proof of drift. It tells a reviewer who
+checks code by samples, such as the check with a fresh context
+(section 8), which sites to sample.
 
-One collision statelessness cannot see locally: two branches each bump `v2`→`v3` with different meanings. Mitigation: PR CI checks out the host's merge ref — the branch as it would land — with `--base` at the *live tip of the default branch*, never a stale merge base, so the second branch lands as "extent changed, rev didn't"; approved items are further covered by the ledger's extent hash (same rev, different bytes → unapproved). The residual exposure on unapproved items is the price of statelessness, filed.
+### 3.5 Revision discipline and suspect citations
 
-### 3.6 Retirement & Propagation
+A stored fingerprint of each text would need a tool that writes it,
+and Sinter writes into no governed file. OpenFastTrace's model, in
+which a person writes each revision by hand, fits plain text. A
+citation pins `v2`. A bump of the declaration to `v3` makes every
+citation pinned to `v2` **suspect**, and the change shows in an
+ordinary diff. That model has a known gap: nothing forces the bump
+when the meaning changes.
 
-Two orthogonal propagation triggers share machinery and differ in what clears them:
+**The check of the diff closes that gap.** When an extent changed and
+its revision did not rise, Sinter reports `unbumped`
+(`spec/vocabulary.md` section 9). No exception exists for an editorial
+edit. A claim that "this edit did not change the meaning" would be a
+second report of the agent, and someone would have to check it. A bump
+after a typo costs only one new pin, which Sinter prints. A bump also
+removes the item's approval until a person approves it again (section
+6.4): one mechanism with two effects.
 
-- **Rev bump** — *the meaning changed*: pinned citations go suspect until re-pinned.
-- **Retirement** — *we no longer stand behind this*: via a status tag or an effective `@supersedes`. Every `@cites` of a retired item becomes a finding: "this argues from something the record no longer endorses."
+A check that keeps no state cannot see one collision: two branches
+each bump `v2` to `v3` with different meanings. So CI on a pull request
+checks the branch as it would land, against the live tip of the
+default branch, and the second branch to land shows an extent that
+changed while its revision did not. For approved items, the ledger
+also refuses a revision that another branch already took (section
+6.4). For other items, the remaining exposure is the price of a check
+that keeps no state.
 
-Propagation halts at the finding, never cascades: a bad argument for P is not a defeater of P — only a judgment can say whether the thing resting on a withdrawn premise stands on other grounds. (Classical TMS marks nodes OUT automatically; that is precisely the part not imported.) Retired items drop out of coverage queries. One polarity, filed: status tags fail closed; edge-derived retirement fails open — a deleted `@supersedes` restores its target and leaves no dangling edge behind to report it. What catches it is rev discipline: the edge's tag line is part of its source's extent, so the deletion needs a bump and, for gated kinds, a new approval.
+### 3.6 Retirement and propagation
 
-**Decisions are never deleted** — the one type whose death the adjudicator refuses. The moves are supersede (body intact; the old reasoning *is* the record of why the new decision exists), reject, or defer. The slug is permanent. The rule objects to *silent* revision, not to editing.
+Two independent triggers spread a change through the graph:
 
-**Historical text is exempt by class, not ceremony.** The manifest may declare paths *historical* (devlogs, journals): citations there resolve and render but generate no findings. Demanding per-site acks in history trains the bypass reflex.
+- **A revision bump** means that the meaning changed. Each pinned
+  citation is suspect until someone pins it again.
+- **Retirement** means that the authors no longer stand behind the
+  item. Each `@cites` of a retired item is a `retired` finding: this
+  text argues from something that the record no longer endorses.
 
-Decision records are ADR-shaped — context, choice, *alternatives considered* (the highest-value and most-skipped section: it stops re-litigation). One decision, one thing: a record with two halves is one nobody can cite half of. Do not blur: specifications are compiled views (§6.4); design and decision documents are authored prose hosting `@design` and `@decision` declarations. Design hosted in an issue tracker stays an external id — an issue body has no diff to adjudicate and no extent to hash.
+Propagation stops at the finding and never cascades. A bad argument
+for an item does not defeat the item, and only a judgment can say
+whether a thing that rests on a withdrawn premise stands on other
+grounds. A classical truth-maintenance system marks each dependent
+item as no longer believed; Sinter does not take that part.
 
-### 3.7 Governed Documentation
+When someone deletes a `@supersedes`, its target comes back in force,
+and no dangling edge remains to report it. Revision discipline catches
+this case: the tag line of the edge is in the extent of its source, so
+the deletion needs a bump and, where approval applies, a new approval.
 
-Nothing above is specific to requirements documents. A user-facing guide that `@cites auth-lockout v2` goes suspect the moment the requirement bumps to `v3`; a tutorial that cites a deprecated decision gets a `retired` finding. That is documentation-drift detection — one of the oldest unsolved pains in the trade — delivered by the same two mechanisms with no additional machinery, provided the docs are governed by the markdown pack. It is worth stating as a first-class use, because it also orders the pack roadmap (§5.2): the artifacts that most need tracing and least often get it are interfaces and data shapes, not code.
+**Decisions are never deleted.** A decision can be superseded, rejected,
+or deferred, and its old text stays, because the old reasons are the
+record of why the new decision exists (`spec/vocabulary.md` section
+8.3). The rule objects to silent revision, not to edits: a record that
+still decides the same question is edited with a bump, and a different
+choice takes a new record (record `revise-or-supersede`).
+
+**Historical text is exempt as a class.** The manifest can declare
+paths as **historical**, such as a log of development, and the
+journals of plans are historical by a built-in rule. Citations there
+resolve but make no findings. A demand for an ack at each place in
+history would teach people the reflex to bypass the check.
+
+Decision records follow the form of an architecture decision record:
+the context, the choice, and the alternatives considered. The last
+part has the most value and is skipped most often: it stops people from
+arguing the same choice again. One record holds one decision, because
+nobody can cite half of a record. A design that lives in an issue
+tracker stays an external id, because the body of an issue has no diff
+to check and no extent to hash.
+
+### 3.7 Governed documentation
+
+Nothing above is specific to documents of requirements. A user guide
+that `@cites auth-lockout v2` becomes suspect when the requirement moves
+to `v3`. A tutorial that cites a deprecated decision gets a `retired`
+finding. So Sinter detects drift in documentation, one of the oldest
+unsolved problems of software work, with the same two mechanisms and no
+other machinery, when the markdown pack reads the documentation. This
+use also orders the list of packs (section 5.2): the artifacts that most
+need tracing and least often get it are interfaces and data shapes, not
+code.
 
 ## 4. Test Evidence
 
