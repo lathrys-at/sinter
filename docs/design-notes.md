@@ -408,52 +408,236 @@ use also orders the list of packs (section 5.2): the artifacts that most
 need tracing and least often get it are interfaces and data shapes, not
 code.
 
-## 4. Test Evidence
+## 4. Test evidence
 
-This is the section the rest exists to make possible. A `@verifies` citation is a claim; the tool's job is to turn it into a fact or a finding, using nothing the agent said.
+The rest of the design exists to make this section possible. A
+`@verifies` citation is a claim that a test checks a requirement.
+Sinter turns the claim into a fact or into a finding, and it uses
+nothing that the agent said.
 
-**Identity from the AST.** The language pack's `tests.scm` query captures test definitions and their names (and `describe`-style parents where the language has them). A `@verifies` in a comment attached to a captured definition *is* the test node; no `@test` declaration exists. The pack also selects an **ID strategy** from a fixed, compiled-in menu — Rust module path from file path plus `mod` nesting, Python dotted path from the package root, Go package plus function, JS title path — and parameterizes it. That strategy produces the same string the runner reports, so evidence binding is an exact join; a strategy may also declare a runner-ID normalization (pytest's parametrize suffixes, Jest's `it.each` expansions) so a family of runner rows binds to the one test fact that spawned it. The menu is code, extended by PR when a language genuinely needs a new strategy; packs are data.
+**The test comes from the syntax tree.** The query file `tests.scm` of a
+language pack finds the tests of a file and their names. It also finds
+the groups that hold the tests, such as the `describe` blocks of
+JavaScript. A `@verifies` in a comment that attaches to such a test
+makes the test the source of the edge, so no `@test` declaration exists.
+A `@verifies` above a group covers every test in the group. Sinter does
+not read the ids of requirements in test titles: a title carries no
+revision, so a test bound by its title would never become suspect
+(record `tags-not-titles`).
 
-**Evidence artifacts.** Runner output in standard formats (JUnit XML first; `go test -json`, `cargo nextest` JUnit, pytest `--junitxml`, Jest reporters all produce it) plus coverage in standard formats (lcov, cobertura, coverage.py JSON). Locally, a gitignored evidence directory (`.sinter/evidence/<tree-key>/`) that `sinter evidence import` populates and the gate reads, keyed by **tree key** so stale evidence never binds to a newer tree. The tree key is the git tree hash of the working tree *as it is*, computed non-destructively: stage everything into a temporary index (`GIT_INDEX_FILE=… git add -A && git write-tree`), honoring `.gitignore`. In CI, recomputed from scratch as the authority. Stated plainly: the local evidence dir is agent-writable — trusted, not proof — acceptable because the failure being caught is "claimed the tests pass without running them," which forging well-formed XML does not resemble; PR CI is what makes the merged claim real. The tool never runs tests: whoever runs them — the agent, an orchestrator, a workflow step — points `evidence import` at the artifacts the run produced. And an absent evidence set is a state, not a violation: the ladder's finding classes evaluate only when one exists (§12.8), so a tree with no evidence reads as having none, never red — while `status --done` refuses regardless, because death requires measurement.
+**Results bind to tests through adapters.** A test runner reports each
+test by a name of its own, and runners differ in how they build that
+name. So a language pack carries a **runner adapter** for each runner
+that needs code to match the reported names to the tests in the
+source. An adapter is a WebAssembly module that imports nothing, so it
+reads no file, uses no network, and sees no clock. A runner without
+an adapter of its own uses the default adapter, which joins the names
+of a test with the runner's separators. The adapters live in the
+packs and not in the tool, so a fix for a new version of a runner
+needs no release of Sinter. Sinter keeps the meaning of every result,
+so no adapter can make a failure pass. Record `runner-adapters` gives
+the reasons, and `spec/packs.md` sections 8 to 11 give the rules.
 
-**The coverage of each test is the expensive rung.** Rung 4 below asks whether *this test* executed *that site*, which requires the coverage of each test. Lcov/cobertura data of the whole run cannot say; they only say the site was executed by *something in the run*. Sources of the coverage of each test that the packs understand: coverage.py with `dynamic_context = test_function` (Python), JaCoCo session data (JVM, when a pack exists), Jest's per-file `coverageProvider: v8` output combined with `--runTestsByPath` batches, and the universal fallback of running each `@verifies`-bearing test in its own process with its own coverage file — slow, always correct, and what the pack's conformance fixture does. `cargo llvm-cov` and `go test -cover` produce the coverage of the whole run unless driven per test. Each `cov` fact carries `attributed: true|false`. With only the coverage of the whole run, rung 4 reports **unmeasured** rather than *passing*: the site was executed by the run and the test passed, but the join is not proven. One case survives the coverage of the whole run: zero hits in it on every satisfying site proves **unexercised** outright — if the whole run never touched the site, neither did the test (§12.5). Unmeasured is warn-tier by default and never blocks; a repo that wants rung 4 to bite pays for the coverage of each test in its test configuration, and `sinter evidence import` says so when it sees only the coverage of the whole run.
+**Evidence files.** Sinter reads the reports of test runners in standard
+formats, JUnit XML first. It reads coverage in standard formats, such as
+lcov, Cobertura, and the JSON of coverage.py. `sinter evidence import`
+stores what it reads in a folder that git ignores,
+`.sinter/evidence/<tree-key>/`, and the gates read it from there. The
+**tree key** is the git tree hash of the working tree as it is on disk.
+Sinter computes it without a change to the real index of git. Git stages
+every file that it does not ignore into a temporary index, and writes a
+tree from that index. The key makes sure that old evidence never binds
+to a newer tree. In CI, Sinter computes the key again, and that result
+is the one that counts.
 
-**The findings ladder**, in order of how much each catches:
+The agent can write into the local evidence folder. Sinter trusts the
+folder, and the folder is not proof. That is acceptable, because the
+failure that Sinter catches is a claim that the tests pass when nobody
+ran them. A forged report is a deliberate act, and the threat model of
+section 1 leaves out deliberate attacks. CI on a pull request makes the
+claim real for the merge. Sinter never runs tests. Whoever runs them,
+the agent, a lead agent, or a step of CI, gives the files of that run to
+`sinter evidence import`.
 
-1. **Wrong source** — `@verifies` attached to something `tests.scm` doesn't capture. Structural, deterministic.
-2. **Never ran** — the test's ID appears in no evidence artifact for this tree.
-3. **Failed or skipped** — present, not passing. The promise is not met.
-4. **Unexercised** — passed, but the coverage of each test shows it executes zero lines inside any site that `@satisfies` the same requirement. The closest deterministic proxy for a fraudulent verification. Both endpoints of the join already exist; what costs is attribution (above). When only the coverage of the whole run is present the rung reports **unmeasured** instead — unless the aggregate shows zero hits on every site, which proves the test unexercised without attribution.
-5. **Vacuous** — passed, connected, doesn't actually test the property. Reachable only by a judged rule (§7). This is the ceiling for structural checks, and it is worth saying plainly.
+A tree with no evidence is a state, not a violation. The findings of the
+evidence ladder below appear only when evidence exists, so such a tree
+never fails a check for its evidence. `sinter status --done` still
+refuses. A step is done only when each of its `@verifies` edges is at an
+allowed rung, and with no evidence each edge is at `never-ran`
+(`spec/algebra.md` section 6.4). The review gate enforces the rungs, so
+a plan is checked against measured work before it merges.
 
-A `@verifies` edge is at exactly one rung at any time: `wrong-source`, `never-ran`, `failed`, `unexercised`, `unmeasured`, or `passing` (rung 5 is a sampled judgment, not a rung the tool assigns). The rung is a field on the edge fact and a family of predicates in the algebra (§12.5). Rungs 1–4 are what tree-sitter and standard artifacts buy. Rung 4 also gives `@satisfies` citations a job beyond coverage bookkeeping. The pack's conformance fixtures include a real runner run with the coverage of each test, so the join is verified end-to-end per language, not assumed.
+**The coverage of each test is the expensive rung.** Rung 4 below asks
+whether this test ran that site. Only the **coverage of each test**
+answers that question: the coverage of one test, run on its own. The
+**coverage of the whole run**, the usual output of lcov or Cobertura,
+says only that something in the run ran the site. Some tools give the
+coverage of each test:
 
-## 5. Manifest, Language Packs, External Ids
+- coverage.py with `dynamic_context = test_function`, for Python;
+- the session data of JaCoCo, for the JVM, when a pack exists;
+- the V8 coverage of Jest, run in batches with `--runTestsByPath`;
+- the general fallback: each test that carries a `@verifies` runs in
+  its own process, with its own coverage file. This is slow and always
+  correct, and the conformance fixtures of each pack use it.
+
+`cargo llvm-cov` and `go test -cover` give the coverage of the whole
+run, unless a driver runs them one test at a time.
+
+With only the coverage of the whole run, rung 4 reports **unmeasured**,
+not passing: the run ran the site and the test passed, but the link
+between the two is not proven. One case still holds without the coverage
+of each test. When the whole run ran no line of any site that satisfies
+the requirement, the test ran none either, so the test is
+**unexercised**. `unmeasured` is off or a warning by default, so it does
+not block unless a repository raises its tier. A repository that wants
+rung 4 to bite pays for the coverage of each test in its test setup, and
+sets `evidence.test-coverage = "required"` (`spec/manifest.md` section
+12). `sinter evidence import` says so when it sees only the coverage of
+the whole run.
+
+**The evidence ladder**, in order of how much each rung catches:
+
+1. **Wrong source.** The `@verifies` attaches to something that
+   `tests.scm` does not find as a test. This is a check of structure.
+2. **Never ran.** No result in the evidence of this tree binds to the
+   test, or the test was skipped.
+3. **Failed.** A result that binds to the test fails or ends in an
+   error. The promise is not met.
+4. **Unexercised.** The test passed, but the coverage of each test
+   shows that it ran no line inside any site that `@satisfies` the
+   same requirement. This is the closest check with fixed rules to a
+   false verification. Both ends of the link already exist in the
+   graph; the cost is the coverage of each test. With only the
+   coverage of the whole run, the rung is **unmeasured**, unless that
+   coverage shows no line run in any of the sites.
+5. **Vacuous.** The test passed and is connected, but it does not test
+   the property. Only a judged rule (section 7) can reach this rung.
+   It is the limit of checks of structure, and the design says so
+   plainly.
+
+A `@verifies` edge is at exactly one rung at any time: `wrong-source`,
+`never-ran`, `failed`, `unexercised`, `unmeasured`, or `passing`.
+Rung 5 is a judgment on a sample, not a rung that Sinter assigns. The
+rung is a field of the edge, and a family of predicates in the query
+algebra (`spec/algebra.md` section 6.7). Rungs 1 to 4 are what
+tree-sitter and standard test reports can give. Rung 4 also gives
+`@satisfies` a job beyond the bookkeeping of coverage. The
+conformance fixtures of each pack include a real run with the coverage
+of each test, so the link is checked from end to end in each
+language, not assumed.
+
+## 5. Manifest, language packs, and external ids
 
 ### 5.1 Manifest
 
-A **TOML manifest at repo root**, `sinter.toml`, declares: the languages in use, as version constraints (exact versions and hashes live in `sinter.lock`, tool-owned, so a pack is the same bytes on every machine and in CI); namespaces of external ids; which kinds the ledger gates; historical and exempt paths (lockfiles and generated code — exempt from scope confinement, counted in the report); rules (§7); repo-defined finding classes; and gate tiers. Which files a pack governs is the pack's business, declared in its descriptor and overridable per language. TOML because it is pure config with zero prose; the reference is §14 and it fits on a screen.
+The **manifest** is a TOML file at the root of the repository,
+`sinter.toml`. It holds the settings of one repository. Among them:
 
-**The manifest is inside the boundary, on purpose.** The agent can edit it, gate settings included. Under the collaborative model the risk is drift, not sabotage, so the mitigation is visibility: a built-in, non-disableable rule surfaces any diff touching gate configuration or rules in the report and the turn report — "this change also loosened the law" — so a demotion can never ride silently inside an unrelated diff.
+- the packs that read the files, and the files that each pack reads;
+- the namespaces of external ids;
+- the kinds that need approval;
+- the historical paths, and the exempt paths, which a change can touch
+  with no plan step;
+- the tier of each finding class at each gate;
+- the test evidence that meets a promise.
 
-### 5.2 Language Packs
+A lock file that the tool writes, `sinter.lock`, holds the exact release
+and hash of each fetched pack, so a pack is the same bytes on every
+machine and in CI. A repository's own rules and finding classes live in
+rule files, not in the manifest (section 7). The manifest is TOML
+because it holds pure configuration and no prose. `spec/manifest.md`
+gives the format, and its section 3.1 lists every setting. Section 14 of
+these notes gives the reasons for the shape of the manifest.
 
-Language support is **data, not code**, loaded at runtime. A pack contains:
+**The agent can edit the manifest, on purpose**, the tiers included.
+Under the cooperative threat model the risk is drift, not sabotage, so
+the defense is visibility. The built-in finding class `config-changed`
+reports each change of a setting, in every report, the turn report
+included: "this change also loosened the law". Nothing can turn the
+class off, so a lowered tier never rides unseen inside an unrelated
+diff.
 
-- the grammar as **`.wasm`** — one file, every platform, built with `tree-sitter build --wasm`;
-- `.scm` queries: which nodes carry tags and what extent they govern, how a comment attaches to a definition, what is a test and what its name is;
-- a TOML descriptor: ID strategy and parameters, evidence formats understood, the foreign tag vocabulary exempt from `typo-tag` (§3.2), tree-sitter CLI and wasi-sdk versions it was built with (so "rebuild and compare hashes" is a procedure, not a hope);
-- conformance fixtures: a tiny project, expected JSONL, real runner output.
+### 5.2 Language packs
 
-**A pack contains no executable code except a lexer that cannot perform I/O.** A tree-sitter grammar wasm has no WASI imports; the host supplies linear memory and a handful of tree-sitter builtins, and that is the entire surface. Anyone can verify this by reading the wasm import section. This is why runtime loading is acceptable for a dev tool and why packs may be fetched from a registry by hash into a user cache without asking anyone to trust a `.so`. The cost accepted: the tool links wasmtime (the only runtime tree-sitter's wasm feature supports), the binary is 10–20 MB heavier, and a compiled-module cache makes warm load fast — cold load per grammar per machine is paid once. The tool binary is the only platform-specific artifact in the system.
+The support for a language is data, not code, and Sinter loads it
+when it runs. A **language pack** holds these parts:
 
-Markdown and TOML are packs too — markdown's queries designate sections and leading paragraphs as tag-bearing and mask code spans by omission. Adding a language is a PR to the packs repository, never a release of the tool. Unsupported languages are visibly ungoverned. V1 packs: Rust, Python, TypeScript/JavaScript, Go, OCaml, Markdown, TOML. Next, ordered by leverage rather than popularity: YAML (CI pipelines, Kubernetes manifests — where operational requirements actually live), SQL (migrations `@satisfies` data requirements), OpenAPI and protobuf (interface contracts, where a `@satisfies` in the schema description is the only place a requirement about a wire format can be traced). A pack that recognizes tags inside structured-data comments or description fields is no different from one that recognizes them in doc comments.
+- one or more tree-sitter grammars, compiled to WebAssembly (wasm),
+  each in one file that serves every platform;
+- query files: which comments carry tags (`tags.scm`), which
+  definitions a comment attaches to (`definitions.scm`), and which
+  nodes are tests and what their names are (`tests.scm`);
+- a descriptor, `pack.toml`, which lists the grammars, the comment
+  sigils, the foreign vocabulary (section 3.2), and the test runners;
+- the license notices;
+- runner adapters, when a runner needs one (section 4);
+- conformance fixtures: a small project, the JSONL that a scan of it
+  must give, and real output of a test runner.
 
-### 5.3 External Ids
+**A pack holds no code that can read or write anything outside itself.**
+A grammar in wasm imports only memory and a few functions of the
+tree-sitter host, such as tests of a character's class. A runner adapter
+imports nothing, and it runs under limits of time and memory. Anyone can
+check this in the import section of the wasm file. So a developer tool
+such as Sinter can safely load packs when it runs. It can also fetch a
+pack by hash into a user cache, and nobody has to trust a native
+library. The cost: the binary links wasmtime, the runtime that the wasm
+feature of tree-sitter supports, and the binary grows by about 15 MB
+(record `parser-bridge` gives the measurements). A cache of compiled
+modules makes a later load fast, so each machine compiles each grammar
+once. The binary of the tool is the only part of the system that is
+built for one platform.
 
-External ids (`gh/42`, `jira/PROJ-1`) are pointers, not nodes: no fingerprints, no fetching, no propagation by default; the scanner validates namespace and pattern locally. **`@pin` is the opt-in exception** (deferred): when reasoning genuinely depends on external content, the human endorses its current hash through the approval flow and CI thereafter reports upstream drift until re-endorsed. It runs opposite to every other directive — arming a check rather than quieting one.
+The markdown pack is built into the tool, because plans, decision
+records, and rule files are markdown; it changes with the tool. Every
+other pack comes from a packs repository. Sinter checks a fetched pack
+against its SHA-256 hash and records it in `sinter.lock` (record
+`pack-delivery`). So support for a new language is a pull request to
+the packs repository, never a release of the tool. A language that no
+pack reads stays visibly not governed.
 
-External ids recover the original motivating example ("close issues when done") without the tool touching GitHub: *presence* is a local rule ("every plan-declared item `@cites` a `gh/*`"); *remote state* is a networked-tier read — a plan can be blocked from dying while a declared item's external id resolves to an open issue, and `query` surfaces "facts with open external ids" for the agent to fix with the `gh` CLI it already has.
+The first packs are markdown, TypeScript, Rust, and OCaml. After them,
+the order goes by where requirements most need tracing, not by how
+popular the language is:
+
+1. YAML, for CI pipelines and Kubernetes manifests, where operational
+   requirements live;
+2. SQL, for migrations that `@satisfies` requirements about data;
+3. OpenAPI and protobuf, for the contracts of interfaces. A
+   `@satisfies` in the description field of a schema is the only place
+   to trace a requirement about a wire format.
+
+A pack that reads tags in the comments or the description fields of
+structured data works like a pack that reads them in doc comments.
+`spec/packs.md` gives the format of a pack and of the lock file.
+
+### 5.3 External ids
+
+An **external id**, such as `gh/42` or `jira/PROJ-1`, points at
+something outside the repository. It is a pointer, not a node: it has
+no revision, Sinter fetches nothing for it, and by default no change
+spreads from it. The scanner checks its namespace and its pattern
+against the manifest, with no network. No namespace is built in; a
+project on GitHub declares `gh`.
+
+`@pin` is the planned exception, and it is deferred. When an argument
+really depends on content outside the repository, a person endorses
+the current hash of that content through approval. CI then reports
+each change of that content until a person endorses the new hash. `@pin`
+works opposite to every other directive: it arms a check instead of
+quieting one.
+
+External ids give back the example that started the project, "close the
+issues when the work is done", without Sinter touching GitHub. A rule
+can check, with no network, that an external id is present: for example,
+every item that the plan declares cites a `gh/*`. The state of the issue
+on the host is a read over the network, in a networked layer such as CI
+on the default branch. That layer could keep a plan from closing while
+an item's external id points at an open issue. `sinter query` could list
+the facts whose external ids are open. The agent could then fix them
+with the `gh` command that it already has. That read is deferred with
+`@pin`. The query algebra itself never reads the network.
 
 ## 6. Plans
 
