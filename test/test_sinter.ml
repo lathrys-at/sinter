@@ -59,6 +59,7 @@ let () =
       ("fixture", Test_fixture.tests);
       ("allocation", Test_allocation.tests);
       ("generated tree", Test_generated_tree.tests);
+      ("bench", Test_bench.tests);
       ("edit distance", Test_edit_distance.tests);
       ("glob", Test_glob.tests);
       ("id pattern", Test_id_pattern.tests);

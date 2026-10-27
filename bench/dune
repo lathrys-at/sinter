@@ -3,10 +3,51 @@
 
 (library
  (name sinter_bench)
- (modules generated_tree)
- (libraries sinter_core sinter_bridge git_fixture unix))
+ (modules generated_tree measurement budgets report)
+ (libraries sinter_core sinter_bridge git_fixture yojson unix))
 
 (executable
  (name generate)
  (modules generate)
  (libraries sinter_bench sinter_bridge git_fixture cmdliner unix))
+
+(executable
+ (name run)
+ (modules run)
+ (libraries sinter_bench cmdliner yojson unix))
+
+(rule
+ (alias bench)
+ (deps (universe) sinter-self.toml)
+ (action
+  (run
+   %{exe:run.exe}
+   --sinter
+   %{exe:../bin/main.exe}
+   --generator
+   %{exe:generate.exe}
+   --self
+   .
+   --self-manifest
+   sinter-self.toml
+   --sizes
+   1000,10000)))
+
+(rule
+ (alias bench-large)
+ (deps (universe) sinter-self.toml)
+ (action
+  (run
+   %{exe:run.exe}
+   --sinter
+   %{exe:../bin/main.exe}
+   --generator
+   %{exe:generate.exe}
+   --self
+   .
+   --self-manifest
+   sinter-self.toml
+   --sizes
+   1000,10000,100000
+   --runs
+   3)))

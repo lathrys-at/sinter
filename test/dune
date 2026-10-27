@@ -9,6 +9,7 @@
  (deps
   %{exe:../bin/main.exe}
   %{exe:../bench/generate.exe}
+  %{exe:../bench/run.exe}
   (glob_files_rec fixtures/*)
   (glob_files ../spec/*.md)
   (source_tree cases)
