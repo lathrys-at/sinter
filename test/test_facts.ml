@@ -1277,7 +1277,7 @@ let plans_give_their_steps_and_promises () =
               plan.steps)
        (Facts.plans facts))
 
-let standing_names_the_residue_and_the_one_in_scope () =
+let standing_names_the_facts_that_meet_and_the_one_in_scope () =
   let facts =
     facts ~extra:"[plan]\nlocations.decision = [\"docs/decisions/\"]\n"
       [
@@ -1299,12 +1299,11 @@ let standing_names_the_residue_and_the_one_in_scope () =
   in
   match Facts.plans facts with
   | [ ({ steps = [ step ]; _ } as plan) ] ->
-      let residue (residue : Facts.residue) =
-        Printf.sprintf "%s %s %s" residue.id residue.path
-          (span_text residue.span)
+      let fact_text (fact : Facts.meeting_fact) =
+        Printf.sprintf "%s %s %s" fact.id fact.path (span_text fact.span)
       in
       Alcotest.(check (list string))
-        "by, then the residue"
+        "by, then the facts that meet the promise"
         [
           "req a: lib/a.md | req:a docs/a.md 3:1-3:10, req:a lib/a.md 3:1-3:10";
           "req b: - | ";
@@ -1318,9 +1317,9 @@ let standing_names_the_residue_and_the_one_in_scope () =
              let standing = Facts.standing facts plan step promise in
              Printf.sprintf "%s %s: %s | %s" promise.word promise.target
                (Option.fold ~none:"-"
-                  ~some:(fun (by : Facts.residue) -> by.path)
+                  ~some:(fun (by : Facts.meeting_fact) -> by.path)
                   standing.by)
-               (String.concat ", " (List.map residue standing.residue)))
+               (String.concat ", " (List.map fact_text standing.meeting_facts)))
            step.promises)
   | _ -> Alcotest.fail "one plan with one step"
 
@@ -1416,7 +1415,7 @@ let lookup_property name check =
 
 let place (span : Markdown.span) = (span.start.line, span.start.column)
 
-let scanned_residue facts (promise : Facts.promise) =
+let scanned_meeting facts (promise : Facts.promise) =
   let declarations = Array.of_list (Facts.declarations facts) in
   let found =
     if List.mem promise.word [ "req"; "design"; "decision" ] then
@@ -1452,24 +1451,23 @@ let scanned_residue facts (promise : Facts.promise) =
       compare (path_a, place_a) (path_b, place_b))
     found
 
-let indexed_residue (standing : Facts.standing) =
+let indexed_meeting (standing : Facts.standing) =
   List.map
-    (fun (residue : Facts.residue) ->
-      (residue.id, residue.path, place residue.span))
-    standing.residue
+    (fun (fact : Facts.meeting_fact) -> (fact.id, fact.path, place fact.span))
+    standing.meeting_facts
 
-let the_residue_index_gives_the_list_scan =
+let the_meeting_index_gives_the_list_scan =
   lookup_property
-    "the residue of each promise is the list scan of the declarations and the \
-     edges" (fun facts ->
+    "the facts that meet each promise are the list scan of the declarations \
+     and edges" (fun facts ->
       List.for_all
         (fun (plan : Facts.plan) ->
           List.for_all
             (fun (step : Facts.step) ->
               List.for_all
                 (fun promise ->
-                  indexed_residue (Facts.standing facts plan step promise)
-                  = scanned_residue facts promise)
+                  indexed_meeting (Facts.standing facts plan step promise)
+                  = scanned_meeting facts promise)
                 step.promises)
             plan.steps)
         (Facts.plans facts))
@@ -1561,9 +1559,9 @@ let a_step_is_done_by_the_list_scan_of_the_verifies_edges =
                plan.steps)
            (Facts.plans facts)))
 
-let by_of_each_promise_is_the_first_residue_in_place =
+let by_of_each_promise_is_the_first_meeting_fact_in_place =
   lookup_property
-    "the by of each promise is the first member of the residue in the scope of \
+    "the by of each promise is the first fact that meets it in the scope of \
      its step or in the default location of its kind" (fun facts ->
       let manifest = manifest ~extra:lookup_extra () in
       List.for_all
@@ -1592,15 +1590,15 @@ let by_of_each_promise_is_the_first_residue_in_place =
                         || Option.fold ~none:false
                              ~some:(fun set -> Path_set.mem set path)
                              location)
-                      (scanned_residue facts promise)
+                      (scanned_meeting facts promise)
                   in
                   let standing = standing promise in
                   Option.map
-                    (fun (residue : Facts.residue) ->
-                      (residue.id, residue.path, place residue.span))
+                    (fun (fact : Facts.meeting_fact) ->
+                      (fact.id, fact.path, place fact.span))
                     standing.by
                   = expected
-                  && indexed_residue standing = scanned_residue facts promise)
+                  && indexed_meeting standing = scanned_meeting facts promise)
                 step.promises)
             plan.steps)
         (Facts.plans facts))
@@ -1817,13 +1815,13 @@ let tests =
     case "acks give their block" acks_give_their_block;
     case "plans give their steps and promises"
       plans_give_their_steps_and_promises;
-    case "standing names the residue and the one in scope"
-      standing_names_the_residue_and_the_one_in_scope;
-    the_residue_index_gives_the_list_scan;
+    case "standing names the facts that meet and the one in scope"
+      standing_names_the_facts_that_meet_and_the_one_in_scope;
+    the_meeting_index_gives_the_list_scan;
     case "standing refuses a promise of other facts"
       standing_refuses_a_promise_of_other_facts;
     a_step_is_done_by_the_list_scan_of_the_verifies_edges;
-    by_of_each_promise_is_the_first_residue_in_place;
+    by_of_each_promise_is_the_first_meeting_fact_in_place;
     block_hash_is_the_hash_of_the_listed_document;
     block_acks_are_the_list_scan_of_the_acks;
     case "block hash reads the first of two files with one path"

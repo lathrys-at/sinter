@@ -653,7 +653,7 @@ let promises_out_of_scope facts =
           List.filter_map
             (fun (promise : Facts.promise) ->
               match standing promise with
-              | { by = None; residue = first :: _ } ->
+              | { by = None; meeting_facts = first :: _ } ->
                   Some
                     (Finding.make Finding_class.Promise_out_of_scope
                        (promise_subject plan step promise)
@@ -663,7 +663,7 @@ let promises_out_of_scope facts =
                             "%s at %s:%d is outside the scope of the step"
                             first.id first.path first.span.start.line)
                        ())
-              | { by = Some _; _ } | { residue = []; _ } -> None)
+              | { by = Some _; _ } | { meeting_facts = []; _ } -> None)
             step.promises)
         plan.steps)
     (Facts.plans facts)

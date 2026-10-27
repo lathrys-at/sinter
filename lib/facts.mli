@@ -196,14 +196,15 @@ val effective_scope : plan -> step -> string list
 (** [effective_scope plan step] is the globs of the [@scope] of [step], or of
     [plan] when the step has none. *)
 
-type residue = private { id : string; path : string; span : Markdown.span }
+type meeting_fact = private { id : string; path : string; span : Markdown.span }
 (** A fact that would meet a promise: its id, its path, and its span. *)
 
 type standing = private {
-  by : residue option;
-      (** the first member of [residue] whose path is in the effective scope of
-          the step or in the default location of the kind of the promise *)
-  residue : residue list;
+  by : meeting_fact option;
+      (** the first member of [meeting_facts] whose path is in the effective
+          scope of the step or in the default location of the kind of the
+          promise *)
+  meeting_facts : meeting_fact list;
       (** every fact that would meet the promise if its place were right, in the
           order of the paths in byte order and then of the places *)
 }

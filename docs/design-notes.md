@@ -20,20 +20,20 @@ So agreements cannot be enforced by instructions in context. They must be enforc
 - revision pins with a check that forces the bump, and no tool that writes into the files;
 - test evidence from any language, through JUnit XML;
 - tags read by a parser, not by a regular expression;
-- plans whose steps promise residue;
+- plans whose steps promise facts;
 - SARIF output.
 
-## 2. Shape: One Dynamic Object, Static Residue
+## 2. Shape: One Dynamic Object, Static Facts
 
-The system has exactly one dynamic object — the **plan** — and everything else is either the static residue plans deposit or machinery policing the conversion.
+The system has exactly one dynamic object — the **plan** — and everything else is either the static facts that plans leave or machinery policing the conversion.
 
-A **plan** is a branch-scoped agreement between user and agent: steps, each promising graph deltas. It is born on its branch and its entire purpose is to convert itself into **residue**: requirement and decision declarations in prose, `@satisfies` and `@verifies` citations at implementation and test sites, test evidence, ledger entries. **A plan dies by ledger entry, never by file event — `completed` at merge, and only when everything it promised has become static fact, or `abandoned` by a human (§6.3)** — and its file never moves: a dead plan stays in the tree as inert record beside the residue it produced. Nothing is archived elsewhere because nothing is deleted; the ledger, not the filesystem, says when scaffolding stopped being an agreement.
+A **plan** is a branch-scoped agreement between user and agent: steps, each promising graph deltas. It is born on its branch and its entire purpose is to convert itself into **static facts**: requirement and decision declarations in prose, `@satisfies` and `@verifies` citations at implementation and test sites, test evidence, ledger entries. **A plan dies by ledger entry, never by file event — `completed` at merge, and only when everything it promised has become static fact, or `abandoned` by a human (§6.3)** — and its file never moves: a dead plan stays in the tree as inert record beside the facts it produced. Nothing is archived elsewhere because nothing is deleted; the ledger, not the filesystem, says when scaffolding stopped being an agreement.
 
-- The **graph** (§3) is accumulated residue: tags in the repo's own text.
+- The **graph** (§3) is the accumulated facts: tags in the repo's own text.
 - **Evidence** (§4) binds `@verifies` citations to real test runs and coverage.
 - **Specifications** (§6.4) are approved projections of the graph, outliving every plan that fed them.
 - **The ledger** (§6.4) is the record of every judgment — approvals, declines, completions, abandonments — on a git ref outside the tree; a plan's death is one of its facts (§6.3).
-- **Obligations** (§7) are the computed difference between what agreements demand and what residue exists — never stored, recomputed at every gate.
+- **Obligations** (§7) are the computed difference between what agreements demand and what facts exist — never stored, recomputed at every gate.
 - **Rules** (§7) are standing law: checked-in query expressions that generate obligations forever.
 - **Gates** (§8) police the conversion.
 
@@ -43,7 +43,7 @@ Obligations attach to tags, plans, and diffs — never to the tree as a whole �
 
 ### 3.1 Tags in the Repo's Own Text
 
-Residue lives as **doctags** in comments and markdown — no sidecar files. Colocation is the anti-divergence mechanism: a tag in a doc comment moves with the function, is reviewed in the same diff, dies when the code dies. The graph is a compiled artifact: a scanner extracts tags into an ephemeral index. Plain text in git is the sole source of truth.
+These facts live as **doctags** in comments and markdown — no sidecar files. Colocation is the anti-divergence mechanism: a tag in a doc comment moves with the function, is reviewed in the same diff, dies when the code dies. The graph is a compiled artifact: a scanner extracts tags into an ephemeral index. Plain text in git is the sole source of truth.
 
 The scanner is **tree-sitter**, so it never scans raw text. Each file is parsed with its language pack (§5.2), and tags are recognized only inside nodes the pack designates as tag-bearing — comment nodes in code, the leading paragraph of a section in markdown. String literals, code fences, and `[[nodiscard]]`-style lookalikes are never scanned, because they are never those nodes. A comment attaches to the next named definition (function, struct, `it(...)` call — the pack says which), which is what makes test binding possible (§4).
 
@@ -202,7 +202,7 @@ Markdown and TOML are packs too — markdown's queries designate sections and le
 
 Refs (`gh/42`, `jira/PROJ-1`) are pointers, not nodes: no fingerprints, no fetching, no propagation by default; the scanner validates namespace and pattern locally. **`@pin` is the opt-in exception** (deferred): when reasoning genuinely depends on external content, the human endorses its current hash through the approval flow and CI thereafter reports upstream drift until re-endorsed. It runs opposite to every other directive — arming a check rather than quieting one.
 
-Refs recover the original motivating example ("close issues when done") without the tool touching GitHub: *presence* is a local rule ("every plan-declared item `@cites` a `gh/*`"); *remote state* is a networked-tier read — a plan can be blocked from dying while a declared item's ref resolves to an open issue, and `query` surfaces "residue with open refs" for the agent to fix with the `gh` CLI it already has.
+Refs recover the original motivating example ("close issues when done") without the tool touching GitHub: *presence* is a local rule ("every plan-declared item `@cites` a `gh/*`"); *remote state* is a networked-tier read — a plan can be blocked from dying while a declared item's ref resolves to an open issue, and `query` surfaces "facts with open refs" for the agent to fix with the `gh` CLI it already has.
 
 ## 6. Plans
 
@@ -233,15 +233,15 @@ A markdown file under `.plans/`, e.g. `.plans/auth-lockout.md`, **committed on t
 @scope src/auth/session.rs
 ```
 
-**A plan is a set of promised residue.** Same tags, one semantic rule: inside a plan, tags are read in *promissory mood* — `@req auth-lockout` means this step will declare it; `@verifies auth-lockout` means this step will produce a passing, connected test carrying that citation. Every `##` heading carrying at least one plan tag — `@scope` or a promise — is a step (a bare section is prose: context, notes, nothing derived); a step's slug is the heading text lowercased, non-alphanumerics collapsed to single hyphens, trimmed (`## Verify against the reqs` → `verify-against-the-reqs`); two steps slugifying identically is a `duplicate` finding. Steps are unordered facts; document order is advice.
+**A plan is a set of promised facts.** Same tags, one semantic rule: inside a plan, tags are read in *promissory mood* — `@req auth-lockout` means this step will declare it; `@verifies auth-lockout` means this step will produce a passing, connected test carrying that citation. Every `##` heading carrying at least one plan tag — `@scope` or a promise — is a step (a bare section is prose: context, notes, nothing derived); a step's slug is the heading text lowercased, non-alphanumerics collapsed to single hyphens, trimmed (`## Verify against the reqs` → `verify-against-the-reqs`); two steps slugifying identically is a `duplicate` finding. Steps are unordered facts; document order is advice.
 
-**What meets a promise.** A promised declaration (`@req`, `@design`, `@decision`) is met iff a declaration with that slug exists, located within the step's scope. A promised `@satisfies`/`@refines`/`@cites`/`@supersedes` is met iff at least one such edge exists within the step's scope that is neither dangling nor suspect. A promised `@verifies` is met iff such an edge exists within scope at rung `passing` — or at rung `unattributed`, when the manifest sets `evidence.require_attribution = false` (the default until a repo opts in). Residue that meets a promise from *outside* the step's scope is a warn-tier finding (`promise-out-of-scope`), and it does not meet the promise: the scope is part of the agreement.
+**What meets a promise.** A promised declaration (`@req`, `@design`, `@decision`) is met iff a declaration with that slug exists, located within the step's scope. A promised `@satisfies`/`@refines`/`@cites`/`@supersedes` is met iff at least one such edge exists within the step's scope that is neither dangling nor suspect. A promised `@verifies` is met iff such an edge exists within scope at rung `passing` — or at rung `unattributed`, when the manifest sets `evidence.require_attribution = false` (the default until a repo opts in). A fact that would meet a promise but sits *outside* the step's scope is a warn-tier finding (`promise-out-of-scope`), and it does not meet the promise: the scope is part of the agreement.
 
 **Scope globs** are gitignore-style patterns relative to the repo root, comma-separated on the `@scope` line: `*` within a segment, `**` across segments, `!` negation, a trailing `/` meaning "directory and everything under it." A step with no `@scope` inherits the plan's. A step's effective scope is what out-of-scope surfacing measures against and where a promise is met.
 
 **Active plan.** If exactly one *in-force* plan exists on the branch it is active by default — dead plans, however many, are not candidates; with several live ones, `sinter declare <plan>` is required before the brief and out-of-scope surfacing have a plan to anchor on (until then `status` says why).
 
-- **Step status is derived, never ticked.** A step is done iff its promises hold as residue with evidence. The plan is done iff all steps are and all existing evidence is still green. Only then may the branch merge.
+- **Step status is derived, never ticked.** A step is done iff its promises are met, with evidence. The plan is done iff all steps are and all existing evidence is still green. Only then may the branch merge.
 - **Forward references resolve within the plan.** Promises float and are checked against the revision current when they are met.
 - **The active step is a declared claim — the rare claim safe to accept, because it is purely self-limiting:** it only narrows what the brief compiles for and what out-of-scope surfacing measures against; misdeclaring makes the reports noisier, never quieter. The claim lives in `.sinter/session.json`, beside the index cache and the evidence directory, all gitignored — session state, never truth — keyed by the harness's session id where one exists (§11.18), so parallel sessions in one worktree fight over nothing. Absent a step declaration, scope attribution falls back to plan-level scope.
 - **A step with scope and no promises is a refactor:** done when its scope was touched and existing evidence stays green. Weaker, and visibly so.
@@ -258,15 +258,15 @@ Plans must be refactorable on the fly *and* harder to loosen than code — other
 
 "Still approved" is a set comparison, not a path reconstruction, which is why the ledger stores the approved set itself (a hash cannot be diffed against). The rationale is defensive both ways: **approval fatigue is the real adversary.** Reflexively-granted approvals are worth nothing; maximizing the free region is what keeps the gated region meaningful.
 
-**Cutting work early is the amendment machinery working.** Merging partway is an approved promise-set shrink. The shrunk plan must then be residue-complete against the tree it ships — half-done hunks from a cut step map to no remaining step, so anti-invention fires until they are reverted or honestly covered. Anything that reached declared residue survives as visible debt in `untraced()`. `compile residual-plan` emits the unmet remainder as a plan skeleton for a later branch.
+**Cutting work early is the amendment machinery working.** Merging partway is an approved promise-set shrink. The shrunk plan must then be complete against the tree it ships — half-done hunks from a cut step map to no remaining step, so anti-invention fires until they are reverted or honestly covered. Anything that reached a declared fact survives as visible debt in `untraced()`. `compile residual-plan` emits the unmet remainder as a plan skeleton for a later branch.
 
 ### 6.3 Death Mechanics
 
 Death is a **ledger fact, never a file event.** A plan dies `completed` or `abandoned` (§6.7); the file stays where it is. There is no deletion to orchestrate, no merge commit to edit, no host-specific machinery — this used to be the hardest section in the document and is now bookkeeping.
 
-The **death gate** is unchanged in substance: a plan may only be completed when everything it promised has become static fact. Enforcement sits at the merge gate — `status --done`, run where evidence exists (PR CI, the merge queue, or whoever merges). What *writes* the entry is main CI: on every push to the target branch it finds in-force plans now on main — merged, in other words — checks each against the **completion condition** — every promise has its residue: declarations present, edges present and neither dangling nor suspect, `@verifies` edges at `passing` (or allowed `unattributed`) when main's job measures, at any rung when it does not (§12.8; rung enforcement already happened at the merge gate) — and appends its `completed` entry, recording the merge commit and the hash of the report compiled at completion. An in-force plan on main that *fails* the condition is the `merged-incomplete` finding, blocking: someone merged half a plan, and the honest exits are an approved shrink (§6.2) or reverting the merge. The writer is idempotent bookkeeping — the plan's approvals and the tree are the evidence — so a lost CI run costs a retry, not truth. (The job needs push rights to `refs/sinter/ledger`.)
+The **death gate** is unchanged in substance: a plan may only be completed when everything it promised has become static fact. Enforcement sits at the merge gate — `status --done`, run where evidence exists (PR CI, the merge queue, or whoever merges). What *writes* the entry is main CI: on every push to the target branch it finds in-force plans now on main — merged, in other words — checks each against the **completion condition** — every promise is met: declarations present, edges present and neither dangling nor suspect, `@verifies` edges at `passing` (or allowed `unattributed`) when main's job measures, at any rung when it does not (§12.8; rung enforcement already happened at the merge gate) — and appends its `completed` entry, recording the merge commit and the hash of the report compiled at completion. An in-force plan on main that *fails* the condition is the `merged-incomplete` finding, blocking: someone merged half a plan, and the honest exits are an approved shrink (§6.2) or reverting the merge. The writer is idempotent bookkeeping — the plan's approvals and the tree are the evidence — so a lost CI run costs a retry, not truth. (The job needs push rights to `refs/sinter/ledger`.)
 
-A plan **not in force** — dead — is exempt from everything: its facts generate no findings (§12.8), it holds no claim, contributes no scope, and is skipped by the active-plan rule. Plan slugs are permanent, like decision slugs — reuse is a `duplicate` — so `compile residual-plan` emits its skeleton under a successor slug. Liveness is a ledger read: without the ledger ref every plan reads live, which `status` flags loudly (fetch the ledger). What this leaves on main is deliberate: the plan and its journal beside the residue they produced, with the ledger saying who approved it, what it promised, and when it stopped being an agreement.
+A plan **not in force** — dead — is exempt from everything: its facts generate no findings (§12.8), it holds no claim, contributes no scope, and is skipped by the active-plan rule. Plan slugs are permanent, like decision slugs — reuse is a `duplicate` — so `compile residual-plan` emits its skeleton under a successor slug. Liveness is a ledger read: without the ledger ref every plan reads live, which `status` flags loudly (fetch the ledger). What this leaves on main is deliberate: the plan and its journal beside the facts they produced, with the ledger saying who approved it, what it promised, and when it stopped being an agreement.
 
 ### 6.4 Cash-Out: Specifications & the Approval Ledger
 
@@ -290,7 +290,7 @@ The ledger unifies with revision machinery: editing an approved item bumps its r
 
 ### 6.5 The Plan Journal
 
-Session scratch — the agent's running todo — belongs to the agent's own machinery and dies with the context window. Between scratch and residue there is a third thing the design should give a home to: what was tried and why it failed. A plan may carry a journal, `.plans/<slug>.log.md`, historical by a built-in glob — no manifest line needed (§3.6): the agent appends, nothing in it generates findings, citations in it resolve and render. It stays beside its plan as part of the record; `compile residual-plan` carries it forward, and `compile report` includes it. Its purpose is to be the place where small decisions accumulate until one earns promotion to a `@decision` record — the promotion heuristic of §7 needs somewhere for the first instance to be written down. Under the collaborative model, most of a project's actual reasoning is small, and without this it is lost.
+Session scratch — the agent's running todo — belongs to the agent's own machinery and dies with the context window. Between scratch and the facts in the tree there is a third thing the design should give a home to: what was tried and why it failed. A plan may carry a journal, `.plans/<slug>.log.md`, historical by a built-in glob — no manifest line needed (§3.6): the agent appends, nothing in it generates findings, citations in it resolve and render. It stays beside its plan as part of the record; `compile residual-plan` carries it forward, and `compile report` includes it. Its purpose is to be the place where small decisions accumulate until one earns promotion to a `@decision` record — the promotion heuristic of §7 needs somewhere for the first instance to be written down. Under the collaborative model, most of a project's actual reasoning is small, and without this it is lost.
 
 ### 6.6 Plan Linting and Preview
 
@@ -359,7 +359,7 @@ The system does not model pipelines and does not care whether an obligation is c
 - **PostToolUse** (surfaces): parse and validation failures on the just-edited file, seconds after writing, plus a note when the edit landed outside the active step's scope. Parse errors degrade toward *stricter* findings, never silent holes — an unparsed `@verifies` is an absent edge — which makes fast parse feedback load-bearing. Only file-path-bearing tools (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`) yield a just-edited file; shell writes surface at the next turn report, which re-derives everything from the actual diff.
 - **The turn report** (`check --diff --gate turn`) is the hand-back contract: what an orchestrator runs before accepting a worker's turn, a human before walking away, an agent before calling itself done — its exit code is what a workflow gates on. Its block tier marks **violations, never incompleteness.** Violations are states the tree must never be *left* in: a missing rev bump, dangling citations, out-of-plan work (every hunk maps onto a step or a triggered rule's scope), rule obligations triggered by artifacts touched this turn, claims-vs-evidence divergence. Incompleteness — unmet promises, untraced items — is never a violation; it is enforced solely by the death gate. An agent that cannot honestly hand back "not done yet" is an agent being trained to fabricate doneness — which is why nothing mechanical seizes the turn: the report is addressed to whoever accepts it.
 - **Fresh-context verification** (merge-request time and on demand): an independent agent re-derives expected work from the approved spec and plan, reporting drift both ways — missing *and invented*. It exists because the turn report is path-granular; only a semantic reading catches unrequested work inside a legitimate scope. Also the tier that samples rung 5 of the evidence ladder.
-- **CI, two tiers — the only mechanical blocks**: PR CI recomputes the full adjudication and evidence binding against the branch-committed plan — the authoritative backstop. Main CI recomputes residue checks on the merged result, appends `completed` entries for merged complete plans (§6.3), runs networked checks, and enforces the evidence ladder iff its job imports evidence (§12.8).
+- **CI, two tiers — the only mechanical blocks**: PR CI recomputes the full adjudication and evidence binding against the branch-committed plan — the authoritative backstop. Main CI recomputes the promise checks on the merged result, appends `completed` entries for merged complete plans (§6.3), runs networked checks, and enforces the evidence ladder iff its job imports evidence (§12.8).
 
 **Rollout discipline:** every class ships as *warn*, promoted to *block* individually after its false-positive rate proves out. A gate that cries wolf trains bypass behavior, which is worse than no gate. Mechanically: `init` writes `enforce = "warn"`, a cap over the shipped tiers (§12.8); a class is promoted by naming it under `[gates.<gate>]`, and the cap is lifted for everything by deleting the line. Both are `law-touched`, so promotion is always a visible act. The `turn` tiers ride the same cap — under it `check --gate turn` exits 0, so an orchestrator's gate opens too.
 
@@ -430,7 +430,7 @@ The surface is specified as the help text itself. Conventions that apply to ever
 ### 11.1 `sinter`
 
 ```
-sinter — plans die into residue; residue is checked
+sinter — plans die into facts; facts are checked
 
 USAGE
   sinter <command> [options]
@@ -1465,7 +1465,7 @@ Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameter
 | `unmeasured` | edge | `unattributed(kind(verifies))` | tree | · | · | off, warn, warn |
 | `untraced` | node | `untraced(verifies) + untraced(satisfies)` — incompleteness; never blocks turn-end | tree | · | · | off, warn, warn |
 | `unmet-promise` | promise | `unmet(active)` where `unmet(p) = promises($p) - met(promises($p))` — incompleteness; enforced only by `status --done` | tree | · | · | off, off, — |
-| `promise-out-of-scope` | promise | *engine*: a promise met only by residue outside its step's scope | tree | · | · | warn, warn, — |
+| `promise-out-of-scope` | promise | *engine*: a promise met only by facts outside its step's scope | tree | · | · | warn, warn, — |
 | `unverified-promise` | promise | *engine*: a promised `req`/`design` with no promised `verifies` of it in the same plan (§6.6) | tree | · | · | warn, warn, — |
 | `promise-collision` | promise | *engine*: a promised declaration whose slug exists in `index(B)` or is promised by a claim | tree | · | · | block, block, — |
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets | tree | · | · | warn, warn, — |
@@ -1648,7 +1648,7 @@ Unlocated; one per distinct target. (`refstate`, the networked read, is deferred
 | `target` | string | as written |
 | `met` | bool | *derived* |
 | `by` | string | *derived*: id of the fact that meets it, when met |
-| `out_of_scope` | bool | *derived*: residue that would meet it exists only outside the step's scope; `met` stays false (§6.1) |
+| `out_of_scope` | bool | *derived*: facts that would meet it exist only outside the step's scope; `met` stays false (§6.1) |
 
 Duplicate promissory tags within one step collapse to a single promise fact.
 

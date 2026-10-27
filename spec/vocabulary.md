@@ -588,11 +588,11 @@ Inside a plan file, the scanner reads tags as promises, not as facts:
   `@verifies` citation of `x`. That citation must have the properties
   that section 10.5 requires.
 
-**Residue** is the set of facts in the tree that a promise asked for:
-the declarations and the edges that meet it. Tags in plan files
-never produce declarations or edges themselves. Revisions are absent
-on promises; a promise is checked against the revision that is current
-when it is met.
+The facts that meet a promise are the declarations and the edges in
+the tree that the promise asks for. Tags in plan files never produce
+declarations or edges themselves. Revisions are absent on promises; a
+promise is checked against the revision that is current when it is
+met.
 
 ### 10.3 Steps
 
@@ -676,9 +676,9 @@ A promise is **met** as follows:
   ([manifest.md](manifest.md) section 12). Rungs are defined in
   [algebra.md](algebra.md) section 6.7.
 
-Residue that would meet a promise, but that sits outside both
-the step's scope and the default location of its kind, does not
-meet that promise. The scanner reports this case as a finding
+A fact that would meet a promise, but that sits outside both the
+step's scope and the default location of its kind, does not meet that
+promise. The scanner reports this case as a finding
 (`promise-out-of-scope`).
 
 A step is **done** if and only if all its promises are met and all

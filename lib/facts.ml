@@ -144,7 +144,7 @@ type plan = {
   steps : step list;
 }
 
-type residue = { id : string; path : string; span : Markdown.span }
+type meeting_fact = { id : string; path : string; span : Markdown.span }
 
 module Pairs = Map.Make (struct
   type t = string * string
@@ -527,7 +527,7 @@ let in_force ~retirers (declarations : declaration array) edges targets =
       Option.is_none declarations.(node).status
       && (retirers.(node) = [] || on_cycle node))
 
-let in_place_order (a : residue) (b : residue) =
+let in_place_order (a : meeting_fact) (b : meeting_fact) =
   compare
     (a.path, a.span.start.line, a.span.start.column)
     (b.path, b.span.start.line, b.span.start.column)
@@ -825,7 +825,7 @@ let ack_records facts =
         ])
     facts.acks
 
-let residue facts (promise : promise) =
+let meeting_facts facts (promise : promise) =
   let lookups = Lazy.force facts.lookups in
   let find groups =
     Option.value
@@ -848,20 +848,20 @@ let residue facts (promise : promise) =
   in
   List.sort in_place_order found
 
-type standing = { by : residue option; residue : residue list }
+type standing = { by : meeting_fact option; meeting_facts : meeting_fact list }
 
 let standing_within facts ~in_scope (promise : promise) =
-  let residue = residue facts promise in
+  let meeting_facts = meeting_facts facts promise in
   let location =
     Option.bind (manifest_kind promise.word) (Manifest.location facts.manifest)
   in
-  let inside (residue : residue) =
-    in_scope residue.path
+  let inside (fact : meeting_fact) =
+    in_scope fact.path
     || Option.fold ~none:false
-         ~some:(fun set -> Path_set.mem set residue.path)
+         ~some:(fun set -> Path_set.mem set fact.path)
          location
   in
-  { by = List.find_opt inside residue; residue }
+  { by = List.find_opt inside meeting_facts; meeting_facts }
 
 let standing facts plan step =
   if not (List.memq plan facts.plans && List.memq step plan.steps) then
@@ -901,8 +901,8 @@ let plan_records facts ~changed plan =
     let promises =
       List.map
         (fun (promise : promise) ->
-          let { by; residue } = standing_within facts ~in_scope promise in
-          (promise, by, residue <> [] && Option.is_none by))
+          let { by; meeting_facts } = standing_within facts ~in_scope promise in
+          (promise, by, meeting_facts <> [] && Option.is_none by))
         step.promises
     in
     let met =
@@ -943,7 +943,8 @@ let plan_records facts ~changed plan =
                 ("out_of_scope", Jsonl.bool out_of_scope);
               ]
              @ optional "by"
-                 (Option.map (fun (by : residue) -> Jsonl.string by.id) by)))
+                 (Option.map (fun (by : meeting_fact) -> Jsonl.string by.id) by)
+             ))
          promises
   in
   plan_record :: List.concat_map step_records plan.steps

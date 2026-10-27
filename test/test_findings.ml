@@ -488,7 +488,7 @@ let unverified_promise_sits_at_a_promise_with_no_verifies () =
        promises no @verifies b";
     ]
 
-let promise_out_of_scope_names_the_residue_outside () =
+let promise_out_of_scope_names_the_facts_outside () =
   check ~extra:"[plan]\nlocations.decision = [\"docs/decisions/\"]\n"
     Finding_class.Promise_out_of_scope
     [
@@ -846,8 +846,8 @@ let tests =
       scope_overlap_sits_at_the_later_step;
     case "unverified-promise sits at a promise with no verifies"
       unverified_promise_sits_at_a_promise_with_no_verifies;
-    case "promise-out-of-scope names the residue outside"
-      promise_out_of_scope_names_the_residue_outside;
+    case "promise-out-of-scope names the facts outside"
+      promise_out_of_scope_names_the_facts_outside;
     case "a live ack accepts its finding" a_live_ack_accepts_its_finding;
     case "a void ack accepts nothing" a_void_ack_accepts_nothing;
     case "an ack accepts only the findings of its block"

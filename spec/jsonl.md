@@ -278,7 +278,7 @@ Example:
 | `target` | string | the tag target, as written |
 | `met` | bool | *derived* |
 | `by` | string | *derived*: id of the fact that meets the promise, when met |
-| `out_of_scope` | bool | *derived*: `true` when residue that would meet the promise exists, but every such fact sits outside the step's scope. In this case `met` stays `false`. Residue is defined in [vocabulary.md](vocabulary.md) section 10.2 |
+| `out_of_scope` | bool | *derived*: `true` when facts that would meet the promise exist, but every such fact sits outside the step's scope. In this case `met` stays `false` ([vocabulary.md](vocabulary.md) section 10.5) |
 
 Duplicate promissory tags within one step collapse into one promise
 record.
