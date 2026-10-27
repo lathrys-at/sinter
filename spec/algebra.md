@@ -441,7 +441,8 @@ model. Engine findings are still ordinary finding facts.
 Four global rules apply after evaluation. They are never written into
 definitions:
 
-1. Historical facts generate no findings of any class.
+1. Historical facts generate no findings of any class, except
+   `config-changed` ([manifest.md](manifest.md) section 14.4).
 2. A live `@ack` accepts the ackable findings that it names: the
    findings of a class that column `A` marks, and the findings of a
    class that column `A*` marks when the condition of its row holds.
@@ -510,7 +511,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets. Two scopes intersect when a plain glob of one contains a plain glob of the other, or is contained in it, by the rule of glob containment of [ledger.md](ledger.md) section 11 | tree | · | · | warn, warn, — |
 | `waiting-on` | promise | `waiting(promises(kind(plan)))` — reported in place of `dangling`, with the claim and step named | tree | · | · | off, warn, — |
 | `branch-overlap` | step | *engine*: a step's scope intersects the scope of another branch's claim | tree | · | · | warn, warn, — |
-| `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - exempt`. The engine also exempts each hunk that is a mechanical repair (section 9.1) | diff | · | · | block, block, — |
+| `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - exempt`. The engine also exempts each hunk that is a mechanical repair (section 9.1). The detail is `no step of an open plan, no rule, and no exempt path covers <path>`. The finding has no fix | diff | · | · | block, block, — |
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's `expect` is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
 | `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 14.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
 | `merged-incomplete` | plan | *engine*: an open plan on the default branch that fails the completion condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |
@@ -546,6 +547,9 @@ report such a hunk. These are the edits:
 - the corrected tag word of a `typo-tag` line (the fix of `typo-tag`).
 
 When Sinter adds a fix, the edit of that fix joins this list.
+
+A hunk that holds no line is not a mechanical repair. Examples are
+the hunk of a binary file and the hunk of an added empty file.
 
 The tool decides by tags, not by text. It reads the tags of the
 removed lines in the base tree, and the tags of the added lines in the

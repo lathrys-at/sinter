@@ -690,7 +690,9 @@ section 10.4).
 
 The path set has these built-in members:
 
-- each plan file ([vocabulary.md](vocabulary.md) section 10.1);
+- each plan file ([vocabulary.md](vocabulary.md) section 10.1) of the
+  working tree or of the base tree, so that a plan file that a branch
+  moves or deletes is exempt;
 - the manifest, when it is inside the repository;
 - the lock file `sinter.lock`.
 
@@ -896,7 +898,8 @@ configuration between the base tree and the working tree. It is
 reported in both modes ([algebra.md](algebra.md) section 8.2). It is
 an *engine* class: the adjudicator emits it ([algebra.md](algebra.md)
 section 9). Its tier is `warn` at every gate. `check.tiers` cannot
-set it, and nothing turns it off.
+set it, and nothing turns it off: a manifest under a historical path
+(section 9.4) still gives the finding.
 
 **The two sides.** The adjudicator compares the working manifest with
 the **base manifest**: the file at the same path, relative to the
@@ -917,12 +920,27 @@ of the set has an id and a value, by the rules of sections 14.1 and
    and the value is the written tier;
 3. one entry for each member of an array that the side writes, except
    a member that is also built in, and one entry for each runner table
-   that the side writes, as section 14.1 says.
+   that the side writes, as section 14.1 says. On both sides, the
+   built-in members are those of the working tree (section 2.5). A
+   member that a side writes twice gives one entry.
 
 `sinter-spec` has no entry. On the base side, only the key paths of
 section 3.2 count, and only the values of the type that each key
-takes. The type of a key `scan.packs.<name>.runners.<runner>.<key>` is
-the type that the descriptor of the pack of the working tree gives it.
+takes:
+
+- A key path that names a gate, a class, or a kind counts only when
+  Sinter knows that name.
+- A value counts when its TOML type is the type that the key takes.
+  For a key that takes fixed words, such as a tier,
+  `evidence.test-coverage`, or a member of `ledger.approval-required`,
+  the value must also be one of those words. The base side does not
+  check a glob, a branch name, or a pattern.
+
+The type of a key `scan.packs.<name>.runners.<runner>.<key>` is the
+type that the descriptor of the pack of the working tree gives it.
+Until Sinter fetches packs, no descriptor exists, so the comparison
+sets hold no entry for such a key. The entry of each runner table
+still counts.
 
 **A change.** An id that is in one comparison set only is a change. An
 id whose two values differ is a change. Comments, blank lines, the
@@ -939,7 +957,9 @@ fact in the base manifest.
 **The position.** When the subject is located in the working manifest,
 the finding sits at the subject. Otherwise the finding sits at a hunk
 of the diff of the manifest: the hunk that removed the line of the base
-entry. The finding takes the position of that hunk
+entry. The line of an entry is the line where the entry starts: the
+line of its key for a value, and the line of the member for a member
+of an array. The finding takes the position of that hunk
 ([jsonl.md](jsonl.md) section 7). When no such hunk exists, the
 finding sits at line 1, column 1 of the working manifest.
 
@@ -947,8 +967,10 @@ finding sits at line 1, column 1 of the working manifest.
 
 - `<key path>: <old> -> <new> (<direction>)`, when both sides have a
   value. A side that does not write a key of rule 1 has the default
-  value. For a pair of `check.tiers`, `<old>` and `<new>` are the
-  tiers that apply on the two sides (section 9.3).
+  value. A pair of `check.tiers` always takes this form, also when
+  only one side writes it: `<old>` and `<new>` are the tiers that
+  apply on the two sides (section 9.3), each with the
+  `check.warn-only` of its own side.
 - `<key path>: added <new> (<direction>)`, or
   `<key path>: removed <old> (<direction>)`, in every other case.
 
