@@ -220,7 +220,7 @@ citation is still a citation.
 | `scope(S)` | plan, step, rule, claim | located facts and hunks whose `path` matches the effective scope of some member of `S`. A step's effective scope is the step's own `@scope` when the step declares one; otherwise it is the plan's scope. A plan's effective scope is the union of the effective scopes of its steps. A rule's scope is its `scope` field. `∅` when `S` holds no scope-bearing fact |
 | `promises(S)` | plan, step | promise facts whose step or plan is in `S` |
 | `met(P)` | promise | the promises in `P` that are met, as defined in [vocabulary.md](vocabulary.md) section 10.5 |
-| `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met; for a step with no promises, the first condition is instead that the step's scope intersects `changed(base)`. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unmeasured` when `evidence.coverage-attribution` is `"optional"` ([manifest.md](manifest.md) section 12). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
+| `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met; for a step with no promises, the first condition is instead that the step's scope intersects `changed(base)`. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unmeasured` when `evidence.test-coverage` is `"optional"` ([manifest.md](manifest.md) section 12). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
 
 ### 6.5 Status predicates
 
@@ -266,18 +266,19 @@ for each `u ∈ tests(t)`; `skip` for each `u ∈ tests(t)` with
 empty. So a test that did not run counts as skipped, and a skipped
 test counts as a test that did not run.
 
-`cov(t, s)` is the set of attributed coverage facts for `(u, s)` with
-`u ∈ tests(t)`. Attributed coverage for `t` exists when the evidence
-set holds an attributed coverage fact for some `u ∈ tests(t)`.
-`agg(s)` is the aggregate coverage fact for `s`.
+`cov(t, s)` is the set of facts of the coverage of each test for
+`(u, s)` with `u ∈ tests(t)`. The coverage of each test exists for `t`
+when the evidence set holds a fact of the coverage of each test for
+some `u ∈ tests(t)`. `agg(s)` is the fact of the coverage of the whole
+run for `s`.
 
 | function | keeps `e ∈ E` iff |
 |---|---|
 | `wrong-source(E)` | `kind(t) ≠ test`: the source of the `@verifies` edge is not a test, so the edge has the wrong source ([vocabulary.md](vocabulary.md) section 7.2) |
 | `never-ran(E)` | the status of `t` is `skip`: a test of `t` did not run or was skipped, and no test of `t` failed |
 | `failed(E)` | the status of `t` is `fail` or `error` |
-| `unexercised(E)` | The status of `t` is `pass`, and `sites(e) ≠ ∅`, and one of these two holds: attributed coverage for `t` exists and each fact in `cov(t, s)` has `hit = 0`, for every site `s`; or only aggregate coverage exists and `agg(s).hit = 0` for every site `s`. In both cases the whole run executed no line in the sites, so the tests of `t` executed no line in the sites either |
-| `unmeasured(E)` | All three of these conditions hold: the status of `t` is `pass`; `sites(e) ≠ ∅`; no attributed coverage for `t` exists. And one of these two conditions holds: some `agg(s).hit > 0`; or the evidence set holds no coverage data at all |
+| `unexercised(E)` | The status of `t` is `pass`, and `sites(e) ≠ ∅`, and one of these two holds: the coverage of each test exists for `t` and each fact in `cov(t, s)` has `hit = 0`, for every site `s`; or only the coverage of the whole run exists and `agg(s).hit = 0` for every site `s`. In both cases the whole run executed no line in the sites, so the tests of `t` executed no line in the sites either |
+| `unmeasured(E)` | All three of these conditions hold: the status of `t` is `pass`; `sites(e) ≠ ∅`; the coverage of each test does not exist for `t`. And one of these two conditions holds: some `agg(s).hit > 0`; or the evidence set holds no coverage data at all |
 | `passing(E)` | the status of `t` is `pass`, and either `sites(e) = ∅` or some fact in some `cov(t, s)` has `hit > 0` |
 
 ### 6.8 Rule functions
@@ -414,10 +415,11 @@ that column `F` does not mark can still give a `fix`
 finding. The `tiers` column gives each class's built-in tier at the
 gates `(turn, review, merged)` ([manifest.md](manifest.md) section
 9.1). A `—` means that the class takes no tier at that gate.
-The **rollout cap** (`check.rollout-cap`) lowers each `block` of the
-column to `warn`, at every gate. `sinter init` writes the cap, so a
-new repository starts under it. A tier that `check.tiers` writes
-passes the cap ([manifest.md](manifest.md) section 9.3).
+While `check.warn-only` is `true`, Sinter lowers each `block` of the
+column to `warn`, at every gate. `sinter init` writes
+`warn-only = true`, so a new repository starts with it. A tier that
+`check.tiers` writes still applies ([manifest.md](manifest.md) section
+9.3).
 
 | class | subject | definition | mode | A | F | tiers |
 |---|---|---|---|---|---|---|

@@ -12,11 +12,11 @@ let manifest_of text =
 let packs = "[scan]\npacks.markdown.files = [\"**/*.md\"]\n"
 let plain = manifest_of packs
 
-let capped =
+let warn_only =
   manifest_of
     (packs
    ^ "[check]\n\
-      rollout-cap = true\n\
+      warn-only = true\n\
       tiers.review.parse-error = \"block\"\n\
       tiers.review.dangling = \"block\"\n\
       tiers.review.suspect = \"off\"\n")
@@ -81,7 +81,7 @@ let print_finding (finding : Finding.t) =
   String.concat "\n" (Check.text { Check.finding; tier = None })
 
 let gate_gen = Gen.oneof_list Finding_class.gates
-let manifest_gen = Gen.oneof_list [ plain; capped ]
+let manifest_gen = Gen.oneof_list [ plain; warn_only ]
 
 let property ?(count = 300) name gen print f =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
@@ -99,9 +99,9 @@ let a_parse_error_at_an_error_node_warns_where_its_class_blocks () =
     [ Some Finding_class.Warn; Some Finding_class.Block ]
     (tiers plain Finding_class.Review);
   Alcotest.(check (list (option tier)))
-    "the same under the cap, where the manifest writes block"
+    "the same under warn-only, where the manifest writes block"
     [ Some Finding_class.Warn; Some Finding_class.Block ]
-    (tiers capped Finding_class.Review);
+    (tiers warn_only Finding_class.Review);
   Alcotest.(check (list (option tier)))
     "the same at turn, where the class warns"
     [ Some Finding_class.Warn; Some Finding_class.Warn ]
@@ -109,12 +109,12 @@ let a_parse_error_at_an_error_node_warns_where_its_class_blocks () =
 
 let a_finding_takes_the_tier_of_its_class () =
   Alcotest.(check (list (option tier)))
-    "dangling under the cap, suspect turned off, scope-outside-plan at merged"
+    "dangling under warn-only, suspect turned off, scope-outside-plan at merged"
     [ Some Finding_class.Block; Some Finding_class.Off; None ]
     [
-      Check.tier capped Finding_class.Review
+      Check.tier warn_only Finding_class.Review
         (finding Finding_class.Dangling edge);
-      Check.tier capped Finding_class.Review
+      Check.tier warn_only Finding_class.Review
         (finding Finding_class.Suspect edge);
       Check.tier plain Finding_class.Merged
         (finding Finding_class.Scope_outside_plan edge);

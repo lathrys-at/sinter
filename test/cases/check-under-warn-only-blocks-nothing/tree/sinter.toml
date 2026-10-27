@@ -2,5 +2,5 @@
 packs.markdown.files = ["**/*.md"]
 
 [check]
-rollout-cap = true
-tiers.turn.dangling = "block"
+warn-only = true
+tiers.merged.suspect = "off"

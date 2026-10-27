@@ -300,10 +300,10 @@ site. It does not report coverage for single lines.
 
 | field | type | meaning |
 |---|---|---|
-| `test` | string | test fact id, or `*` for aggregate coverage |
+| `test` | string | test fact id, or `*` for the coverage of the whole run |
 | `site` | string | site fact id |
 | `hit` `of` | int | executable lines inside the site's attached definition that were hit / that exist |
-| `attributed` | bool | `false` if and only if `test` is `*` |
+| `attributed` | bool | `true` for the coverage of one test; `false` for the coverage of the whole run, where `test` is `*` |
 | `tree` | string | tree key |
 
 **`judgment`** — unlocated. A judge or an external checker writes it
@@ -373,7 +373,7 @@ is unlocated.
 | `class` | string | finding class |
 | `tier` | string | the tier that applies ([manifest.md](manifest.md) section 9.3): `off`, `warn`, or `block` |
 | `default` | bool | `true` when `check.tiers` does not write this pair |
-| `capped` | bool | `true` when the rollout cap lowered the tier |
+| `capped` | bool | `true` when `check.warn-only` lowered the tier |
 
 **`setting`** — one value of the manifest ([manifest.md](manifest.md)
 section 14.1). A setting fact that the manifest writes is located in
@@ -523,11 +523,11 @@ use the tiers of the `turn` gate.
 
 A language pack's fixture directory contains a small project, an
 `expected.jsonl` file, a fixture ledger, and real artifacts from a
-test runner and a coverage tool, with attribution. The verifier scans
-the fixture with the fixture's own ledger and evidence. It drops the
-header line from the output. It then compares the output with
-`expected.jsonl`; the two must be equal byte for byte. Because the
-comparison includes derived fields, the fixture tests the whole path
-from artifact import to evidence binding, not only parsing. A tool
-release that changes any derived field's semantics must regenerate
-every pack's fixture.
+test runner and a coverage tool, with the coverage of each test. The
+verifier scans the fixture with the fixture's own ledger and evidence.
+It drops the header line from the output. It then compares the output
+with `expected.jsonl`; the two must be equal byte for byte. Because
+the comparison includes derived fields, the fixture tests the whole
+path from artifact import to evidence binding, not only parsing. A
+tool release that changes any derived field's semantics must
+regenerate every pack's fixture.

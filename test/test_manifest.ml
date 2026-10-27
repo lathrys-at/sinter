@@ -25,15 +25,15 @@ let reports name text expected =
 let the_smallest_manifest_takes_every_default () =
   let manifest = read markdown in
   Alcotest.(check (option string))
-    "spec" None
-    (Option.map Major_minor.to_string (Manifest.spec manifest));
+    "sinter-spec" None
+    (Option.map Major_minor.to_string (Manifest.sinter_spec manifest));
   Alcotest.(check string)
     "default-branch" "main"
     (Manifest.default_branch manifest);
-  Alcotest.(check bool) "rollout-cap" false (Manifest.rollout_cap manifest);
+  Alcotest.(check bool) "warn-only" false (Manifest.warn_only manifest);
   Alcotest.(check bool)
-    "coverage-attribution" true
-    (Manifest.coverage_attribution manifest = Manifest.Optional);
+    "test-coverage" true
+    (Manifest.test_coverage manifest = Manifest.Optional);
   Alcotest.(check int)
     "no namespace" 0
     (List.length (Manifest.namespaces manifest));
@@ -55,8 +55,8 @@ let the_smallest_manifest_takes_every_default () =
     "no kind needs approval" 0
     (List.length (Manifest.approval_required manifest));
   Alcotest.(check (list string))
-    "no harness marker" []
-    (Manifest.harness_markers manifest)
+    "no agent marker" []
+    (Manifest.agent_markers manifest)
 
 let members set = List.map Path_set.member_to_string (Path_set.members set)
 
@@ -68,7 +68,7 @@ let pack_summary (pack : Manifest.pack) =
     | Some version -> Major_minor.to_string version)
 
 let sinter_example =
-  {|spec = "1.0"
+  {|sinter-spec = "1.0"
 
 [scan]
 packs.markdown.files = ["**/*.md"]
@@ -79,7 +79,7 @@ packs.rust.version = "1.0"
 namespaces.gh = "[1-9][0-9]*"
 
 [check]
-rollout-cap = true
+warn-only = true
 
 [plan]
 exempt = [
@@ -99,8 +99,8 @@ locations.decision = ["docs/decisions/"]
 let the_example_of_sinter_reads () =
   let manifest = read sinter_example in
   Alcotest.(check (option string))
-    "spec" (Some "1.0")
-    (Option.map Major_minor.to_string (Manifest.spec manifest));
+    "sinter-spec" (Some "1.0")
+    (Option.map Major_minor.to_string (Manifest.sinter_spec manifest));
   Alcotest.(check (list string))
     "packs"
     [ "markdown **/*.md -"; "ocaml **/*.ml,**/*.mli 1.0"; "rust **/*.rs 1.0" ]
@@ -111,7 +111,7 @@ let the_example_of_sinter_reads () =
     (List.map
        (fun (ns, pattern) -> (ns, Id_pattern.to_string pattern))
        (Manifest.namespaces manifest));
-  Alcotest.(check bool) "rollout-cap" true (Manifest.rollout_cap manifest);
+  Alcotest.(check bool) "warn-only" true (Manifest.warn_only manifest);
   Alcotest.(check (list string))
     "exempt"
     [
@@ -134,7 +134,7 @@ let the_example_of_sinter_reads () =
     (Option.map members (Manifest.location manifest Manifest.Req))
 
 let typescript_example =
-  {|spec = "1.0"
+  {|sinter-spec = "1.0"
 
 [scan]
 packs.markdown.files = ["**/*.md", "!test/fixtures/"]
@@ -145,7 +145,7 @@ namespaces.gh = "[1-9][0-9]*"
 namespaces.jira = "[A-Z]+-[1-9][0-9]*"
 
 [check]
-rollout-cap = true
+warn-only = true
 historical = ["docs/devlog/"]
 tiers.review.dangling = "block"
 tiers.merged.dangling = "block"
@@ -164,7 +164,7 @@ locations.decision = ["docs/decisions/"]
 approval-required = ["req"]
 
 [evidence]
-coverage-attribution = "required"
+test-coverage = "required"
 |}
 
 let the_example_of_a_typescript_project_reads () =
@@ -194,8 +194,8 @@ let the_example_of_a_typescript_project_reads () =
     "approval" true
     (Manifest.approval_required manifest = [ Manifest.Req ]);
   Alcotest.(check bool)
-    "coverage-attribution" true
-    (Manifest.coverage_attribution manifest = Manifest.Required)
+    "test-coverage" true
+    (Manifest.test_coverage manifest = Manifest.Required)
 
 let tier =
   Alcotest.testable
@@ -210,20 +210,20 @@ let the_tier_that_applies_follows_the_three_rules () =
     Alcotest.check tier name expected
       (Manifest.tier manifest gate finding_class)
   in
-  check "a written tier passes the cap" (Some Finding_class.Block)
+  check "a written tier applies under warn-only" (Some Finding_class.Block)
     Finding_class.Review Finding_class.Dangling;
-  check "the cap lowers a built-in block" (Some Finding_class.Warn)
+  check "warn-only lowers a built-in block" (Some Finding_class.Warn)
     Finding_class.Turn Finding_class.Dangling;
-  check "the cap leaves a built-in warn" (Some Finding_class.Warn)
+  check "warn-only leaves a built-in warn" (Some Finding_class.Warn)
     Finding_class.Turn Finding_class.Typo_tag;
-  check "the cap leaves a built-in off" (Some Finding_class.Off)
+  check "warn-only leaves a built-in off" (Some Finding_class.Off)
     Finding_class.Turn Finding_class.Awaiting_approval;
   check "a class with no tier at the gate" None Finding_class.Merged
     Finding_class.Scope_outside_plan;
   check "pack-mismatch takes no tier" None Finding_class.Review
     Finding_class.Pack_mismatch
 
-let without_the_cap_the_built_in_tier_applies () =
+let without_warn_only_the_built_in_tier_applies () =
   let manifest = read (markdown ^ "[check]\ntiers.turn.dangling = \"off\"\n") in
   Alcotest.check tier "a built-in block stays" (Some Finding_class.Block)
     (Manifest.tier manifest Finding_class.Review Finding_class.Dangling);
@@ -295,18 +295,18 @@ let built_in_paths_join_the_written_ones () =
     Manifest.builtin_historical;
   Alcotest.(check string) "the lock file" "sinter.lock" Manifest.lock_file
 
-let harness_markers_keep_their_order () =
+let agent_markers_keep_their_order () =
   let manifest =
     read
       (markdown
      ^ "[ledger]\n\
-        harness-markers = [\"B_1\", \"_a\", \"CLAUDECODE\", \"z\", \"Zz_09\", \
+        agent-markers = [\"B_1\", \"_a\", \"CLAUDECODE\", \"z\", \"Zz_09\", \
         \"A9\"]\n")
   in
   Alcotest.(check (list string))
     "the markers"
     [ "B_1"; "_a"; "CLAUDECODE"; "z"; "Zz_09"; "A9" ]
-    (Manifest.harness_markers manifest)
+    (Manifest.agent_markers manifest)
 
 let approval_kinds_keep_their_order () =
   let manifest =
@@ -412,38 +412,39 @@ let a_syntax_error_reports_the_toml_reader () =
        'a.b.c', which a table header made; write 'x' under the header [a.b.c]";
     ]
 
-let spec_errors () =
-  reports "a newer version" "spec = \"1.2\"\nfoo = 1\n"
+let sinter_spec_errors () =
+  reports "a newer version" "sinter-spec = \"1.2\"\nfoo = 1\n"
     [
-      "sinter.toml:1:8: this manifest needs specification 1.2, and this sinter \
-       implements 1.0; install a newer sinter";
+      "sinter.toml:1:15: this manifest needs specification 1.2, and this \
+       sinter implements 1.0; install a newer sinter";
     ];
-  reports "an older major version" "spec = \"0.9\"\n"
+  reports "an older major version" "sinter-spec = \"0.9\"\n"
     [
-      "sinter.toml:1:8: this manifest is for specification 0.9, and this \
+      "sinter.toml:1:15: this manifest is for specification 0.9, and this \
        sinter implements 1.0, a new major version that can change the meaning \
        of a key; read the notes on the changes in specification 1.0, then \
-       update the manifest and its 'spec'";
+       update the manifest and its 'sinter-spec'";
     ];
-  reports "a patch number" "spec = \"1.0.0\"\n"
+  reports "a patch number" "sinter-spec = \"1.0.0\"\n"
     [
-      "sinter.toml:1:8: 'spec' takes a version of the form MAJOR.MINOR, such \
-       as \"1.0\", not \"1.0.0\"";
+      "sinter.toml:1:15: 'sinter-spec' takes a version of the form \
+       MAJOR.MINOR, such as \"1.0\", not \"1.0.0\"";
     ];
-  reports "an integer" "spec = 1\n"
+  reports "an integer" "sinter-spec = 1\n"
     [
-      "sinter.toml:1:8: 'spec' takes a version of the form MAJOR.MINOR, such \
-       as \"1.0\", not an integer";
+      "sinter.toml:1:15: 'sinter-spec' takes a version of the form \
+       MAJOR.MINOR, such as \"1.0\", not an integer";
     ];
   reports "a minor version of the same major"
-    ("spec = \"1.0\"\n" ^ markdown)
+    ("sinter-spec = \"1.0\"\n" ^ markdown)
     [ "no error" ]
 
 let the_version_comes_before_the_names () =
-  reports "an unknown key after a newer version" "spec = \"2.0\"\n[chek]\n"
+  reports "an unknown key after a newer version"
+    "sinter-spec = \"2.0\"\n[chek]\n"
     [
-      "sinter.toml:1:8: this manifest needs specification 2.0, and this sinter \
-       implements 1.0; install a newer sinter";
+      "sinter.toml:1:15: this manifest needs specification 2.0, and this \
+       sinter implements 1.0; install a newer sinter";
     ]
 
 let unknown_keys () =
@@ -498,7 +499,16 @@ let an_old_name_is_an_unknown_name () =
     [
       "sinter.toml:2:1: unknown key 'ambient' in [plan]";
       "sinter.toml:3:1: unknown key 'shared' in [plan]";
-    ]
+    ];
+  reports "spec" "spec = \"1.0\"\n"
+    [ "sinter.toml:1:1: unknown key 'spec' at the top level" ];
+  reports "check.rollout-cap" "[check]\nrollout-cap = true\n"
+    [ "sinter.toml:2:1: unknown key 'rollout-cap' in [check]" ];
+  reports "ledger.harness-markers" "[ledger]\nharness-markers = [\"A\"]\n"
+    [ "sinter.toml:2:1: unknown key 'harness-markers' in [ledger]" ];
+  reports "evidence.coverage-attribution"
+    "[evidence]\ncoverage-attribution = \"required\"\n"
+    [ "sinter.toml:2:1: unknown key 'coverage-attribution' in [evidence]" ]
 
 let a_name_with_a_control_character_is_escaped () =
   reports "an unknown key" "\"a\\nb\" = 1\n"
@@ -530,12 +540,12 @@ let keys_at_the_wrong_place () =
       "sinter.toml:2:1: 'check' is a table of the top level; write its keys \
        under the header [check]";
     ];
-  reports "a key of another table" "[scan]\nrollout-cap = true\n"
-    [ "sinter.toml:2:1: 'rollout-cap' belongs in [check]" ];
+  reports "a key of another table" "[scan]\nwarn-only = true\n"
+    [ "sinter.toml:2:1: 'warn-only' belongs in [check]" ];
   reports "a key of a pack" "files = []\n"
     [ "sinter.toml:1:1: 'files' belongs in [scan.packs.<name>]" ];
-  reports "a fixed name where a gate goes" "[check.tiers]\nrollout-cap = true\n"
-    [ "sinter.toml:2:1: 'rollout-cap' belongs in [check]" ];
+  reports "a fixed name where a gate goes" "[check.tiers]\nwarn-only = true\n"
+    [ "sinter.toml:2:1: 'warn-only' belongs in [check]" ];
   reports "a fixed name where a class goes"
     "[check.tiers.review]\nhistorical = []\n"
     [ "sinter.toml:2:1: 'historical' belongs in [check]" ];
@@ -543,8 +553,8 @@ let keys_at_the_wrong_place () =
     [ "sinter.toml:2:1: 'exempt' belongs in [plan]" ]
 
 let wrong_types () =
-  reports "a string for a boolean" "[check]\nrollout-cap = \"yes\"\n"
-    [ "sinter.toml:2:15: 'rollout-cap' takes true or false, not a string" ];
+  reports "a string for a boolean" "[check]\nwarn-only = \"yes\"\n"
+    [ "sinter.toml:2:13: 'warn-only' takes true or false, not a string" ];
   reports "a member that is not a string" "[check]\nhistorical = [\"a\", 1]\n"
     [
       "sinter.toml:2:20: 'historical' takes an array of strings, and this \
@@ -561,12 +571,11 @@ let wrong_types () =
   reports "a float, a date, and a boolean"
     "default-branch = 1.5\n\
      [check]\n\
-     rollout-cap = 1979-05-27\n\
+     warn-only = 1979-05-27\n\
      historical = [true]\n"
     [
       "sinter.toml:1:18: 'default-branch' takes a string, not a float";
-      "sinter.toml:3:15: 'rollout-cap' takes true or false, not a date or a \
-       time";
+      "sinter.toml:3:13: 'warn-only' takes true or false, not a date or a time";
       "sinter.toml:4:15: 'historical' takes an array of strings, and this \
        member is a boolean";
     ]
@@ -742,34 +751,34 @@ let values () =
       tiers.review.dangling = \"blok\"\n\
       [ledger]\n\
       approval-required = [\"reqs\", \"req\", \"req\"]\n\
-      harness-markers = [\"MY-VAR\", \"A\", \"A\", \"1A\", \"\"]\n\
+      agent-markers = [\"MY-VAR\", \"A\", \"A\", \"1A\", \"\"]\n\
       [evidence]\n\
-      coverage-attribution = \"requird\"\n")
+      test-coverage = \"requird\"\n")
     [
       "sinter.toml:4:25: 'dangling' takes \"off\", \"warn\", or \"block\", not \
        \"blok\"; did you mean \"block\"?";
       "sinter.toml:6:22: 'approval-required' takes \"req\", \"design\", \
        \"decision\", or \"plan\", not \"reqs\"; did you mean \"req\"?";
       "sinter.toml:6:37: \"req\" occurs twice in 'approval-required'";
-      "sinter.toml:7:20: \"MY-VAR\" is not a name of an environment variable; \
+      "sinter.toml:7:18: \"MY-VAR\" is not a name of an environment variable; \
        a name holds letters, digits, and '_', and does not start with a digit";
-      "sinter.toml:7:35: \"A\" occurs twice in 'harness-markers'";
-      "sinter.toml:7:40: \"1A\" is not a name of an environment variable; a \
+      "sinter.toml:7:33: \"A\" occurs twice in 'agent-markers'";
+      "sinter.toml:7:38: \"1A\" is not a name of an environment variable; a \
        name holds letters, digits, and '_', and does not start with a digit";
-      "sinter.toml:7:46: \"\" is not a name of an environment variable; a name \
+      "sinter.toml:7:44: \"\" is not a name of an environment variable; a name \
        holds letters, digits, and '_', and does not start with a digit";
-      "sinter.toml:9:24: 'coverage-attribution' takes \"optional\" or \
-       \"required\", not \"requird\"; did you mean \"required\"?";
+      "sinter.toml:9:17: 'test-coverage' takes \"optional\" or \"required\", \
+       not \"requird\"; did you mean \"required\"?";
     ];
   reports "a word far from every word"
-    (markdown ^ "[evidence]\ncoverage-attribution = \"x\"\n")
+    (markdown ^ "[evidence]\ntest-coverage = \"x\"\n")
     [
-      "sinter.toml:4:24: 'coverage-attribution' takes \"optional\" or \
-       \"required\", not \"x\"";
+      "sinter.toml:4:17: 'test-coverage' takes \"optional\" or \"required\", \
+       not \"x\"";
     ]
 
 let a_manifest_with_no_pack () =
-  reports "no pack" "[check]\nrollout-cap = true\n"
+  reports "no pack" "[check]\nwarn-only = true\n"
     [
       "sinter.toml names no pack; add a line such as packs.markdown.files = \
        [\"**/*.md\"] under [scan]";
@@ -782,14 +791,10 @@ let a_manifest_with_no_pack () =
 
 let the_names_come_before_the_values () =
   reports "an unknown key and a bad glob"
-    "[check]\n\
-     foo = 1\n\
-     rollout-cap = 1\n\
-     [scan]\n\
-     packs.markdown.files = [\"a?\"]\n"
+    "[check]\nfoo = 1\nwarn-only = 1\n[scan]\npacks.markdown.files = [\"a?\"]\n"
     [
       "sinter.toml:2:1: unknown key 'foo' in [check]";
-      "sinter.toml:3:15: 'rollout-cap' takes true or false, not an integer";
+      "sinter.toml:3:13: 'warn-only' takes true or false, not an integer";
     ]
 
 let a_large_manifest_reads_quickly () =
@@ -805,14 +810,14 @@ let a_large_manifest_reads_quickly () =
   let manifest =
     read
       (markdown ^ packs ^ "[check]\nhistorical = " ^ strings "\"d%d/\"" 2_000
-     ^ "\n[ledger]\nharness-markers = " ^ strings "\"M%d\"" 2_000 ^ "\n")
+     ^ "\n[ledger]\nagent-markers = " ^ strings "\"M%d\"" 2_000 ^ "\n")
   in
   Alcotest.(check int) "packs" 1_001 (List.length (Manifest.packs manifest));
   Alcotest.(check int)
     "markers" 2_000
-    (List.length (Manifest.harness_markers manifest));
+    (List.length (Manifest.agent_markers manifest));
   let repeated =
-    markdown ^ "[ledger]\nharness-markers = " ^ strings "\"M%d\"" 2_000
+    markdown ^ "[ledger]\nagent-markers = " ^ strings "\"M%d\"" 2_000
     ^ "\n[check]\nhistorical = " ^ strings "\"d%d/\"" 1_999
     |> fun text -> String.sub text 0 (String.length text - 1) ^ ", \"d0/\"]\n"
   in
@@ -856,8 +861,8 @@ let the_example_messages_of_the_specification () =
     "unknown key 'historic' in [check]; did you mean 'historical'?";
   check "[evidence]\ndefault-branch = \"trunk\"\n"
     "'default-branch' belongs at the top level, above the first table header";
-  check "[check]\nrollout-cap = \"x\"\n"
-    "'rollout-cap' takes true or false, not a string";
+  check "[check]\nwarn-only = \"x\"\n"
+    "'warn-only' takes true or false, not a string";
   check "[scan.packs.markdown]\nfiles = [\"a\"]\nversion = \"1.0\"\n"
     "the pack markdown is built into sinter and takes no version";
   check "[check.tiers.review]\nconfig-changed = \"warn\"\n"
@@ -1145,14 +1150,14 @@ let every_problem_has_a_message () =
   let check name expected problem =
     Alcotest.(check string) name expected (message problem)
   in
-  check "a key newer than spec"
-    "'check.foo' needs specification 1.1, and the manifest states spec = \
-     \"1.0\"; write spec = \"1.1\""
+  check "a key newer than sinter-spec"
+    "'check.foo' needs specification 1.1, and the manifest states sinter-spec \
+     = \"1.0\"; write sinter-spec = \"1.1\""
     (Manifest.Key_too_new
        {
          key = [ "check"; "foo" ];
          since = Major_minor.make 1 1;
-         spec = Major_minor.make 1 0;
+         sinter_spec = Major_minor.make 1 0;
        });
   check "a wrong type of no key" "'' takes a string, not an integer"
     (Manifest.Wrong_type
@@ -1212,9 +1217,9 @@ let a_runner_message_stays_on_one_line () =
      digits, in words joined by '-', such as 'vitest' or 'cargo-nextest'"
     (message (Manifest.Bad_runner_name "Files"))
 
-let newer_keys_names_each_key_newer_than_spec () =
+let newer_keys_names_each_key_newer_than_sinter_spec () =
   match
-    Toml.parse "default-branch = \"a\"\n[check]\nrollout-cap = true\nfoo = 1\n"
+    Toml.parse "default-branch = \"a\"\n[check]\nwarn-only = true\nfoo = 1\n"
   with
   | Error _ -> Alcotest.fail "the text does not parse"
   | Ok document ->
@@ -1222,17 +1227,17 @@ let newer_keys_names_each_key_newer_than_spec () =
         "the keys newer than 0.9"
         [
           "s:1:1: 'default-branch' needs specification 1.0, and the manifest \
-           states spec = \"0.9\"; write spec = \"1.0\"";
-          "s:3:1: 'check.rollout-cap' needs specification 1.0, and the \
-           manifest states spec = \"0.9\"; write spec = \"1.0\"";
+           states sinter-spec = \"0.9\"; write sinter-spec = \"1.0\"";
+          "s:3:1: 'check.warn-only' needs specification 1.0, and the manifest \
+           states sinter-spec = \"0.9\"; write sinter-spec = \"1.0\"";
         ]
         (List.map
            (Manifest.render ~path:"s")
-           (Manifest.newer_keys ~spec:(Major_minor.make 0 9) document));
+           (Manifest.newer_keys ~sinter_spec:(Major_minor.make 0 9) document));
       Alcotest.(check int)
         "no key is newer than 1.0" 0
         (List.length
-           (Manifest.newer_keys ~spec:(Major_minor.make 1 0) document))
+           (Manifest.newer_keys ~sinter_spec:(Major_minor.make 1 0) document))
 
 let render_names_the_path_and_the_place () =
   Alcotest.(check string)
@@ -1292,7 +1297,7 @@ let since_of_no_setting_is_none () =
       [ "scan" ];
       [ "check"; "tiers"; "review" ];
       [ "foo" ];
-      [ "spec"; "x" ];
+      [ "sinter-spec"; "x" ];
       [ "check"; "tiers"; "a"; "b"; "c" ];
       [ "scan"; "packs"; "ts"; "files"; "x" ];
       [ "scan"; "packs"; "ts"; "version"; "x" ];
@@ -1314,7 +1319,7 @@ let a_name_that_varies_is_any_name_but_a_fixed_one () =
       [ "scan"; "packs"; "ts"; "runners"; "check"; "files" ];
       [ "scan"; "packs"; "ts"; "runners"; "files" ];
       [ "scan"; "packs"; "ts"; "runners"; "files-2"; "x" ];
-      [ "check"; "tiers"; "rollout-cap"; "files" ];
+      [ "check"; "tiers"; "warn-only"; "files" ];
     ]
 
 let the_implemented_version_is_1_0 () =
@@ -1395,8 +1400,8 @@ let line =
       "[scan.packs.markdown]";
       "[check.tiers.review]";
       "[[check]]";
-      "spec = \"1.0\"";
-      "spec = \"9.0\"";
+      "sinter-spec = \"1.0\"";
+      "sinter-spec = \"9.0\"";
       "default-branch = \"main\"";
       "default-branch = \"a..b\"";
       "packs.markdown.files = [\"**/*.md\"]";
@@ -1414,8 +1419,8 @@ let line =
       "version = \"1\"";
       "namespaces.gh = \"[1-9][0-9]*\"";
       "namespaces.x = \".\"";
-      "rollout-cap = true";
-      "rollout-cap = 1";
+      "warn-only = true";
+      "warn-only = 1";
       "historical = [\"docs/\"]";
       "tiers.review.dangling = \"block\"";
       "dangling = \"warn\"";
@@ -1423,8 +1428,8 @@ let line =
       "exempt = [\"a\", 2]";
       "locations.decision = [\"d/\"]";
       "approval-required = [\"req\"]";
-      "harness-markers = [\"A\"]";
-      "coverage-attribution = \"required\"";
+      "agent-markers = [\"A\"]";
+      "test-coverage = \"required\"";
       "historic = 1";
       "a = {";
       "b.c = 'x'";
@@ -1511,7 +1516,7 @@ let settings =
           | pair ->
               pair @ [ ([ "scan"; "packs"; "ocaml"; "version" ], "\"1.2\"") ] );
         optional [ "scan"; "namespaces"; "gh" ] "\"[1-9][0-9]*\"";
-        map (fun b -> [ ([ "check"; "rollout-cap" ], string_of_bool b) ]) bool;
+        map (fun b -> [ ([ "check"; "warn-only" ], string_of_bool b) ]) bool;
         map
           (fun g ->
             if g = [] then [] else [ ([ "check"; "historical" ], strings g) ])
@@ -1538,7 +1543,7 @@ let settings =
             if k = [] then []
             else [ ([ "ledger"; "approval-required" ], strings k) ])
           (some_of [ "req"; "plan" ]);
-        optional [ "evidence"; "coverage-attribution" ] "\"required\"";
+        optional [ "evidence"; "test-coverage" ] "\"required\"";
       ]
     in
     flatten_list pairs >|= List.concat)
@@ -1614,7 +1619,7 @@ let summary manifest =
   String.concat "\n"
     ([
        Manifest.default_branch manifest;
-       string_of_bool (Manifest.rollout_cap manifest);
+       string_of_bool (Manifest.warn_only manifest);
        String.concat "," (members (Manifest.historical manifest));
        String.concat "," (members (Manifest.exempt manifest));
        (match Manifest.location manifest Manifest.Decision with
@@ -1622,7 +1627,7 @@ let summary manifest =
        | Some set -> String.concat "," (members set));
        String.concat ","
          (List.map Manifest.kind_name (Manifest.approval_required manifest));
-       (match Manifest.coverage_attribution manifest with
+       (match Manifest.test_coverage manifest with
        | Manifest.Optional -> "optional"
        | Required -> "required");
      ]
@@ -1675,7 +1680,7 @@ let runner_pool =
   ]
 
 let pack_pool = [ "c"; "go"; "ocaml"; "rust"; "typescript" ]
-let setting_keys = [ "mode"; "args"; "files"; "default-branch"; "rollout-cap" ]
+let setting_keys = [ "mode"; "args"; "files"; "default-branch"; "warn-only" ]
 
 let setting_values =
   [
@@ -2046,12 +2051,12 @@ let tests =
       the_example_of_a_typescript_project_reads;
     case "the tier that applies follows the three rules"
       the_tier_that_applies_follows_the_three_rules;
-    case "without the cap the built-in tier applies"
-      without_the_cap_the_built_in_tier_applies;
+    case "without warn-only the built-in tier applies"
+      without_warn_only_the_built_in_tier_applies;
     case "written tiers are sorted" written_tiers_are_sorted;
     case "built-in paths join the written ones"
       built_in_paths_join_the_written_ones;
-    case "harness markers keep their order" harness_markers_keep_their_order;
+    case "agent markers keep their order" agent_markers_keep_their_order;
     case "approval kinds keep their order" approval_kinds_keep_their_order;
     case "every location kind reads" every_location_kind_reads;
     case "a default branch reads" a_default_branch_reads;
@@ -2059,7 +2064,7 @@ let tests =
     case "every form of TOML means the same" every_form_of_toml_means_the_same;
     case "a syntax error reports the TOML reader"
       a_syntax_error_reports_the_toml_reader;
-    case "spec errors" spec_errors;
+    case "sinter-spec errors" sinter_spec_errors;
     case "the version comes before the names" the_version_comes_before_the_names;
     case "unknown keys" unknown_keys;
     case "an old name is an unknown name" an_old_name_is_an_unknown_name;
@@ -2106,8 +2111,8 @@ let tests =
       load_of_a_path_under_a_file_is_missing;
     case "load of a file it cannot open is unreadable"
       load_of_a_file_it_cannot_open_is_unreadable;
-    case "newer_keys names each key newer than spec"
-      newer_keys_names_each_key_newer_than_spec;
+    case "newer_keys names each key newer than sinter-spec"
+      newer_keys_names_each_key_newer_than_sinter_spec;
     of_string_answers_any_text;
     every_form_and_order_reads_the_same;
     runners_read_as_written;

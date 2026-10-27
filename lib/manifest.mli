@@ -5,9 +5,9 @@
     text of [sinter.toml].
 
     The reader checks the text in four steps, in this order: the TOML syntax;
-    the key [spec]; the names of the keys and the types of the values; and each
-    value against the rules of its key. It stops at the first step that finds an
-    error, and gives every error of that step. *)
+    the key [sinter-spec]; the names of the keys and the types of the values;
+    and each value against the rules of its key. It stops at the first step that
+    finds an error, and gives every error of that step. *)
 
 (** {1 Versions and kinds} *)
 
@@ -16,7 +16,7 @@ val specification : Major_minor.t
 
 val since : string list -> Major_minor.t option
 (** [since path] is the version of the specifications that added the setting at
-    the key path [path], such as [["check"; "rollout-cap"]]. A name that varies,
+    the key path [path], such as [["check"; "warn-only"]]. A name that varies,
     such as the name of a pack, can be any name except a fixed name of the same
     table: [["scan"; "packs"; "ocaml"; "files"; "x"]] names no setting. It is
     [None] when [path] names no setting. *)
@@ -29,7 +29,7 @@ val kind_name : kind -> string
 (** [kind_name kind] is ["req"], ["design"], ["decision"], or ["plan"]. *)
 
 (** Which rungs of an edge of the kind [verifies] complete a promise. *)
-type coverage_attribution =
+type test_coverage =
   | Optional  (** the rungs [passing] and [unmeasured] *)
   | Required  (** the rung [passing] alone *)
 
@@ -48,20 +48,20 @@ type expected =
 type problem =
   | Syntax of Toml.error  (** the text is not a TOML 1.1.0 document *)
   | Not_a_version of { key : string list; text : string }
-      (** the string of [spec] or of a pack version is not of the form
+      (** the string of [sinter-spec] or of a pack version is not of the form
           MAJOR.MINOR *)
-  | Spec_too_new of Major_minor.t
-      (** [spec] states a version newer than {!specification} *)
-  | Spec_major_too_old of Major_minor.t
-      (** [spec] states a version with a major number below that of
+  | Sinter_spec_too_new of Major_minor.t
+      (** [sinter-spec] states a version newer than {!specification} *)
+  | Sinter_spec_major_too_old of Major_minor.t
+      (** [sinter-spec] states a version with a major number below that of
           {!specification} *)
   | Key_too_new of {
       key : string list;
       since : Major_minor.t;
-      spec : Major_minor.t;
+      sinter_spec : Major_minor.t;
     }
-      (** the manifest writes a key that a version newer than its [spec] added
-      *)
+      (** the manifest writes a key that a version newer than its [sinter-spec]
+          added *)
   | Unknown_key of {
       name : string;
       table : string list;
@@ -125,7 +125,7 @@ type problem =
       nearest : string option;
     }  (** a string that is not one of the words that the key takes *)
   | Bad_marker of string
-      (** a harness marker that is not a name of an environment variable *)
+      (** a agent marker that is not a name of an environment variable *)
 
 (** One error of a manifest. *)
 type error =
@@ -135,11 +135,11 @@ type error =
           part of the key that is in error. *)
   | No_pack  (** the manifest names no pack *)
 
-val newer_keys : spec:Major_minor.t -> Toml.table -> error list
-(** [newer_keys ~spec document] is a [Key_too_new] error at each key of
-    [document] whose setting a version newer than [spec] added, in the order of
-    their places. {!of_string} gives these errors when the manifest states
-    [spec]. *)
+val newer_keys : sinter_spec:Major_minor.t -> Toml.table -> error list
+(** [newer_keys ~sinter_spec document] is a [Key_too_new] error at each key of
+    [document] whose setting a version newer than [sinter-spec] added, in the
+    order of their places. {!of_string} gives these errors when the manifest
+    states [sinter-spec]. *)
 
 val message : error -> string
 (** [message error] says what is wrong and, when it can, what to write instead.
@@ -203,8 +203,9 @@ val load : string -> (t, load_error) result
 
 (** {1 Settings} *)
 
-val spec : t -> Major_minor.t option
-(** [spec manifest] is the version that [spec] states, or [None]. *)
+val sinter_spec : t -> Major_minor.t option
+(** [sinter_spec manifest] is the version that [sinter-spec] states, or [None].
+*)
 
 val default_branch : t -> string
 (** [default_branch manifest] is the default branch: the value of
@@ -218,8 +219,8 @@ val namespaces : t -> (string * Id_pattern.t) list
 (** [namespaces manifest] is each declared namespace of external ids with its id
     pattern, sorted by namespace in byte order. *)
 
-val rollout_cap : t -> bool
-(** [rollout_cap manifest] is the value of [check.rollout-cap], or [false]. *)
+val warn_only : t -> bool
+(** [warn_only manifest] is the value of [check.warn-only], or [false]. *)
 
 val written_tiers :
   t -> (Finding_class.gate * Finding_class.t * Finding_class.tier) list
@@ -231,9 +232,9 @@ val written_tiers :
 val tier :
   t -> Finding_class.gate -> Finding_class.t -> Finding_class.tier option
 (** [tier manifest gate finding_class] is the tier that applies to the class at
-    the gate: the tier that [check.tiers] writes; else [Warn] when the rollout
-    cap is on and the built-in tier is [Block]; else the built-in tier. It is
-    [None] when the class takes no tier at the gate. *)
+    the gate: the tier that [check.tiers] writes; else [Warn] when
+    [check.warn-only] is [true] and the built-in tier is [Block]; else the
+    built-in tier. It is [None] when the class takes no tier at the gate. *)
 
 val historical : t -> Path_set.t
 (** [historical manifest] is the path set that [check.historical] writes. *)
@@ -267,10 +268,10 @@ val approval_required : t -> kind list
 (** [approval_required manifest] is the kinds that need approval, in the order
     the manifest writes them. *)
 
-val harness_markers : t -> string list
-(** [harness_markers manifest] is the names that the manifest adds to the
-    built-in list of harness markers, in the order it writes them. *)
+val agent_markers : t -> string list
+(** [agent_markers manifest] is the names that the manifest adds to the built-in
+    list of agent markers, in the order it writes them. *)
 
-val coverage_attribution : t -> coverage_attribution
-(** [coverage_attribution manifest] is the value of
-    [evidence.coverage-attribution], or [Optional]. *)
+val test_coverage : t -> test_coverage
+(** [test_coverage manifest] is the value of [evidence.test-coverage], or
+    [Optional]. *)

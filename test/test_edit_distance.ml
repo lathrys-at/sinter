@@ -119,7 +119,7 @@ let nearest = Alcotest.(check (option string))
 
 let nearest_finds_the_closest_name () =
   nearest "historic finds historical" (Some "historical")
-    (Edit_distance.nearest "historic" [ "rollout-cap"; "historical"; "tiers" ])
+    (Edit_distance.nearest "historic" [ "warn-only"; "historical"; "tiers" ])
 
 let nearest_finds_nothing_beyond_two_edits () =
   nearest "abc is three edits from xyz" None
@@ -142,7 +142,13 @@ let long_names_answer_quickly () =
   nearest "a name of 100000 characters" None
     (Edit_distance.nearest (String.make 100_000 'x')
        [
-         "check"; "evidence"; "ledger"; "plan"; "scan"; "spec"; "default-branch";
+         "check";
+         "evidence";
+         "ledger";
+         "plan";
+         "scan";
+         "sinter-spec";
+         "default-branch";
        ])
 
 let nearest_breaks_a_tie_by_byte_order () =

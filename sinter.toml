@@ -1,11 +1,11 @@
-spec = "1.0"
+sinter-spec = "1.0"
 
 [scan]
 packs.markdown.files = ["**/*.md", "!test/**"]
 namespaces.gh = "[1-9][0-9]*"
 
 [check]
-rollout-cap = false
+warn-only = false
 
 [plan]
 exempt = [

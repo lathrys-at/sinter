@@ -165,17 +165,17 @@ This is the section the rest exists to make possible. A `@verifies` citation is 
 
 **Evidence artifacts.** Runner output in standard formats (JUnit XML first; `go test -json`, `cargo nextest` JUnit, pytest `--junitxml`, Jest reporters all produce it) plus coverage in standard formats (lcov, cobertura, coverage.py JSON). Locally, a gitignored evidence directory (`.sinter/evidence/<tree-key>/`) that `sinter evidence import` populates and the gate reads, keyed by **tree key** so stale evidence never binds to a newer tree. The tree key is the git tree hash of the working tree *as it is*, computed non-destructively: stage everything into a temporary index (`GIT_INDEX_FILE=… git add -A && git write-tree`), honoring `.gitignore`. In CI, recomputed from scratch as the authority. Stated plainly: the local evidence dir is agent-writable — trusted, not proof — acceptable because the failure being caught is "claimed the tests pass without running them," which forging well-formed XML does not resemble; PR CI is what makes the merged claim real. The tool never runs tests: whoever runs them — the agent, an orchestrator, a workflow step — points `evidence import` at the artifacts the run produced. And an absent evidence set is a state, not a violation: the ladder's finding classes evaluate only when one exists (§12.8), so a tree with no evidence reads as having none, never red — while `status --done` refuses regardless, because death requires measurement.
 
-**Attribution is the expensive rung.** Rung 4 below asks whether *this test* executed *that site*, which requires coverage attributed per test. Aggregate lcov/cobertura cannot say; they only say the site was executed by *something in the run*. Attributed sources the packs understand: coverage.py with `dynamic_context = test_function` (Python), JaCoCo session data (JVM, when a pack exists), Jest's per-file `coverageProvider: v8` output combined with `--runTestsByPath` batches, and the universal fallback of running each `@verifies`-bearing test in its own process with its own coverage file — slow, always correct, and what the pack's conformance fixture does. `cargo llvm-cov` and `go test -cover` produce aggregate data unless driven per test. Each `cov` fact carries `attributed: true|false`. With unattributed coverage, rung 4 reports **unmeasured** rather than *passing*: the site was executed by the run and the test passed, but the join is not proven. One case survives aggregation: zero aggregate hits on every satisfying site proves **unexercised** outright — if the whole run never touched the site, neither did the test (§12.5). Unmeasured is warn-tier by default and never blocks; a repo that wants rung 4 to bite pays for attribution in its test configuration, and `sinter evidence import` says so when it sees only aggregate data.
+**The coverage of each test is the expensive rung.** Rung 4 below asks whether *this test* executed *that site*, which requires the coverage of each test. Lcov/cobertura data of the whole run cannot say; they only say the site was executed by *something in the run*. Sources of the coverage of each test that the packs understand: coverage.py with `dynamic_context = test_function` (Python), JaCoCo session data (JVM, when a pack exists), Jest's per-file `coverageProvider: v8` output combined with `--runTestsByPath` batches, and the universal fallback of running each `@verifies`-bearing test in its own process with its own coverage file — slow, always correct, and what the pack's conformance fixture does. `cargo llvm-cov` and `go test -cover` produce the coverage of the whole run unless driven per test. Each `cov` fact carries `attributed: true|false`. With only the coverage of the whole run, rung 4 reports **unmeasured** rather than *passing*: the site was executed by the run and the test passed, but the join is not proven. One case survives the coverage of the whole run: zero hits in it on every satisfying site proves **unexercised** outright — if the whole run never touched the site, neither did the test (§12.5). Unmeasured is warn-tier by default and never blocks; a repo that wants rung 4 to bite pays for the coverage of each test in its test configuration, and `sinter evidence import` says so when it sees only the coverage of the whole run.
 
 **The findings ladder**, in order of how much each catches:
 
 1. **Wrong source** — `@verifies` attached to something `tests.scm` doesn't capture. Structural, deterministic.
 2. **Never ran** — the test's ID appears in no evidence artifact for this tree.
 3. **Failed or skipped** — present, not passing. The promise is not met.
-4. **Unexercised** — passed, but attributed coverage shows it executes zero lines inside any site that `@satisfies` the same requirement. The closest deterministic proxy for a fraudulent verification. Both endpoints of the join already exist; what costs is attribution (above). When only aggregate coverage is present the rung reports **unmeasured** instead — unless the aggregate shows zero hits on every site, which proves the test unexercised without attribution.
+4. **Unexercised** — passed, but the coverage of each test shows it executes zero lines inside any site that `@satisfies` the same requirement. The closest deterministic proxy for a fraudulent verification. Both endpoints of the join already exist; what costs is attribution (above). When only the coverage of the whole run is present the rung reports **unmeasured** instead — unless the aggregate shows zero hits on every site, which proves the test unexercised without attribution.
 5. **Vacuous** — passed, connected, doesn't actually test the property. Reachable only by a judged rule (§7). This is the ceiling for structural checks, and it is worth saying plainly.
 
-A `@verifies` edge is at exactly one rung at any time: `wrong-source`, `never-ran`, `failed`, `unexercised`, `unmeasured`, or `passing` (rung 5 is a sampled judgment, not a rung the tool assigns). The rung is a field on the edge fact and a family of predicates in the algebra (§12.5). Rungs 1–4 are what tree-sitter and standard artifacts buy. Rung 4 also gives `@satisfies` citations a job beyond coverage bookkeeping. The pack's conformance fixtures include a real runner run with attributed coverage, so the join is verified end-to-end per language, not assumed.
+A `@verifies` edge is at exactly one rung at any time: `wrong-source`, `never-ran`, `failed`, `unexercised`, `unmeasured`, or `passing` (rung 5 is a sampled judgment, not a rung the tool assigns). The rung is a field on the edge fact and a family of predicates in the algebra (§12.5). Rungs 1–4 are what tree-sitter and standard artifacts buy. Rung 4 also gives `@satisfies` citations a job beyond coverage bookkeeping. The pack's conformance fixtures include a real runner run with the coverage of each test, so the join is verified end-to-end per language, not assumed.
 
 ## 5. Manifest, Language Packs, External Ids
 
@@ -400,7 +400,7 @@ Not a menu, not Datalog: a Bazel-sized algebra over the fact stream, specified i
 
 **10.1 Approval UX** (mechanism decided). Under the collaborative model the requirement is *unmistakable*, not *undeniable*: every bypass must require a deliberate act, because a deliberate act is circumvention and circumvention is out of threat model. Two cheap layers: confirmation read from `/dev/tty`, never stdin (a harness's non-interactive shell has no controlling terminal, so the command refuses; `yes | approve` is dead for free); and a harness-envvar tripwire (`CLAUDECODE=1`, manifest-extensible) closing the tmux-pane gap. Plus the structural layer: ledger on a ref outside every checkout, no approval path reachable from an agent's shell. Not chosen: per-session token minting — the cryptographic path in a trench coat. For deployments outside the collaborative model the hardening path is now concrete and design-free: signed ledger commits with a signer allowlist, and the ref placed where the host's push restrictions reach it (§6.4). **Still open:** rendering the spec delta so that what is approved is actually read.
 
-**10.2 Attributed coverage on Rust and Go.** Rung 4 needs per-test coverage (§4). The universal fallback — one process per `@verifies`-bearing test — is correct and slow. Whether `cargo llvm-cov` profraw merging by test name, or a `go test -run` driver, can be made cheap enough to run in the PostToolUse tier rather than only in CI is unknown; until then those packs ship rung 4 as `unmeasured` locally and `unexercised`/`passing` in CI.
+**10.2 The coverage of each test on Rust and Go.** Rung 4 needs per-test coverage (§4). The universal fallback — one process per `@verifies`-bearing test — is correct and slow. Whether `cargo llvm-cov` profraw merging by test name, or a `go test -run` driver, can be made cheap enough to run in the PostToolUse tier rather than only in CI is unknown; until then those packs ship rung 4 as `unmeasured` locally and `unexercised`/`passing` in CI.
 
 **10.3 Brief ranking.** "Graph distance from the step's scope" is a heuristic, and a wrong brief is worse than a short one: it fills the budget with the wrong requirements. Whether to weight by citation count, by recency of approval, or by which declarations the step's promises transitively `@refines` is a question for measurement against real sessions — the metrics tables (§6.4) are where the answer will show up as fewer violations per turn report.
 
@@ -417,7 +417,7 @@ The surface is specified as the help text itself. Conventions that apply to ever
 - **Repo discovery.** Every verb runs from anywhere inside a git worktree; the repo root is `git rev-parse --show-toplevel` and the manifest is `sinter.toml` there. Nothing is looked up in the home directory except the pack cache.
 - **Base.** `--base <rev>` is accepted by every verb that reads the diff. Default: `git merge-base HEAD <branch>` where `<branch>` is the manifest's `default-branch` (`main`). The working tree is always "now."
 - **Output is deterministic.** Line output is sorted by `(kind, path, line, col, id)`. JSONL is canonical (§13.1). Two runs on the same tree, base, ledger, and evidence produce identical bytes.
-- **Exit codes** are shared: `0` clean/success · `1` findings present (or plan not done under `status --done`) · `2` usage error · `3` environment error (manifest invalid, pack missing or hash mismatch, git unavailable, parse error in a governed file when `--strict-parse`) · `4` refused (`approve`, `decline`, or `ledger abandon` without a tty or under a harness marker; ledger not fast-forward; revision taken). A hook translates these into its harness's protocol (§11.18).
+- **Exit codes** are shared: `0` clean/success · `1` findings present (or plan not done under `status --done`) · `2` usage error · `3` environment error (manifest invalid, pack missing or hash mismatch, git unavailable, parse error in a governed file when `--strict-parse`) · `4` refused (`approve`, `decline`, or `ledger abandon` without a tty or under an agent marker; ledger not fast-forward; revision taken). A hook translates these into its harness's protocol (§11.18).
 - **Line format** for findings, used by `check`, `status`, `query` when the result contains findings, and hook stderr:
 
   ```
@@ -484,7 +484,7 @@ EXIT CODES
 ENVIRONMENT
   SINTER_BASE          Default for --base
   SINTER_PACK_CACHE    Pack cache directory (default: $XDG_CACHE_HOME/sinter/packs)
-  CLAUDECODE, …       Harness markers; approve refuses when any is set
+  CLAUDECODE, …       Agent markers; approve refuses when any is set
                       (list extended by refuse_env in the manifest)
 
 Run 'sinter <command> --help' for details. The algebra is documented in
@@ -759,7 +759,7 @@ USAGE
   This is the human's durable voice: an instruction attached to an
   artifact instead of a context, which is the only kind that survives
   compaction. Shares approve's refusal set — controlling terminal required,
-  harness markers refuse, exit 4.
+  agent markers refuse, exit 4.
 
 OPTIONS
   --reason <text>   Required. One paragraph is the right length.
@@ -873,7 +873,7 @@ USAGE
 
 REFUSES (exit 4) when
   - /dev/tty cannot be opened (no controlling terminal)
-  - a harness marker is set: CLAUDECODE or any name in [approve].refuse_env
+  - an agent marker is set: CLAUDECODE or any name in [approve].refuse_env
   - refs/sinter/ledger is not a fast-forward of its fetched remote (--push
     fetches first; without --push the check uses the last fetched state;
     a lost race is recovered with 'sinter ledger push --replay')
@@ -1383,8 +1383,8 @@ Notation: `S`, `T` range over fact sets; `E` over sets of edges; `P` promises; `
 | `wrong-source(E)` | `kind(t) ≠ test` — the comment attached to something `tests.scm` does not capture |
 | `never-ran(E)` | `runs(t) = ∅` |
 | `failed(E)` | some `r ∈ runs(t)` has `status ∈ {fail, error, skip}` |
-| `unexercised(E)` | all runs pass, `sites(e) ≠ ∅`, and either attributed coverage for `t` exists and `∀s ∈ sites(e): cov(t, s).hit = 0`, or only aggregate coverage exists and `∀s ∈ sites(e): agg(s).hit = 0` — the run as a whole never touched the sites, so neither did `t` |
-| `unmeasured(E)` | all runs pass, `sites(e) ≠ ∅`, no attributed coverage for `t`, and some `agg(s).hit > 0` or no coverage at all was imported |
+| `unexercised(E)` | all runs pass, `sites(e) ≠ ∅`, and either the coverage of each test exists for `t` and `∀s ∈ sites(e): cov(t, s).hit = 0`, or only the coverage of the whole run exists and `∀s ∈ sites(e): agg(s).hit = 0` — the run as a whole never touched the sites, so neither did `t` |
+| `unmeasured(E)` | all runs pass, `sites(e) ≠ ∅`, no coverage of each test for `t`, and some `agg(s).hit > 0` or no coverage at all was imported |
 | `passing(E)` | all runs pass and either `sites(e) = ∅` (nothing to connect to; `untraced(satisfies)` reports the target separately) or some `cov(t, s).hit > 0` |
 
 **Law**
@@ -1436,7 +1436,7 @@ Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameter
 
 ### 12.8 Built-in finding definitions
 
-`check` is the union of these. `expr` is the definition where the class is expressible; *engine* marks classes the scanner or adjudicator emits directly because they concern malformed input or two-tree comparisons the algebra does not model (their subjects and details are still ordinary finding facts). Two subtractions are engine steps applied after evaluation to every class, never written into definitions: `historical` facts generate no findings of any class (§3.6), and live `@ack`s accept findings of ackable classes (liveness judged pre-subtraction, §3.3). A third rule governs the evidence ladder: `never-ran`, `failed`, `unexercised`, and `unmeasured` are evaluated only when an evidence set exists for the tree — the tool judges measurements that exist and never demands one nobody took; wanting the measurement is expressed by importing it (PR CI does; a main job may), and `status --done` refuses without one, because death requires measurement. The `rung` field reads `never-ran` either way; only the finding is withheld. A fourth: facts belonging to a plan not in force — the plan, its steps, its promises — generate no findings; a dead plan is record, not agreement (§6.3). Tiers are the shipped defaults for `(turn, pr, main)`; every class ships at `warn` under the rollout cap and is promoted per §8. `A` = ackable, `F` = mechanical fix exists.
+`check` is the union of these. `expr` is the definition where the class is expressible; *engine* marks classes the scanner or adjudicator emits directly because they concern malformed input or two-tree comparisons the algebra does not model (their subjects and details are still ordinary finding facts). Two subtractions are engine steps applied after evaluation to every class, never written into definitions: `historical` facts generate no findings of any class (§3.6), and live `@ack`s accept findings of ackable classes (liveness judged pre-subtraction, §3.3). A third rule governs the evidence ladder: `never-ran`, `failed`, `unexercised`, and `unmeasured` are evaluated only when an evidence set exists for the tree — the tool judges measurements that exist and never demands one nobody took; wanting the measurement is expressed by importing it (PR CI does; a main job may), and `status --done` refuses without one, because death requires measurement. The `rung` field reads `never-ran` either way; only the finding is withheld. A fourth: facts belonging to a plan not in force — the plan, its steps, its promises — generate no findings; a dead plan is record, not agreement (§6.3). Tiers are the shipped defaults for `(turn, pr, main)`; every class ships at `warn` under warn-only and is promoted per §8. `A` = ackable, `F` = mechanical fix exists.
 
 | class | subject | definition | mode | A | F | tiers |
 |---|---|---|---|---|---|---|
@@ -1670,7 +1670,7 @@ Duplicate promissory tags within one step collapse to a single promise fact.
 
 | field | type | meaning |
 |---|---|---|
-| `test` | string | test fact id, or `*` for aggregate |
+| `test` | string | test fact id, or `*` for the coverage of the whole run |
 | `site` | string | site fact id |
 | `hit` `of` | int | executable lines inside the site's attached definition that were hit / that exist |
 | `attributed` | bool | `false` iff `test` is `*` |
@@ -1907,14 +1907,14 @@ The consequences: renaming steps is free (clause 3 matches by promise, not by st
 
 ### 13.9 Conformance
 
-A pack's fixture directory contains a tiny project, `expected.jsonl`, a fixture ledger (`ledger.jsonl`), and real runner and coverage artifacts with attribution. `sinter pack verify` scans the fixture with the fixture ledger and evidence, drops the header line, and requires byte equality with `expected.jsonl`. Because derived fields are included, the fixture exercises binding and the evidence ladder end to end, not just parsing. A tool release that changes any derived field's semantics must regenerate every pack's fixture, which is the intended friction.
+A pack's fixture directory contains a tiny project, `expected.jsonl`, a fixture ledger (`ledger.jsonl`), and real runner and coverage artifacts with the coverage of each test. `sinter pack verify` scans the fixture with the fixture ledger and evidence, drops the header line, and requires byte equality with `expected.jsonl`. Because derived fields are included, the fixture exercises binding and the evidence ladder end to end, not just parsing. A tool release that changes any derived field's semantics must regenerate every pack's fixture, which is the intended friction.
 
 ## 14. Manifest Reference
 
 `sinter.toml` is pure configuration, and short. Everything with a sensible default is absent; `sinter init` writes only what it had to choose. The whole file is inside the boundary (§5.1): edits to `[gates]`, `[findings]`, `[rules]`, and `approve` are `law-touched` on any diff, always.
 
 ```toml
-enforce    = "warn"                        # rollout cap: nothing blocks or exits 1 until this line goes or a class is promoted below (§8)
+enforce    = "warn"                        # warn-only: nothing blocks or exits 1 until this line goes or a class is promoted below (§8)
 approve    = ["req"]                       # kinds the ledger gates; kinds not listed count approved (§12.8)
 historical = ["docs/devlog/**"]            # citations resolve and render; no findings (.plans/*.log.md is built-in)
 exempt     = ["Cargo.lock", "**/generated/**"]   # exempt from scope confinement; counted in the report
@@ -1970,7 +1970,7 @@ tiers   = { pr = "warn" }
 | `brief.why_budget` | `2000` | bytes; the origin-decision extent attached to an `unmet-rule` block (§7) |
 | `evidence.require_attribution` | `false` | `true`: rung `unmeasured` never meets a `@verifies` promise |
 | `ledger.sign`, `ledger.signers` | `false`, `[]` | signed ledger commits and the allowlist (§6.4) |
-| `refuse_env` | `["CLAUDECODE"]` | harness markers that make `approve`/`decline` refuse |
+| `refuse_env` | `["CLAUDECODE"]` | agent markers that make `approve`/`decline` refuse |
 | `rules.<name>.scope` | `[]` | where the edits that clear a rule's obligations land (§7); only needed when outside the plan's scope |
 | `rules.<name>.tiers` | from `[gates]` `unmet-rule` | per-gate override for one rule's obligations |
 

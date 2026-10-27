@@ -672,7 +672,7 @@ A promise is **met** as follows:
   edge is not suspect.
 - A promised `@verifies` is met if and only if such an edge exists
   inside the step's effective scope at evidence rung `passing`. When
-  `evidence.coverage-attribution` is `"optional"`, the default, an
+  `evidence.test-coverage` is `"optional"`, the default, an
   edge at rung `unmeasured` also meets the promise
   ([manifest.md](manifest.md) section 12). Rungs are defined in
   [algebra.md](algebra.md) section 6.7.

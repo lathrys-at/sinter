@@ -234,7 +234,7 @@ A plan passes the condition when all of these statements are true:
   suspect.
 - When the job imports evidence: every promised `verifies` edge is at
   rung `passing`, or at rung `unmeasured` when
-  `evidence.coverage-attribution` is `"optional"`
+  `evidence.test-coverage` is `"optional"`
   ([manifest.md](manifest.md) section 12).
 - When the job imports no evidence: a promised `verifies` edge can be
   at any rung. Rung enforcement happened earlier, at the gate `review`.
