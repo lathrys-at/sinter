@@ -509,6 +509,40 @@ let merge_base_of_unrelated_commits_is_an_error () =
     (Error (Git.No_merge_base ("main", "lonely")))
     (Git.merge_base t "main" "lonely")
 
+let is_shallow_is_false_for_a_whole_history () =
+  let _, t = open_shared () in
+  Alcotest.(check (result bool error))
+    "the shared repository" (Ok false) (Git.is_shallow t)
+
+let is_shallow_is_true_for_a_shallow_clone () =
+  let repo = Git_fixture.copy (Shared_repo.shared ()) in
+  Git_fixture.write repo ".git/shallow"
+    (Git_fixture.git repo [ "rev-parse"; "main" ]);
+  match Git.open_repo ~env:(Git_fixture.env repo) (Git_fixture.root repo) with
+  | Error _ -> Alcotest.fail "the copy does not open"
+  | Ok t ->
+      Alcotest.(check (result bool error))
+        "a history that stops at main" (Ok true) (Git.is_shallow t)
+
+let is_shallow_reads_no_other_answer () =
+  let env, script =
+    Git_fixture.fake_git
+      "if [ \"$2\" = --is-shallow-repository ]; then echo maybe; else printf \
+       'sha1\\n%s\\n' \"$0\"; fi\n"
+  in
+  match Git.open_repo ~env script with
+  | Error _ -> Alcotest.fail "the fake git does not open"
+  | Ok t -> (
+      match Git.is_shallow t with
+      | Error (Git.Malformed_output { args; detail }) ->
+          Alcotest.(check (list string))
+            "the arguments"
+            [ "-C"; script; "rev-parse"; "--is-shallow-repository" ]
+            args;
+          Alcotest.(check string)
+            "the detail" "\"maybe\" is neither true nor false" detail
+      | Ok _ | Error _ -> Alcotest.fail "is_shallow reads the answer maybe")
+
 let merge_base_names_a_revision_with_a_nul_byte () =
   let _, t = open_shared () in
   Alcotest.(check (result string error))
@@ -803,6 +837,11 @@ let tests =
       merge_base_of_unrelated_commits_is_an_error;
     case "merge_base names a revision with a NUL byte"
       merge_base_names_a_revision_with_a_nul_byte;
+    case "is_shallow is false for a whole history"
+      is_shallow_is_false_for_a_whole_history;
+    case "is_shallow is true for a shallow clone"
+      is_shallow_is_true_for_a_shallow_clone;
+    case "is_shallow reads no other answer" is_shallow_reads_no_other_answer;
     case "diff names a base with a NUL byte" diff_names_a_base_with_a_nul_byte;
     case "merge_base names a revision that starts with a hyphen"
       merge_base_names_a_revision_that_starts_with_a_hyphen;

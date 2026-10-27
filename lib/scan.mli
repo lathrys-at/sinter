@@ -29,6 +29,9 @@ type error =
       (** no branch of the name of the target branch gives a commit *)
   | No_merge_base of string
       (** [HEAD] and the target branch of this name have no common ancestor *)
+  | Shallow_clone of string
+      (** the repository is a shallow clone, and it holds no target branch of
+          this name or no merge base of [HEAD] and that branch *)
   | No_head  (** [HEAD] names no commit *)
   | Unreadable_file of { file : string; error : Text_file.error }
       (** a file of the pack [markdown] does not read *)

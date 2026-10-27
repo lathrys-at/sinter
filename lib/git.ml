@@ -764,6 +764,14 @@ let merge_base t a b =
       let* _ = commit_of t b in
       Error failure
 
+let is_shallow t =
+  run t [ "rev-parse"; "--is-shallow-repository" ] (fun output ->
+      let* answer = Decode.line output in
+      match answer with
+      | "true" -> Ok true
+      | "false" -> Ok false
+      | other -> Error (Printf.sprintf "%S is neither true nor false" other))
+
 let base_tree_of_commit t commit =
   let* entries =
     run t [ "ls-tree"; "-r"; "-z"; "--full-tree"; commit ] Decode.ls_tree
