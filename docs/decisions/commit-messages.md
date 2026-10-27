@@ -2,9 +2,10 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Name the plan step and its promises in each commit message
-@decision commit-messages
+@decision commit-messages v2
 @cites pull-request-descriptions
-Each commit message ends with git trailers that name the plan step, the record, or the issue that allows the change, and each promise of the step that the commit discharges.
+@cites plain-names
+Each commit message ends with git trailers that name the plan step, the record, or the issue that allows the change, and each promise of the step that the commit meets.
 
 ## Context
 
@@ -14,7 +15,7 @@ pull request description names the plan step (record
 `pull-request-descriptions`), but a branch often holds several
 commits, and each does one part of the step. A reviewer who reads a
 branch commit by commit had to infer which promise each commit claims
-to discharge.
+to meet.
 
 ## Decision
 
@@ -33,10 +34,10 @@ order:
      section 4.2). Example: `Issue: gh/12`.
 
    A commit that does work of a plan step names the step.
-2. One `Discharges: <tag> <slug>` line for each promise of the step
+2. One `Meets: <tag> <slug>` line for each promise of the step
    that the commit carries out, with no revision. Example:
-   `Discharges: @satisfies diff-mode`. A commit that does a part of a
-   step and discharges no promise has no `Discharges:` line.
+   `Meets: @satisfies diff-mode`. A commit that does a part of a
+   step and meets no promise has no `Meets:` line.
 3. The trailer that names an agent, then the `Signed-off-by:` line
    that `git commit -s` adds.
 
@@ -53,8 +54,9 @@ first.
 
 ## Consequences
 
-A reviewer checks each `Discharges:` line against the diff and the
+A reviewer checks each `Meets:` line against the diff and the
 plan, and finds a commit that claims a promise it does not deliver,
 or work that no promise names. A tool can read the trailers; a check
 of them by Sinter is on the roadmap. Each commit message has two or
-three more lines.
+three more lines. Commits written before revision 2 carry the same
+trailer under the name `Discharges:`.
