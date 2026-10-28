@@ -1155,9 +1155,9 @@ let source_file =
 
 let label = Gen.map (fun text -> if text = "" then "x" else text) terminal_text
 
-let rendered_place =
+let rendered_place_in paths =
   let open Gen in
-  let* path = oneof_list_weighted [ (6, "a.md"); (1, "missing.md") ] in
+  let* path = oneof_list_weighted paths in
   let* line = int_range 1 7 in
   let* column = int_range 1 8 in
   let* lines = int_range 0 1 in
@@ -1173,6 +1173,22 @@ let rendered_place =
           stop = { line = line + lines; column = stop };
         };
     }
+
+let rendered_place = rendered_place_in [ (6, "a.md"); (1, "missing.md") ]
+
+let rendered_related =
+  let open Gen in
+  let* places =
+    list_size (int_range 0 3)
+      (option
+         (rendered_place_in [ (3, "a.md"); (2, "b.md"); (1, "missing.md") ]))
+  in
+  let* label = label in
+  return
+    (List.mapi
+       (fun index place ->
+         { Finding.label = label ^ string_of_int index; place })
+       places)
 
 let rendered_mark (place : Finding.place) =
   let open Gen in
@@ -1200,25 +1216,33 @@ let rendered_finding =
   let* mark =
     match place with Some place -> rendered_mark place | None -> return None
   in
+  let* related = rendered_related in
   return
     ( content,
       Finding.make finding_class
         (Finding.Line { path = "a.md"; line = 1 })
         ?place
         ?detail:(Option.bind detail (fun d -> if d = "" then None else Some d))
-        ?mark (),
+        ?mark ~related (),
       tier )
 
+let print_place ({ path; span } : Finding.place) =
+  Printf.sprintf "%s %d:%d-%d:%d" path span.start.line span.start.column
+    span.stop.line span.stop.column
+
 let print_rendered (content, (finding : Finding.t), tier) =
-  Printf.sprintf "content %S, tier %s, place %s, mark %s, detail %s" content
+  Printf.sprintf
+    "content %S, tier %s, place %s, mark %s, detail %s, related [%s]" content
     (Option.fold ~none:"none" ~some:Finding_class.tier_name tier)
-    (Option.fold ~none:"none"
-       ~some:(fun ({ path; span } : Finding.place) ->
-         Printf.sprintf "%s %d:%d-%d:%d" path span.start.line span.start.column
-           span.stop.line span.stop.column)
-       finding.place)
+    (Option.fold ~none:"none" ~some:print_place finding.place)
     (Option.fold ~none:"none"
        ~some:(fun ({ start; stop; label } : Finding.mark) ->
          Printf.sprintf "%d-%d %S" start stop label)
        finding.mark)
     (Option.fold ~none:"none" ~some:(Printf.sprintf "%S") finding.detail)
+    (String.concat "; "
+       (List.map
+          (fun ({ label; place } : Finding.related) ->
+            Printf.sprintf "%S %s" label
+              (Option.fold ~none:"none" ~some:print_place place))
+          finding.related))

@@ -1,8 +1,9 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(** The full form of a finding: a headline, the location, and the source lines
-    of the place with a mark under the part at fault. *)
+(** The full form of a finding: a headline, the location, the source lines of
+    the place with a mark under the part at fault, and the related places with
+    their labels. *)
 
 val full :
   Format.formatter ->
@@ -24,17 +25,31 @@ val full :
       [<path>:<line>:<column>] of the start of the place. [W] is the number of
       digits of the largest line number that the block prints, 1 when it prints
       none.
-    + The snippet of the place, when {!Source.line} gives the first line of the
-      place and the mark falls inside that line: an empty gutter line ([W + 1]
-      spaces and [|]), the source line (its number right-aligned in [W], [ | ],
-      and its text), the mark line, and an empty gutter line. A place of more
-      than one line adds a line [...] after its mark line.
+    + The snippet of the place and of the related places in its file.
+    + For each run of consecutive related places in one other file, in the order
+      of {!Finding.t.related}: [W] spaces, [:::], a space, and
+      [<path>:<line>:<column>] of the first place of the run; then the snippet
+      of the places of the run.
+    + For each related place in no file: [W + 1] spaces, [= note: ], and its
+      label.
+
+    A snippet holds the first line of each of its places that {!Source.line}
+    gives and whose mark falls inside that line; with no such line, the snippet
+    prints nothing. It is an empty gutter line ([W + 1] spaces and [|]), then
+    each line in ascending order, and an empty gutter line. A line prints its
+    number right-aligned in [W], [ | ], and its text, and then one mark line for
+    each mark on it: the mark of the finding first, then the marks of related
+    places in their order. A line [...] stands between two lines that are not
+    adjacent, and after the last line when a place on it goes on to the next
+    line.
 
     The mark line is [W + 1] spaces, [| ], spaces up to the mark, the mark, and
     a space and the label when the mark has one. The mark is [^] under
     {!Finding.t.mark} with its label; with no mark, it is [^] under the place on
     its first line, to the end of that line when the place goes on, with no
-    label. A mark starts at the {!Display.column_width} of its first column, and
-    is as wide as the display width of the text that it marks, and at least 1. A
-    mark falls outside its line when it starts or stops after the column past
-    the last character of the line. *)
+    label. The mark of a related place is [-] under the place on its first line,
+    to the end of that line when the place goes on, with its label. A mark
+    starts at the {!Display.column_width} of its first column, and is as wide as
+    the display width of the text that it marks, and at least 1. A mark falls
+    outside its line when it starts or stops after the column past the last
+    character of the line. *)

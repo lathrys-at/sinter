@@ -216,9 +216,99 @@ let no_line_ends_in_a_space () =
           ~mark:{ Finding.start = 1; stop = 11; label = "l " }
           ()))
 
+let related ?(path = "a.md") label start stop =
+  { Finding.label; place = Some (place ~path start stop) }
+
+let related_places_in_the_file_share_its_snippet () =
+  check_lines "a place on an earlier line, and one on the line of the finding"
+    [
+      "duplicate: d";
+      " --> a.md:6:1";
+      "  |";
+      "3 | @req x";
+      "  | ------ first declared here";
+      "...";
+      "6 | @req x y";
+      "  |      ^ declared again here";
+      "  |        - here too";
+      "7 | @req z";
+      "  | ------ next";
+      "  |";
+      "";
+    ]
+    (full
+       ~files:[ ("a.md", "# A\n\n@req x\n@req y\n\n@req x y\n@req z\n") ]
+       (Finding.make Finding_class.Duplicate subject ~detail:"d"
+          ~place:(place (6, 1) (6, 9))
+          ~mark:{ Finding.start = 6; stop = 7; label = "declared again here" }
+          ~related:
+            [
+              related "first declared here" (3, 1) (3, 7);
+              related "here too" (6, 8) (6, 9);
+              related "next" (7, 1) (7, 7);
+            ]
+          ()))
+
+let related_places_in_other_files_get_their_own_blocks () =
+  check_lines "two places in one file, a missing file, and a note"
+    [
+      "suspect: d";
+      "  --> a.md:1:1";
+      "   |";
+      " 1 | @cites x v1";
+      "   |          ^^ names v1";
+      "   |";
+      "  ::: b.md:5:1";
+      "   |";
+      " 5 | @req x v2";
+      "   | --------- now at v2";
+      "...";
+      "10 | @req y";
+      "   | ------ also";
+      "...";
+      "   |";
+      "  ::: c.md:1:1";
+      "   = note: on another branch";
+      "";
+    ]
+    (full
+       ~files:
+         [
+           ("a.md", "@cites x v1\n");
+           ("b.md", "\n\n\n\n@req x v2\n\n\n\n\n@req y\nmore\n");
+         ]
+       (Finding.make Finding_class.Suspect subject ~detail:"d"
+          ~place:(place (1, 1) (1, 12))
+          ~mark:{ Finding.start = 10; stop = 12; label = "names v1" }
+          ~related:
+            [
+              related ~path:"b.md" "now at v2" (5, 1) (5, 10);
+              related ~path:"b.md" "also" (10, 1) (11, 5);
+              related ~path:"c.md" "gone" (1, 1) (1, 3);
+              { Finding.label = "on another branch"; place = None };
+            ]
+          ()))
+
+let a_finding_with_no_place_shows_its_related_places () =
+  check_lines "the block"
+    [
+      "cycle";
+      " ::: a.md:1:1";
+      "  |";
+      "1 | @req x";
+      "  | ------ part of the cycle";
+      "  |";
+      "";
+    ]
+    (full
+       ~files:[ ("a.md", "@req x\n") ]
+       (Finding.make Finding_class.Cycle subject
+          ~related:[ related "part of the cycle" (1, 1) (1, 7) ]
+          ()))
+
 let render (content, finding, tier) =
   in_files
-    [ ("a.md", content) ]
+    [ ("a.md", content); ("b.md", content) ]
     (fun source -> print (fun ppf -> Render.full ppf source ~tier finding))
 
 let rec printable text offset =
@@ -309,7 +399,7 @@ let styles_change_no_character =
     Generators.rendered_finding Generators.print_rendered
     (fun (content, finding, tier) ->
       in_files
-        [ ("a.md", content) ]
+        [ ("a.md", content); ("b.md", content) ]
         (fun source ->
           let styled =
             print ~renderer:`Ansi_tty (fun ppf ->
@@ -347,6 +437,12 @@ let tests =
     case "a mark stands under the display width before it"
       a_mark_stands_under_the_display_width_before_it;
     case "no line ends in a space" no_line_ends_in_a_space;
+    case "related places in the file share its snippet"
+      related_places_in_the_file_share_its_snippet;
+    case "related places in other files get their own blocks"
+      related_places_in_other_files_get_their_own_blocks;
+    case "a finding with no place shows its related places"
+      a_finding_with_no_place_shows_its_related_places;
     rendering_never_raises_and_prints_no_control_character;
     a_mark_starts_at_the_width_of_the_printed_text_before_it;
     styles_change_no_character;
