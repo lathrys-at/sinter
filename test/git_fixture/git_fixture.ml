@@ -240,6 +240,27 @@ let git_dir_state repo =
   in
   walk ""
 
+let is_command line =
+  let marker = "trace: built-in: git " in
+  let length = String.length marker in
+  let rec from index =
+    if index + length > String.length line then None
+    else if String.sub line index length = marker then
+      Some
+        (String.sub line (index + length) (String.length line - index - length))
+    else from (index + 1)
+  in
+  from 0
+
+let git_commands repo f =
+  let trace = Filename.temp_file "sinter-trace" ".txt" in
+  Fun.protect
+    ~finally:(fun () -> try Sys.remove trace with Sys_error _ -> ())
+    (fun () ->
+      f (Array.append (env repo) [| "GIT_TRACE=" ^ trace |]);
+      In_channel.with_open_bin trace In_channel.input_lines
+      |> List.filter_map is_command)
+
 type change =
   | File of string * string
   | Executable of string * string

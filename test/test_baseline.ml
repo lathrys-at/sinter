@@ -10,6 +10,10 @@ let property ?(count = 500) ~name ~print generator check =
 
 type op = Keep | Delete | Insert
 
+let diff_against t rev =
+  Result.bind (Git.read_base t rev) (fun base ->
+      Result.bind (Git.files t) (fun files -> Git.diff t ~files ~base))
+
 let run ~old_line ~line ~added ~removed : Git.hunk =
   {
     line;
@@ -297,7 +301,7 @@ let a_line_that_git_keeps_moves_to_its_text =
       with
       | Error _ -> false
       | Ok t -> (
-          match Git.diff t ~base:"HEAD" with
+          match diff_against t "HEAD" with
           | Error _ -> false
           | Ok changes ->
               let moves = Baseline.of_diff changes in

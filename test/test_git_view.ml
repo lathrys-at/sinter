@@ -19,8 +19,12 @@ let with_base files =
   ignore (Repo.git repo [ "commit"; "-q"; "-m"; "base" ]);
   repo
 
+let diff_against t rev =
+  Result.bind (Git.read_base t rev) (fun base ->
+      Result.bind (Git.files t) (fun files -> Git.diff t ~files ~base))
+
 let diff repo =
-  match Git.diff (opened repo) ~base:"HEAD" with
+  match diff_against (opened repo) "HEAD" with
   | Ok changes -> changes
   | Error _ -> Alcotest.fail "the diff fails"
 
@@ -230,7 +234,7 @@ let an_unmerged_path_is_compared_by_its_content () =
   Repo.write repo "f" "1\nM\n";
   commit "main";
   ignore (Repo.git_status repo [ "merge"; "-q"; "other" ]);
-  match Git.diff (opened repo) ~base:"main~1" with
+  match diff_against (opened repo) "main~1" with
   | Ok
       [
         ( "f",
@@ -258,7 +262,7 @@ let objects_in_an_alternate_of_the_environment_are_read () =
   match Git.open_repo ~env (Repo.root repo) with
   | Error _ -> Alcotest.fail "the repository does not open"
   | Ok t -> (
-      match Git.diff t ~base:"HEAD" with
+      match diff_against t "HEAD" with
       | Ok changes ->
           Alcotest.check strings "the change"
             [ show "a.txt" (Git.Modified (Git.Text [ hunk 1 1 2 1 1 1 ])) ]
@@ -298,7 +302,7 @@ let a_missing_object_of_a_partial_clone_is_an_error () =
   | Ok t ->
       Alcotest.(check bool)
         "the diff fails" true
-        (match Git.diff t ~base:"HEAD" with
+        (match diff_against t "HEAD" with
         | Error (Git.Command_failed _) -> true
         | Ok _ | Error _ -> false);
       Alcotest.(check bool)
@@ -309,6 +313,32 @@ let a_missing_object_of_a_partial_clone_is_an_error () =
       Alcotest.(check bool)
         "the clone still lacks the blob" true
         (missing origin clone blob)
+
+let a_missing_tree_gives_the_error_of_ls_tree_on_the_commit () =
+  let origin = with_base [ ("d/a.txt", "a\n") ] in
+  ignore (Repo.git origin [ "config"; "uploadpack.allowFilter"; "true" ]);
+  let clone = Filename.concat (Filename.dirname (Repo.root origin)) "trees" in
+  ignore
+    (Repo.git origin
+       [
+         "clone";
+         "-q";
+         "--filter=tree:0";
+         "--no-checkout";
+         "file://" ^ Repo.root origin;
+         clone;
+       ]);
+  let commit = String.trim (Repo.git origin [ "rev-parse"; "HEAD" ]) in
+  match Git.open_repo ~env:(Repo.env origin) clone with
+  | Error _ -> Alcotest.fail "the clone does not open"
+  | Ok t -> (
+      match Git.read_base t commit with
+      | Error (Git.Command_failed { args; _ }) ->
+          Alcotest.(check (list string))
+            "the arguments"
+            [ "-C"; Git.root t; "ls-tree"; "-r"; "-z"; "--full-tree"; commit ]
+            args
+      | Ok _ | Error _ -> Alcotest.fail "the read of the base does not fail")
 
 let rec snapshot root relative =
   let path = Filename.concat root relative in
@@ -511,6 +541,8 @@ let tests =
       configuration_does_not_change_the_hunks;
     case "a missing object of a partial clone is an error"
       a_missing_object_of_a_partial_clone_is_an_error;
+    case "a missing tree gives the error of ls-tree on the commit"
+      a_missing_tree_gives_the_error_of_ls_tree_on_the_commit;
     case "the tree key starts no file system monitor"
       the_tree_key_starts_no_file_system_monitor;
     case "the diff writes nothing under the git directory"

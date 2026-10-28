@@ -22,6 +22,8 @@ type t = {
   git : string;
   env : string array;
   format : object_format;
+  index : (string, error) result Lazy.t;
+  objects : (string, error) result Lazy.t;
 }
 
 let root t = t.root
@@ -698,15 +700,26 @@ let decoded args decode output =
     (fun detail -> Malformed_output { args; detail })
     (decode output)
 
-let run ?env ?input t args decode =
-  let args = "-C" :: t.root :: args in
-  let env = Option.value env ~default:t.env in
-  let* status, output, stderr = exec ~git:t.git ~env ?input args read_all in
+let run_in ~git ~env ~root ?input args decode =
+  let args = "-C" :: root :: args in
+  let* status, output, stderr = exec ~git ~env ?input args read_all in
   match status with
   | Unix.WEXITED 0 ->
       let* output = output in
       decoded args decode output
   | _ -> failed args status stderr
+
+let run ?env ?input t args decode =
+  run_in ~git:t.git
+    ~env:(Option.value env ~default:t.env)
+    ~root:t.root ?input args decode
+
+let git_path ~git ~env ~root name =
+  lazy
+    (let* path =
+       run_in ~git ~env ~root [ "rev-parse"; "--git-path"; name ] Decode.line
+     in
+     Ok (if Filename.is_relative path then Filename.concat root path else path))
 
 let open_repo ~env dir =
   let* git = find_git env in
@@ -725,7 +738,15 @@ let open_repo ~env dir =
     | Unix.WEXITED 0 ->
         let* output = output in
         let* format, root = decoded args Decode.repository output in
-        Ok { root; git; env; format }
+        Ok
+          {
+            root;
+            git;
+            env;
+            format;
+            index = git_path ~git ~env ~root "index";
+            objects = git_path ~git ~env ~root "objects";
+          }
     | _ -> Error (Not_a_repository { dir; detail = stderr })
 
 let answer t args decode =
@@ -768,7 +789,9 @@ let is_regular_file t path =
 let view_options =
   [ "-c"; "core.fsmonitor=false"; "-c"; "core.splitIndex=false" ]
 
-let file_set t =
+type file_set = { set_root : string; entries : entry list }
+
+let read_entries t =
   let* staged =
     run t
       (view_options @ [ "ls-files"; "-z"; "--cached"; "-s" ])
@@ -805,7 +828,10 @@ let file_set t =
   in
   Ok (List.sort_uniq (fun a b -> String.compare a.path b.path) kept)
 
-let files t = Result.map (List.map (fun entry -> entry.path)) (file_set t)
+let files t =
+  Result.map (fun entries -> { set_root = t.root; entries }) (read_entries t)
+
+let paths set = List.map (fun entry -> entry.path) set.entries
 
 type source = Upstream | Local_branch | Origin_branch
 type default_branch = { source : source; refname : string; commit : string }
@@ -884,18 +910,31 @@ let base_tree_of_commit t commit =
   in
   Ok (List.sort_uniq (fun (a, _) (b, _) -> String.compare a b) files)
 
-let base_tree t rev =
-  let* commit = commit_of t rev in
-  base_tree_of_commit t commit
+type base = {
+  base_root : string;
+  object_id : string;
+  tree : (string * string) list;
+}
 
 let id_length t = match t.format with Sha1 -> 40 | Sha256 -> 64
+let is_id t text = Decode.is_object_id text && String.length text = id_length t
+
+let read_base t rev =
+  let resolved () =
+    let* commit = commit_of t rev in
+    let* tree = base_tree_of_commit t commit in
+    Ok { base_root = t.root; object_id = commit; tree }
+  in
+  if is_id t rev then
+    match base_tree_of_commit t (rev ^ "^{commit}") with
+    | Ok tree -> Ok { base_root = t.root; object_id = rev; tree }
+    | Error _ -> resolved ()
+  else resolved ()
+
+let base_files base = base.tree
 
 let fold_blobs t ids ~init ~f =
-  match
-    List.find_opt
-      (fun id -> not (Decode.is_object_id id && String.length id = id_length t))
-      ids
-  with
+  match List.find_opt (fun id -> not (is_id t id)) ids with
   | Some id -> Error (Bad_revision id)
   | None -> (
       let args = [ "-C"; t.root; "cat-file"; "--batch" ] in
@@ -974,10 +1013,6 @@ let copy_index ~index ~copy =
     remove_quietly copy;
     Ok ())
 
-let git_path t name =
-  let* path = run t [ "rev-parse"; "--git-path"; name ] Decode.line in
-  Ok (if Filename.is_relative path then Filename.concat t.root path else path)
-
 let with_variables env variables =
   let names = List.map fst variables in
   Array.append
@@ -999,7 +1034,7 @@ let variable env name =
       else None)
 
 let with_index_copy t f =
-  let* index = git_path t "index" in
+  let* index = Lazy.force t.index in
   with_temp_file ".index" (fun copy ->
       Fun.protect
         ~finally:(fun () -> remove_quietly (copy ^ ".lock"))
@@ -1052,7 +1087,7 @@ let clear_flag t ~env flag paths =
       |> Result.map ignore
 
 let with_store t f =
-  let* objects = git_path t "objects" in
+  let* objects = Lazy.force t.objects in
   with_temp_dir (fun dir ->
       let store = Filename.concat dir "objects" in
       match Unix.mkdir store 0o700 with
@@ -1122,10 +1157,14 @@ let content_of side sections =
   | None -> (
       match sections with (_, content) :: _ -> content | [] -> Text [])
 
-let diff t ~base =
-  let* commit = commit_of t base in
-  let* old_files = base_tree_of_commit t commit in
-  let* new_files = file_set t in
+let diff t ~files ~base =
+  if not (String.equal files.set_root t.root) then
+    invalid_arg "Git.diff: the file set is of another repository";
+  if not (String.equal base.base_root t.root) then
+    invalid_arg "Git.diff: the base is of another repository";
+  let commit = base.object_id
+  and old_files = base.tree
+  and new_files = files.entries in
   let old_files =
     List.filter (fun (path, _) -> Sinter_bridge.Utf_8.is_valid path) old_files
   and new_files =

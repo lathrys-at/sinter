@@ -101,6 +101,12 @@ val git_dir_state : t -> string list
     time. Two equal states mean that no file under [.git] was made, removed, or
     written, and that no time outside [.git/objects] changed. *)
 
+val git_commands : t -> (string array -> unit) -> string list
+(** [git_commands repo f] calls [f env], where [env] is {!env} with the variable
+    [GIT_TRACE], and gives each git command that ran under [env] while [f] ran,
+    in order: the text that git traces after [git ], with its arguments quoted
+    as git quotes them. *)
+
 (** {1 History}
 
     A history is a [git fast-import] stream, made from the commands below. One

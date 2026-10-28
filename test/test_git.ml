@@ -40,6 +40,8 @@ let error = function
   | Error error -> error
 
 let strings = Alcotest.(list string)
+let file_paths t = Result.map Git.paths (Git.files t)
+let base_tree t rev = Result.map Git.base_files (Git.read_base t rev)
 let pairs = Alcotest.(list (pair string string))
 let hex_digit = Gen.oneof_list (String.to_seq "0123456789abcdef" |> List.of_seq)
 
@@ -356,7 +358,7 @@ let file_set =
     (let repo = Lazy.force shared in
      let t = Lazy.force opened in
      let before = Repo.index_state repo in
-     let files = ok (Git.files t) in
+     let files = ok (file_paths t) in
      (files, before, Repo.index_state repo))
 
 let files () =
@@ -623,7 +625,7 @@ let files_ignores_the_variables_of_the_caller_that_redirect_git () =
          ~env:(Array.append (Repo.env repo) caller_variables)
          (Repo.root repo))
   in
-  Alcotest.check strings "the file set" expected_files (ok (Git.files t))
+  Alcotest.check strings "the file set" expected_files (ok (file_paths t))
 
 let conflicted =
   lazy
@@ -641,7 +643,7 @@ let conflicted =
 
 let files_names_a_conflicted_path_once () =
   let _, t = Lazy.force conflicted in
-  let files = ok (Git.files t) in
+  let files = ok (file_paths t) in
   Alcotest.(check int)
     "the number of conflict.txt" 1
     (List.length (List.filter (String.equal "conflict.txt") files))
@@ -653,7 +655,7 @@ let files_reports_a_path_whose_type_it_cannot_read () =
   let result =
     Fun.protect
       ~finally:(fun () -> Unix.chmod src 0o755)
-      (fun () -> Git.files t)
+      (fun () -> file_paths t)
   in
   match error result with
   | File_error detail ->
@@ -667,7 +669,7 @@ let files_reports_output_it_cannot_read () =
       holds "the arguments name ls-files" (List.mem "ls-files" args)
   | other -> Alcotest.fail (print_error other)
 
-let base = lazy (ok (Git.base_tree (Lazy.force opened) "main"))
+let base = lazy (ok (base_tree (Lazy.force opened) "main"))
 
 let contents_of_main =
   [
@@ -701,7 +703,7 @@ let base_tree_gives_the_blob_of_each_file () =
     (List.assoc "README.md" (Lazy.force base))
 
 let base_tree_refuses rev () =
-  match error (Git.base_tree (Lazy.force opened) rev) with
+  match error (base_tree (Lazy.force opened) rev) with
   | Bad_revision named -> Alcotest.(check string) "the revision" rev named
   | other -> Alcotest.fail (print_error other)
 
@@ -906,6 +908,56 @@ let reports_a_failed_git call () =
       holds "git said why" (stderr <> "")
   | other -> Alcotest.fail (print_error other)
 
+let tagged =
+  lazy
+    (let repo = Repo.init () in
+     Repo.import repo
+       [
+         Repo.commit ~ref:"refs/heads/main" ~mark:1 ~message:"first"
+           [ Repo.File ("a.txt", "a\n") ];
+       ];
+     ignore (Repo.git repo [ "tag"; "-a"; "-m"; "c"; "on-commit"; "main" ]);
+     ignore (Repo.git repo [ "tag"; "-a"; "-m"; "t"; "on-tree"; "main^{tree}" ]);
+     let id rev = String.trim (Repo.git repo [ "rev-parse"; rev ]) in
+     (repo, ok (Git.open_repo ~env:(Repo.env repo) (Repo.root repo)), id))
+
+let files_of_main =
+  lazy
+    (let _, t, _ = Lazy.force tagged in
+     ok (base_tree t "main"))
+
+let read_base_of_an_id_gives_the_files rev () =
+  let _, t, id = Lazy.force tagged in
+  Alcotest.check pairs "the files" (Lazy.force files_of_main)
+    (ok (base_tree t (id rev)))
+
+let read_base_refuses_the_id rev () =
+  let _, t, id = Lazy.force tagged in
+  let named = id rev in
+  match error (Git.read_base t named) with
+  | Bad_revision bad -> Alcotest.(check string) "the id" named bad
+  | other -> Alcotest.fail (print_error other)
+
+let read_base_of_a_commit_id_runs_one_git_command () =
+  let repo, _, id = Lazy.force tagged in
+  let commands =
+    Repo.git_commands repo (fun env ->
+        let t = ok (Git.open_repo ~env (Repo.root repo)) in
+        ignore (ok (Git.read_base t (id "main"))))
+  in
+  Alcotest.(check int)
+    "the git commands of open_repo and read_base" 2 (List.length commands)
+
+let diff_refuses name f () =
+  let repo, t, _ = Lazy.force tagged in
+  let other =
+    ok (Git.open_repo ~env:(Repo.env repo) (Repo.root (Repo.copy repo)))
+  in
+  let files, base = f t other in
+  Alcotest.check_raises "the call"
+    (Invalid_argument ("Git.diff: the " ^ name ^ " is of another repository"))
+    (fun () -> ignore (Git.diff t ~files ~base))
+
 let sha256 =
   lazy
     (let repo = Repo.init ~object_format:"sha256" () in
@@ -929,7 +981,7 @@ let sha256_repository_has_the_sha256_format () =
 
 let sha256_base_tree_gives_ids_of_64_digits () =
   let _, t = Lazy.force sha256 in
-  let base = ok (Git.base_tree t "main") in
+  let base = ok (base_tree t "main") in
   Alcotest.check strings "the paths" [ "README.md" ] (List.map fst base);
   let id = List.assoc "README.md" base in
   Alcotest.(check int) "the length of the blob id" 64 (String.length id);
@@ -984,7 +1036,7 @@ let raising_run =
                 [ id_of '2' ]
                 ~init:()
                 ~f:(fun () _ _ -> ()));
-           ignore (Git.base_tree t too_long);
+           ignore (base_tree t too_long);
            match
              Git.fold_blobs t [ hello_id ] ~init:() ~f:(fun () _ _ ->
                  raise Exit)
@@ -1011,7 +1063,7 @@ let no_call_leaves_a_child () =
   holds "no child is left" no_child
 
 let base_tree_reports_a_git_that_does_not_start () =
-  match error (Git.base_tree (Lazy.force opened) too_long) with
+  match error (base_tree (Lazy.force opened) too_long) with
   | Git_not_found _ -> ()
   | other -> Alcotest.fail (print_error other)
 
@@ -1177,20 +1229,37 @@ let tests =
         files_reports_a_path_whose_type_it_cannot_read;
       quick "files reports output it cannot read"
         files_reports_output_it_cannot_read;
-      quick "base_tree holds the files of the commit"
+      quick "read_base holds the files of the commit"
         base_tree_holds_the_files_of_the_commit;
-      quick "base_tree gives the blob of each file"
+      quick "read_base gives the blob of each file"
         base_tree_gives_the_blob_of_each_file;
-      quick "base_tree refuses an unknown name"
+      quick "read_base refuses an unknown name"
         (base_tree_refuses "no-such-branch");
-      quick "base_tree refuses a name that starts with a hyphen"
+      quick "read_base refuses a name that starts with a hyphen"
         (base_tree_refuses "-main");
-      quick "base_tree refuses an empty name" (base_tree_refuses "");
-      quick "base_tree refuses an unknown name of one letter"
+      quick "read_base refuses an empty name" (base_tree_refuses "");
+      quick "read_base refuses an unknown name of one letter"
         (base_tree_refuses "x");
-      quick "base_tree refuses a name with a NUL byte"
+      quick "read_base refuses a name with a NUL byte"
         (base_tree_refuses "main\000x");
-      quick "base_tree refuses the id of a blob" (base_tree_refuses hello_id);
+      quick "read_base refuses the id of a blob" (base_tree_refuses hello_id);
+      quick "read_base of the id of a commit gives its files"
+        (read_base_of_an_id_gives_the_files "main");
+      quick
+        "read_base of the id of a tag of a commit gives the files of the commit"
+        (read_base_of_an_id_gives_the_files "on-commit");
+      quick "read_base refuses the id of a tree"
+        (read_base_refuses_the_id "main^{tree}");
+      quick "read_base refuses the id of a tag of a tree"
+        (read_base_refuses_the_id "on-tree");
+      quick "read_base of the id of a commit runs one git command"
+        read_base_of_a_commit_id_runs_one_git_command;
+      quick "diff refuses a file set of another repository"
+        (diff_refuses "file set" (fun t other ->
+             (ok (Git.files other), ok (Git.read_base t "main"))));
+      quick "diff refuses a base of another repository"
+        (diff_refuses "base" (fun t other ->
+             (ok (Git.files t), ok (Git.read_base other "main"))));
       quick "fold_blobs reads the content of each blob"
         fold_blobs_reads_the_content_of_each_blob;
       quick "fold_blobs calls f in the order of the ids"
@@ -1238,12 +1307,12 @@ let tests =
       quick "tree_key removes its files when git fails"
         tree_key_removes_its_files_when_git_fails;
       quick "files reports a failed git" (reports_a_failed_git Git.files);
-      quick "base_tree reports a failed git"
-        (reports_a_failed_git (fun t -> Git.base_tree t "main"));
+      quick "read_base reports a failed git"
+        (reports_a_failed_git (fun t -> base_tree t "main"));
       quick "tree_key reports a failed git" (reports_a_failed_git Git.tree_key);
       quick "a SHA-256 repository has the SHA-256 format"
         sha256_repository_has_the_sha256_format;
-      quick "base_tree gives ids of 64 digits in a SHA-256 repository"
+      quick "read_base gives ids of 64 digits in a SHA-256 repository"
         sha256_base_tree_gives_ids_of_64_digits;
       quick "tree_key of a repository with no index is the empty tree"
         tree_key_of_a_repository_with_no_index_is_the_empty_tree;
@@ -1256,7 +1325,7 @@ let tests =
       quick "no call leaves a temporary file" no_call_leaves_a_temporary_file;
       quick "no call leaves a descriptor open" no_call_leaves_a_descriptor_open;
       quick "no call leaves a child" no_call_leaves_a_child;
-      quick "base_tree reports a git that does not start"
+      quick "read_base reports a git that does not start"
         base_tree_reports_a_git_that_does_not_start;
       quick "fold_blobs ends git when f raises"
         fold_blobs_ends_git_when_f_raises;
