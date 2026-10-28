@@ -168,7 +168,7 @@ let help_messages_are_fixed () =
   Alcotest.(check (list string))
     "the messages"
     [
-      "replace the tag word with the nearest tag word of sinter";
+      "replace the tag word with the nearest tag word that Sinter knows";
       "pin the citation to the revision of the declaration";
       "check that the citation still holds, then pin it to the current revision";
       "raise the revision above every revision in the base";

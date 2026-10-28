@@ -108,7 +108,7 @@ let alternatives = function
       ]
 
 let help = function
-  | Word _ -> "replace the tag word with the nearest tag word of sinter"
+  | Word _ -> "replace the tag word with the nearest tag word that Sinter knows"
   | Pin { tag = { Markdown.rev = None; _ }; _ } ->
       "pin the citation to the revision of the declaration"
   | Pin { tag = { Markdown.rev = Some _; _ }; _ } ->
