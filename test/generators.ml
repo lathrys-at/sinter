@@ -1217,13 +1217,30 @@ let rendered_finding =
     match place with Some place -> rendered_mark place | None -> return None
   in
   let* related = rendered_related in
+  let* fix =
+    match place with
+    | None -> return None
+    | Some _ ->
+        oneof_list
+          [
+            None;
+            Some (fun () -> Edits.word_fix "req");
+            Some (fun () -> Fix.pin (Edits.tag "@cites a v1\n") 2);
+            Some (fun () -> Fix.pin (Edits.tag "@cites \xe6\x97\xa5\n") 2);
+            Some
+              (fun () ->
+                Fix.ack (Edits.document "@cites a\r\n") ~block:0 ~target:"a");
+          ]
+  in
   return
     ( content,
       Finding.make finding_class
         (Finding.Line { path = "a.md"; line = 1 })
         ?place
         ?detail:(Option.bind detail (fun d -> if d = "" then None else Some d))
-        ?mark ~related (),
+        ?mark ~related
+        ?fix:(Option.map (fun make -> make ()) fix)
+        (),
       tier )
 
 let print_place ({ path; span } : Finding.place) =
@@ -1232,7 +1249,8 @@ let print_place ({ path; span } : Finding.place) =
 
 let print_rendered (content, (finding : Finding.t), tier) =
   Printf.sprintf
-    "content %S, tier %s, place %s, mark %s, detail %s, related [%s]" content
+    "content %S, tier %s, place %s, mark %s, detail %s, related [%s], fix %s"
+    content
     (Option.fold ~none:"none" ~some:Finding_class.tier_name tier)
     (Option.fold ~none:"none" ~some:print_place finding.place)
     (Option.fold ~none:"none"
@@ -1246,3 +1264,32 @@ let print_rendered (content, (finding : Finding.t), tier) =
             Printf.sprintf "%S %s" label
               (Option.fold ~none:"none" ~some:print_place place))
           finding.related))
+    (Option.fold ~none:"none" ~some:Fix.text finding.fix)
+
+let tag_block =
+  let open Gen in
+  let* prefix = oneof_list [ ""; "  "; "- " ] in
+  let* target = oneof_list [ "a"; "ab-c" ] in
+  let* rev = oneof_list [ ""; " v1" ] in
+  let* description =
+    oneof_list [ ""; " Why \xf0\x9f\xa6\x80."; "\t\xe6\x97\xa5" ]
+  in
+  let* ending = oneof_list [ "\n"; "\r\n" ] in
+  let* last = oneof_list [ true; false ] in
+  let next = if String.equal prefix "- " then "  " else prefix in
+  return
+    (String.concat ""
+       [
+         "# A";
+         ending;
+         ending;
+         prefix;
+         "@cites ";
+         target;
+         rev;
+         description;
+         ending;
+         next;
+         "@cites b v1";
+         (if last then ending else "");
+       ])

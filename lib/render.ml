@@ -181,6 +181,177 @@ let note ppf width label =
     Fmt.string ppf label);
   newline ppf
 
+type diff =
+  | Added of { anchor : int; lines : string list }
+  | Inserted of { anchor : int; line : string; marks : (int * int) list }
+  | Replaced of { anchor : int; old : string; lines : string list }
+
+let offset raw column =
+  let rec walk offset column =
+    if column <= 1 then Some offset
+    else if offset >= String.length raw then None
+    else
+      walk
+        (offset + Uchar.utf_decode_length (String.get_utf_8_uchar raw offset))
+        (column - 1)
+  in
+  walk 0 column
+
+let rec lines_of_pieces = function
+  | [] -> []
+  | [ last ] -> [ last ]
+  | piece :: rest ->
+      (if String.ends_with ~suffix:"\r" piece then
+         String.sub piece 0 (String.length piece - 1)
+       else piece)
+      :: lines_of_pieces rest
+
+let lines_of text = lines_of_pieces (String.split_on_char '\n' text)
+
+let rec placed raw = function
+  | [] -> Some []
+  | (edit : Fix.edit) :: rest -> (
+      match (offset raw edit.col, offset raw edit.ecol, placed raw rest) with
+      | Some start, Some stop, Some others when start <= stop ->
+          Some ((start, stop, edit) :: others)
+      | _ -> None)
+
+let applied raw edits =
+  let buffer = Buffer.create (String.length raw + 32) in
+  let stop, inserted =
+    List.fold_left
+      (fun (position, inserted) (start, stop, (edit : Fix.edit)) ->
+        Buffer.add_substring buffer raw position (start - position);
+        let at = Buffer.length buffer in
+        Buffer.add_string buffer edit.text;
+        (stop, (at, edit.text) :: inserted))
+      (0, []) edits
+  in
+  Buffer.add_substring buffer raw stop (String.length raw - stop);
+  (Buffer.contents buffer, List.rev inserted)
+
+let rec ordered = function
+  | (_, stop, _) :: ((start, _, _) :: _ as rest) ->
+      stop <= start && ordered rest
+  | [ _ ] | [] -> true
+
+let insertions line inserted =
+  List.map
+    (fun (at, text) ->
+      (Display.width (String.sub line 0 at), max 1 (Display.width text)))
+    inserted
+
+let diff source path = function
+  | [] -> None
+  | (first : Fix.edit) :: _ as edits ->
+      let anchor = first.line in
+      if
+        List.exists
+          (fun (edit : Fix.edit) -> edit.line <> anchor || edit.eline <> anchor)
+          edits
+      then None
+      else
+        Option.bind (Source.line source path anchor) (fun raw ->
+            Option.bind (placed raw edits) (fun edits ->
+                let edits =
+                  List.stable_sort
+                    (fun (a, _, _) (b, _, _) -> Int.compare a b)
+                    edits
+                in
+                if not (ordered edits) then None
+                else
+                  let text, inserted = applied raw edits in
+                  match lines_of text with
+                  | first :: (_ :: _ as lines) when String.equal first raw ->
+                      Some (Added { anchor; lines })
+                  | [ line ]
+                    when List.for_all
+                           (fun (start, stop, _) -> start = stop)
+                           edits ->
+                      Some
+                        (Inserted
+                           { anchor; line; marks = insertions line inserted })
+                  | lines -> Some (Replaced { anchor; old = raw; lines })))
+
+let diffs source (finding : Finding.t) =
+  match (finding.fix, finding.place) with
+  | Some fix, Some { path; _ } ->
+      let rec all = function
+        | [] -> Some []
+        | edits :: rest ->
+            Option.bind (diff source path edits) (fun diff ->
+                Option.map (fun diffs -> diff :: diffs) (all rest))
+      in
+      Some (fix, all (Fix.alternatives fix))
+  | Some _, None | None, _ -> None
+
+let last_number = function
+  | Added { anchor; lines } -> anchor + List.length lines
+  | Inserted { anchor; _ } -> anchor
+  | Replaced { anchor; lines; _ } -> anchor + List.length lines - 1
+
+let signed ppf width number sign style text =
+  Style.string Style.Frame ppf (Printf.sprintf "%*d " width number);
+  Style.string style ppf sign;
+  let text = shown text in
+  if text <> "" then (
+    Fmt.string ppf " ";
+    Style.string style ppf text);
+  newline ppf
+
+let diff_rows ppf width = function
+  | Added { anchor; lines } ->
+      List.iteri
+        (fun index line ->
+          signed ppf width (anchor + 1 + index) "+" Style.Inserted line)
+        lines
+  | Inserted { anchor; line; marks } ->
+      source_row ppf width
+        { number = anchor; text = shown line; marks = []; continues = false };
+      spaces ppf (width + 1);
+      Style.string Style.Frame ppf "|";
+      Fmt.string ppf " ";
+      ignore
+        (List.fold_left
+           (fun column (start, size) ->
+             spaces ppf (start - column);
+             Style.string Style.Inserted ppf (String.make size '+');
+             start + size)
+           0 marks);
+      newline ppf
+  | Replaced { anchor; old; lines } ->
+      signed ppf width anchor "-" Style.Removed old;
+      List.iteri
+        (fun index line ->
+          signed ppf width (anchor + index) "+" Style.Inserted line)
+        lines
+
+let help ppf fix =
+  Style.string Style.Help ppf "help:";
+  let text = shown (Fix.help fix) in
+  if text <> "" then (
+    Fmt.string ppf " ";
+    Fmt.string ppf text);
+  newline ppf
+
+let fix_lines ppf width = function
+  | None -> ()
+  | Some (fix, Some diffs) ->
+      help ppf fix;
+      List.iter
+        (fun diff ->
+          empty_gutter ppf width;
+          diff_rows ppf width diff)
+        diffs;
+      empty_gutter ppf width
+  | Some (fix, None) ->
+      help ppf fix;
+      Fmt.string ppf "  ";
+      Style.string Style.Help ppf "fix:";
+      Fmt.string ppf " ";
+      Fmt.string ppf (shown (Fix.text fix));
+      newline ppf
+
 let full ppf source ~tier (finding : Finding.t) =
   let here =
     Option.map (fun ({ path; _ } : Finding.place) -> path) finding.place
@@ -214,11 +385,15 @@ let full ppf source ~tier (finding : Finding.t) =
                group.places) ))
       (groups elsewhere)
   in
+  let fix = diffs source finding in
   let width =
     digits
       (List.fold_left
-         (fun top (_, rows) -> max top (top_number rows))
-         (top_number main) blocks)
+         (fun top diff -> max top (last_number diff))
+         (List.fold_left
+            (fun top (_, rows) -> max top (top_number rows))
+            (top_number main) blocks)
+         (match fix with Some (_, Some diffs) -> diffs | _ -> []))
   in
   headline ppf ~tier finding;
   Option.iter (location ppf width "-->") finding.place;
@@ -228,4 +403,5 @@ let full ppf source ~tier (finding : Finding.t) =
       location ppf width ":::" first;
       snippet ppf width rows)
     blocks;
-  List.iter (note ppf width) notes
+  List.iter (note ppf width) notes;
+  fix_lines ppf width fix

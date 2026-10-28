@@ -82,7 +82,9 @@ val alternatives : t -> edit list list
 (** [alternatives fix] is the alternatives of [fix], each a list of edits: one
     alternative, or one for each successor of {!successors}, in their order. The
     edits of one alternative are sorted by their spans, do not overlap, and are
-    never none. An edit covers only the part of the tag line that changes:
+    never none. Each edit of one alternative starts and stops on one line, the
+    line of the first edit of the alternative. An edit covers only the part of
+    the tag line that changes:
 
     - {!word}: the tag word, with [@] and the word.
     - {!pin} and {!bump}: the revision of the tag, with [v] and the revision;

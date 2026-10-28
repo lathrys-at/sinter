@@ -48,6 +48,14 @@ val print_rendered :
   QCheck2.Print.t
 (** [print_rendered] prints a value of {!rendered_finding}. *)
 
+val tag_block : string QCheck2.Gen.t
+(** The text of a markdown file: a heading, and a block of two citations. The
+    first cites [a] or [ab-c], with or without [v1], and with or without a
+    description with wide characters or a tab; the second is [@cites b v1]. The
+    block stands at the start of the line, indented, or in a list item. The
+    lines end with LF or with CRLF, and the last line has a line ending or none.
+*)
+
 (** {1 Records} *)
 
 val jsonl_int : int QCheck2.Gen.t

@@ -32,6 +32,26 @@ val full :
       of the places of the run.
     + For each related place in no file: [W + 1] spaces, [= note: ], and its
       label.
+    + With a fix, the line [help: ] and {!Fix.help} of the fix, at column 0.
+      Then, when each alternative of {!Fix.alternatives} has a diff, the diff of
+      each alternative after an empty gutter line, and an empty gutter line
+      after the last. Otherwise the line [  fix: ] and {!Fix.text} of the fix.
+
+    The diff of one alternative takes the line of its first edit, the anchor
+    line, applies the edits to it, and splits the result at its line endings. An
+    alternative has no diff when {!Source.line} does not give the anchor line,
+    when an edit starts or stops on another line, when a column of an edit falls
+    after the column past the last character of the line, or when two edits
+    overlap. The lines of the diff, with each number right-aligned in [W]:
+
+    - when the first line of the result is the anchor line, each further line as
+      an inserted line: its number from the anchor line plus 1, [ + ], and its
+      text;
+    - otherwise, when every edit has an empty span and the result is one line:
+      [N | ] and the new line, then [W + 1] spaces, [| ], and [+] under each
+      column of the inserted text;
+    - otherwise: [N - ] and the anchor line, then [N + ] and each line of the
+      result, numbered from [N].
 
     A snippet holds the first line of each of its places that {!Source.line}
     gives and whose mark falls inside that line; with no such line, the snippet

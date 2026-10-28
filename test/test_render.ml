@@ -306,6 +306,269 @@ let a_finding_with_no_place_shows_its_related_places () =
           ~related:[ related "part of the cycle" (1, 1) (1, 7) ]
           ()))
 
+let fixed ?(path = "a.md") text ?(index = 0) fix =
+  let tag = (Edits.document text).tags.(index) in
+  Finding.make Finding_class.Suspect subject ~detail:"d"
+    ~place:{ Finding.path; span = tag.span }
+    ~fix:(fix (Edits.document text) tag)
+    ()
+
+let a_replacement_shows_the_old_and_the_new_line () =
+  let text = "# A\n\n@cites x v1\n" in
+  check_lines "the block"
+    [
+      "suspect: d";
+      " --> a.md:3:1";
+      "  |";
+      "3 | @cites x v1";
+      "  | ^^^^^^^^^^^";
+      "  |";
+      "help: check that the citation still holds, then pin it to the current \
+       revision";
+      "  |";
+      "3 - @cites x v1";
+      "3 + @cites x v2";
+      "  |";
+      "";
+    ]
+    (full ~files:[ ("a.md", text) ] (fixed text (fun _ tag -> Fix.pin tag 2)))
+
+let an_insertion_marks_the_inserted_columns () =
+  let text = "# A\n\n@satisfies \xe6\x97\xa5\xe6\x9c\xac\n" in
+  check_lines "the block"
+    [
+      "suspect: d";
+      " --> a.md:3:1";
+      "  |";
+      "3 | @satisfies \xe6\x97\xa5\xe6\x9c\xac";
+      "  | ^^^^^^^^^^^^^^^";
+      "  |";
+      "help: pin the citation to the revision of the declaration";
+      "  |";
+      "3 | @satisfies \xe6\x97\xa5\xe6\x9c\xac v1";
+      "  |                +++";
+      "  |";
+      "";
+    ]
+    (full ~files:[ ("a.md", text) ] (fixed text (fun _ tag -> Fix.pin tag 1)))
+
+let an_ack_shows_an_inserted_line () =
+  let text = "# A\n\n@cites x\n@cites y\n" in
+  let hash = String.sub (Edits.document text).blocks.(0).hash 0 8 in
+  check_lines "the block"
+    [
+      "suspect: d";
+      " --> a.md:3:1";
+      "  |";
+      "3 | @cites x";
+      "  | ^^^^^^^^";
+      "  |";
+      "help: if the citation still holds, accept the finding with an @ack line";
+      "  |";
+      "5 + @ack retired x " ^ hash;
+      "  |";
+      "";
+    ]
+    (full
+       ~files:[ ("a.md", text) ]
+       (fixed text (fun document _ -> Fix.ack document ~block:0 ~target:"x")))
+
+let each_alternative_gets_a_diff () =
+  let text = "# A\n\n@cites x v1\n" in
+  check_lines "the block"
+    [
+      "suspect: d";
+      " --> a.md:3:1";
+      "  |";
+      "3 | @cites x v1";
+      "  | ^^^^^^^^^^^";
+      "  |";
+      "help: cite one of the successors in place of the retired item";
+      "  |";
+      "3 - @cites x v1";
+      "3 + @cites b v2";
+      "  |";
+      "3 - @cites x v1";
+      "3 + @cites c v1";
+      "  |";
+      "";
+    ]
+    (full
+       ~files:[ ("a.md", text) ]
+       (fixed text (fun _ tag -> Fix.successors tag ("b", 2) [ ("c", 1) ])))
+
+let a_fix_without_its_line_shows_its_text () =
+  let text = "# A\n\n@cites x v1\n" in
+  check_lines "the block of a file that changed"
+    [
+      "suspect: d";
+      " --> a.md:3:1";
+      "help: check that the citation still holds, then pin it to the current \
+       revision";
+      "  fix: @cites x v2";
+      "";
+    ]
+    (full
+       ~files:[ ("a.md", "# A\n") ]
+       (fixed text (fun _ tag -> Fix.pin tag 2)))
+
+let fixes_of text =
+  let document = Edits.document text in
+  let tag = document.tags.(0) in
+  [
+    Fix.word tag "req";
+    Fix.pin tag 2;
+    Fix.bump tag 2;
+    Fix.spelling tag "b";
+    Fix.rename tag "b" 2;
+    Fix.successors tag ("b", 2) [ ("c", 1) ];
+    Fix.plan_id tag (Plan_target.derive ~base:"" ~path:"");
+    Fix.ack document ~block:0 ~target:"a";
+  ]
+
+let lines_of text =
+  List.map
+    (fun line ->
+      if String.ends_with ~suffix:"\r" line then
+        String.sub line 0 (String.length line - 1)
+      else line)
+    (String.split_on_char '\n' text)
+
+let printed text =
+  let cleaned = Display.clean text in
+  let rec stop n = if n > 0 && cleaned.[n - 1] = ' ' then stop (n - 1) else n in
+  String.sub cleaned 0 (stop (String.length cleaned))
+
+let rec sections = function
+  | [] -> []
+  | "  |" :: rest -> (
+      let rec take taken = function
+        | line :: rest when not (String.equal line "  |") ->
+            take (line :: taken) rest
+        | rest -> (List.rev taken, rest)
+      in
+      match take [] rest with
+      | [], rest | _, ([] as rest) -> sections rest
+      | section, rest -> section :: sections rest)
+  | _ :: rest -> sections rest
+
+let new_line row =
+  if String.length row = 0 || row.[0] < '0' || row.[0] > '9' then None
+  else if
+    String.length row >= 4
+    && (String.sub row 1 3 = " + " || String.sub row 1 3 = " | ")
+  then Some (String.sub row 4 (String.length row - 4))
+  else if
+    String.length row = 3
+    && (String.sub row 1 2 = " +" || String.sub row 1 2 = " |")
+  then Some ""
+  else None
+
+let a_diff_shows_the_line_with_the_edits_applied =
+  property "a diff shows the line with the edits of each alternative applied"
+    Generators.tag_block String.escaped (fun text ->
+      let tag = (Edits.document text).tags.(0) in
+      List.for_all
+        (fun fix ->
+          let finding =
+            Finding.make Finding_class.Suspect subject
+              ~place:{ Finding.path = "a.md"; span = tag.span }
+              ~fix ()
+          in
+          let block = full ~files:[ ("a.md", text) ] finding in
+          let after_help =
+            let rec drop = function
+              | line :: rest when String.starts_with ~prefix:"help:" line ->
+                  rest
+              | _ :: rest -> drop rest
+              | [] -> []
+            in
+            drop (lines block)
+          in
+          let shown_alternatives =
+            List.map (List.filter_map new_line) (sections after_help)
+          in
+          let expected =
+            List.map
+              (fun (edits : Fix.edit list) ->
+                let first = List.hd edits in
+                let extra =
+                  List.fold_left
+                    (fun count (edit : Fix.edit) ->
+                      count
+                      + List.length (String.split_on_char '\n' edit.text)
+                      - 1)
+                    0 edits
+                in
+                let applied =
+                  Array.of_list (lines_of (Edits.apply text edits))
+                in
+                let anchor = (Array.of_list (lines_of text)).(first.line - 1) in
+                let fresh =
+                  List.init (extra + 1) (fun k -> applied.(first.line - 1 + k))
+                in
+                List.map printed
+                  (match fresh with
+                  | first :: (_ :: _ as rest) when String.equal first anchor ->
+                      rest
+                  | lines -> lines))
+              (Fix.alternatives fix)
+          in
+          let shown_marks =
+            List.map
+              (List.filter (String.starts_with ~prefix:"  | "))
+              (sections after_help)
+          in
+          let expected_marks =
+            List.map
+              (fun (edits : Fix.edit list) ->
+                let first = List.hd edits in
+                let inserts =
+                  List.for_all
+                    (fun (edit : Fix.edit) ->
+                      edit.col = edit.ecol
+                      && not (String.contains edit.text '\n'))
+                    edits
+                in
+                if not inserts then []
+                else
+                  let line =
+                    (Array.of_list (lines_of (Edits.apply text edits))).(first
+                                                                           .line
+                                                                         - 1)
+                  in
+                  let prefix count =
+                    let rec walk offset count =
+                      if count <= 0 || offset >= String.length line then offset
+                      else
+                        walk
+                          (offset
+                          + Uchar.utf_decode_length
+                              (String.get_utf_8_uchar line offset))
+                          (count - 1)
+                    in
+                    String.sub line 0 (walk 0 count)
+                  in
+                  let row, _, _ =
+                    List.fold_left
+                      (fun (row, column, shift) (edit : Fix.edit) ->
+                        let start =
+                          Display.width (prefix (edit.col - 1 + shift))
+                        in
+                        let size = max 1 (Display.width edit.text) in
+                        ( row
+                          ^ String.make (start - column) ' '
+                          ^ String.make size '+',
+                          start + size,
+                          shift + Display.length edit.text ))
+                      ("  | ", 0, 0) edits
+                  in
+                  [ row ])
+              (Fix.alternatives fix)
+          in
+          shown_alternatives = expected && shown_marks = expected_marks)
+        (fixes_of text))
+
 let render (content, finding, tier) =
   in_files
     [ ("a.md", content); ("b.md", content) ]
@@ -437,6 +700,15 @@ let tests =
     case "a mark stands under the display width before it"
       a_mark_stands_under_the_display_width_before_it;
     case "no line ends in a space" no_line_ends_in_a_space;
+    case "a replacement shows the old and the new line"
+      a_replacement_shows_the_old_and_the_new_line;
+    case "an insertion marks the inserted columns"
+      an_insertion_marks_the_inserted_columns;
+    case "an ack shows an inserted line" an_ack_shows_an_inserted_line;
+    case "each alternative gets a diff" each_alternative_gets_a_diff;
+    case "a fix without its line shows its text"
+      a_fix_without_its_line_shows_its_text;
+    a_diff_shows_the_line_with_the_edits_applied;
     case "related places in the file share its snippet"
       related_places_in_the_file_share_its_snippet;
     case "related places in other files get their own blocks"
