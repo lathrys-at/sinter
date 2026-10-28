@@ -46,18 +46,26 @@ val text : entry -> string list
     double quotes, with a backslash before each double quote and each backslash
     in it. The path and the subject id then take the form that {!Finding.escape}
     gives, and no control character but the tab stands in a line. A second line,
-    [  fix: ] and the fix, follows when the finding has a fix. *)
+    [  fix: ] and {!Fix.text} of the fix in the form that {!Finding.escape}
+    gives, follows when the finding has a fix. *)
 
 val record : mode:Mode.t -> entry -> Jsonl.record
 (** [record ~mode entry] is the finding record of [entry] in a run of [mode]. It
     holds the fields [v], [kind], [id], [class], [subject], [ack_subject],
-    [ackable], and [mode] (the {!Mode.name} of [mode]); [detail] and [fix] when
-    the finding has them; [path], [line], [col], [eline], and [ecol] when it has
-    a place; [mcol], [mecol], and [label] when it has a mark; [related] when it
-    has one related place or more, an array of objects in the order of
-    {!Finding.t.related}, each with [label], and with [path], [line], [col],
-    [eline], and [ecol] when the place is in a file; and [gate] and [tier] when
-    the entry has a tier. *)
+    [ackable], and [mode] (the {!Mode.name} of [mode]); [detail] when the
+    finding has one; [help] and [edits] when it has a fix; [path], [line],
+    [col], [eline], and [ecol] when it has a place; [mcol], [mecol], and [label]
+    when it has a mark; [related] when it has one related place or more, an
+    array of objects in the order of {!Finding.t.related}, each with [label],
+    and with [path], [line], [col], [eline], and [ecol] when the place is in a
+    file; and [gate] and [tier] when the entry has a tier.
+
+    [help] is {!Fix.help} of the fix. [edits] is an array of objects, one for
+    each edit of each alternative of {!Fix.alternatives}, in their order. Each
+    object holds [alt], the number of its alternative from 1, and [path], the
+    path of the place of the finding; [line], [col], [eline], [ecol], and [text]
+    are those of the edit. The objects are sorted by
+    [(alt, path, line, col, eline, ecol, text)], and no two are equal. *)
 
 (** {1 The check} *)
 

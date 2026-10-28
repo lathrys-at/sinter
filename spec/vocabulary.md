@@ -154,9 +154,9 @@ only in case. A slug that fails the pattern is an error (finding class
 `invalid-target`).
 
 A citation whose tag target differs from a declared slug only in case
-does not resolve, so the citation is dangling (section 7.2). The `fix`
-of its finding ([jsonl.md](jsonl.md) section 8) names the declared
-spelling.
+does not resolve, so the citation is dangling (section 7.2). The fix
+of its finding ([jsonl.md](jsonl.md) section 8) writes the declared
+spelling in place of the tag target.
 
 The slug is the identity of an item. There are no hidden machine
 identifiers. To rename an item, delete it and declare a new one.

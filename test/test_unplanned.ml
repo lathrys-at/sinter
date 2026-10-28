@@ -162,7 +162,7 @@ let a_finding_sits_at_its_hunk () =
             span.stop.line span.stop.column
       | None -> "-")
       (Option.value finding.detail ~default:"-")
-      (Option.value finding.fix ~default:"-")
+      (Option.fold ~none:"-" ~some:Fix.text finding.fix)
       finding.ackable
   in
   Alcotest.check strings "the findings"

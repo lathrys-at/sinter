@@ -40,7 +40,9 @@ let show (finding : Finding.t) =
   String.concat " | "
     ([ place_text finding; Finding.id finding ]
     @ Option.to_list finding.detail
-    @ Option.fold ~none:[] ~some:(fun fix -> [ "fix: " ^ fix ]) finding.fix)
+    @ Option.fold ~none:[]
+        ~some:(fun fix -> [ "fix: " ^ Finding.escape (Fix.text fix) ])
+        finding.fix)
 
 let check ?extra ?not_text finding_class files expected =
   Alcotest.(check (list string))
@@ -907,7 +909,9 @@ let declared_spelling_gives_the_fix_of_each_dangling_finding =
            List.filter_map
              (fun (finding : Finding.t) ->
                if finding.finding_class = Finding_class.Dangling then
-                 Some (Finding.subject_id finding.subject, finding.fix)
+                 Some
+                   ( Finding.subject_id finding.subject,
+                     Option.map Fix.text finding.fix )
                else None)
              (Findings.of_facts facts ~not_text:[])
          in

@@ -469,7 +469,6 @@ the position that [manifest.md](manifest.md) section 14.4 gives.
 | `ack_subject` | string | the subject in the form that an `@ack` names it ([vocabulary.md](vocabulary.md) section 7.4) |
 | `rule` | string | `unmet-rule` findings only |
 | `detail` | string | one line, human-facing, deterministic |
-| `fix` | string | the repair of the finding, on one line; omitted when none. It is a line to paste, or an instruction. A line to paste is, for example, an `@ack` line, a tag line with a corrected word or revision, or, for a `retired` finding, the citation of a successor that replaces the edge. With several successors, the fix gives the citation of each, and a person chooses one ([algebra.md](algebra.md) section 9) |
 | `ackable` | bool | whether a live `@ack` can accept this finding ([algebra.md](algebra.md) section 9, column `A`). For a class that the column marks `A*`, the value depends on the finding |
 | `acked` | bool | present only when acked findings are requested |
 | `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3); present only when the command runs with `--gate` |
@@ -477,6 +476,8 @@ the position that [manifest.md](manifest.md) section 14.4 gives.
 | `mcol` `mecol` | int | the **mark**: the start column and the exclusive end column of the part of the tag line at fault (section 3), on the first line of the finding; present only with `label` |
 | `label` | string | one line, human-facing: what is wrong at the mark; present only with the mark |
 | `related` | array of flat objects | the **related places**: the places that explain the finding. Present only when the finding has one related place or more, never empty |
+| `help` | string | one line, human-facing: what the fix of the finding does; present only with `edits` |
+| `edits` | array of flat objects | the **edits** of the fix of the finding ([algebra.md](algebra.md) section 9); present only with `help`, never empty |
 
 Each object of `related` holds these fields:
 
@@ -494,6 +495,58 @@ such as a claim on another branch. The objects are sorted by
 The objects with no `path` come after the others, sorted by `label`.
 No two objects are equal. A related place under a historical path
 ([manifest.md](manifest.md) section 9.4) stays.
+
+The **fix** of a finding is its help message, `help`, and its edits,
+`edits`. A fix has one **alternative** or more. An alternative is a
+set of edits. When a tool makes all the edits of one alternative,
+Sinter no longer reports the finding: the edits repair the finding or,
+for an inserted `@ack` line, accept it. When a fix has two
+alternatives or more, a person chooses one. Each object of `edits` is
+one edit, and holds these fields:
+
+| field | type | meaning |
+|---|---|---|
+| `alt` | int | the number of the alternative that holds the edit |
+| `path` | string | file |
+| `line` `col` | int | start |
+| `eline` `ecol` | int | inclusive end line; exclusive end column |
+| `text` | string | the new text, as the file will hold it |
+
+An edit replaces the text of its span with `text`. The span counts
+lines and columns by the rules of section 3. A span with `line` equal
+to `eline` and `col` equal to `ecol` holds no character, and the edit
+inserts `text` at that place. An empty `text` deletes the span. No
+span ends inside a line ending. The alternatives are numbered from 1,
+with no gap, and every edit of one alternative has its number in
+`alt`. The edits of one alternative do not overlap. The edits of two
+findings can overlap: for example, the fix of a `suspect` finding and
+the fix of a `retired` finding can both replace the revision of one
+citation.
+
+An edit of a tag line covers only the part of the line that changes:
+the tag word, the target, or the revision (section 3), or a revision
+inserted right after the target. The column of the `@` and the inline
+description do not change.
+
+The fix of a finding that an `@ack` can accept can insert the `@ack`
+line for the finding ([vocabulary.md](vocabulary.md) section 7.4).
+That edit inserts at the end of the last tag line of the block of the
+finding, before the line ending of that line. Its `text` is a line
+ending, then a prefix, then the `@ack` line:
+
+- The line ending is the line ending of the last tag line, LF or CR
+  and LF. It is LF when the last tag line is the last line of a file
+  that does not end with LF.
+- The prefix is the text of the last tag line before its `@`, with
+  each character that is not a space or a tab replaced by one space.
+  The new line therefore starts at the column of that `@`.
+
+A file that does not end with LF still does not end with LF after the
+edit.
+
+The objects of `edits` are sorted by
+`(alt, path, line, col, eline, ecol, text)`, each string in byte
+order. No two objects are equal.
 
 ## 9. Identity
 

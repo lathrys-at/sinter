@@ -145,6 +145,16 @@ type block = {
   hash : string;
       (** the block hash, as 64 lowercase hexadecimal digits: the hash of the
           lines of the block, by the rule of the extent hash *)
+  new_line : string;
+      (** the text that starts a new line right after the last tag line of the
+          block, at the column of its [@]: the line ending of that line, then
+          {!Tag_line.indent} of the text of that line before its [@]. The line
+          ending is CR and LF or one LF, as the line has it, and one LF when the
+          line is the last line of a file that does not end with an LF. A byte
+          order mark is no part of the text before the [@]. When that text holds
+          no tab and 16 characters or fewer, the value is one of a fixed set of
+          strings that every read shares, and a read allocates nothing for it.
+      *)
 }
 (** One block: a run of tag lines of one tag-bearing node, and the trailing
     prose after them. *)

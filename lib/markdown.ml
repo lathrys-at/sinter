@@ -59,7 +59,12 @@ type tag = {
   extent : extent option;
 }
 
-type block = { tags : int list; prose : string list; hash : string }
+type block = {
+  tags : int list;
+  prose : string list;
+  hash : string;
+  new_line : string;
+}
 
 type t = {
   sections : section array;
@@ -350,6 +355,8 @@ type pending_block = {
   prose_lines : int list;
   first_block_line : int;
   last_block_line : int;
+  last_tag_line : int;
+  last_at : int;
 }
 
 let declaration_words = [ "req"; "design"; "decision"; "rule" ]
@@ -401,6 +408,8 @@ let read_paragraph lines tags blocks paragraph =
                   prose_lines = [];
                   first_block_line = line;
                   last_block_line = line;
+                  last_tag_line = line;
+                  last_at = start + at;
                 });
         let in_block = Dynarray.length blocks in
         let parts = Tag_line.parts tag_line.rest in
@@ -424,6 +433,8 @@ let read_paragraph lines tags blocks paragraph =
                 block with
                 members = index :: block.members;
                 last_block_line = line;
+                last_tag_line = line;
+                last_at = start + at;
               })
             !current
     | None ->
@@ -540,7 +551,37 @@ let by_paragraph declarations =
   in
   group declarations
 
-let assemble lines walk errors =
+let widest_shared_indent = 16
+
+let shared_new_lines ending =
+  Array.init (widest_shared_indent + 1) (fun width ->
+      ending ^ String.make width ' ')
+
+let shared_lf = shared_new_lines "\n"
+let shared_crlf = shared_new_lines "\r\n"
+
+let new_line lines ~open_end ~line ~at =
+  let text = Line_index.text lines in
+  let crlf =
+    text.[Line_index.content_end lines line] = '\r'
+    && not (open_end && line = Line_index.count lines)
+  in
+  let first = Line_index.first lines line in
+  let rec width offset count =
+    if offset = at then Some count
+    else if text.[offset] = '\t' then None
+    else
+      width (offset + 1)
+        (if Char.code text.[offset] land 0xC0 <> 0x80 then count + 1 else count)
+  in
+  match width first 0 with
+  | Some count when count <= widest_shared_indent ->
+      (if crlf then shared_crlf else shared_lf).(count)
+  | Some _ | None ->
+      (if crlf then "\r\n" else "\n")
+      ^ Tag_line.indent (String.sub text first (at - first))
+
+let assemble lines ~open_end walk errors =
   let pending = Dynarray.create () and pending_blocks = Dynarray.create () in
   Dynarray.iter (read_paragraph lines pending pending_blocks) walk.paragraphs;
   let pending = Dynarray.to_array pending in
@@ -615,6 +656,8 @@ let assemble lines walk errors =
         {
           tags = block.members;
           prose = List.map (Line_index.content lines) block.prose_lines;
+          new_line =
+            new_line lines ~open_end ~line:block.last_tag_line ~at:block.last_at;
           hash =
             hash_lines lines ~at ~numbered ~own
               (List.init
@@ -696,4 +739,7 @@ let read reader content =
               let errors =
                 parse_errors lines (Sinter_bridge.Tree.errors tree)
               in
-              Ok (assemble lines (structure lines captures) errors)))
+              Ok
+                (assemble lines
+                   ~open_end:(String.length text <> String.length content)
+                   (structure lines captures) errors)))

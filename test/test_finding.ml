@@ -48,9 +48,10 @@ let the_ack_subject_of_a_fact_is_its_name () =
     (Finding.ack_subject (Finding.Tag { path = "x.md"; position = at 4 3 }))
 
 let make_keeps_each_part () =
+  let fix = Edits.word_fix "req" in
   let finding =
-    Finding.make Finding_class.Suspect fact ~place:(place ()) ~detail:"d"
-      ~fix:"f" ()
+    Finding.make Finding_class.Suspect fact ~place:(place ()) ~detail:"d" ~fix
+      ()
   in
   Alcotest.(check bool)
     "the class" true
@@ -58,11 +59,11 @@ let make_keeps_each_part () =
   Alcotest.(check bool) "the subject" true (finding.subject = fact);
   Alcotest.(check bool) "the place" true (finding.place = Some (place ()));
   Alcotest.(check (option string)) "the detail" (Some "d") finding.detail;
-  Alcotest.(check (option string)) "the fix" (Some "f") finding.fix;
+  Alcotest.(check bool) "the fix" true (finding.fix = Some fix);
   let bare = Finding.make Finding_class.Wrong_source fact () in
   Alcotest.(check bool) "no place" true (bare.place = None);
   Alcotest.(check (option string)) "no detail" None bare.detail;
-  Alcotest.(check (option string)) "no fix" None bare.fix
+  Alcotest.(check bool) "no fix" true (bare.fix = None)
 
 let make_refuses_an_empty_text () =
   let refuses name make =
@@ -71,16 +72,22 @@ let make_refuses_an_empty_text () =
     | exception Invalid_argument _ -> ()
   in
   refuses "an empty detail" (fun () ->
-      Finding.make Finding_class.Wrong_source fact ~detail:"" ());
-  refuses "an empty fix" (fun () ->
-      Finding.make Finding_class.Wrong_source fact ~fix:"" ())
+      Finding.make Finding_class.Wrong_source fact ~detail:"" ())
 
-let make_escapes_a_detail_and_a_fix () =
+let make_refuses_a_fix_with_no_place () =
+  Alcotest.(check bool)
+    "raises Invalid_argument" true
+    (match
+       Finding.make Finding_class.Typo_tag fact ~fix:(Edits.word_fix "req") ()
+     with
+    | (_ : Finding.t) -> false
+    | exception Invalid_argument _ -> true)
+
+let make_escapes_a_detail () =
   let finding =
-    Finding.make Finding_class.Wrong_source fact ~detail:"a\nb" ~fix:"c\rd" ()
+    Finding.make Finding_class.Wrong_source fact ~detail:"a\nb" ()
   in
-  Alcotest.(check (option string)) "the detail" (Some "a\\nb") finding.detail;
-  Alcotest.(check (option string)) "the fix" (Some "c\\rd") finding.fix
+  Alcotest.(check (option string)) "the detail" (Some "a\\nb") finding.detail
 
 let escape_writes_each_control_character () =
   Alcotest.(check string)
@@ -517,7 +524,8 @@ let tests =
       the_ack_subject_of_a_fact_is_its_name;
     case "make keeps each part" make_keeps_each_part;
     case "make refuses an empty text" make_refuses_an_empty_text;
-    case "make escapes a detail and a fix" make_escapes_a_detail_and_a_fix;
+    case "make refuses a fix with no place" make_refuses_a_fix_with_no_place;
+    case "make escapes a detail" make_escapes_a_detail;
     case "escape writes each control character"
       escape_writes_each_control_character;
     escape_leaves_no_control_character_but_the_tab;

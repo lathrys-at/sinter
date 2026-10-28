@@ -36,7 +36,7 @@ type t = {
   subject : subject;
   place : place option;
   detail : string option;
-  fix : string option;
+  fix : Fix.t option;
   ackable : bool;
   mark : mark option;
   related : related list;
@@ -84,6 +84,11 @@ let checked_mark place (mark : mark) =
       else if mark.stop <= mark.start then fail "holds no character"
       else { mark with label = checked "label of the mark" mark.label }
 
+let checked_fix place fix =
+  match place with
+  | Some _ -> fix
+  | None -> invalid_arg "Finding.make: the fix has no place"
+
 let place_key { path; span } =
   (path, span.start.line, span.start.column, span.stop.line, span.stop.column)
 
@@ -123,7 +128,7 @@ let sorted_related related =
 let make finding_class subject ?place ?detail ?fix ?ackable ?mark
     ?(related = []) () =
   let detail = one_line "detail" detail in
-  let fix = one_line "fix" fix in
+  let fix = Option.map (checked_fix place) fix in
   let mark = Option.map (checked_mark place) mark in
   let related = sorted_related related in
   let ackable =

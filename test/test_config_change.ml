@@ -413,7 +413,7 @@ let show (finding : Finding.t) =
        string_of_bool finding.ackable;
      ]
     @ Option.to_list finding.detail
-    @ Option.to_list finding.fix)
+    @ Option.to_list (Option.map Fix.text finding.fix))
 
 let findings ?(hunks = []) ~base now =
   List.map show

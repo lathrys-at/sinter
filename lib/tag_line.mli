@@ -40,6 +40,13 @@ val without_revision : string -> string
     and tabs in front of that token. It is [rest] when {!parts} finds no
     revision in it. *)
 
+val indent : string -> string
+(** [indent text] is [text] with each character that is not a space or a tab
+    replaced by one space: the text that starts a new line at the column of the
+    character after [text]. A character starts at each byte that does not
+    continue a UTF-8 sequence. [indent text] is [text] itself, not a copy, when
+    [text] holds only spaces and tabs. *)
+
 (** A part of a tag line. *)
 type part =
   | Word  (** the tag word, from the [@] to the end of the word *)
