@@ -1,10 +1,9 @@
 opam-version: "2.0"
 name: "sinter"
 version: "dev"
-synopsis:
-  "Plan, specification, and test tracing for agentic coding workflows"
+synopsis: "A linter for keeping your specs, plans, and code in sync"
 description:
-  "Sinter reads tags in a repository's own text files. It uses them to check that code, tests, and documents keep the agreements a project made. It reads the state of the work from files and from test results, never from an agent's self-report. The design is in docs/design-notes.md; the formats are specified in spec/."
+  "Sinter reads the tags in a repository's files: specs, plans, decision records, and the code and tests that refer to them. It reports where they have drifted apart, for example a test that checks an old version of a spec, or a plan step whose promised work never showed up. The design is in docs/design-notes.md; the formats are specified in spec/."
 maintainer: "The Sinter Authors"
 authors: "The Sinter Authors"
 license: "Apache-2.0"
@@ -27,7 +26,7 @@ depends: [
   "dune-configurator" {= "3.24.2" & with-dev-setup}
   "either" {= "1.0.0" & with-dev-setup}
   "fix" {= "20250919" & with-dev-setup}
-  "fmt" {= "0.11.0" & with-test}
+  "fmt" {= "0.11.0"}
   "fpath" {= "0.7.3" & with-dev-setup}
   "menhir" {= "20260209" & with-dev-setup}
   "menhirCST" {= "20260209" & with-dev-setup}
@@ -41,8 +40,8 @@ depends: [
   "ocaml-syntax-shims" {= "1.0.0" & with-test}
   "ocaml-version" {= "4.1.5" & with-dev-setup}
   "ocaml_intrinsics_kernel" {= "v0.17.3" & with-dev-setup}
-  "ocamlbuild" {= "0.16.1" & with-test}
-  "ocamlfind" {= "1.9.9~preview" & with-test}
+  "ocamlbuild" {= "0.16.1"}
+  "ocamlfind" {= "1.9.9~preview"}
   "ocamlformat" {= "0.29.0" & with-dev-setup}
   "ocamlformat-lib" {= "0.29.0" & with-dev-setup}
   "ocp-indent" {= "1.10.0" & with-dev-setup}
@@ -52,8 +51,8 @@ depends: [
   "sexplib0" {= "v0.17.0" & with-dev-setup}
   "stdio" {= "v0.17.0" & with-dev-setup}
   "stdlib-shims" {= "0.3.0" & with-test}
-  "topkg" {= "1.1.1" & with-test}
-  "uucp" {= "18.0.0" & with-dev-setup}
+  "topkg" {= "1.1.1"}
+  "uucp" {= "18.0.0"}
   "uuseg" {= "18.0.0" & with-dev-setup}
   "uutf" {= "1.0.4" & with-test}
   "yojson" {= "3.0.0"}

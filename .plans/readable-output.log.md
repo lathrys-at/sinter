@@ -122,3 +122,10 @@
   successor gets no fix; at 170c04b its fix was `""`, which
   `Finding.make` refuses. `Facts.successors` and the rule of in force
   rule the case out. Its detail stays as it was (ruling of the lead).
+
+## Render the full and brief forms
+
+- `opam lock` read `compiler-cloning` as `enabled` from the switch.
+  The lock keeps `disabled`, as it had, because the package is not a
+  dependency of Sinter. The lock also takes the synopsis and the
+  description of `dune-project` again; they were stale.

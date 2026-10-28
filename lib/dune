@@ -5,7 +5,7 @@
  (name sinter_core)
  (public_name sinter.core)
  (modes native)
- (libraries sinter_bridge unix yojson)
+ (libraries sinter_bridge unix yojson fmt uucp)
  (instrumentation
   (backend bisect_ppx))
  (instrumentation

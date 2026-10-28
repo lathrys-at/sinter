@@ -21,6 +21,8 @@
   (cmdliner (>= 1.3))
   dune-build-info
   yojson
+  (fmt (>= 0.9.0))
+  uucp
   (alcotest :with-test)
   (qcheck-core
    (and
