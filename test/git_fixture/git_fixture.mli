@@ -48,8 +48,10 @@ val env : t -> string array
     - [HOME], a directory beside the working tree
     - fixed names, e-mail addresses, and dates of the author and the committer
     - the settings [init.defaultBranch=main]; [fastimport.unpackLimit=0]:
-      [git fast-import] keeps its objects in one pack; and
-      [core.logAllRefUpdates=false]: git keeps no log of references. *)
+      [git fast-import] keeps its objects in one pack;
+      [core.logAllRefUpdates=false]: git keeps no log of references; and
+      [maintenance.auto=false] and [gc.auto=0]: no command of git starts a
+      maintenance task. *)
 
 val git : t -> string list -> string
 (** [git repo args] runs git with [args] in the root of [repo], and gives its
