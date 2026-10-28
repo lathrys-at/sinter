@@ -119,11 +119,10 @@ and the tests, test evidence, and entries in the ledger, Sinter's record
 of judgments (section 6.4). A plan is **open** until the ledger records
 that it closed. It closes in one of two ways (section 6.3). CI records
 it as `completed` after the merge, and only when everything that it
-promised is a static fact. Or a person records it as `abandoned`. The
-plan file never moves. A closed plan stays in the tree as a record,
-beside the facts that it produced. Nothing goes to an archive, because
-nothing is deleted. The ledger, not the file system, says when a plan
-stopped being an agreement.
+promised is a static fact. Or a person records it as `abandoned`. A
+closed plan can stay in the tree as a record, beside the facts that it
+produced, or its file and its journal can leave `.plans/`. The ledger,
+not the file system, says when a plan stopped being an agreement.
 
 The parts of the system:
 
@@ -647,21 +646,20 @@ A plan is a markdown file under `.plans/`, for example
 `.plans/auth-lockout.md`, committed on its branch. A file that git
 ignores would not travel between worktrees, and CI could not see it, so
 the check for unplanned work would have no authority. A plan is **open**
-until the ledger records that it closed (section 6.3), and a closed plan
-stays as a record beside its journal. `spec/vocabulary.md` section 10
-gives the rules of plan files.
+until the ledger records that it closed (section 6.3). A closed plan
+can stay as a record beside its journal, or its file and its journal
+can leave `.plans/`. `spec/vocabulary.md` section 10 gives the rules of
+plan files.
 
-Two records change parts of sections 6.1, 6.3, and 6.7, and the
-specifications do not carry them yet. Record `plans-span-branches`
-says three things. A plan reaches the default branch in a pull request
-of its own. That merge is its approval. Later branches each deliver
-some of its steps. Record `plan-ids` gives each plan an id from its
-creation, written as in `@plan upkeep@3f2a9c`, and a closed plan frees
-its slug.
+One record changes parts of sections 6.1, 6.3, and 6.7, and the
+specifications do not carry it yet. Record `plans-span-branches` says
+three things. A plan reaches the default branch in a pull request of
+its own. That merge is its approval. Later branches each deliver some
+of its steps.
 
 ```markdown
 # Account lockout after failed logins
-@plan auth-lockout
+@plan auth-lockout@3f2a9c
 @scope src/auth/**, tests/auth/**, docs/auth.md
 
 ## Write the requirements
@@ -681,6 +679,20 @@ its slug.
 ## Simplify the session-store interface
 @scope src/auth/session.rs
 ```
+
+**The plan id.** The `@plan` tag line of a plan gives its slug and its
+**plan id**: six lowercase hex digits after an `@`. The text
+`<slug>@<id>` is the **full form** of the plan. A slug is reserved only
+while its plan is open. When the plan closes, its slug is free, so a
+general name such as `upkeep` can come back each time its kind of work
+does. The slug alone names the open plan, in tags, in commands, and in
+conversation. The full form names one plan exactly, and the ledger
+files every entry about a plan under it, so a new plan never takes the
+entries of an old plan with the same slug (record `plan-ids`). The plan
+skill takes the id from a random source. A plan without an id is the
+finding `missing-plan-id`. Its fix derives an id from the base commit
+and the path of the plan file, because two runs of a check must give
+the same output. `spec/vocabulary.md` section 4.3 gives the rules.
 
 **A plan is a set of promised facts.** A plan uses the same tags as
 the rest of the repository, but inside a plan, Sinter reads each tag
@@ -779,15 +791,15 @@ blocking finding `merged-incomplete`: someone merged half a plan.
 is normal while its work goes on.) The honest ways out are an approved
 smaller plan (section 6.2) or a revert of the merge.
 
-A closed plan makes no findings, holds no claim, and adds no scope. Plan
-slugs are permanent, like the slugs of decisions, so
-`compile residual-plan` prints its plan under a new slug. (Record
-`plan-ids` frees the slug of a closed plan; see section 6.1.) Without
-the ledger ref, every plan reads as open, and `sinter status` says so.
-This result on the default branch is intended. The plan and its journal
-stay beside the facts that they produced, and the ledger says who
-approved the plan, what it promised, and when it stopped being an
-agreement.
+A closed plan makes no findings, holds no claim, and adds no scope. Its
+slug is free again, so a later plan, such as the plan that
+`compile residual-plan` prints, can take the slug with a new plan id
+(section 6.1). Without the ledger ref, every plan reads as open, and
+`sinter status` says so. This result on the default branch is
+intended. The plan and its journal can stay beside the facts that they
+produced, or leave `.plans/`. Either way, the ledger says, under the
+full form of the plan, who approved it, what it promised, and when it
+stopped being an agreement.
 
 ### 6.4 Compiled specifications and the approval ledger
 
@@ -1448,7 +1460,8 @@ sinter query 'kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - exempt'
 ### 11.5 `sinter declare`
 
 `sinter declare <plan>[/<step>]` records the active plan and step for
-the session (section 6.1). The record only anchors the brief and the
+the session (section 6.1). `<plan>` is the slug or the full form of an
+open plan. The record only anchors the brief and the
 note about edits outside the scope, so it is the one statement of the
 agent that Sinter accepts. `--clear` removes it, and `--show` prints
 it with its effective scope.
