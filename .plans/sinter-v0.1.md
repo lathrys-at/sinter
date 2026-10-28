@@ -218,6 +218,14 @@ slugs that a closed plan frees, and the ids of claims; read the form
 in the scanner, with a finding whose fix supplies a missing id; and
 let the plan skill write the id.
 
+## Let a plan span branches
+@scope spec/**, docs/**, lib/**, test/**, plugins/**, .claude-plugin/**
+Carry out the record `plans-span-branches`: specify that a plan
+reaches the default branch in its own pull request, that later
+branches deliver its steps, and that an open plan on the default
+branch is normal while its work goes on; change or remove
+`merged-incomplete` to match; and let the plan skill say so.
+
 ## Release the binaries
 @scope .github/workflows/**, README.md, docs/**, THIRD_PARTY.md, REUSE.toml, LICENSES/**
 Build release binaries for Linux x86-64 and macOS arm64 on a version
