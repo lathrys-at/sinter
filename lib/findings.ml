@@ -53,7 +53,7 @@ let typo_tags documents =
             (Finding.Line { path; line = tag.span.start.line })
             ~place:(place path tag.span)
             ~detail:(Printf.sprintf "@%s is not a tag word of sinter" tag.word)
-            ~fix:("@" ^ nearest)
+            ~fix:(Fix.word tag nearest)
             ?mark:(Finding.part tag Tag_line.Word "not a tag word")
             ())
         (nearest_word tag.word))
@@ -157,10 +157,6 @@ let declaration_subject (declaration : Facts.declaration) =
 let edge_subject (edge : Facts.edge) =
   Finding.Fact { id = Facts.edge_id edge; ack_name = edge.target_text }
 
-let citation ~word ~target rev =
-  Printf.sprintf "@%s %s%s" word target
-    (Option.fold ~none:"" ~some:(Printf.sprintf " v%d") rev)
-
 module Keys = Map.Make (String)
 
 let later_of_groups ~key ~order items =
@@ -250,9 +246,7 @@ let unpinned facts =
           match target with
           | Facts.Declaration index ->
               let declaration = declarations.(index) in
-              ( Some
-                  (citation ~word:edge.word ~target:edge.target_text
-                     (Some declaration.rev)),
+              ( Some (Fix.pin edge.tag declaration.rev),
                 [
                   related
                     (Printf.sprintf "declared here at v%d" declaration.rev)
@@ -304,9 +298,7 @@ let dangling facts =
       match target with
       | Facts.Unresolved { dangling = true } ->
           let fix =
-            Option.map
-              (fun slug -> citation ~word:edge.word ~target:slug edge.rev)
-              (spelling edge.target_text)
+            Option.map (Fix.spelling edge.tag) (spelling edge.target_text)
           in
           Some
             (Finding.make Finding_class.Dangling (edge_subject edge)
@@ -340,9 +332,7 @@ let suspect facts =
                     rev
                     (Facts.declaration_id declaration)
                     declaration.rev)
-               ~fix:
-                 (citation ~word:edge.word ~target:edge.target_text
-                    (Some declaration.rev))
+               ~fix:(Fix.pin edge.tag declaration.rev)
                ?mark:
                  (Finding.part edge.tag Tag_line.Revision
                     (Printf.sprintf "names v%d" rev))
@@ -469,6 +459,15 @@ let cycles facts =
 
 let retired facts =
   let declarations = Array.of_list (Facts.declarations facts) in
+  let documents =
+    lazy
+      (List.fold_left
+         (fun documents (path, document) ->
+           Keys.update path
+             (function None -> Some document | kept -> kept)
+             documents)
+         Keys.empty (Facts.files facts))
+  in
   List.filter_map
     (fun ((edge : Facts.edge), target) ->
       match target with
@@ -497,32 +496,33 @@ let retired facts =
             ( edge,
               match (successors, declaration.status) with
               | [], Some status ->
-                  let hash =
-                    Facts.block_hash facts edge.path edge.block_index
-                  in
                   finding status
                     ~detail:
                       (Printf.sprintf "%s is %s"
                          (Facts.declaration_id declaration)
                          status)
                     ~fix:
-                      (Printf.sprintf "@ack retired %s %s" edge.target_text
-                         (String.sub hash 0 8))
+                      (Fix.ack
+                         (Keys.find edge.path (Lazy.force documents))
+                         ~block:edge.block_index ~target:edge.target_text)
                     ~ackable:true ()
               | successors, _ ->
+                  let written (successor : Facts.declaration) =
+                    (successor.slug, successor.rev)
+                  in
                   finding "superseded"
                     ~detail:
                       (Printf.sprintf "%s is superseded by %s"
                          (Facts.declaration_id declaration)
                          (String.concat ", "
                             (List.map Facts.declaration_id successors)))
-                    ~fix:
-                      (String.concat " or "
-                         (List.map
-                            (fun (successor : Facts.declaration) ->
-                              citation ~word:edge.word ~target:successor.slug
-                                (Option.map (fun _ -> successor.rev) edge.rev))
-                            successors))
+                    ?fix:
+                      (match successors with
+                      | first :: others ->
+                          Some
+                            (Fix.successors edge.tag (written first)
+                               (List.map written others))
+                      | [] -> None)
                     ~ackable:false () )
       | _ -> None)
     (Facts.edges facts)

@@ -71,7 +71,9 @@ let finding_gen =
   Gen.(
     map
       (fun (c, subject, place, (detail, fix)) ->
-        Finding.make c subject ?place ?detail ?fix ())
+        Finding.make c subject ?place ?detail
+          ?fix:(Option.bind place (fun _ -> Option.map Edits.word_fix fix))
+          ())
       (quad
          (oneof_list Finding_class.all)
          subject (option place_gen)
@@ -284,7 +286,8 @@ let a_finding_prints_its_place_tier_class_subject_and_detail () =
        {
          finding =
            finding ~place:(place ())
-             ~detail:"pinned to v1; the declaration is at v2" ~fix:"@cites x v2"
+             ~detail:"pinned to v1; the declaration is at v2"
+             ~fix:(Fix.pin (Edits.tag "@cites x v1\n") 2)
              Finding_class.Suspect edge;
          tier = Some (Finding_class.Review, Finding_class.Block);
        });
@@ -389,13 +392,13 @@ let a_finding_gives_one_line_and_one_more_for_a_fix =
 let a_record_holds_every_field_of_a_finding () =
   Alcotest.(check string)
     "the record"
-    "{\"ack_subject\":\"x\",\"ackable\":true,\"class\":\"retired\",\"col\":2,\"detail\":\"d\",\"ecol\":9,\"eline\":4,\"fix\":\"f\",\"gate\":\"review\",\"id\":\"finding:retired:cites:site:docs/a.md->x\",\"kind\":\"finding\",\"line\":3,\"mode\":\"tree\",\"path\":\"docs/a.md\",\"subject\":\"cites:site:docs/a.md->x\",\"tier\":\"block\",\"v\":1}"
+    "{\"ack_subject\":\"x\",\"ackable\":true,\"class\":\"retired\",\"col\":2,\"detail\":\"d\",\"ecol\":9,\"eline\":4,\"fix\":\"@f\",\"gate\":\"review\",\"id\":\"finding:retired:cites:site:docs/a.md->x\",\"kind\":\"finding\",\"line\":3,\"mode\":\"tree\",\"path\":\"docs/a.md\",\"subject\":\"cites:site:docs/a.md->x\",\"tier\":\"block\",\"v\":1}"
     (Jsonl.to_string
        (Check.record ~mode:Mode.Tree
           {
             finding =
-              finding ~place:(place ()) ~detail:"d" ~fix:"f" ~ackable:true
-                Finding_class.Retired edge;
+              finding ~place:(place ()) ~detail:"d" ~fix:(Edits.word_fix "f")
+                ~ackable:true Finding_class.Retired edge;
             tier = Some (Finding_class.Review, Finding_class.Block);
           }))
 

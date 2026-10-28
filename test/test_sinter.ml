@@ -83,6 +83,7 @@ let () =
       ("manifest", Test_manifest.tests);
       ("facts", Test_facts.tests);
       ("fix", Test_fix.tests);
+      ("fixes", Test_fixes.tests);
       ("finding", Test_finding.tests);
       ("fact id", Test_fact_id.tests);
       ("config change", Test_config_change.tests);

@@ -39,3 +39,17 @@ let apply text (edits : Fix.edit list) =
       String.sub text 0 start ^ inserted
       ^ String.sub text stop (String.length text - stop))
     text placed
+
+let reader =
+  lazy
+    (match Markdown.create (Sinter_bridge.create ()) with
+    | Ok reader -> reader
+    | Error _ -> failwith "the reader does not start")
+
+let document text =
+  match Markdown.read (Lazy.force reader) text with
+  | Ok document -> document
+  | Error _ -> failwith "the text gives no document"
+
+let tag text = (document text).tags.(0)
+let word_fix word = Fix.word (tag "@x a\n") word

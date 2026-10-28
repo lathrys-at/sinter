@@ -44,7 +44,9 @@ let show (finding : Finding.t) =
        Finding.id finding;
      ]
     @ Option.to_list finding.detail
-    @ Option.fold ~none:[] ~some:(fun fix -> [ "fix: " ^ fix ]) finding.fix)
+    @ Option.fold ~none:[]
+        ~some:(fun fix -> [ "fix: " ^ Finding.escape (Fix.text fix) ])
+        finding.fix)
 
 let compared ?(findings = []) base tree =
   List.map show (Adjudicator.classes ~base:(facts base) (facts tree) findings)
@@ -538,7 +540,9 @@ let renamed_to_holds_for_the_edges_that_renamed_reports =
         List.filter_map
           (fun (finding : Finding.t) ->
             if finding.finding_class = Finding_class.Renamed then
-              Some (Finding.subject_id finding.subject, finding.fix)
+              Some
+                ( Finding.subject_id finding.subject,
+                  Option.map Fix.text finding.fix )
             else None)
           (Adjudicator.classes ~base tree (Findings.of_facts tree ~not_text:[]))
       in

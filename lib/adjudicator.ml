@@ -151,9 +151,7 @@ let unbumped ~base ~same facts =
           Some
             (Finding.make Finding_class.Unbumped (subject declaration)
                ~place:(place declaration) ~detail
-               ~fix:
-                 (Printf.sprintf "@%s %s v%d" declaration.kind declaration.slug
-                    (highest.rev + 1))
+               ~fix:(Fix.bump declaration.tag (highest.rev + 1))
                ?mark:
                  (let label =
                     Printf.sprintf "changed since the base, still v%d"
@@ -241,11 +239,7 @@ let renamed ~base ~same ~tombstones facts =
                   (Printf.sprintf
                      "the base declares %s, and %s has its extent now" was
                      (Facts.declaration_id next))
-                ~fix:
-                  (Printf.sprintf "@%s %s%s" edge.word next.slug
-                     (Option.fold ~none:""
-                        ~some:(fun _ -> Printf.sprintf " v%d" next.rev)
-                        edge.rev))
+                ~fix:(Fix.rename edge.tag next.slug next.rev)
                 ?mark:
                   (Finding.part edge.tag Tag_line.Target
                      "renamed since the base")

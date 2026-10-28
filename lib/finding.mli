@@ -56,9 +56,7 @@ type t = private {
           subject has no place *)
   detail : string option;
       (** one line for a person, with no control character but the tab *)
-  fix : string option;
-      (** one line, with no control character but the tab: the text to paste, or
-          an instruction for a person *)
+  fix : Fix.t option;  (** the fix of the finding, as {!make} takes it *)
   ackable : bool;  (** [true] when an [@ack] can accept the finding *)
   mark : mark option;
       (** the part of the place at fault; its label is one line, with no control
@@ -75,17 +73,17 @@ val make :
   subject ->
   ?place:place ->
   ?detail:string ->
-  ?fix:string ->
+  ?fix:Fix.t ->
   ?ackable:bool ->
   ?mark:mark ->
   ?related:related list ->
   unit ->
   t
 (** [make finding_class subject ?place ?detail ?fix ?ackable ?mark ?related ()]
-    is the finding of [finding_class] about [subject]. Its detail and its fix
-    are [detail] and [fix] as {!escape} writes them, so each is one line. Its
-    mark is [mark], and its related places are [related], with each label as
-    {!escape} writes it. [related] is empty when absent.
+    is the finding of [finding_class] about [subject]. Its detail is [detail] as
+    {!escape} writes it, so it is one line. Its fix is [fix]. Its mark is
+    [mark], and its related places are [related], with each label as {!escape}
+    writes it. [related] is empty when absent.
 
     The related places are sorted by the path, the start line, the start column,
     the stop line, and the stop column of their places, and then by their
@@ -99,14 +97,15 @@ val make :
     not ackable.
 
     @raise Invalid_argument
-      if [detail] or [fix] is empty, or if [ackable] is given for a class other
-      than [retired] and [unmet-rule]. It also raises on a mark when [place] is
-      absent; when the start column of the mark is before the start column of
-      [place]; when [place] starts and stops on one line and the stop column of
-      the mark is after the stop column of [place]; when the stop column of the
-      mark is not after its start column; and when the label of the mark is
-      empty. It raises on an empty label of a related place, and on two related
-      places that are equal after {!escape} writes their labels. *)
+      if [detail] is empty, or if [ackable] is given for a class other than
+      [retired] and [unmet-rule]. It raises on a fix when [place] is absent. It
+      also raises on a mark when [place] is absent; when the start column of the
+      mark is before the start column of [place]; when [place] starts and stops
+      on one line and the stop column of the mark is after the stop column of
+      [place]; when the stop column of the mark is not after its start column;
+      and when the label of the mark is empty. It raises on an empty label of a
+      related place, and on two related places that are equal after {!escape}
+      writes their labels. *)
 
 val escape : string -> string
 (** [escape text] is [text] with each ASCII control character other than the tab

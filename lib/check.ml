@@ -70,7 +70,10 @@ let text { finding; tier } =
     @ Option.to_list finding.detail
   in
   String.concat " " words
-  :: Option.to_list (Option.map (fun fix -> "  fix: " ^ fix) finding.fix)
+  :: Option.to_list
+       (Option.map
+          (fun fix -> "  fix: " ^ Finding.escape (Fix.text fix))
+          finding.fix)
 
 let record ~mode { finding; tier } =
   let optional name = function
@@ -143,7 +146,9 @@ let record ~mode { finding; tier } =
     ("mode", Jsonl.string (Mode.name mode));
   ]
   @ optional "detail" finding.detail
-  @ optional "fix" finding.fix @ place @ mark @ related @ gate
+  @ optional "fix"
+      (Option.map (fun fix -> Finding.escape (Fix.text fix)) finding.fix)
+  @ place @ mark @ related @ gate
 
 type format = Text | Json
 type report = { messages : string list; lines : string list; code : int }
