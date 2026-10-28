@@ -1087,3 +1087,36 @@ let damaged_refs_output =
        splice output at piece);
       string_size (int_range 0 40);
     ]
+
+let terminal_text =
+  let open Gen in
+  map (String.concat "")
+    (list_size (int_bound 24)
+       (oneof_weighted
+          [
+            (6, oneof_list [ "a"; "@"; " "; "x"; "1" ]);
+            ( 4,
+              oneof_list
+                [
+                  "\t";
+                  "\r";
+                  "\n";
+                  "\x00";
+                  "\x1b";
+                  "\x7f";
+                  "\xc2\x80";
+                  "\xc2\x9b";
+                  "\xe2\x80\xaa";
+                  "\xe2\x80\xae";
+                  "\xe2\x81\xa6";
+                  "\xe2\x81\xa9";
+                  "\xe6\x97\xa5";
+                  "\xf0\x9f\xa6\x80";
+                  "\xcc\x81";
+                  "\xc3\xa9";
+                  "\xff";
+                  "\xe2\x80";
+                  "\xef\xbf\xbd";
+                ] );
+            (1, utf_8_string);
+          ]))

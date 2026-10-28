@@ -26,6 +26,12 @@ val not_utf_8_string_at : (int * string) QCheck2.Gen.t
 (** A string that is not valid UTF-8, and the byte offset of its first sequence
     that is not well-formed. The string is valid UTF-8 before that offset. *)
 
+val terminal_text : string QCheck2.Gen.t
+(** A string of at most 24 pieces that a terminal shows in different ways:
+    printable ASCII, tabs, carriage returns, line feeds, C0 and C1 control
+    characters, DEL, bidirectional formatting characters, wide characters, an
+    emoji, a combining accent, U+FFFD, and bytes that are not UTF-8. *)
+
 (** {1 Records} *)
 
 val jsonl_int : int QCheck2.Gen.t

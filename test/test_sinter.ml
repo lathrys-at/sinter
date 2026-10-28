@@ -46,6 +46,7 @@ let () =
       ("markdown pack", Test_markdown_pack.tests);
       ("line index", Test_line_index.tests);
       ("source", Test_source.tests);
+      ("display", Test_display.tests);
       ("tag line", Test_tag_line.tests);
       ("slug", Test_slug.tests);
       ("plan target", Test_plan_target.tests);
