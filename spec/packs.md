@@ -1225,7 +1225,7 @@ the lock file. When the index holds no such release, or when a hash
 differs, the command keeps no file of that pack and stops with exit
 code 3.
 
-Only three commands use the network: `sinter pack add`,
+Only three commands fetch packs: `sinter pack add`,
 `sinter pack fetch`, and `sinter init`, which can do what
 `sinter pack fetch` does. Every other command takes the packs from the
 cache. A command that needs a pack that the cache lacks stops with exit
