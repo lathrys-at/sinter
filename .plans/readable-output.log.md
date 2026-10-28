@@ -129,3 +129,10 @@
   The lock keeps `disabled`, as it had, because the package is not a
   dependency of Sinter. The lock also takes the synopsis and the
   description of `dune-project` again; they were stale.
+- Without a gate, the primary mark and its label take the bold style of
+  the headline; the style table gives a color only to the marks of a
+  tier. The style renderer is `None` in this step, so no output shows
+  it.
+- `Format` breaks a line at a break hint when the queue is flushed,
+  whatever the margin. The renderer writes no break hint, and the large
+  margin guards only text inside a box.

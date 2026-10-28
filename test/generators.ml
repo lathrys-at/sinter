@@ -1120,3 +1120,105 @@ let terminal_text =
                 ] );
             (1, utf_8_string);
           ]))
+
+let source_line =
+  let open Gen in
+  map (String.concat "")
+    (list_size (int_bound 8)
+       (oneof_list
+          [
+            "a";
+            "@";
+            " ";
+            "\t";
+            "\x1b";
+            "\r";
+            "\xc2\x9b";
+            "\xe2\x80\xae";
+            "\xe6\x97\xa5";
+            "\xf0\x9f\xa6\x80";
+            "e\xcc\x81";
+          ]))
+
+let source_file =
+  let open Gen in
+  map3
+    (fun lines ending last ->
+      let text = String.concat ending lines in
+      match last with
+      | `Line_feed -> text ^ ending
+      | `None -> text
+      | `Not_utf_8 -> text ^ "\xff" ^ ending)
+    (list_size (int_range 0 6) source_line)
+    (oneof_list [ "\n"; "\r\n" ])
+    (oneof_list_weighted [ (4, `Line_feed); (2, `None); (1, `Not_utf_8) ])
+
+let label = Gen.map (fun text -> if text = "" then "x" else text) terminal_text
+
+let rendered_place =
+  let open Gen in
+  let* path = oneof_list_weighted [ (6, "a.md"); (1, "missing.md") ] in
+  let* line = int_range 1 7 in
+  let* column = int_range 1 8 in
+  let* lines = int_range 0 1 in
+  let* stop =
+    if lines = 0 then int_range column (column + 6) else int_range 1 8
+  in
+  return
+    {
+      Finding.path;
+      span =
+        {
+          Markdown.start = { line; column };
+          stop = { line = line + lines; column = stop };
+        };
+    }
+
+let rendered_mark (place : Finding.place) =
+  let open Gen in
+  let span = place.span in
+  let last =
+    if span.stop.line > span.start.line then span.start.column + 4
+    else span.stop.column
+  in
+  if last <= span.start.column then return None
+  else
+    let* start = int_range span.start.column (last - 1) in
+    let* stop = int_range (start + 1) last in
+    let* label = label in
+    oneof_list [ None; Some { Finding.start; stop; label } ]
+
+let rendered_finding =
+  let open Gen in
+  let* content = source_file in
+  let* finding_class = oneof_list Finding_class.all in
+  let* tier =
+    oneof_list [ None; Some Finding_class.Warn; Some Finding_class.Block ]
+  in
+  let* detail = option terminal_text in
+  let* place = option rendered_place in
+  let* mark =
+    match place with Some place -> rendered_mark place | None -> return None
+  in
+  return
+    ( content,
+      Finding.make finding_class
+        (Finding.Line { path = "a.md"; line = 1 })
+        ?place
+        ?detail:(Option.bind detail (fun d -> if d = "" then None else Some d))
+        ?mark (),
+      tier )
+
+let print_rendered (content, (finding : Finding.t), tier) =
+  Printf.sprintf "content %S, tier %s, place %s, mark %s, detail %s" content
+    (Option.fold ~none:"none" ~some:Finding_class.tier_name tier)
+    (Option.fold ~none:"none"
+       ~some:(fun ({ path; span } : Finding.place) ->
+         Printf.sprintf "%s %d:%d-%d:%d" path span.start.line span.start.column
+           span.stop.line span.stop.column)
+       finding.place)
+    (Option.fold ~none:"none"
+       ~some:(fun ({ start; stop; label } : Finding.mark) ->
+         Printf.sprintf "%d-%d %S" start stop label)
+       finding.mark)
+    (Option.fold ~none:"none" ~some:(Printf.sprintf "%S") finding.detail)

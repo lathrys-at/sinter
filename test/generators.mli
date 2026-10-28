@@ -32,6 +32,22 @@ val terminal_text : string QCheck2.Gen.t
     characters, DEL, bidirectional formatting characters, wide characters, an
     emoji, a combining accent, U+FFFD, and bytes that are not UTF-8. *)
 
+val rendered_finding :
+  (string * Sinter_core.Finding.t * Sinter_core.Finding_class.tier option)
+  QCheck2.Gen.t
+(** The content of a file [a.md], a finding, and its tier. The content holds up
+    to 6 lines of the pieces of {!terminal_text} but the line feed, with LF or
+    CRLF line endings, and sometimes no final line ending or a byte that is not
+    UTF-8. The place of the finding, when it has one, is in [a.md] or in the
+    missing file [missing.md], from line 1 to 7, on one line or two, and can
+    start or stop past the end of its line; its mark, when it has one, lies on
+    the first line of the place. *)
+
+val print_rendered :
+  (string * Sinter_core.Finding.t * Sinter_core.Finding_class.tier option)
+  QCheck2.Print.t
+(** [print_rendered] prints a value of {!rendered_finding}. *)
+
 (** {1 Records} *)
 
 val jsonl_int : int QCheck2.Gen.t
