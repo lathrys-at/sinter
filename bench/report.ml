@@ -101,7 +101,6 @@ let to_json report outcomes =
                `Assoc
                  ([
                     ("command", `String outcome.command);
-                    ("budget", `String outcome.budget);
                     ("phase", option_json string_json outcome.phase);
                     ("limit", `Float outcome.limit);
                   ]
@@ -243,8 +242,7 @@ let to_markdown report outcomes =
           | Fail value -> ("**fail**", Printf.sprintf "%.2f" value)
           | Skipped reason -> ("skipped: " ^ reason, "-")
         in
-        Printf.sprintf "| %s | %s | %s | %.2f | %s | %s |" outcome.command
-          outcome.budget
+        Printf.sprintf "| %s | %s | %.2f | %s | %s |" outcome.command
           (Option.value outcome.phase ~default:"-")
           outcome.limit value result)
       outcomes
@@ -269,7 +267,7 @@ let to_markdown report outcomes =
     | _ ->
         [
           "";
-          "| command | budget | phase | limit | measure | result |";
-          "|---|---|---|---|---|---|";
+          "| command | phase | growth limit | growth | result |";
+          "|---|---|---|---|---|";
         ]
         @ budget_rows @ [ "" ])

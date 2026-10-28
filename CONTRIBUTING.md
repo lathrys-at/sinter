@@ -491,15 +491,12 @@ the variable for each run. The count is the
 same on every run of one input at one path. The counts of `repository`
 and `read` also grow with the length of the path of the tree.
 
-`bench/budgets.toml` holds two budgets for each command
-(`docs/decisions/performance-budgets.md`):
-
-- **Memory:** the median peak memory on the tree of 10,000
-  declarations, on Linux, in KiB.
-- **Growth:** for each phase, the words on the tree of 10,000
-  declarations, divided by the words on the tree of 1,000
-  declarations. A step whose cost grows faster than the tree raises
-  the number of its phase. This budget applies on every platform.
+`bench/budgets.toml` holds one budget for each command, the growth
+limit (`docs/decisions/performance-budgets.md`). The growth of a phase
+is the words on the tree of 10,000 declarations, divided by the words
+on the tree of 1,000 declarations. A step whose cost grows faster than
+the tree raises the growth of its phase. The limit applies to each
+phase, on every platform. No budget applies to the peak memory.
 
 The CI job "Measure performance" makes the same measures as `@bench`
 on `ubuntu-26.04`, and fails when a measure exceeds its budget. It

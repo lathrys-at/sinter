@@ -60,5 +60,5 @@ val to_markdown : t -> Budgets.outcome list -> string
 (** [to_markdown report outcomes] is a markdown section, headed
     [## Performance]: one line on the instruction count, a table of the medians
     and spreads of the rows, in MiB and in billions of instructions, and a table
-    of the outcomes, with the phase of each growth limit, when there are any. It
-    ends with a line feed. *)
+    of the outcomes, with the phase, the limit, and the growth of each, when
+    there are any. It ends with a line feed. *)

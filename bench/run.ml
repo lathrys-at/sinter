@@ -424,9 +424,7 @@ let main sinter generator self self_manifest sizes seed runs budgets trees
     let outcomes =
       Option.fold ~none:[]
         ~some:(fun budgets ->
-          Budgets.check budgets
-            ~linux:(String.equal report.platform "linux")
-            ~peak:(Report.peak report) ~words:(Report.words report))
+          Budgets.check budgets ~words:(Report.words report))
         budgets
     in
     let text =
@@ -494,16 +492,14 @@ let () =
          of one input at one path. A sinter that writes no such file counts no \
          phase; with $(b,--budgets), the run then stops.";
       `P
-        "With $(b,--budgets), the run checks the budgets of that file. The \
-         file is TOML, with the tables $(i,scan) and $(i,check). Each table \
-         holds $(i,peak-memory-kib), the limit of the median peak memory on \
-         the tree of 10,000 declarations on Linux, in KiB, and \
-         $(i,allocation-growth), the limit, for each phase, of the words on \
-         the tree of 10,000 declarations divided by the words on the tree of \
-         1,000 declarations. A budget that the run cannot check is skipped: \
-         the memory budget off Linux or without the tree of 10,000 \
-         declarations, and the growth limit of a phase without the words of \
-         the phase on both trees. The instruction counts are information only.";
+        "With $(b,--budgets), the run checks the growth limits of that file. \
+         The file is TOML, with the tables $(i,scan) and $(i,check), and the \
+         table $(i,check-diff) when $(i,sinter check --diff) has a limit. Each \
+         table holds $(i,allocation-growth), the limit, for each phase, of the \
+         words on the tree of 10,000 declarations divided by the words on the \
+         tree of 1,000 declarations. The run skips the limit of a phase that \
+         does not have its words on both trees. No limit applies to the peak \
+         memory or to the instruction counts.";
       `S "OUTPUT";
       `P
         "A JSON object, on standard output or in the file of $(b,--json). Its \
@@ -511,7 +507,8 @@ let () =
          $(i,instruction_counter), $(i,perf), $(i,time), or null; \
          $(i,no_count_reason), why nothing counts the instructions, or null; \
          $(i,runs); $(i,seed); $(i,results), one object for each tree and \
-         command; and $(i,budgets), one object for each budget.";
+         command; and $(i,budgets), one object for each phase of each command \
+         that the budgets file names.";
       `P
         "An object of $(i,results) holds $(i,tree) (self, or n and the number \
          of declarations), $(i,declarations) (null for self), $(i,command), \
@@ -524,10 +521,9 @@ let () =
          each phase in its order, each with $(i,phase), the name, and \
          $(i,words), the median of the words.";
       `P
-        "An object of $(i,budgets) holds $(i,command), $(i,budget) \
-         ($(i,peak-memory-kib) or $(i,allocation-growth)), $(i,phase) (the \
-         phase of a growth limit, or null), $(i,limit), and $(i,result): \
-         $(i,pass) or $(i,fail), with the measure in $(i,value), or \
+        "An object of $(i,budgets) holds $(i,command), $(i,phase) (the phase, \
+         or null when the run counted no phase), $(i,limit), and $(i,result): \
+         $(i,pass) or $(i,fail), with the growth in $(i,value), or \
          $(i,skipped), with the cause in $(i,reason).";
       `P
         "A table in markdown goes to standard error, and is appended to the \
@@ -535,7 +531,7 @@ let () =
     ]
   in
   let exits =
-    Cmd.Exit.info 1 ~doc:"when a budget fails."
+    Cmd.Exit.info 1 ~doc:"when a growth limit fails."
     :: Cmd.Exit.info 2 ~doc:"when the run cannot measure."
     :: Cmd.Exit.defaults
   in
@@ -550,8 +546,8 @@ let () =
   let results =
     path_opt [ "results" ] "PATH"
       "A JSON object that an earlier run wrote. The run reads its measures, \
-       measures nothing, and checks the budgets of $(b,--budgets) against \
-       them, as a run on the platform of the object would."
+       measures nothing, and checks the growth limits of $(b,--budgets) \
+       against them."
   in
   let generator =
     path_opt [ "generator" ] "PATH"
@@ -590,7 +586,7 @@ let () =
   in
   let budgets =
     path_opt [ "budgets" ] "PATH"
-      "The budgets file to check the medians against."
+      "The budgets file to check the words of the phases against."
   in
   let trees =
     path_opt [ "trees" ] "DIR"
