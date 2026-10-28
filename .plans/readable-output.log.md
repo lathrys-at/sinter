@@ -93,3 +93,32 @@
   detail, fix, and label was the largest part of that. With the
   change, the findings phase allocates fewer words than before the
   step.
+
+## Structure the fixes
+
+- A fix is held as `Fix.t`, an abstract type. Each form keeps the
+  `Markdown.tag` that it changes, one word, and only the new parts: a
+  word, a revision, a slug, the successors, or the block of an `@ack`
+  line. The columns, the help message, the edits, and the
+  text come from the tag when the output is written. Functions that
+  make a fix refuse a tag with no target, so the output functions
+  are total. On the tree of 10,000 declarations, the findings phase
+  of `check` allocates 0.3 million fewer words, and the output phase
+  0.45 million more.
+- `Markdown.block` gains `new_line`, the text that opens the inserted
+  `@ack` line, because the reader keeps no text of the file. An
+  indent of up to 16 characters with no tab shares a constant string,
+  so most blocks allocate nothing for it.
+- A revision edit whose new revision equals the old one is left out,
+  for `renamed` and for each successor of `retired` (ruling of the
+  lead). The target and the revision are two edits, so the gap between
+  them stays as it is.
+- Nothing inside a block quote holds tags, so the prefix rule for `>`
+  is tested on `Tag_line.indent` alone.
+- Section 9.1 of the algebra called the repairs that it accepts
+  "edits". They are now "changes", so that "edit" keeps the meaning of
+  `spec/jsonl.md` section 8. Section 9.1 accepts the same hunks.
+- A `retired` finding whose cited item has neither a status nor a
+  successor gets no fix; at 170c04b its fix was `""`, which
+  `Finding.make` refuses. `Facts.successors` and the rule of in force
+  rule the case out. Its detail stays as it was (ruling of the lead).
