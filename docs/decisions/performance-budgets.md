@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 <!-- Copyright 2026 The Sinter Authors -->
 
-# Check peak memory and the growth of allocation per phase in CI
-@decision performance-budgets
-A CI job runs `sinter scan` and `sinter check` on generated trees and fails when the peak memory, or the growth of the memory that a phase allocates, exceeds its budget; at first the job does not block a merge.
+# Check the growth of allocation per phase in CI, and report the peak memory
+@decision performance-budgets v2
+A CI job runs `sinter scan` and `sinter check` on generated trees, fails when the growth of the memory that a phase allocates exceeds its budget, and reports the peak memory next to the peak memory of `main`; the job does not block a merge.
 
 ## Context
 
@@ -22,6 +22,15 @@ a tree of 1,000 declarations to one of 10,000, while the whole run of
 about 7 percent of the run. It became two thirds of the run only at
 100,000 declarations, which is too large for every pull request.
 
+Version 1 of this record also set a fixed budget for the peak memory
+of each command. Each new feature adds some memory, so the margin
+under a fixed budget gets smaller with each feature, even when nothing
+is wrong. In October 2026 the margin of `sinter check` was 2.5
+percent, and each pull request that crossed it stopped for a decision
+to raise the budget. The performance work was not meant to set fixed
+limits for ever. The growth budget found the real defect, and it does
+not get tighter as Sinter grows.
+
 ## Decision
 
 - A benchmark makes trees of 1,000 and 10,000 declarations from a
@@ -31,17 +40,18 @@ about 7 percent of the run. It became two thirds of the run only at
   phase of a run. This count is the same in every run of the same
   input at the same path; two phases grow slightly with the length of
   the path of the tree.
-- Two budgets apply to each command:
-  - **Memory:** the peak resident memory on the tree of 10,000
-    declarations, measured on Linux, stays under its budget.
-  - **Growth:** for each phase, the words allocated on the tree of
-    10,000 declarations, divided by the words allocated on the tree
-    of 1,000 declarations, stays under a limit. This budget is checked
-    on every platform.
+- **Growth budget:** for each phase of each command, the words
+  allocated on the tree of 10,000 declarations, divided by the words
+  allocated on the tree of 1,000 declarations, stays under a limit.
+  This budget is checked on every platform. A file in the repository
+  holds the limits. A change of a limit is a change of that file, in
+  the pull request that needs it.
+- **Peak memory:** the job measures the peak resident memory of each
+  command on the tree of 10,000 declarations, on Linux, and writes it
+  in the job summary next to the peak memory of the newest measured
+  run on `main`. No fixed budget applies to it.
 - The runner reports instruction counts where the platform gives
   them, as information only.
-- A file in the repository holds the budgets. A change of a budget is
-  a change of that file, in the pull request that needs it.
 - The job runs on a pull request that changes `lib/`, `bin/`,
   `bridge/`, the benchmark, or a dependency. It does not block a merge
   until a revision of this record makes it required.
@@ -65,13 +75,26 @@ about 7 percent of the run. It became two thirds of the run only at
 - **No check in CI.** A scheduled job writes the numbers to the job
   summary. Not chosen: a regression shows only when someone reads the
   numbers.
+- **Keep the fixed memory budgets as they are** (version 1), and raise
+  a budget in the pull request that crosses it. Not chosen: the limits
+  need a raise again and again, and each raise stops the work for a
+  decision.
+- **Keep both budgets, as warnings only.** Not chosen: when nobody has
+  to raise the numbers, they grow old and stop meaning anything, and a
+  warning on every pull request is noise.
+- **Remove all budgets, and only report the numbers.** Not chosen: a
+  phase that grows too fast would no longer fail the job, and version 1
+  rejected a job that only reports for the same reason.
 
 ## Consequences
 
 Each pull request in scope takes a few more minutes of CI. A change
-that raises the peak memory, or that adds a phase whose allocation
-grows faster than the tree, fails the job; the pull request then fixes
-the cause or raises the budget, where the reviewer sees it. The growth
-budget does not see work that allocates nothing, or work in the Rust
-parser bridge. The memory budget is a Linux number; a pair that
-measures on macOS reads its own numbers against its own baseline.
+that adds a phase whose allocation grows faster than the tree fails
+the job; the pull request then fixes the cause or raises the limit,
+where the reviewer sees it. A change in peak memory fails nothing: the
+reviewer sees it in the job summary, next to the number of `main`. A
+slow rise of memory over many pull requests shows only to a person who
+reads the summaries. The growth budget does not see work that
+allocates nothing, or work in the Rust parser bridge. The peak memory
+is a Linux number; a pair that measures on macOS reads its own numbers
+against its own baseline.
