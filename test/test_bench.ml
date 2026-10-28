@@ -511,11 +511,18 @@ let report_of_peaks ?(platform = "linux") peaks =
   }
 
 let table_rows markdown =
-  List.filter
-    (fun line ->
-      String.starts_with ~prefix:"| " line
-      && not (String.starts_with ~prefix:"| tree " line))
-    (String.split_on_char '\n' markdown)
+  let rec after_header = function
+    | [] -> []
+    | line :: lines ->
+        if String.starts_with ~prefix:"| tree " line then
+          match lines with _ :: rows -> body rows | [] -> []
+        else after_header lines
+  and body = function
+    | line :: lines when String.starts_with ~prefix:"| " line ->
+        line :: body lines
+    | _ -> []
+  in
+  after_header (String.split_on_char '\n' markdown)
 
 let markdown_compares_each_row_with_the_baseline () =
   let report =
