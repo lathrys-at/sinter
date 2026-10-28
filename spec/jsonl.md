@@ -498,10 +498,11 @@ No two objects are equal. A related place under a historical path
 
 The **fix** of a finding is its help message, `help`, and its edits,
 `edits`. A fix has one **alternative** or more. An alternative is a
-set of edits that removes the finding when a tool makes all of them:
-the edits repair the finding or, for an inserted `@ack` line, accept
-it. When a fix has two alternatives or more, a person chooses one. Each
-object of `edits` is one edit, and holds these fields:
+set of edits. When a tool makes all the edits of one alternative,
+Sinter no longer reports the finding: the edits repair the finding or,
+for an inserted `@ack` line, accept it. When a fix has two
+alternatives or more, a person chooses one. Each object of `edits` is
+one edit, and holds these fields:
 
 | field | type | meaning |
 |---|---|---|
@@ -543,8 +544,9 @@ ending, then a prefix, then the `@ack` line:
 A file that does not end with LF still does not end with LF after the
 edit.
 
-The objects are sorted by `(alt, path, line, col, eline, ecol, text)`,
-each string in byte order. No two objects are equal.
+The objects of `edits` are sorted by
+`(alt, path, line, col, eline, ecol, text)`, each string in byte
+order. No two objects are equal.
 
 ## 9. Identity
 

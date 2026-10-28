@@ -97,7 +97,7 @@
 ## Structure the fixes
 
 - A fix is held as `Fix.t`, an abstract type. Each form keeps the
-  `Markdown.tag` that it changes, one word, and only the new parts: a
+  `Markdown.tag` that it changes, and only the new parts: a
   word, a revision, a slug, the successors, or the block of an `@ack`
   line. The columns, the help message, the edits, and the
   text come from the tag when the output is written. Functions that

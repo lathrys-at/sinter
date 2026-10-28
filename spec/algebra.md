@@ -463,9 +463,10 @@ finding of the class is ackable only when the condition that the row
 states holds.
 
 A finding can carry a **fix**: a help message, and one alternative or
-more, each a set of edits of the text that removes the finding when a
-tool makes all of them ([jsonl.md](jsonl.md) section 8). The edits
-repair the finding or, for an inserted `@ack` line, accept it. A fix
+more ([jsonl.md](jsonl.md) section 8). An alternative is a set of
+edits of the text. When a tool makes all the edits of one
+alternative, Sinter no longer reports the finding: the edits repair
+the finding or, for an inserted `@ack` line, accept it. A fix
 is of one of three kinds:
 
 - A fix with more than one alternative needs a choice: a person
