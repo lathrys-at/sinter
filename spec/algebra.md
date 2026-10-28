@@ -460,9 +460,22 @@ definitions:
 A finding is **ackable** when a live `@ack` can accept it. Column `A`
 marks the classes whose findings are all ackable. `A*` means that a
 finding of the class is ackable only when the condition that the row
-states holds. Column `F` marks classes with a mechanical fix. A class
-that column `F` does not mark can still give a `fix`
-([jsonl.md](jsonl.md) section 8), such as the `@ack` line for a
+states holds.
+
+A finding can carry a **fix**: a help message, and one alternative or
+more, each a set of edits of the text that removes the finding when a
+tool makes all of them ([jsonl.md](jsonl.md) section 8). The edits
+repair the finding or, for an inserted `@ack` line, accept it. A fix
+is of one of three kinds:
+
+- A fix with more than one alternative needs a choice: a person
+  chooses one alternative.
+- A fix that inserts an `@ack` line is a judgment: it accepts the
+  finding and does not repair it.
+- Every other fix is mechanical.
+
+Column `F` marks classes with a mechanical fix. A class that column
+`F` does not mark can still give a fix, such as the `@ack` line for a
 finding. The `tiers` column gives each class's built-in tier at the
 gates `(turn, review, merged)` ([manifest.md](manifest.md) section
 9.1). A `—` means that the class takes no tier at that gate. The `mode`
@@ -477,15 +490,15 @@ column to `warn`, at every gate. `sinter init` writes
 | class | subject | definition | mode | A | F | tiers |
 |---|---|---|---|---|---|---|
 | `parse-error` | file | *engine*: a governed file with a parse failure ([packs.md](packs.md) section 5.2). In a file of a fetched pack, the file's facts are absent. In a markdown file, the facts stay, one finding sits at each error, and the tier of such a finding is `warn` where the class's tier is `block` | tree | · | · | warn, block, block |
-| `typo-tag` | line | *engine*: a tag line whose tag word ([vocabulary.md](vocabulary.md) section 3.1) is not in the vocabulary and lies within Damerau–Levenshtein distance 2 of a word of the vocabulary. The pack's foreign vocabulary is exempt. The `fix` names the nearest word of the vocabulary. When two words are equally near, it names the first in byte order, as [manifest.md](manifest.md) section 4.2 does for keys | tree | · | F | warn, warn, warn |
+| `typo-tag` | line | *engine*: a tag line whose tag word ([vocabulary.md](vocabulary.md) section 3.1) is not in the vocabulary and lies within Damerau–Levenshtein distance 2 of a word of the vocabulary. The pack's foreign vocabulary is exempt. The fix writes the nearest word of the vocabulary in place of the tag word. When two words are equally near, it writes the first in byte order, as [manifest.md](manifest.md) section 4.2 does for keys | tree | · | F | warn, warn, warn |
 | `ignored-tag` | line | *engine*: in markdown, a paragraph that a section or a list item holds directly, that is not the first paragraph of that section or list item, that no block quote holds, and whose first line is a tag line. The scanner reads no tag in it ([packs.md](packs.md) section 7.2) | tree | · | · | warn, warn, warn |
 | `invalid-target` | tag | *engine*: a tag target that fails its pattern: a slug that fails the slug pattern, or an external id whose namespace is undeclared or whose id fails the pattern of its namespace ([vocabulary.md](vocabulary.md) sections 4.1 and 4.2). Such a tag target is never `dangling` | tree | · | · | block, block, block |
 | `duplicate` | tag or line | *engine*: two slugs in one namespace that are equal, or that differ only in case ([vocabulary.md](vocabulary.md) section 4.1): two declarations; two plans (closed plans included); or two steps of one plan. Order the facts of one such group by the byte order of their paths, and then by their lines. Each fact after the first gives one finding. Its subject is the tag of that fact or, for a step, the line of the step's heading ([jsonl.md](jsonl.md) section 9) | tree | · | · | block, block, block |
 | `scope-outside-plan` | step | *engine*: a step whose `@scope` is not contained in its plan's `@scope`. The tool decides containment on the plain globs ([manifest.md](manifest.md) section 7.2), by the rule of glob containment of [ledger.md](ledger.md) section 11: each plain glob of the step must be contained in a plain glob of the plan. A `!` glob of the step only narrows the step's scope, so it never breaks containment | tree | · | · | block, block, — |
 | `misplaced-plan` | tag | *engine*: a `@plan` tag that does not stand in the first tag block of a file under `.plans/`: a `@plan` outside `.plans/**`, or a `@plan` in a later block of a file under `.plans/` ([vocabulary.md](vocabulary.md) section 10.1) | tree | · | · | block, block, block |
 | `unpinned` | edge | *engine*: a `satisfies`, `verifies`, `refines`, or `supersedes` edge without a revision | tree | · | F | block, block, block |
-| `dangling` | edge | `dangling(kind(edge))`, minus edges whose tag target a claim promises to declare — those surface as `waiting-on` instead — and minus the edges that `renamed` reports (*engine* performs these subtractions). When the tag target differs from a declared slug only in case, the `fix` of the finding names the declared spelling | tree | · | · | block, block, block |
-| `renamed` | edge | *engine*: a dangling edge whose slug has the tombstone of a declaration in `B`, when both of these conditions hold. First: exactly one tombstone of a declaration and exactly one new declaration have the extent hash of that tombstone. A new declaration is a declaration of `T` that the fact set of `B` does not hold. Second: the new declaration has the kind of the tombstone. When a condition fails, the edge is only `dangling`. `renamed` is reported in place of `dangling` on the edge. The `fix` is the citation with the slug of the new declaration, and with the revision of the new declaration when the edge carries a revision | diff | · | F | block, block, block |
+| `dangling` | edge | `dangling(kind(edge))`, minus edges whose tag target a claim promises to declare — those surface as `waiting-on` instead — and minus the edges that `renamed` reports (*engine* performs these subtractions). When the tag target differs from a declared slug only in case, the fix of the finding writes the declared spelling in place of the tag target | tree | · | · | block, block, block |
+| `renamed` | edge | *engine*: a dangling edge whose slug has the tombstone of a declaration in `B`, when both of these conditions hold. First: exactly one tombstone of a declaration and exactly one new declaration have the extent hash of that tombstone. A new declaration is a declaration of `T` that the fact set of `B` does not hold. Second: the new declaration has the kind of the tombstone. When a condition fails, the edge is only `dangling`. `renamed` is reported in place of `dangling` on the edge. The fix writes the slug of the new declaration in place of the tag target. When the edge carries a revision, the fix also writes the revision of the new declaration in place of that revision | diff | · | F | block, block, block |
 | `suspect` | edge | `suspect(kind(edge))` | tree | · | F | block, block, block |
 | `unbumped` | node | `kind(req\|design\|decision) ^ changed(base) - bumped(all)` | diff | · | F | block, block, block |
 | `cycle` | node | *engine*: a cycle of `supersedes` and `refines` edges. Two facts belong to one cycle when each reaches the other along these edges. A fact with such an edge to itself is a cycle by itself. Each cycle gives one finding. Its subject is the member of the cycle with the smallest id in byte order, and its `detail` names the other members, in the byte order of their ids | tree | · | · | block, block, block |
@@ -495,7 +508,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `unapproved-design` | edge | `in(satisfies\|verifies, kind(design) - approved(all))` | tree | · | · | warn, warn, warn |
 | `awaiting-approval` | node | `kind(req\|design\|decision) ^ inforce(all) - approved(all)` | tree | · | · | off, warn, warn |
 | `unapproved-plan` | plan | `kind(plan) ^ inforce(all) - approved(all)`. The engine writes the difference between the current commitment set and the approved commitment set into the finding's `detail` field | tree | · | · | warn, block, — |
-| `retired` | edge | `in(cites, all) - in(cites, inforce(all))`: the `cites` edges whose tag target resolves to a fact that is not in force — a rule's origin edge included. When the cited fact has successors ([vocabulary.md](vocabulary.md) section 8.2), the `detail` names the cited fact and then its successors, in the byte order of their ids, for example `decision:a is superseded by decision:b, decision:c`. The `fix` is then the citation of a successor that replaces the edge: `@cites`, the slug of the successor, and the current revision of the successor when the edge carries a revision. With several successors, the `fix` gives one such citation for each, in the same order, for example `@cites b v2 or @cites c v1`. Ackable only when the cited fact has no successor; the `fix` is then the `@ack` line for the finding | tree | A* | · | warn, block, block |
+| `retired` | edge | `in(cites, all) - in(cites, inforce(all))`: the `cites` edges whose tag target resolves to a fact that is not in force — a rule's origin edge included. When the cited fact has successors ([vocabulary.md](vocabulary.md) section 8.2), the `detail` names the cited fact and then its successors, in the byte order of their ids, for example `decision:a is superseded by decision:b, decision:c`. The fix then cites a successor in place of the cited fact: it writes the slug of the successor in place of the tag target and, when the edge carries a revision, the current revision of the successor in place of that revision. With several successors, the fix has one alternative for each, in the same order. Ackable only when the cited fact has no successor; the fix then inserts the `@ack` line for the finding after the last tag line of the block | tree | A* | · | warn, block, block |
 | `stale-ack` | ack | *engine*: an `@ack` whose hash no longer matches its block, or whose tag target names neither an ackable finding nor an obligation of a rule in that block ([vocabulary.md](vocabulary.md) section 7.4) | tree | · | F | block, block, block |
 | `wrong-source` | edge | `wrong-source(kind(verifies)) + (kind(refines\|supersedes) - out(refines\|supersedes, kind(req\|design\|decision\|rule)))`: a citation whose kind needs a certain source and that does not have one ([vocabulary.md](vocabulary.md) section 7.2). A `@verifies` needs a test; a `@refines` or a `@supersedes` needs an enclosing declaration | tree | · | · | block, block, block |
 | `never-ran` | edge | `never-ran(kind(verifies)) ^ scope(inforce(kind(plan)))` at `turn`; `never-ran(kind(verifies))` at `review` and `merged` | tree | · | · | warn, block, block |
@@ -528,25 +541,26 @@ about the health of the repository's checking machinery.
 
 ### 9.1 Mechanical repairs
 
-A hunk is a **mechanical repair** when every change in it is an edit
-that one of the fixes of Sinter makes. `unplanned-change` does not
-report such a hunk. These are the edits:
+A hunk is a **mechanical repair** when every change in it is a change
+that the edits of a fix of Sinter make. `unplanned-change` does not
+report such a hunk. These are the changes:
 
 - a re-pin: a new revision on a citation (the fix of `suspect`);
 - an `@ack` line added or removed (the fix of `stale-ack`, and the
-  `@ack` line that the fix of an ackable finding gives);
+  `@ack` line that the edits of the fix of an ackable finding insert);
 - a revision added to a citation that has none (the fix of
   `unpinned`);
 - a higher revision on a declaration (the fix of `unbumped`);
 - a change of case of the tag target of a `dangling` edge to the
   declared spelling (the fix of `dangling`);
-- the new tag target and revision of a citation that the fix of
-  `renamed` gives;
+- the new tag target and revision of a citation that the edits of the
+  fix of `renamed` write;
 - the citation of a successor in place of a citation of a retired
   declaration (the fix of `retired`);
 - the corrected tag word of a `typo-tag` line (the fix of `typo-tag`).
 
-When Sinter adds a fix, the edit of that fix joins this list.
+When Sinter adds a fix, the change that its edits make joins this
+list.
 
 A hunk that holds no line is not a mechanical repair. Examples are
 the hunk of a binary file and the hunk of an added empty file.
@@ -554,11 +568,12 @@ the hunk of a binary file and the hunk of an added empty file.
 The tool decides by tags, not by text. It reads the tags of the
 removed lines in the base tree, and the tags of the added lines in the
 working tree. Each removed line and each added line of the hunk must
-be a tag line. Each removed or added `@ack` line is one edit. The
+be a tag line. Each removed or added `@ack` line is one change. The
 other removed lines and added lines must be equal in number. The first
 removed line pairs with the first added line, and so on. The two tags
-of each pair must differ by exactly one of the edits above. The added
-tag must be the tag that the fix of that edit writes, by the facts of
+of each pair must differ by exactly one of the changes above. The
+added tag must be the tag that the edits of the fix of that change
+write, by the facts of
 the working tree and, for `renamed`, of the base tree. For example, a
 re-pin and a revision added to a citation must write the current
 revision of the target, and the retarget of `renamed` must name the
