@@ -1,5 +1,5 @@
 # Quality: property tests and coverage
-@plan quality
+@plan quality@b6fea8
 @scope test/**, lib/**, bin/dune, docs/decisions/**, docs/roadmap.md, .plans/**, .github/workflows/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, CONTRIBUTING.md, .gitignore
 Record the code and test rules, bring the existing interfaces under
 property-based tests, measure coverage and mutation score in CI, and

@@ -1,5 +1,5 @@
 # Upkeep: small fixes from the assessment
-@plan upkeep
+@plan upkeep@68e6fc
 @scope .github/workflows/**, test/**, bin/**, lib/dune, lib/version.mli, spec/**, docs/versioning.md, docs/roadmap.md, docs/licensing-setup.md, docs/design-notes.md, CONTRIBUTING.md, README.md, THIRD_PARTY.md, plugins/**, .claude-plugin/**, .plans/**
 Make the small fixes that the assessment of 2026-10-03 found in CI,
 in the measuring tools, in the command line, in the specifications,

@@ -1,5 +1,5 @@
 # Readable output
-@plan readable-output
+@plan readable-output@222f5a
 @scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, plugins/**, .claude-plugin/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, .plans/**, sinter.toml, .github/workflows/**
 Make the output of Sinter clear for people and stable for programs:
 plain names for the finding classes, findings that show the source

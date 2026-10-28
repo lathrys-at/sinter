@@ -1,5 +1,5 @@
 # Sinter v0.1
-@plan sinter-v0.1
+@plan sinter-v0.1@097ce8
 @scope spec/**, docs/**, CLAUDE.md, README.md, CONTRIBUTING.md, THIRD_PARTY.md, REUSE.toml, LICENSES/**, lib/**, bin/**, bridge/**, test/**, bench/**, dune-project, sinter.opam, sinter.opam.locked, sinter.toml, .github/workflows/**, .plans/**, plugins/**, .claude-plugin/**
 Deliver the first useful version of Sinter: the tag graph of a
 repository, checked with test evidence. It reads markdown with a
