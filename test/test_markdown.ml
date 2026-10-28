@@ -1178,6 +1178,103 @@ let prose_change_changes_the_extent_hash () =
     "the hashes differ" false
     (before.tags.(0).extent = after.tags.(0).extent)
 
+let new_lines text =
+  List.map
+    (fun (block : Markdown.block) -> block.new_line)
+    (Array.to_list (file text).blocks)
+
+let new_line_gives cases () =
+  List.iter
+    (fun (text, expected) ->
+      Alcotest.(check (list string))
+        (String.escaped text) expected (new_lines text))
+    cases
+
+let new_line_follows_the_last_tag_line =
+  new_line_gives
+    [
+      ("# A\n@cites x\nProse.\n", [ "\n" ]);
+      ("# A\n@cites x\n@cites y\n", [ "\n" ]);
+      ("# A\r\n@cites x\r\n", [ "\r\n" ]);
+      ("# A\n@cites x", [ "\n" ]);
+      ("# A\n@cites x\r", [ "\n" ]);
+      ("# A\r\n@cites x\r\nProse.", [ "\r\n" ]);
+      ("\xef\xbb\xbf@cites x\n", [ "\n" ]);
+      ("- @cites x\n", [ "\n  " ]);
+      ("- @cites x\n  @cites y\n", [ "\n  " ]);
+      ("- @cites x\n  Prose.\n", [ "\n  " ]);
+      ("- [ ] @cites x\r\n", [ "\r\n      " ]);
+      ("10. @cites x\n", [ "\n    " ]);
+      ("- a\n\n\t- @cites x\n", [ "\n\t  " ]);
+      ("# A\n@cites x\nProse.\n@cites y\n", [ "\n"; "\n" ]);
+    ]
+
+let shares cases =
+  List.iter
+    (fun (name, first, second) ->
+      Alcotest.(check bool)
+        name true
+        (List.for_all2 ( == ) (new_lines first) (new_lines second)))
+    cases
+
+let new_line_of_a_narrow_indent_is_shared () =
+  shares
+    [
+      ("column 1 with LF", "# A\n@cites x\n", "# B\n\n@req y v2\nProse.\n");
+      ("column 1 with CR and LF", "# A\r\n@cites x\r\n", "# B\r\n@req y\r\n");
+      ("a list item", "- @cites x\n", "- a\n  @cites y\n");
+      ("a task and a number", "- [ ] @cites x\r\n", "1000. @cites y\r\n");
+      ( "sixteen characters",
+        "# A\n@cites x\n" ^ String.make 16 ' ' ^ "@cites y\n",
+        "- a\n\n  - b\n    @cites x\n" ^ String.make 16 ' ' ^ "@cites y\n" );
+    ]
+
+let new_line_of_a_wide_or_tabbed_indent_is_its_own () =
+  let differ name first second =
+    Alcotest.(check bool)
+      name false
+      (List.for_all2 ( == ) (new_lines first) (new_lines second))
+  in
+  let tabbed = "# A\n@cites x\n\t@cites y\n"
+  and wide = "# A\n@cites x\n" ^ String.make 17 ' ' ^ "@cites y\n" in
+  Alcotest.(check (list string)) "a tab" [ "\n\t" ] (new_lines tabbed);
+  Alcotest.(check (list string))
+    "seventeen characters"
+    [ "\n" ^ String.make 17 ' ' ]
+    (new_lines wide);
+  differ "a tab" tabbed tabbed;
+  differ "seventeen characters" wide wide
+
+let new_line_ends_the_last_tag_line_and_reaches_its_at =
+  property ~name:"the new line of a block holds the line ending and the indent"
+    ~print:String.escaped markdown_text (fun text ->
+      let file = file text in
+      let lines = Line_index.make (Text_file.with_final_line_feed text) in
+      let original = Line_index.make text in
+      Array.for_all
+        (fun (block : Markdown.block) ->
+          let last =
+            file.tags.(List.fold_left (fun _ index -> index) (-1) block.tags)
+          in
+          let line = last.span.start.line in
+          let stop = Line_index.content_end original line in
+          let ending =
+            if stop < String.length text && text.[stop] = '\r' then "\r\n"
+            else "\n"
+          in
+          let before =
+            List.filteri
+              (fun index _ -> index < last.span.start.column - 1)
+              (characters_of (Line_index.content lines line))
+          in
+          block.new_line
+          = ending
+            ^ String.concat ""
+                (List.map
+                   (fun character -> if character = "\t" then "\t" else " ")
+                   before))
+        file.blocks)
+
 let tests =
   [
     Alcotest.test_case "a read after close is refused" `Quick
@@ -1254,4 +1351,11 @@ let tests =
     parts_sit_at_their_columns;
     structure_holds_together;
     edits_keep_the_hashes;
+    Alcotest.test_case "the new line follows the last tag line" `Quick
+      new_line_follows_the_last_tag_line;
+    Alcotest.test_case "the new line of a narrow indent is shared" `Quick
+      new_line_of_a_narrow_indent_is_shared;
+    Alcotest.test_case "the new line of a wide or tabbed indent is its own"
+      `Quick new_line_of_a_wide_or_tabbed_indent_is_its_own;
+    new_line_ends_the_last_tag_line_and_reaches_its_at;
   ]

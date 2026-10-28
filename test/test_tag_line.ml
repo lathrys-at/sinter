@@ -229,6 +229,64 @@ let ranges_hold_the_parts =
                  (fun value -> Some ("v" ^ string_of_int value))
                  parts.revision)
 
+let indent_gives cases () =
+  List.iter
+    (fun (text, expected) ->
+      Alcotest.(check string)
+        (String.escaped text) expected (Tag_line.indent text))
+    cases
+
+let indent_makes_each_marker_a_space =
+  indent_gives
+    [
+      ("", "");
+      ("- ", "  ");
+      ("> ", "  ");
+      ("> - ", "    ");
+      ("10. ", "    ");
+      ("- [ ] ", "      ");
+      ("\t- ", "\t  ");
+      ("* \t", "  \t");
+      ("\xc3\xa9 ", "  ");
+      ("\xf0\x9f\x98\x80\t", " \t");
+    ]
+
+let indent_keeps_a_blank_text_itself () =
+  let text = String.concat "" [ " \t"; "  " ] in
+  Alcotest.(check bool) "the same string" true (Tag_line.indent text == text)
+
+let characters text =
+  String.fold_left
+    (fun count byte ->
+      if Char.code byte land 0xC0 <> 0x80 then count + 1 else count)
+    0 text
+
+let indent_keeps_the_tabs_and_the_columns =
+  property ~name:"indent keeps the tabs and the number of characters"
+    ~print:String.escaped
+    Gen.(
+      string_size
+        ~gen:(oneof_list [ ' '; '\t'; '-'; '>'; '\xc3'; '\xa9'; '1' ])
+        (int_range 0 12))
+    (fun text ->
+      let indent = Tag_line.indent text in
+      let tabs text =
+        List.filter_map Fun.id
+          (List.mapi
+             (fun index byte -> if byte = '\t' then Some index else None)
+             (List.of_seq
+                (String.to_seq
+                   (String.concat ""
+                      (List.map
+                         (fun byte ->
+                           if Char.code byte land 0xC0 = 0x80 then ""
+                           else String.make 1 byte)
+                         (List.of_seq (String.to_seq text)))))))
+      in
+      String.for_all (fun byte -> byte = ' ' || byte = '\t') indent
+      && String.length indent = characters text
+      && tabs indent = tabs text)
+
 let tests =
   [
     Alcotest.test_case "reads the word and the rest" `Quick
@@ -252,4 +310,9 @@ let tests =
     Alcotest.test_case "gives no range for a missing part" `Quick
       gives_no_range_for_a_missing_part;
     ranges_hold_the_parts;
+    Alcotest.test_case "indent makes each marker a space" `Quick
+      indent_makes_each_marker_a_space;
+    Alcotest.test_case "indent keeps a blank text itself" `Quick
+      indent_keeps_a_blank_text_itself;
+    indent_keeps_the_tabs_and_the_columns;
   ]

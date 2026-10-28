@@ -88,6 +88,23 @@ let without_revision rest =
       String.sub rest 0 stop ^ tail rest revision_stop
   | Some (_, _, None) | None -> rest
 
+let indent text =
+  if String.for_all is_blank text then text
+  else
+    let buffer =
+      Buffer.create
+        (String.length text
+         [@mutaml.skip
+           "the number is only the first size of a buffer that grows as it \
+            needs, and no output reads it"])
+    in
+    String.iter
+      (fun byte ->
+        if is_blank byte then Buffer.add_char buffer byte
+        else if Char.code byte land 0xC0 <> 0x80 then Buffer.add_char buffer ' ')
+      text;
+    Buffer.contents buffer
+
 type part = Word | Target | Revision
 type range = { start : int; stop : int }
 
