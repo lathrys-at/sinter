@@ -146,15 +146,18 @@ let rec groups = function
       let places, rest = take [ (first, label) ] rest in
       { first; places } :: groups rest
 
-let headline ppf ~tier (finding : Finding.t) =
-  let name = Finding_class.name finding.finding_class in
-  (match tier with
+let tier_and_class ppf ~tier finding_class =
+  let name = Finding_class.name finding_class in
+  match tier with
   | Some tier ->
       Style.string
         (Style.of_tier (Some tier))
         ppf
         (Finding_class.tier_name tier ^ "[" ^ name ^ "]")
-  | None -> Style.string Style.Headline ppf name);
+  | None -> Style.string Style.Headline ppf name
+
+let headline ppf ~tier (finding : Finding.t) =
+  tier_and_class ppf ~tier finding.finding_class;
   Option.iter
     (fun detail ->
       let detail = shown detail in
@@ -405,3 +408,29 @@ let full ppf source ~tier (finding : Finding.t) =
     blocks;
   List.iter (note ppf width) notes;
   fix_lines ppf width fix
+
+let brief ppf ~tier (finding : Finding.t) =
+  (match finding.place with
+  | Some { path; span } ->
+      Fmt.pf ppf "%s:%d:%d: " (Display.clean path) span.start.line
+        span.start.column
+  | None -> Fmt.string ppf "-:-:-: ");
+  tier_and_class ppf ~tier finding.finding_class;
+  Option.iter
+    (fun detail ->
+      let detail = shown detail in
+      if detail <> "" then (
+        Fmt.string ppf " ";
+        Fmt.string ppf detail))
+    finding.detail;
+  newline ppf;
+  Option.iter
+    (fun fix ->
+      Fmt.string ppf "  ";
+      Style.string Style.Help ppf "fix:";
+      let text = shown (Fix.text fix) in
+      if text <> "" then (
+        Fmt.string ppf " ";
+        Fmt.string ppf text);
+      newline ppf)
+    finding.fix

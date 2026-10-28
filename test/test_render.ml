@@ -26,6 +26,33 @@ let print ?(renderer = `None) f =
   Format.pp_print_flush ppf ();
   Buffer.contents buffer
 
+let rec printable text offset =
+  offset >= String.length text
+  ||
+  let decoded = String.get_utf_8_uchar text offset in
+  let code = Uchar.to_int (Uchar.utf_decode_uchar decoded) in
+  Uchar.utf_decode_is_valid decoded
+  && (code = 0x0a
+     || not
+          (code < 0x20
+          || (code >= 0x7f && code <= 0x9f)
+          || (code >= 0x202a && code <= 0x202e)
+          || (code >= 0x2066 && code <= 0x2069)))
+  && printable text (offset + Uchar.utf_decode_length decoded)
+
+let strip styled =
+  let buffer = Buffer.create 256 in
+  let rec walk index =
+    if index < String.length styled then
+      if styled.[index] = '\x1b' then
+        walk (String.index_from styled index 'm' + 1)
+      else (
+        Buffer.add_char buffer styled.[index];
+        walk (index + 1))
+  in
+  walk 0;
+  Buffer.contents buffer
+
 let in_files files f =
   Fixture.with_temporary_folder (fun root ->
       List.iter (fun (name, content) -> write root name content) files;
@@ -569,24 +596,104 @@ let a_diff_shows_the_line_with_the_edits_applied =
           shown_alternatives = expected && shown_marks = expected_marks)
         (fixes_of text))
 
+let brief ?renderer ?tier finding =
+  print ?renderer (fun ppf -> Render.brief ppf ~tier finding)
+
+let the_brief_form_is_one_line_and_a_fix_line () =
+  let text = "# A\n\n@cites x v1\n" in
+  Alcotest.(check (list string))
+    "a finding at a gate with a fix, one with no gate and no detail, one with \
+     no place, and a path with a control character"
+    [
+      "a.md:3:1: block[suspect] d\n  fix: @cites x v2\n";
+      "a.md:3:1: dangling\n";
+      "-:-:-: warn[untraced] nothing satisfies req:x\n";
+      "a\xef\xbf\xbdb.md:1:2: dangling\n";
+    ]
+    [
+      brief ~tier:Finding_class.Block (fixed text (fun _ tag -> Fix.pin tag 2));
+      brief
+        (Finding.make Finding_class.Dangling subject
+           ~place:(place (3, 1) (3, 7))
+           ());
+      brief ~tier:Finding_class.Warn
+        (Finding.make Finding_class.Untraced subject
+           ~detail:"nothing satisfies req:x" ());
+      brief
+        (Finding.make Finding_class.Dangling subject
+           ~place:(place ~path:"a\x1bb.md" (1, 2) (1, 3))
+           ());
+    ]
+
+let parse_location line =
+  match String.index_opt line ' ' with
+  | None -> None
+  | Some space -> (
+      let location = String.sub line 0 space in
+      let rest = String.sub line (space + 1) (String.length line - space - 1) in
+      let word =
+        match String.index_opt rest ' ' with
+        | Some space -> String.sub rest 0 space
+        | None -> rest
+      in
+      let tier, name =
+        match String.index_opt word '[' with
+        | Some open_ when String.ends_with ~suffix:"]" word ->
+            ( Some (String.sub word 0 open_),
+              String.sub word (open_ + 1) (String.length word - open_ - 2) )
+        | _ -> (None, word)
+      in
+      match List.rev (String.split_on_char ':' location) with
+      | "" :: column :: line :: path ->
+          Some (String.concat ":" (List.rev path), line, column, tier, name)
+      | _ -> None)
+
+let the_brief_form_parses_back =
+  property "the brief form gives one line, one more for a fix, and parses back"
+    Generators.rendered_finding Generators.print_rendered
+    (fun (_, (finding : Finding.t), tier) ->
+      let text = brief ?tier finding in
+      let expected =
+        match finding.place with
+        | Some { path; span } ->
+            ( path,
+              string_of_int span.start.line,
+              string_of_int span.start.column )
+        | None -> ("-", "-", "-")
+      in
+      match lines text with
+      | first :: rest ->
+          let path, line, column = expected in
+          parse_location first
+          = Some
+              ( path,
+                line,
+                column,
+                Option.map Finding_class.tier_name tier,
+                Finding_class.name finding.finding_class )
+          && List.length rest
+             = 1 + Option.fold ~none:0 ~some:(fun _ -> 1) finding.fix
+          && List.for_all
+               (fun line ->
+                 line = "" || String.starts_with ~prefix:"  fix: " line)
+               rest
+          && printable text 0
+          && List.for_all
+               (fun line -> not (String.ends_with ~suffix:" " line))
+               (lines text)
+      | [] -> false)
+
+let the_brief_form_with_styles_is_the_plain_form =
+  property
+    "the brief form, styled and without its escape codes, is the plain form"
+    Generators.rendered_finding Generators.print_rendered
+    (fun (_, finding, tier) ->
+      strip (brief ~renderer:`Ansi_tty ?tier finding) = brief ?tier finding)
+
 let render (content, finding, tier) =
   in_files
     [ ("a.md", content); ("b.md", content) ]
     (fun source -> print (fun ppf -> Render.full ppf source ~tier finding))
-
-let rec printable text offset =
-  offset >= String.length text
-  ||
-  let decoded = String.get_utf_8_uchar text offset in
-  let code = Uchar.to_int (Uchar.utf_decode_uchar decoded) in
-  Uchar.utf_decode_is_valid decoded
-  && (code = 0x0a
-     || not
-          (code < 0x20
-          || (code >= 0x7f && code <= 0x9f)
-          || (code >= 0x202a && code <= 0x202e)
-          || (code >= 0x2066 && code <= 0x2069)))
-  && printable text (offset + Uchar.utf_decode_length decoded)
 
 let rendering_never_raises_and_prints_no_control_character =
   property
@@ -668,16 +775,7 @@ let styles_change_no_character =
             print ~renderer:`Ansi_tty (fun ppf ->
                 Render.full ppf source ~tier finding)
           in
-          let rec strip index buffer =
-            if index >= String.length styled then Buffer.contents buffer
-            else if styled.[index] = '\x1b' then
-              strip (String.index_from styled index 'm' + 1) buffer
-            else (
-              Buffer.add_char buffer styled.[index];
-              strip (index + 1) buffer)
-          in
-          strip 0 (Buffer.create 256)
-          = print (fun ppf -> Render.full ppf source ~tier finding)))
+          strip styled = print (fun ppf -> Render.full ppf source ~tier finding)))
 
 let the_output_is_the_same_on_each_run =
   property "the full form is the same on each run" Generators.rendered_finding
@@ -709,6 +807,10 @@ let tests =
     case "a fix without its line shows its text"
       a_fix_without_its_line_shows_its_text;
     a_diff_shows_the_line_with_the_edits_applied;
+    case "the brief form is one line and a fix line"
+      the_brief_form_is_one_line_and_a_fix_line;
+    the_brief_form_parses_back;
+    the_brief_form_with_styles_is_the_plain_form;
     case "related places in the file share its snippet"
       related_places_in_the_file_share_its_snippet;
     case "related places in other files get their own blocks"

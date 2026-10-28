@@ -1,9 +1,10 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-(** The full form of a finding: a headline, the location, the source lines of
-    the place with a mark under the part at fault, and the related places with
-    their labels. *)
+(** The full form and the brief form of a finding. The full form shows a
+    headline, the location, the source lines of the place with a mark under the
+    part at fault, the related places with their labels, and the fix as a diff.
+    The brief form shows one line, and one more for a fix. *)
 
 val full :
   Format.formatter ->
@@ -73,3 +74,14 @@ val full :
     the display width of the text that it marks, and at least 1. A mark falls
     outside its line when it starts or stops after the column past the last
     character of the line. *)
+
+val brief :
+  Format.formatter -> tier:Finding_class.tier option -> Finding.t -> unit
+(** [brief ppf ~tier finding] prints the brief form of [finding] to [ppf]: the
+    line [<path>:<line>:<column>: <tier>[<class>] <detail>] with a tier, and
+    [<path>:<line>:<column>: <class> <detail>] without one, with the start of
+    the place, and with no [" <detail>"] when the finding has no detail. A
+    finding with no place starts [-:-:-: ]. A finding with a fix adds the line
+    [  fix: ] and {!Fix.text} of the fix. Each line ends with a line feed. Each
+    text that comes from the repository prints as {!Display.clean} gives it, and
+    no line ends in a space. *)
