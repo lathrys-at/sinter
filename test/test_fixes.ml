@@ -497,11 +497,83 @@ let every_fix_of_the_probe_touches_only_its_place () =
         (touches_only_its_place change))
     (Lazy.force probe_changes)
 
+let edit_of (fields : Jsonl.flat) =
+  match
+    List.map
+      (fun name -> List.assoc_opt name fields)
+      [ "alt"; "path"; "line"; "col"; "eline"; "ecol"; "text" ]
+  with
+  | [
+   Some (Jsonl.Int alt);
+   Some (Jsonl.String path);
+   Some (Jsonl.Int line);
+   Some (Jsonl.Int col);
+   Some (Jsonl.Int eline);
+   Some (Jsonl.Int ecol);
+   Some (Jsonl.String text);
+  ]
+    when List.length fields = 7 ->
+      Some (alt, path, line, col, eline, ecol, text)
+  | _ -> None
+
+let canonical (finding : Finding.t) =
+  let record = Check.record ~mode:Mode.Tree { Check.finding; tier = None } in
+  match
+    (finding.fix, List.assoc_opt "help" record, List.assoc_opt "edits" record)
+  with
+  | None, None, None -> true
+  | ( Some fix,
+      Some (Jsonl.Scalar (Jsonl.String help)),
+      Some (Jsonl.Objects objects) ) ->
+      let edits = List.map edit_of objects in
+      let edits = List.filter_map Fun.id edits in
+      let rec sorted = function
+        | first :: (second :: _ as rest) ->
+            compare first second < 0 && sorted rest
+        | [ _ ] | [] -> true
+      in
+      let rec apart = function
+        | (alt, path, _, _, eline, ecol, _)
+          :: ((alt', path', line', col', _, _, _) :: _ as rest) ->
+            (alt <> alt' || path <> path'
+            || compare (eline, ecol) (line', col') <= 0)
+            && apart rest
+        | [ _ ] | [] -> true
+      in
+      let alts =
+        List.sort_uniq Int.compare
+          (List.map (fun (alt, _, _, _, _, _, _) -> alt) edits)
+      in
+      String.equal help (Fix.help fix)
+      && List.length edits = List.length objects
+      && edits <> [] && sorted edits && apart edits
+      && alts = List.init (List.length alts) (fun index -> index + 1)
+      && List.map
+           (fun (_, _, line, col, eline, ecol, text) ->
+             { Fix.line; col; eline; ecol; text })
+           edits
+         = List.concat (Fix.alternatives fix)
+  | _ -> false
+
+let the_json_edits_are_canonical =
+  property ~name:"help and edits come together, and the edits are canonical"
+    ~print:String.escaped guide (fun guide ->
+      List.for_all canonical (findings ~base (tree guide)))
+
+let the_json_edits_of_the_probe_are_canonical () =
+  List.iter
+    (fun finding ->
+      Alcotest.(check bool) (Finding.id finding) true (canonical finding))
+    (findings ~base probe)
+
 let tests =
   [
     the_edits_repair_the_finding;
     the_edits_are_a_mechanical_repair;
     the_edits_touch_only_their_place;
+    the_json_edits_are_canonical;
+    Alcotest.test_case "the JSON edits of the probe are canonical" `Quick
+      the_json_edits_of_the_probe_are_canonical;
     Alcotest.test_case "the fix line is the line of 170c04b" `Quick
       the_fix_line_is_the_line_of_170c04b;
     Alcotest.test_case "every fix of the probe repairs its finding" `Quick

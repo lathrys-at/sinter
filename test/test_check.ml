@@ -392,7 +392,9 @@ let a_finding_gives_one_line_and_one_more_for_a_fix =
 let a_record_holds_every_field_of_a_finding () =
   Alcotest.(check string)
     "the record"
-    "{\"ack_subject\":\"x\",\"ackable\":true,\"class\":\"retired\",\"col\":2,\"detail\":\"d\",\"ecol\":9,\"eline\":4,\"fix\":\"@f\",\"gate\":\"review\",\"id\":\"finding:retired:cites:site:docs/a.md->x\",\"kind\":\"finding\",\"line\":3,\"mode\":\"tree\",\"path\":\"docs/a.md\",\"subject\":\"cites:site:docs/a.md->x\",\"tier\":\"block\",\"v\":1}"
+    "{\"ack_subject\":\"x\",\"ackable\":true,\"class\":\"retired\",\"col\":2,\"detail\":\"d\",\"ecol\":9,\"edits\":[{\"alt\":1,\"col\":1,\"ecol\":3,\"eline\":1,\"line\":1,\"path\":\"docs/a.md\",\"text\":\"@f\"}],\"eline\":4,\"gate\":\"review\",\"help\":\"replace \
+     the tag word with the nearest tag word of \
+     sinter\",\"id\":\"finding:retired:cites:site:docs/a.md->x\",\"kind\":\"finding\",\"line\":3,\"mode\":\"tree\",\"path\":\"docs/a.md\",\"subject\":\"cites:site:docs/a.md->x\",\"tier\":\"block\",\"v\":1}"
     (Jsonl.to_string
        (Check.record ~mode:Mode.Tree
           {
