@@ -32,20 +32,52 @@ If neither exists, stop and ask the user for the plan.
 
 Do the steps in order. Ask the user at the points marked "confirm".
 
-### 1. Derive the plan slug
+### 1. Derive the plan slug and make the plan id
 
-The slug is the identity of the plan. The slug is permanent. Derive
-it from the plan's title:
+The slug names the plan. Derive it from the plan's title:
 
 1. Change the title to lowercase.
 2. Replace each sequence of non-alphanumeric characters with one
    hyphen.
 3. Remove a hyphen at the start and at the end.
 
-The result must match `[a-z0-9]+(-[a-z0-9]+)*`. Shorten the slug to
-the two to four words that name the work. Check that
-`.plans/<slug>.md` does not exist. A slug can never be reused.
-Confirm the slug with the user.
+The result must match the slug pattern
+`[A-Za-z0-9]+([-_.][A-Za-z0-9]+)*`. Shorten the slug to the two to four
+words that name the work.
+
+A slug is free when no open plan has it. The tool does not yet read
+which plans are closed, so it counts every plan file in `.plans/` as
+open. Two slugs that differ only in case are the same slug. Look for
+the slug in the `@plan` line of every file in `.plans/`, with no regard
+to case:
+
+```
+grep -rliE '^@plan[[:space:]]+<slug>(@|[[:space:]]|$)' .plans/
+```
+
+Name each file that the command finds to the user, with its journal:
+the file of the same name that ends in `.log.md`. The user can choose
+another slug, or delete those files first. Git keeps them in the
+history. Confirm the slug with the user.
+
+The plan id is six lowercase hex digits. The slug, `@`, and the plan
+id together, `<slug>@<id>`, name this plan exactly, also after a later
+plan takes the same slug. Make the plan id with this shell command,
+and use its output as it is:
+
+```
+openssl rand -hex 3
+```
+
+If `openssl` is missing, use this command:
+
+```
+od -An -N3 -tx1 /dev/urandom | tr -d ' \n'
+```
+
+Never write the digits yourself, and never copy a plan id from another
+plan or from a document. Check that the output is exactly six
+characters, each from `0` to `9` or from `a` to `f`.
 
 ### 2. Map the plan to steps
 
@@ -106,7 +138,7 @@ commas. They use gitignore style:
 Derive scopes from the files the plan names. Where the plan is not
 explicit, confirm the globs with the user. An item meets a
 promise of a step only when the item sits inside the step's scope, or
-inside the default location that the manifest's `[locations]` table
+inside the default location that the manifest key `plan.locations`
 gives for the item's kind. When the manifest has no default location
 for a kind, a step that promises an item of that kind must include
 the item's path in its scope: for example `docs/decisions/**` for a
@@ -126,7 +158,7 @@ Write `.plans/<slug>.md` with this shape:
 
 ```markdown
 # <Plan title>
-@plan <slug>
+@plan <slug>@<id>
 @scope <plan-level globs>
 <One or two sentences: what the plan delivers.>
 
@@ -140,7 +172,8 @@ Write `.plans/<slug>.md` with this shape:
 ...
 ```
 
-The first tag block of the file must carry `@plan`. Put prose that
+The first tag block of the file must carry `@plan`, with the slug and
+the plan id of step 1. Put prose that
 explains a step after its tag lines, not before them.
 
 Also write `.plans/<slug>.log.md`. This file holds only a title line:
@@ -183,10 +216,11 @@ follow them too.
 - Each file carries the header that the repository you work in puts
   on the files beside it, or carries none because the repository puts
   none on them.
-- The first tag block carries `@plan <slug>`.
+- The first tag block carries `@plan <slug>@<id>`, with a plan id from
+  the command of step 1.
 - Every `##` heading with a tag is a step, and every step slug is
   unique in the plan.
-- Every promised slug matches `[a-z0-9]+(-[a-z0-9]+)*`.
+- Every promised slug matches `[A-Za-z0-9]+([-_.][A-Za-z0-9]+)*`.
 - No promise carries a revision.
 - Every step scope sits inside the plan scope.
 - Every promised item's kind can exist inside its step's scope.

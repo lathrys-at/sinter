@@ -92,6 +92,16 @@ let successors_give_one_alternative_each () =
   check_alternatives fix [ [ "2:8-2:12 \"b\"" ] ];
   check_text fix "@cites b"
 
+let plan_id_inserts_after_the_target () =
+  let id =
+    match Plan_target.id_of_string "3f2a9c" with
+    | Some id -> id
+    | None -> Alcotest.fail "no plan id"
+  in
+  let fix = Fix.plan_id (tag "# P\n\n@plan \xc3\xa9t\xc3\xa9  Why.\n" 0) id in
+  check_alternatives fix [ [ "3:10-3:10 \"@3f2a9c\"" ] ];
+  check_text fix "@plan \xc3\xa9t\xc3\xa9@3f2a9c"
+
 let ack_inserts_a_line_after_the_last_tag_line () =
   let document =
     document "# A\n\n- @cites x\n  @cites y  \r\n\n## B\n@cites z\n"
@@ -117,7 +127,9 @@ let a_fix_needs_a_target () =
   refuses "bump" (fun () -> Fix.bump bare 2);
   refuses "spelling" (fun () -> Fix.spelling bare "a");
   refuses "rename" (fun () -> Fix.rename bare "a" 1);
-  refuses "successors" (fun () -> Fix.successors bare ("a", 1) [])
+  refuses "successors" (fun () -> Fix.successors bare ("a", 1) []);
+  refuses "plan_id" (fun () ->
+      Fix.plan_id bare (Plan_target.derive ~base:"" ~path:""))
 
 let a_fix_changes_the_revision () =
   refuses "a pin to the same revision" (fun () ->
@@ -150,6 +162,7 @@ let fixes text =
     Fix.rename tag "b" 2;
     Fix.successors tag ("b", 2) [];
     Fix.successors tag ("b", 2) [ ("c", 1) ];
+    Fix.plan_id tag (Plan_target.derive ~base:"" ~path:"");
     Fix.ack document ~block:0 ~target:"a";
   ]
 
@@ -176,6 +189,7 @@ let help_messages_are_fixed () =
       "cite the declaration by its new slug";
       "cite the successor in place of the retired item";
       "cite one of the successors in place of the retired item";
+      "give the plan an id after its slug";
       "if the citation still holds, accept the finding with an @ack line";
     ]
     (List.map Fix.help (fixes "# A\n@cites a\n@cites b v1\n"))
@@ -345,6 +359,8 @@ let tests =
       rename_writes_no_revision_on_a_tag_without_one;
     Alcotest.test_case "Successors give one alternative each" `Quick
       successors_give_one_alternative_each;
+    Alcotest.test_case "Plan_id inserts after the target" `Quick
+      plan_id_inserts_after_the_target;
     Alcotest.test_case "Ack inserts a line after the last tag line" `Quick
       ack_inserts_a_line_after_the_last_tag_line;
     Alcotest.test_case "a fix needs a target" `Quick a_fix_needs_a_target;

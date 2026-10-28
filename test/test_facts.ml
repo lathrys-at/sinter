@@ -815,6 +815,74 @@ let a_plan_tag_outside_plans_gives_no_plan () =
             (".plans/q.md", "# Q\n\n@plan Bad/Slug\n\n## S\n\n@req r\n");
           ]))
 
+let with_id =
+  let prefix = "# Auth lockout\n\n@plan auth-lockout" in
+  prefix ^ "@3f2a9c"
+  ^ String.sub auth_plan (String.length prefix)
+      (String.length auth_plan - String.length prefix)
+
+let a_plan_id_goes_into_the_ids_and_the_plan_fields () =
+  let records = records [ (".plans/auth.md", with_id) ] in
+  Alcotest.(check (list string))
+    "the ids"
+    [
+      "plan:auth-lockout@3f2a9c";
+      "promise:step:auth-lockout@3f2a9c/lock-the-account:req:auth-lockout";
+      "promise:step:auth-lockout@3f2a9c/lock-the-account:verifies:auth-lockout";
+      "promise:step:auth-lockout@3f2a9c/record-the-policy:decision:lockout-policy";
+      "step:auth-lockout@3f2a9c/lock-the-account";
+      "step:auth-lockout@3f2a9c/record-the-policy";
+    ]
+    (ids records);
+  check_field records "plan:auth-lockout@3f2a9c" "plan_id" (str "3f2a9c");
+  check_field records "plan:auth-lockout@3f2a9c" "slug" (str "auth-lockout");
+  check_field records "step:auth-lockout@3f2a9c/lock-the-account" "plan"
+    (str "auth-lockout@3f2a9c");
+  check_field records
+    "promise:step:auth-lockout@3f2a9c/record-the-policy:decision:lockout-policy"
+    "plan"
+    (str "auth-lockout@3f2a9c")
+
+let a_plan_without_an_id_has_no_plan_id_field () =
+  check_field
+    (records [ (".plans/auth.md", auth_plan) ])
+    "plan:auth-lockout" "plan_id" None
+
+let a_plan_with_a_malformed_id_gives_no_record () =
+  Alcotest.(check (list string))
+    "no record" []
+    (ids
+       (records
+          [ (".plans/p.md", "# P\n\n@plan p@3F2A9C\n\n## S\n\n@req r\n") ]))
+
+let the_view_names_the_full_form_and_the_fact_id () =
+  Alcotest.(check (list (pair string string)))
+    "the full forms and the fact ids"
+    [ ("a", "plan:a"); ("b@012345", "plan:b@012345") ]
+    (List.map
+       (fun plan -> (Facts.full_form plan, Facts.plan_fact_id plan))
+       (Facts.plans
+          (facts
+             [
+               (".plans/a.md", "# A\n\n@plan a\n");
+               (".plans/b.md", "# B\n\n@plan b@012345\n");
+             ])))
+
+let plan_files_holds_every_plan_file_whose_plan_is_read_or_not () =
+  Alcotest.(check (list string))
+    "the plan files"
+    [ ".plans/a.md"; ".plans/b.md"; ".plans/c.md"; ".plans/e.md" ]
+    (Facts.plan_files
+       (facts
+          [
+            (".plans/a.md", "# A\n\n@plan a\n");
+            (".plans/b.md", "# B\n\n@plan b@3F2A9C\n");
+            (".plans/c.md", "# C\n\n@plan\n");
+            (".plans/d.md", "# D\n\n@req d\n\n## S\n\n@plan d\n");
+            (".plans/e.md", "# E\n\n@plan -e\n");
+            ("docs/p.md", "# P\n\n@plan p\n");
+          ]))
+
 let the_index_names_the_tree_and_the_base () =
   Alcotest.(check string)
     "the index record"
@@ -1897,6 +1965,16 @@ let tests =
       a_file_whose_first_block_has_no_plan_tag_is_no_plan;
     case "a plan tag outside .plans/ gives no plan"
       a_plan_tag_outside_plans_gives_no_plan;
+    case "a plan id goes into the ids and the plan fields"
+      a_plan_id_goes_into_the_ids_and_the_plan_fields;
+    case "a plan without an id has no plan_id field"
+      a_plan_without_an_id_has_no_plan_id_field;
+    case "a plan with a malformed id gives no record"
+      a_plan_with_a_malformed_id_gives_no_record;
+    case "the view names the full form and the fact id"
+      the_view_names_the_full_form_and_the_fact_id;
+    case "plan_files holds every plan file whose plan is read or not"
+      plan_files_holds_every_plan_file_whose_plan_is_read_or_not;
     case "the index names the tree and the base"
       the_index_names_the_tree_and_the_base;
     case "the view gives each declaration in order"

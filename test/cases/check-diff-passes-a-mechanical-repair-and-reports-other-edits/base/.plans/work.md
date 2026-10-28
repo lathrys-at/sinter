@@ -1,5 +1,5 @@
 # Work
-@plan work
+@plan work@bf0767
 
 ## Specify
 @scope spec/**

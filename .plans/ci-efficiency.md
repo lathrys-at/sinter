@@ -1,5 +1,5 @@
 # CI efficiency
-@plan ci-efficiency
+@plan ci-efficiency@06b01d
 @scope .github/workflows/**, test/**
 Keep the caches of `main` in use between pushes, and shorten the wait
 in the CLI tests that start a process with a time limit.

@@ -125,7 +125,9 @@ machine meaning.
 
 ## 4. Tag targets
 
-A tag target is a **slug** or an **external id**.
+A tag target is a **slug** or an **external id**. The tag target of
+`@plan` can also be the **full form** of a plan: a slug, `@`, and a
+plan id (section 4.3).
 
 ### 4.1 Slugs
 
@@ -144,13 +146,17 @@ Slugs name declared items. There are three separate slug namespaces:
    share one namespace. A citation never names a kind, so a slug must
    be unique across these three kinds.
 2. **Plans.** Plan slugs have their own namespace. A plan can share
-   its slug with a requirement. Plan slugs are permanent: a closed
-   plan keeps its slug, and no later plan can reuse it.
+   its slug with a requirement. A plan's slug is **reserved** while
+   the plan is open: no other open plan can have it. When the plan
+   closes, its slug is free, and a later plan can take it with a new
+   plan id (section 4.3).
 3. **Steps.** Step slugs are scoped to their plan (section 10.3).
 
 Two declarations in one namespace are an error (finding class
 `duplicate`) when their slugs are equal, or when their slugs differ
-only in case. A slug that fails the pattern is an error (finding class
+only in case. For plans, this rule applies to open plans only. Two
+plans of any state with one full form are also a `duplicate` (section
+4.3). A slug that fails the pattern is an error (finding class
 `invalid-target`).
 
 A citation whose tag target differs from a declared slug only in case
@@ -158,10 +164,10 @@ does not resolve, so the citation is dangling (section 7.2). The fix
 of its finding ([jsonl.md](jsonl.md) section 8) writes the declared
 spelling in place of the tag target.
 
-The slug is the identity of an item. There are no hidden machine
-identifiers. To rename an item, delete it and declare a new one.
-Decision slugs are also permanent: a decision is never deleted
-(section 8.3).
+The slug is the identity of an item. For a plan, the full form is the
+identity (section 4.3). There are no hidden machine identifiers. To
+rename an item, delete it and declare a new one. Decision slugs are
+permanent: a decision is never deleted (section 8.3).
 
 A citable declaration can take the slug of a declaration that was
 deleted. The new declaration then continues the old item. Its revision
@@ -180,6 +186,45 @@ An external id is a pointer, not a declared item. It has no revision,
 no extent, and no approval. An external id whose namespace is not
 declared, or whose id fails the namespace's pattern, is an error
 (finding class `invalid-target`).
+
+### 4.3 Plan ids
+
+A plan can have a **plan id**: exactly six lowercase hex digits, as
+the pattern `[0-9a-f]{6}` gives them. The plan file writes the plan id in
+the tag target of its `@plan` tag, after the slug and an `@`. Example:
+`@plan upkeep@3f2a9c`. The text `<slug>@<id>` is the **full form** of
+the plan. Only the tag target of `@plan` can take this form. The full
+form of a plan that has no plan id is its slug.
+
+The scanner reads the tag target of `@plan` in three steps:
+
+1. When the tag target holds no `@`, the whole tag target is the
+   slug, and the plan has no plan id.
+2. Otherwise, the slug is the text before the first `@`, and the plan
+   id is the text after that `@`. The slug pattern holds no `@`, so
+   this split is exact.
+3. The slug must match the slug pattern (section 4.1). The plan id
+   must be exactly six lowercase hex digits.
+
+Any other text after the `@` is an error (finding class
+`invalid-target`), for example upper-case hex digits, five or seven
+digits, or a second `@`. A plan file whose `@plan` tag has a tag
+target that fails these rules gives no plan, no step, and no promise.
+It is still a plan file (section 10.1).
+
+A new plan takes a plan id from a random source when a person or a
+tool makes the plan, for example from the command
+`openssl rand -hex 3`. A plan with no plan id is an error (finding
+class `missing-plan-id`). The fix of that finding writes a plan id that
+it derives from the base commit and the path of the plan file
+([algebra.md](algebra.md) section 9).
+
+The slug alone names the open plan that has the slug: in tags, in
+commands, and in conversation. The full form names one plan exactly,
+open or closed. Two plans of any state with one full form are an error
+(finding class `duplicate`). The ledger names a plan by its full form
+([ledger.md](ledger.md) section 5.1). Two full forms are equal only
+when their bytes are equal.
 
 ## 5. Revisions
 
@@ -313,7 +358,7 @@ A declaration says: this text defines a thing.
 | `@req <slug> [vN]` | requirements documents |
 | `@design <slug> [vN]` | design documents |
 | `@decision <slug> [vN]` | decision records |
-| `@plan <slug>` | plan files (section 10) |
+| `@plan <slug>@<id>` | plan files (section 10) |
 | `@rule <slug> [vN]` | rule files ([manifest.md](manifest.md) section 15) |
 
 `@rule` declares a rule. Its extent is the whole rule file (section
@@ -578,15 +623,17 @@ A **plan** is an agreement that belongs to one branch. A plan holds a
 set of steps. Each step promises that certain tags will exist in the
 repository when the step is done.
 
-A plan file is a markdown file under `.plans/`, committed on its
-branch, and never deleted. A plan is **open** until the ledger holds a
-`completed` or `abandoned` entry for it; then it is **closed**. Only
-a ledger entry closes a plan. No change to the plan file — an edit, a
-move, or a deletion — closes a plan. See [ledger.md](ledger.md).
+A plan file is a markdown file under `.plans/`. A plan is **open**
+until the ledger holds a `completed` or `abandoned` entry for its full
+form (section 4.3); then it is **closed**. Only a ledger entry closes a
+plan. No change to the plan file — an edit, a move, or a deletion —
+closes a plan. When a plan is closed, its file and its journal can
+leave `.plans/`. See [ledger.md](ledger.md).
 
-A file is a plan if and only if it lives under `.plans/` and its first
-tag block carries `@plan`. A `@plan` tag anywhere else is an error
-(finding class `misplaced-plan`).
+A file is a plan file if and only if it lives under `.plans/` and its
+first tag block carries `@plan`. This holds whatever the tag target of
+the `@plan` tag is. A `@plan` tag anywhere else is an error (finding
+class `misplaced-plan`).
 
 ### 10.2 Promissory reading
 

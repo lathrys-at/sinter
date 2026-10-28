@@ -8,7 +8,7 @@ let manifest = "[scan]\npacks.markdown.files = [\"**/*.md\"]\n"
 
 let plan =
   "# Work\n\n\
-   @plan work\n\
+   @plan work@4a7b20\n\
    @scope docs/**, lib/**\n\n\
    ## Edit\n\n\
    @scope lib/edit.ml\n\n\
@@ -347,13 +347,13 @@ let the_scan_of_a_jj_state_counts_each_changed_scope () =
     "the exit code, and the done of each step"
     ( 0,
       [
-        ("step:work/edit", true);
-        ("step:work/gone", true);
-        ("step:work/new", true);
-        ("step:work/back", true);
-        ("step:work/parent", true);
-        ("step:work/late", true);
-        ("step:work/same", false);
+        ("step:work@4a7b20/edit", true);
+        ("step:work@4a7b20/gone", true);
+        ("step:work@4a7b20/new", true);
+        ("step:work@4a7b20/back", true);
+        ("step:work@4a7b20/parent", true);
+        ("step:work@4a7b20/late", true);
+        ("step:work@4a7b20/same", false);
       ] )
     (status, done_of_steps text)
 

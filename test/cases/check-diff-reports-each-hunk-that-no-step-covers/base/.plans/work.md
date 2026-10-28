@@ -1,5 +1,5 @@
 # Work
-@plan work
+@plan work@5ec136
 @scope src/**, lib/**
 
 ## Own scope

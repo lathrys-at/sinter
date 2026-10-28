@@ -257,6 +257,15 @@ let renamed ~base ~same ~tombstones facts =
           None)
     (Facts.edges facts)
 
+module Keys = Set.Make (struct
+  type t = string list
+
+  let compare = List.compare String.compare
+end)
+
+let promise_key (step : Facts.step) (promise : Facts.promise) =
+  [ step.slug; promise.word; promise.target ]
+
 let promise_collisions ~base ~same facts =
   let candidates =
     List.concat_map
@@ -267,40 +276,50 @@ let promise_collisions ~base ~same facts =
               List.filter_map
                 (fun (promise : Facts.promise) ->
                   if List.mem promise.word declaration_kinds then
-                    Some (plan, promise, Facts.promise_id plan step promise)
+                    Some (plan, step, promise)
                   else None)
                 step.promises)
             plan.steps
         else [])
       (Facts.plans facts)
   in
-  let wanted = Ids.of_list (List.map (fun (_, _, id) -> id) candidates) in
-  let promised = ref Ids.empty in
-  List.iter
-    (fun (plan : Facts.plan) ->
-      List.iter
-        (fun (step : Facts.step) ->
-          List.iter
-            (fun (promise : Facts.promise) ->
-              let id = Facts.promise_id plan step promise in
-              if Ids.mem id wanted then promised := Ids.add id !promised)
-            step.promises)
-        plan.steps)
-    (Facts.plans base
-    @ List.filter
-        (fun (plan : Facts.plan) -> same plan.path)
-        (Facts.plans facts));
+  let promised =
+    List.fold_left
+      (fun keys (plan : Facts.plan) ->
+        List.fold_left
+          (fun keys (step : Facts.step) ->
+            List.fold_left
+              (fun keys promise ->
+                let key = promise_key step promise in
+                let keys = Keys.add (Facts.full_form plan :: key) keys in
+                match plan.id with
+                | None -> Keys.add ("" :: plan.slug :: plan.path :: key) keys
+                | Some _ -> keys)
+              keys step.promises)
+          keys plan.steps)
+      Keys.empty
+      (Facts.plans base
+      @ List.filter
+          (fun (plan : Facts.plan) -> same plan.path)
+          (Facts.plans facts))
+  in
+  let held (plan : Facts.plan) step promise =
+    let key = promise_key step promise in
+    Keys.mem (Facts.full_form plan :: key) promised
+    || Keys.mem ("" :: plan.slug :: plan.path :: key) promised
+  in
   let declared =
     by_slug ~same ~base facts
       (Ids.of_list
          (List.map
-            (fun (_, (promise : Facts.promise), _) -> promise.target)
+            (fun (_, _, (promise : Facts.promise)) -> promise.target)
             candidates))
   in
   List.filter_map
-    (fun ((plan : Facts.plan), (promise : Facts.promise), id) ->
+    (fun ((plan : Facts.plan), step, (promise : Facts.promise)) ->
       match Names.find_opt promise.target declared with
-      | Some (first :: _) when not (Ids.mem id !promised) ->
+      | Some (first :: _) when not (held plan step promise) ->
+          let id = Facts.promise_id plan step promise in
           Some
             (Finding.make Finding_class.Promise_collision
                (Finding.Fact { id; ack_name = id })

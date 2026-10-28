@@ -1,6 +1,6 @@
 # Plan
 
-@plan work
+@plan work@4ffa2f
 @scope docs/**
 
 ## Write the store

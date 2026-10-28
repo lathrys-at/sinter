@@ -1,5 +1,5 @@
 # Bootstrap: decisions, dogfooding, and the first parser
-@plan bootstrap
+@plan bootstrap@0d3c30
 @scope .claude-plugin/**, .claude/**, plugins/**, docs/decisions/**, .plans/**, bridge/**, lib/**, bin/**, test/**, .github/workflows/**, THIRD_PARTY.md, README.md, CONTRIBUTING.md, CLAUDE.md, dune-project, sinter.opam, .gitignore, REUSE.toml, LICENSES/**
 Write a decision record for each decision that the project made so
 far. Ship the Claude Code skill pack. Make `sinter parse` and

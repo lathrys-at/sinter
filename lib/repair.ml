@@ -102,6 +102,13 @@ let edit fixes (o : tag) (n : tag) =
   | Some a, Some b when same_word && List.mem o.word declaration_words ->
       String.equal a b
       && Option.value n.rev ~default:1 > Option.value o.rev ~default:1
+  | Some a, Some b when same_word && String.equal o.word "plan" -> (
+      o.rev = n.rev
+      &&
+      match (Plan_target.parse a, Plan_target.parse b) with
+      | Ok { slug; id = None }, Ok { slug = other; id = Some _ } ->
+          String.equal slug other
+      | _ -> false)
   | _ ->
       (not same_word) && o.target = n.target && o.rev = n.rev
       && fixes.word o.word = Some n.word

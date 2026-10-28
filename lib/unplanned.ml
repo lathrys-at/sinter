@@ -26,10 +26,7 @@ let findings ?same ~base ~manifest facts diff =
   let config = Facts.manifest facts in
   let covering = Facts.covering facts in
   let plan_files =
-    List.fold_left
-      (fun paths (plan : Facts.plan) -> Names.add plan.path paths)
-      Names.empty
-      (Facts.plans facts @ Facts.plans base)
+    Names.of_list (Facts.plan_files facts @ Facts.plan_files base)
   in
   let covered path =
     Manifest.is_historical config path

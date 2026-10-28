@@ -225,3 +225,41 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
   the union of the old scopes, which clause 3 of section 11.1
   contradicts. `spec/packs.md` section 12.5 says that only three
   commands use the network, but the ledger commands use it too.
+
+## Give each plan an id
+
+- The row of `missing-plan-id`, its entry in algebra 9.1, and the
+  sentence of vocabulary 4.3 that names the class came with the class,
+  not with the first commit of the specifications. The suite reads the
+  class table of algebra 9, so a row without its class fails it.
+- The parse of `slug@id` is in a new module, `Plan_target`, with a
+  typed error: a slug that fails its pattern, or text after the `@`
+  that is not a plan id. A target with no slug before the `@` has its
+  own detail.
+- A plan file whose `@plan` target does not parse still gives no
+  facts. `Facts.plan_files` lists it, so it stays exempt from
+  `unplanned-change` and stays a built-in member of `plan.exempt`.
+- `duplicate` of plans: the rule of the full form goes first, and the
+  rule of the open slug reports only the plans that the first rule
+  does not. Every plan is open until the tool reads the ledger.
+- The fix of `missing-plan-id` needs the base commit, so
+  `Findings.of_facts` and `Findings.tree` take it. The class is in the
+  findings of the tree, so diff mode subtracts the findings of the
+  base as for any class of tree mode.
+- An added plan id is a mechanical repair in `Repair` too, as algebra
+  9.1 lists it. Plan files are exempt, so no finding changes today.
+- Algebra 8.1 and 8.2 stay as they are (ruled by the lead). An added
+  plan id changes the ids of the plan, its steps, and its promises. So
+  one `check --diff` after the change reports the findings of that
+  plan, its steps, and its promises again, for example
+  `unverified-promise`. Only `promise-collision` uses the rule of the
+  same plan.
+- The benchmark trees of `bench/generated_tree.ml` have plans with no
+  id, so each plan of a tree now gives `missing-plan-id`. On the tree
+  of 10,000 declarations, `check` allocates 0.6 percent more words in
+  the phase `findings`. On one checkout, the two builds use the same
+  memory and the same instructions within 0.2 percent.
+- Left for later: a `@plan` line with no target gives no finding. The
+  decision skill still gives the old slug pattern. Vocabulary 10.1 and
+  the plan skill still say that a plan belongs to one branch (record
+  `plans-span-branches`).

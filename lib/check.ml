@@ -181,9 +181,7 @@ module Paths = Map.Make (String)
 
 let configuration (tree : Scan.tree) (compared : Scan.compared) facts =
   let read base =
-    let plan_files =
-      List.map (fun (plan : Facts.plan) -> plan.path) (Facts.plans facts)
-    in
+    let plan_files = Facts.plan_files facts in
     Config_change.findings
       ~plan_file:(fun path -> List.mem path plan_files)
       ~location:tree.location
@@ -226,7 +224,9 @@ let compare_with_base ?phases ~mode (tree : Scan.tree)
     | Mode.Diff ->
         let base_findings =
           Allocation.measure phases "base-findings" (fun () ->
-              Findings.of_facts base ~not_text:compared.base_not_text)
+              Findings.of_facts base
+                ~base:(Scan.base_commit tree.base)
+                ~not_text:compared.base_not_text)
         in
         Allocation.measure phases "findings" (fun () ->
             Baseline.subtract
@@ -254,7 +254,9 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool () =
   in
   let findings =
     Allocation.measure phases "findings" (fun () ->
-        Findings.of_facts facts ~not_text:tree.not_text)
+        Findings.of_facts facts
+          ~base:(Scan.base_commit tree.base)
+          ~not_text:tree.not_text)
   in
   let findings = compare_with_base ?phases ~mode tree compared facts findings in
   let entries =

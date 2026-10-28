@@ -161,12 +161,13 @@ Example:
 | field | type | meaning |
 |---|---|---|
 | `slug` | string | |
+| `plan_id` | string | the plan id: six lowercase hex digits ([vocabulary.md](vocabulary.md) section 4.3); omitted when the plan has none |
 | `title` | string | the heading text of the section that holds the `@plan` tag ([vocabulary.md](vocabulary.md) section 10.3); omitted for the section of level 0 |
 | `scope` | array of string | plan-level globs |
 | `approved` | bool | *derived*: the plan is approved ([algebra.md](algebra.md) section 6.5) |
 | `approval` | string | *derived* |
 | `active` | bool | *derived* from the session; `false` when there is no session |
-| `open` | bool | *derived*: the plan is open — the ledger holds no `completed` entry and no `abandoned` entry for it ([ledger.md](ledger.md) section 10) |
+| `open` | bool | *derived*: the plan is open — the ledger holds no `completed` entry and no `abandoned` entry for its full form ([ledger.md](ledger.md) section 10) |
 | `csh` | string | the commitment-set hash, as the text after this table gives it |
 | `declined` | bool | *derived* |
 
@@ -199,7 +200,7 @@ Example: this plan file gives the canonical bytes below it.
 ```
 # Auth lockout
 
-@plan auth-lockout
+@plan auth-lockout@3f2a9c
 @scope src/**
 
 ## Lock the account
@@ -221,7 +222,7 @@ Example: this plan file gives the canonical bytes below it.
 
 | field | type | meaning |
 |---|---|---|
-| `plan` | string | plan slug |
+| `plan` | string | the full form of the plan ([vocabulary.md](vocabulary.md) section 4.3) |
 | `slug` `title` | string | the slug and the heading text of the step's heading, per [vocabulary.md](vocabulary.md) section 10.3 |
 | `scope` | array of string | the *effective* scope |
 | `own_scope` | bool | whether the step declared its own `@scope` |
@@ -290,7 +291,8 @@ Example:
 
 | field | type | meaning |
 |---|---|---|
-| `plan` `step` | string | slugs |
+| `plan` | string | the full form of the plan ([vocabulary.md](vocabulary.md) section 4.3) |
+| `step` | string | the slug of the step |
 | `word` | string | `req`, `design`, `decision`, `satisfies`, `verifies`, `refines`, `cites`, or `supersedes` |
 | `target` | string | the tag target, as written |
 | `met` | bool | *derived* |
@@ -348,7 +350,7 @@ conditions:
 
 | field | type | meaning |
 |---|---|---|
-| `plan` | string | plan slug |
+| `plan` | string | the full form of the plan ([vocabulary.md](vocabulary.md) section 4.3) |
 | `branch` | string | the branch the approval was written from |
 | `approval` | string | the id of the latest `approval` entry |
 | `scope` | array of string | union of the approved step scopes |
@@ -558,8 +560,9 @@ uses a position in the file only when no content can name the fact.
 
 | kind | id | notes |
 |---|---|---|
-| `req` `design` `decision` `plan` | `<kind>:<slug>` | |
-| `step` | `step:<plan>/<step>` | |
+| `req` `design` `decision` | `<kind>:<slug>` | |
+| `plan` | `plan:<plan>` | `<plan>` is the full form of the plan: `<slug>@<id>`, or `<slug>` for a plan that has no plan id ([vocabulary.md](vocabulary.md) section 4.3) |
+| `step` | `step:<plan>/<step>` | `<plan>` is the full form of the plan |
 | `test` | `test:<path>#<full name>` | the full name joins the names of the test's name path with the pack's name separator ([packs.md](packs.md) section 8.3). When two tests of one file have one full name, each later one in the order of the file adds `#2`, `#3`, and so on. The full name can contain spaces |
 | `site` | `site:<path>#<name>` | code: `<name>` is the name path of the attached definition; when two sites of one file have one name, each later one in the order of the file adds `#2`, `#3`, and so on ([packs.md](packs.md) section 6.5). A code site with no name has the positional id `site:<path>@L<line>C<column>`, from the position where its run starts, and its record carries `"positional":true`. Markdown: `<name>` is the slug of the section's heading; the section of level 0 has the id `site:<path>` |
 | edges | `<kind>:<src-id>-><target>` | `<target>` is the tag target. Parse from the right: a tag target cannot contain `->` |
@@ -568,7 +571,7 @@ uses a position in the file only when no content can name the fact.
 | `run` | `run:<test-id>@<tree>` | |
 | `cov` | `cov:<test-id or *>@<site-id>` | |
 | `judgment` | `judgment:<rule>:<subject-id>@<hash>` | |
-| `claim` | `claim:<plan>@<branch>` | |
+| `claim` | `claim:<slug>@<id>@<branch>` | `<slug>@<id>` is the full form of the plan; every plan of a claim has a plan id ([ledger.md](ledger.md) section 5.1). Parse from the left: the slug ends at the first `@`, six hex digits and an `@` follow, and the rest is the branch. A branch name can contain `@` |
 | `decline` | `decline:<entry-id>` | |
 | `rule` | `rule:<name>` | |
 | `gate` | `gate:<gate>/<class>` | |
@@ -624,7 +627,7 @@ use the tiers of the `turn` gate.
 
 | field | type |
 |---|---|
-| `plan` `step` | string; omitted when none |
+| `plan` `step` | string: the full form of the active plan, and the slug of the active step; omitted when none |
 | `done` | bool |
 | `steps_done` `steps_total` | int |
 | `block` `warn` | int (finding counts, under the `turn` gate's tiers) |

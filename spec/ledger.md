@@ -115,16 +115,22 @@ default branch, which writes `completed` (section 8).
 
 ### 5.1 The fields of an approval entry
 
-@req ledger-approval-entry
+@req ledger-approval-entry v2
 
 An `approval` entry records that a person approved a subject.
 
 | field | meaning |
 |---|---|
-| `subject` | for example `req:auth-lockout` or `plan:auth-lockout` |
+| `subject` | for example `req:auth-lockout` or `plan:auth-lockout@3f2a9c` |
 | `rev` `xh` | declarations only: the revision and extent hash approved |
 | `csh` | plans only: the commitment-set hash ([jsonl.md](jsonl.md) section 4) |
 | `note` | omitted when none |
+
+The subject of a plan is the fact id of the plan, which holds the full
+form of the plan ([vocabulary.md](vocabulary.md) section 4.3). The
+approval command refuses to approve a plan that has no plan id. So the
+full form of every approved plan holds a plan id, and the id of a
+claim can be read ([jsonl.md](jsonl.md) section 9).
 
 ### 5.2 Approval
 
@@ -205,7 +211,7 @@ when the person overrides their own earlier refusal.
 
 ### 8.1 The entry and its writer
 
-@req ledger-completed v2
+@req ledger-completed v3
 
 A `completed` entry closes a plan whose promises are all met
 ([vocabulary.md](vocabulary.md) section 10.5).
@@ -218,7 +224,7 @@ condition.
 
 | field | meaning |
 |---|---|
-| `subject` | `plan:<slug>` |
+| `subject` | `plan:<slug>@<id>`: the fact id of the plan, with its full form |
 | `approval` | the plan's latest approval at the time it closed; omitted when the plan has no approval |
 | `merge` | the merge commit |
 | `report` | SHA-256 of the report compiled when the plan closed |
@@ -258,14 +264,14 @@ run and loses no facts.
 
 ### 9.1 The fields of an abandoned entry
 
-@req ledger-abandoned
+@req ledger-abandoned v2
 
 An `abandoned` entry closes a plan that will never merge. A person
 runs the abandon command; the tool never writes this entry on its own.
 
 | field | meaning |
 |---|---|
-| `subject` | `plan:<slug>` |
+| `subject` | `plan:<slug>@<id>`: the fact id of the plan, with its full form |
 | `reason` | required |
 
 ### 9.2 The end of the claim
@@ -279,17 +285,18 @@ An `abandoned` entry ends the plan's claim. It also releases every
 
 ### 10.1 Open and closed
 
-@req ledger-open-plans v2
+@req ledger-open-plans v3
 
 A plan is **open** until the ledger holds a `completed` or an
-`abandoned` entry for it. A plan with such an entry is **closed**.
-Only a ledger entry closes a plan. No change to the plan file — an
-edit, a move, or a deletion — closes a plan, and the plan file stays
-in the tree.
+`abandoned` entry for its full form ([vocabulary.md](vocabulary.md)
+section 4.3). A plan with such an entry is **closed**. Only a ledger
+entry closes a plan. No change to the plan file — an edit, a move, or
+a deletion — closes a plan.
 
 A closed plan generates no findings, holds no claim, contributes no
-scope, and is not a candidate for the active plan. Plan slugs are
-permanent; a successor plan needs a new slug.
+scope, and is not a candidate for the active plan. Its slug is free: a
+later plan can take the slug, with a new plan id. The file and the
+journal of a closed plan can leave `.plans/`.
 
 ### 10.2 An absent ledger ref
 

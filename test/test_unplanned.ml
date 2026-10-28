@@ -108,6 +108,16 @@ let a_file_under_plans_that_is_no_plan_is_not_exempt () =
        [ (".plans/notes.md", "# Notes\n\nText.\n") ]
        [ (".plans/notes.md", edit ~added:1 ()) ])
 
+let a_plan_file_with_a_malformed_plan_target_is_exempt () =
+  Alcotest.check strings "the uncovered hunks" []
+    (unplanned
+       ~base:[ (".plans/gone.md", "# Gone\n\n@plan gone@3F2A9C\n") ]
+       [ (".plans/work.md", "# Work\n\n@plan work@3f2a9\n\n## S\n\n@req x\n") ]
+       [
+         (".plans/work.md", edit ~added:1 ());
+         (".plans/gone.md", Git.Deleted (Git.Text [ hunk ~removed:3 () ]));
+       ])
+
 let a_historical_path_gives_no_finding () =
   Alcotest.check strings "the uncovered hunks" []
     (unplanned []
@@ -281,6 +291,8 @@ let tests =
       the_manifest_is_exempt_only_inside_the_repository;
     case "a file under .plans/ that is no plan is not exempt"
       a_file_under_plans_that_is_no_plan_is_not_exempt;
+    case "a plan file with a malformed plan target is exempt"
+      a_plan_file_with_a_malformed_plan_target_is_exempt;
     case "a historical path gives no finding" a_historical_path_gives_no_finding;
     case "a mechanical repair needs no step" a_mechanical_repair_needs_no_step;
     case "a hunk with no line gives a finding"

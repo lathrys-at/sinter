@@ -21,9 +21,9 @@ val findings :
       [facts] ({!Manifest.is_historical}).
     + {!Facts.covering} [facts] gives no step for the path.
     + The path is not exempt, by {!Manifest.is_exempt} with the manifest of
-      [facts]. A path is a plan file when it is the path of a plan of [facts] or
-      of [base]. [manifest] is the path of the manifest relative to the root of
-      the working tree, and [None] when the manifest is outside it.
+      [facts]. A path is a plan file when it is a path of {!Facts.plan_files} of
+      [facts] or of [base]. [manifest] is the path of the manifest relative to
+      the root of the working tree, and [None] when the manifest is outside it.
     + The hunk is not a mechanical repair, by {!Repair.hunk} with
       {!Repair.fixes} [~same ~base facts], the document of the path in
       {!Facts.files} [base], and the document of the path in {!Facts.files}

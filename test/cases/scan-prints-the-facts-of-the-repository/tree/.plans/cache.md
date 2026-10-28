@@ -1,6 +1,6 @@
 # Cache work
 
-@plan cache-work
+@plan cache-work@ab8380
 @scope docs/**
 
 ## Record the decision

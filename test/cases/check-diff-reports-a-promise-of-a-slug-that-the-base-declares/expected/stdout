@@ -1,2 +1,2 @@
-.plans/work.md:10:1: warn scope-overlap step:work/write-it-again this step shares promises and scope with step:work/write-the-store
-.plans/work.md:12:1: block promise-collision promise:step:work/write-it-again:decision:store the base already declares decision:store
+.plans/work.md:10:1: warn scope-overlap step:work@4ffa2f/write-it-again this step shares promises and scope with step:work@4ffa2f/write-the-store
+.plans/work.md:12:1: block promise-collision promise:step:work@4ffa2f/write-it-again:decision:store the base already declares decision:store
