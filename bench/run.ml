@@ -336,9 +336,10 @@ let row result =
             first);
   }
 
-let measure_trees ~phases ~sinter ~generator ~self ~self_manifest ~sizes ~seed
-    ~runs ~trees ~outputs =
-  let platform = platform () in
+let platform_name = function Linux -> "linux" | Macos -> "macos"
+
+let measure_trees ~platform ~phases ~sinter ~generator ~self ~self_manifest
+    ~sizes ~seed ~runs ~trees ~outputs =
   if not (Sys.file_exists time) then stop "%s is missing" time;
   if not (Sys.file_exists sinter) then stop "%s is missing" sinter;
   if runs < 1 then stop "--runs is %d, and it must be 1 or more" runs;
@@ -384,8 +385,7 @@ let measure_trees ~phases ~sinter ~generator ~self ~self_manifest ~sizes ~seed
       targets
   in
   {
-    Report.platform =
-      (match platform with Linux -> "linux" | Macos -> "macos");
+    Report.platform = platform_name platform;
     instruction_counter =
       (match counter with
       | Perf _ -> Some "perf"
@@ -398,8 +398,25 @@ let measure_trees ~phases ~sinter ~generator ~self ~self_manifest ~sizes ~seed
     rows = List.map row results;
   }
 
+let read_report path =
+  match Report.of_string (read path) with
+  | Ok report -> report
+  | Error message -> stop "%s: %s" path message
+
+let comparable baseline ~platform ~seed =
+  Option.iter
+    (fun (path, (baseline : Report.t)) ->
+      if not (String.equal baseline.platform platform) then
+        stop "%s: the baseline is from %s, and the measures are from %s" path
+          baseline.platform platform;
+      if baseline.seed <> seed then
+        stop
+          "%s: the baseline has the seed %d, and the measures have the seed %d"
+          path baseline.seed seed)
+    baseline
+
 let main sinter generator self self_manifest sizes seed runs budgets trees
-    outputs results json markdown =
+    outputs results baseline json markdown =
   try
     let budgets =
       Option.map
@@ -409,24 +426,25 @@ let main sinter generator self self_manifest sizes seed runs budgets trees
           | Error message -> stop "%s: %s" path message)
         budgets
     in
+    let baseline = Option.map (fun path -> (path, read_report path)) baseline in
     let report =
       match (results, sinter) with
-      | Some path, None -> (
-          match Report.of_string (read path) with
-          | Ok report -> report
-          | Error message -> stop "%s: %s" path message)
+      | Some path, None ->
+          let report = read_report path in
+          comparable baseline ~platform:report.platform ~seed:report.seed;
+          report
       | None, Some sinter ->
-          measure_trees ~phases:(Option.is_some budgets) ~sinter ~generator
-            ~self ~self_manifest ~sizes ~seed ~runs ~trees ~outputs
+          let platform = platform () in
+          comparable baseline ~platform:(platform_name platform) ~seed;
+          measure_trees ~platform ~phases:(Option.is_some budgets) ~sinter
+            ~generator ~self ~self_manifest ~sizes ~seed ~runs ~trees ~outputs
       | Some _, Some _ -> stop "--results and --sinter exclude each other"
       | None, None -> stop "either --sinter or --results is required"
     in
     let outcomes =
       Option.fold ~none:[]
         ~some:(fun budgets ->
-          Budgets.check budgets
-            ~linux:(String.equal report.platform "linux")
-            ~peak:(Report.peak report) ~words:(Report.words report))
+          Budgets.check budgets ~words:(Report.words report))
         budgets
     in
     let text =
@@ -437,7 +455,9 @@ let main sinter generator self self_manifest sizes seed runs budgets trees
         Out_channel.with_open_bin path (fun channel ->
             Out_channel.output_string channel text)
     | None -> print_string text);
-    let table = Report.to_markdown report outcomes in
+    let table =
+      Report.to_markdown ?baseline:(Option.map snd baseline) report outcomes
+    in
     prerr_string table;
     Option.iter
       (fun path ->
@@ -494,16 +514,14 @@ let () =
          of one input at one path. A sinter that writes no such file counts no \
          phase; with $(b,--budgets), the run then stops.";
       `P
-        "With $(b,--budgets), the run checks the budgets of that file. The \
-         file is TOML, with the tables $(i,scan) and $(i,check). Each table \
-         holds $(i,peak-memory-kib), the limit of the median peak memory on \
-         the tree of 10,000 declarations on Linux, in KiB, and \
-         $(i,allocation-growth), the limit, for each phase, of the words on \
-         the tree of 10,000 declarations divided by the words on the tree of \
-         1,000 declarations. A budget that the run cannot check is skipped: \
-         the memory budget off Linux or without the tree of 10,000 \
-         declarations, and the growth limit of a phase without the words of \
-         the phase on both trees. The instruction counts are information only.";
+        "With $(b,--budgets), the run checks the growth limits of that file. \
+         The file is TOML, with the tables $(i,scan) and $(i,check), and the \
+         table $(i,check-diff) when $(i,sinter check --diff) has a limit. Each \
+         table holds $(i,allocation-growth), the limit, for each phase, of the \
+         words on the tree of 10,000 declarations divided by the words on the \
+         tree of 1,000 declarations. The run skips the limit of a phase that \
+         does not have its words on both trees. No limit applies to the peak \
+         memory or to the instruction counts.";
       `S "OUTPUT";
       `P
         "A JSON object, on standard output or in the file of $(b,--json). Its \
@@ -511,7 +529,8 @@ let () =
          $(i,instruction_counter), $(i,perf), $(i,time), or null; \
          $(i,no_count_reason), why nothing counts the instructions, or null; \
          $(i,runs); $(i,seed); $(i,results), one object for each tree and \
-         command; and $(i,budgets), one object for each budget.";
+         command; and $(i,budgets), one object for each phase of each command \
+         that the budgets file names.";
       `P
         "An object of $(i,results) holds $(i,tree) (self, or n and the number \
          of declarations), $(i,declarations) (null for self), $(i,command), \
@@ -524,18 +543,21 @@ let () =
          each phase in its order, each with $(i,phase), the name, and \
          $(i,words), the median of the words.";
       `P
-        "An object of $(i,budgets) holds $(i,command), $(i,budget) \
-         ($(i,peak-memory-kib) or $(i,allocation-growth)), $(i,phase) (the \
-         phase of a growth limit, or null), $(i,limit), and $(i,result): \
-         $(i,pass) or $(i,fail), with the measure in $(i,value), or \
+        "An object of $(i,budgets) holds $(i,command), $(i,phase) (the phase, \
+         or null when the run counted no phase), $(i,limit), and $(i,result): \
+         $(i,pass) or $(i,fail), with the growth in $(i,value), or \
          $(i,skipped), with the cause in $(i,reason).";
       `P
         "A table in markdown goes to standard error, and is appended to the \
-         file of $(b,--markdown).";
+         file of $(b,--markdown). With $(b,--baseline), the table also shows, \
+         for each tree and command, the median peak memory of the baseline, \
+         and the difference from it in MiB and in percent. A tree and command \
+         that the baseline does not have show $(i,no baseline). The JSON \
+         object does not hold the baseline.";
     ]
   in
   let exits =
-    Cmd.Exit.info 1 ~doc:"when a budget fails."
+    Cmd.Exit.info 1 ~doc:"when a growth limit fails."
     :: Cmd.Exit.info 2 ~doc:"when the run cannot measure."
     :: Cmd.Exit.defaults
   in
@@ -550,8 +572,15 @@ let () =
   let results =
     path_opt [ "results" ] "PATH"
       "A JSON object that an earlier run wrote. The run reads its measures, \
-       measures nothing, and checks the budgets of $(b,--budgets) against \
-       them, as a run on the platform of the object would."
+       measures nothing, and checks the growth limits of $(b,--budgets) \
+       against them."
+  in
+  let baseline =
+    path_opt [ "baseline" ] "PATH"
+      "A JSON object that an earlier run wrote, to compare the peak memory \
+       with. It must come from the platform of the measures, because Linux and \
+       macOS count the memory of different processes. It must have the seed of \
+       the measures, because another seed makes other trees."
   in
   let generator =
     path_opt [ "generator" ] "PATH"
@@ -590,7 +619,7 @@ let () =
   in
   let budgets =
     path_opt [ "budgets" ] "PATH"
-      "The budgets file to check the medians against."
+      "The budgets file to check the words of the phases against."
   in
   let trees =
     path_opt [ "trees" ] "DIR"
@@ -613,5 +642,5 @@ let () =
           (Cmd.info "run" ~doc ~man ~exits)
           Term.(
             const main $ sinter $ generator $ self $ self_manifest $ sizes
-            $ seed $ runs $ budgets $ trees $ outputs $ results $ json
-            $ markdown)))
+            $ seed $ runs $ budgets $ trees $ outputs $ results $ baseline
+            $ json $ markdown)))

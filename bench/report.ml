@@ -101,7 +101,6 @@ let to_json report outcomes =
                `Assoc
                  ([
                     ("command", `String outcome.command);
-                    ("budget", `String outcome.budget);
                     ("phase", option_json string_json outcome.phase);
                     ("limit", `Float outcome.limit);
                   ]
@@ -223,15 +222,39 @@ let cell ~scale ~digits = function
       Printf.sprintf "%.*f [%.1f%%]" digits (summary.median /. scale)
         summary.spread
 
-let to_markdown report outcomes =
+let compared baseline row =
+  match peak baseline ~tree:row.tree ~command:row.command with
+  | None -> [ "no baseline"; "-" ]
+  | Some base ->
+      let change = row.peak_kib.median -. base in
+      [
+        Printf.sprintf "%.1f" (base /. 1024.);
+        (if base > 0. then
+           Printf.sprintf "%+.1f (%+.1f%%)" (change /. 1024.)
+             (change /. base *. 100.)
+         else Printf.sprintf "%+.1f" (change /. 1024.));
+      ]
+
+let to_markdown ?baseline report outcomes =
   let rows =
     List.map
       (fun row ->
-        Printf.sprintf "| %s | %s | %d | %s | %s | %s |" row.tree row.command
-          row.exit_code
-          (cell ~scale:1024. ~digits:1 (Some row.peak_kib))
-          (cell ~scale:1e9 ~digits:3 row.instructions)
-          (cell ~scale:1024. ~digits:1 row.footprint_kib))
+        "| "
+        ^ String.concat " | "
+            ([
+               row.tree;
+               row.command;
+               string_of_int row.exit_code;
+               cell ~scale:1024. ~digits:1 (Some row.peak_kib);
+             ]
+            @ Option.fold ~none:[]
+                ~some:(fun baseline -> compared baseline row)
+                baseline
+            @ [
+                cell ~scale:1e9 ~digits:3 row.instructions;
+                cell ~scale:1024. ~digits:1 row.footprint_kib;
+              ])
+        ^ " |")
       report.rows
   in
   let budget_rows =
@@ -243,8 +266,7 @@ let to_markdown report outcomes =
           | Fail value -> ("**fail**", Printf.sprintf "%.2f" value)
           | Skipped reason -> ("skipped: " ^ reason, "-")
         in
-        Printf.sprintf "| %s | %s | %s | %.2f | %s | %s |" outcome.command
-          outcome.budget
+        Printf.sprintf "| %s | %s | %.2f | %s | %s |" outcome.command
           (Option.value outcome.phase ~default:"-")
           outcome.limit value result)
       outcomes
@@ -258,9 +280,16 @@ let to_markdown report outcomes =
        | None, Some reason -> "No instruction count: " ^ reason ^ "."
        | None, None -> "No instruction count.");
        "";
-       "| tree | command | exit | peak memory (MiB) | instructions (G) | peak \
-        footprint (MiB) |";
-       "|---|---|---|---|---|---|";
+       (match baseline with
+       | None ->
+           "| tree | command | exit | peak memory (MiB) | instructions (G) | \
+            peak footprint (MiB) |"
+       | Some _ ->
+           "| tree | command | exit | peak memory (MiB) | baseline (MiB) | \
+            difference (MiB, %) | instructions (G) | peak footprint (MiB) |");
+       (match baseline with
+       | None -> "|---|---|---|---|---|---|"
+       | Some _ -> "|---|---|---|---|---|---|---|---|");
      ]
     @ rows
     @
@@ -269,7 +298,7 @@ let to_markdown report outcomes =
     | _ ->
         [
           "";
-          "| command | budget | phase | limit | measure | result |";
-          "|---|---|---|---|---|---|";
+          "| command | phase | growth limit | growth | result |";
+          "|---|---|---|---|---|";
         ]
         @ budget_rows @ [ "" ])

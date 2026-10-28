@@ -163,12 +163,7 @@ let summary_orders_its_values =
          && summary.spread >= 0.))
 
 let budgets_text =
-  "[scan]\n\
-   peak-memory-kib = 90000\n\
-   allocation-growth = 10.5\n\n\
-   [check]\n\
-   peak-memory-kib = 80000\n\
-   allocation-growth = 11\n"
+  "[scan]\nallocation-growth = 10.5\n\n[check]\nallocation-growth = 11\n"
 
 let budgets text =
   match Budgets.of_string text with
@@ -177,45 +172,34 @@ let budgets text =
 
 let budgets_give_each_limit () =
   let budgets = budgets budgets_text in
-  Alcotest.(check (option int))
-    "scan memory" (Some 90000)
-    (Budgets.peak_kib budgets "scan");
-  Alcotest.(check (option int))
-    "check memory" (Some 80000)
-    (Budgets.peak_kib budgets "check");
-  Alcotest.(check (option (float 0.)))
-    "scan growth" (Some 10.5)
-    (Budgets.growth budgets "scan");
-  Alcotest.(check (option (float 0.)))
-    "check growth" (Some 11.)
-    (Budgets.growth budgets "check");
-  Alcotest.(check (option int))
-    "another command" None
-    (Budgets.peak_kib budgets "serve");
-  Alcotest.(check (option (float 0.)))
-    "another command" None
-    (Budgets.growth budgets "serve")
+  let limit = Alcotest.(option (float 0.)) in
+  Alcotest.check limit "scan" (Some 10.5) (Budgets.growth budgets "scan");
+  Alcotest.check limit "check" (Some 11.) (Budgets.growth budgets "check");
+  Alcotest.check limit "no table check-diff" None
+    (Budgets.growth budgets "check-diff");
+  Alcotest.check limit "another command" None (Budgets.growth budgets "serve")
 
-let budgets_of_check_diff_need_no_memory_number () =
-  let only_growth =
-    budgets (budgets_text ^ "\n[check-diff]\nallocation-growth = 12\n")
-  in
-  Alcotest.(check (option int))
-    "no memory budget" None
-    (Budgets.peak_kib only_growth "check-diff");
+let budgets_of_check_diff_are_optional () =
   Alcotest.(check (option (float 0.)))
-    "the growth limit" (Some 12.)
-    (Budgets.growth only_growth "check-diff");
-  Alcotest.(check (option int))
-    "a memory budget" (Some 7)
-    (Budgets.peak_kib
-       (budgets
-          (budgets_text
-         ^ "\n[check-diff]\npeak-memory-kib = 7\nallocation-growth = 12\n"))
-       "check-diff");
-  Alcotest.(check (option (float 0.)))
-    "no table" None
-    (Budgets.growth (budgets budgets_text) "check-diff")
+    "the limit" (Some 12.)
+    (Budgets.growth
+       (budgets (budgets_text ^ "\n[check-diff]\nallocation-growth = 12\n"))
+       "check-diff")
+
+let budgets_refuse_a_memory_budget () =
+  List.iter
+    (fun (text, expected) ->
+      Alcotest.(check (result reject string))
+        text (Error expected)
+        (Result.map (fun _ -> ()) (Budgets.of_string text)))
+    [
+      ( "[scan]\nallocation-growth = 1\npeak-memory-kib = 90000\n",
+        "[scan]: unknown key peak-memory-kib" );
+      ( "[scan]\nallocation-growth = 1\n[check]\npeak-memory-kib = 80000\n",
+        "[check]: unknown key peak-memory-kib" );
+      ( budgets_text ^ "[check-diff]\npeak-memory-kib = 1\n",
+        "[check-diff]: unknown key peak-memory-kib" );
+    ]
 
 let budgets_refuse_a_bad_file () =
   List.iter
@@ -226,25 +210,23 @@ let budgets_refuse_a_bad_file () =
     [
       ( "[scan\n",
         "line 1, column 6: the table header is not valid; expected ']'" );
-      ( "[check]\npeak-memory-kib = 1\nallocation-growth = 1\n",
-        "the table [scan] is missing" );
+      ("[check]\nallocation-growth = 1\n", "the table [scan] is missing");
+      ("[scan]\nallocation-growth = 1\n", "the table [check] is missing");
       ("scan = 1\n", "[scan] is an integer, not a table");
       (budgets_text ^ "[serve]\n", "the budgets: unknown key serve");
-      ( "[scan]\npeak-memory-kib = 1\nallocation-growth = 1\nwall = 1\n",
-        "[scan]: unknown key wall" );
-      ("[scan]\nallocation-growth = 1\n", "scan.peak-memory-kib is missing");
-      ( "[scan]\npeak-memory-kib = 0\nallocation-growth = 1\n",
-        "scan.peak-memory-kib is not a positive integer" );
-      ( "[scan]\npeak-memory-kib = 1.5\nallocation-growth = 1\n",
-        "scan.peak-memory-kib is not a positive integer" );
-      ("[scan]\npeak-memory-kib = 1\n", "scan.allocation-growth is missing");
-      ( "[scan]\npeak-memory-kib = 1\nallocation-growth = -2.0\n",
+      ("[scan]\nallocation-growth = 1\nwall = 1\n", "[scan]: unknown key wall");
+      ("[scan]\n", "scan.allocation-growth is missing");
+      ( "[scan]\nallocation-growth = -2.0\n",
         "scan.allocation-growth is not a positive number" );
-      ( "[scan]\npeak-memory-kib = 1\nallocation-growth = 0\n",
+      ( "[scan]\nallocation-growth = 0\n",
         "scan.allocation-growth is not a positive number" );
-      ( "[scan]\npeak-memory-kib = 1\nallocation-growth = inf\n",
+      ( "[scan]\nallocation-growth = 0.0\n",
         "scan.allocation-growth is not a positive number" );
-      ( "[scan]\npeak-memory-kib = 1\nallocation-growth = \"2\"\n",
+      ( "[scan]\nallocation-growth = inf\n",
+        "scan.allocation-growth is not a positive number" );
+      ( "[scan]\nallocation-growth = nan\n",
+        "scan.allocation-growth is not a positive number" );
+      ( "[scan]\nallocation-growth = \"2\"\n",
         "scan.allocation-growth is not a positive number" );
       ( budgets_text ^ "[check-diff]\n",
         "check-diff.allocation-growth is missing" );
@@ -258,30 +240,27 @@ let verdict (verdict : Budgets.verdict) =
   | Fail value -> Printf.sprintf "fail %g" value
   | Skipped reason -> "skipped: " ^ reason
 
-let outcomes budgets ~linux ~peaks ~words =
+let words_of words ~tree ~command =
+  Option.value (List.assoc_opt (tree, command) words) ~default:[]
+
+let outcomes budgets ~words =
   List.map
     (fun (outcome : Budgets.outcome) ->
-      Printf.sprintf "%s %s%s %g %s" outcome.command outcome.budget
+      Printf.sprintf "%s%s %g %s" outcome.command
         (Option.fold ~none:"" ~some:(fun phase -> " " ^ phase) outcome.phase)
         outcome.limit (verdict outcome.verdict))
-    (Budgets.check budgets ~linux
-       ~peak:(fun ~tree ~command -> List.assoc_opt (tree, command) peaks)
-       ~words:(fun ~tree ~command ->
-         Option.value (List.assoc_opt (tree, command) words) ~default:[]))
+    (Budgets.check budgets ~words:(words_of words))
 
-let check_judges_each_budget () =
+let check_judges_each_phase () =
   Alcotest.(check (list string))
     "outcomes"
     [
-      "scan peak-memory-kib 90000 pass 90000";
-      "scan allocation-growth read 10.5 pass 10";
-      "scan allocation-growth records 10.5 pass 10.5";
-      "check peak-memory-kib 80000 fail 80001";
-      "check allocation-growth findings 11 fail 11.5";
-      "check allocation-growth parse 11 pass 11";
+      "scan read 10.5 pass 10";
+      "scan records 10.5 pass 10.5";
+      "check findings 11 fail 11.5";
+      "check parse 11 pass 11";
     ]
-    (outcomes (budgets budgets_text) ~linux:true
-       ~peaks:[ (("n10000", "scan"), 90000.); (("n10000", "check"), 80001.) ]
+    (outcomes (budgets budgets_text)
        ~words:
          [
            (("n1000", "scan"), [ ("records", 2.); ("read", 3.) ]);
@@ -293,16 +272,11 @@ let check_judges_each_budget () =
 let check_judges_the_budgets_of_check_diff () =
   Alcotest.(check (list string))
     "outcomes of check-diff"
-    [
-      "check-diff allocation-growth facts 12 pass 11";
-      "check-diff allocation-growth base-facts 12 fail 13";
-    ]
+    [ "check-diff facts 12 pass 11"; "check-diff base-facts 12 fail 13" ]
     (List.filter
        (fun line -> String.starts_with ~prefix:"check-diff" line)
        (outcomes
           (budgets (budgets_text ^ "[check-diff]\nallocation-growth = 12\n"))
-          ~linux:true
-          ~peaks:[ (("n10000", "check-diff"), 99999.) ]
           ~words:
             [
               (("n1000", "check-diff"), [ ("facts", 1.); ("base-facts", 1.) ]);
@@ -313,38 +287,91 @@ let check_skips_what_the_run_did_not_measure () =
   Alcotest.(check (list string))
     "outcomes"
     [
-      "scan peak-memory-kib 90000 skipped: the memory budget is a Linux number";
-      "scan allocation-growth read 10.5 skipped: the tree n1000 counts no word \
-       in the phase";
-      "scan allocation-growth parse 10.5 skipped: the tree n1000 counts no \
-       word in the phase";
-      "scan allocation-growth facts 10.5 pass 2";
-      "check peak-memory-kib 80000 skipped: the memory budget is a Linux number";
-      "check allocation-growth 11 skipped: the run counted no phase on the \
-       tree n1000 or on the tree n10000";
+      "scan read 10.5 skipped: the tree n1000 counts no word in the phase";
+      "scan parse 10.5 skipped: the tree n1000 counts no word in the phase";
+      "scan facts 10.5 pass 2";
+      "check 11 skipped: the run counted no phase on the tree n1000 or on the \
+       tree n10000";
     ]
-    (outcomes (budgets budgets_text) ~linux:false
-       ~peaks:[ (("n10000", "scan"), 1.) ]
+    (outcomes (budgets budgets_text)
        ~words:
          [
            (("n1000", "scan"), [ ("read", 0.); ("facts", 4.) ]);
            (("n10000", "scan"), [ ("read", 5.); ("parse", 6.); ("facts", 8.) ]);
            (("n1000", "check"), [ ("read", 1.) ]);
-         ]);
-  Alcotest.(check (list string))
-    "no tree n10000"
-    [
-      "scan peak-memory-kib 90000 skipped: the run did not measure the tree \
-       n10000";
-      "scan allocation-growth 10.5 skipped: the run counted no phase on the \
-       tree n1000 or on the tree n10000";
-      "check peak-memory-kib 80000 skipped: the run did not measure the tree \
-       n10000";
-      "check allocation-growth 11 skipped: the run counted no phase on the \
-       tree n1000 or on the tree n10000";
-    ]
-    (outcomes (budgets budgets_text) ~linux:true ~peaks:[]
-       ~words:[ (("n1000", "scan"), [ ("read", 3.) ]) ])
+         ])
+
+module Gen = QCheck2.Gen
+
+let check_passes_a_phase_at_or_under_its_limit =
+  let phases =
+    Gen.map
+      (List.sort_uniq (fun (a, _, _) (b, _, _) -> String.compare a b))
+      (Gen.list_size (Gen.int_bound 6)
+         (Gen.triple
+            (Gen.oneof_list [ "read"; "parse"; "facts"; "records"; "output" ])
+            (Gen.oneof_weighted
+               [
+                 (1, Gen.return None);
+                 (1, Gen.return (Some 0.));
+                 (4, Gen.map Option.some (Gen.float_bound_inclusive 1e6));
+               ])
+            (Gen.float_bound_inclusive 1e8)))
+  in
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:500
+       ~name:
+         "check gives each phase of n10000 one outcome, which passes when the \
+          growth is at or under the limit"
+       (Gen.pair (Gen.float_range 0.5 50.) phases)
+       (fun (limit, phases) ->
+         let budgets =
+           budgets
+             (Printf.sprintf
+                "[scan]\n\
+                 allocation-growth = %.17g\n\
+                 [check]\n\
+                 allocation-growth = 1\n"
+                limit)
+         in
+         let limit = Option.value (Budgets.growth budgets "scan") ~default:0. in
+         let words =
+           [
+             ( ("n1000", "scan"),
+               List.filter_map
+                 (fun (phase, small, _) ->
+                   Option.map (fun small -> (phase, small)) small)
+                 phases );
+             ( ("n10000", "scan"),
+               List.map (fun (phase, _, large) -> (phase, large)) phases );
+           ]
+         in
+         let scan =
+           List.filter
+             (fun (outcome : Budgets.outcome) ->
+               String.equal outcome.command "scan")
+             (Budgets.check budgets ~words:(words_of words))
+         in
+         match phases with
+         | [] -> (
+             match scan with
+             | [ { phase = None; verdict = Skipped _; _ } ] -> true
+             | _ -> false)
+         | _ ->
+             List.length scan = List.length phases
+             && List.for_all2
+                  (fun (phase, small, large) (outcome : Budgets.outcome) ->
+                    outcome.phase = Some phase && outcome.limit = limit
+                    &&
+                    match (small, outcome.verdict) with
+                    | Some small, Pass growth ->
+                        small > 0. && growth = large /. small && growth <= limit
+                    | Some small, Fail growth ->
+                        small > 0. && growth = large /. small && growth > limit
+                    | Some small, Skipped _ -> small = 0.
+                    | None, Skipped _ -> true
+                    | None, (Pass _ | Fail _) -> false)
+                  phases scan))
 
 let phase_words_reads_a_line_per_phase () =
   Alcotest.(check (result (list (pair string int)) string))
@@ -370,8 +397,6 @@ let phase_words_refuses_a_bad_file () =
       ("read -1\n", "not a count of a phase: read -1");
       ("read 1\n\n", "not a count of a phase: ");
     ]
-
-module Gen = QCheck2.Gen
 
 let summary_gen =
   Gen.map
@@ -460,6 +485,134 @@ let report_reader_never_raises =
               (Gen.pair Gen.nat Gen.char);
           ])
        (fun text -> match Report.of_string text with Ok _ | Error _ -> true))
+
+let report_of_peaks ?(platform = "linux") peaks =
+  {
+    Report.platform;
+    instruction_counter = None;
+    no_count_reason = Some "none";
+    runs = 1;
+    seed = 1;
+    rows =
+      List.map
+        (fun (tree, command, peak) ->
+          {
+            Report.tree;
+            declarations = None;
+            command;
+            exit_code = 0;
+            peak_kib =
+              { Measurement.median = peak; min = peak; max = peak; spread = 0. };
+            instructions = None;
+            footprint_kib = None;
+            phase_words = [];
+          })
+        peaks;
+  }
+
+let table_rows markdown =
+  List.filter
+    (fun line ->
+      String.starts_with ~prefix:"| " line
+      && not (String.starts_with ~prefix:"| tree " line))
+    (String.split_on_char '\n' markdown)
+
+let markdown_compares_each_row_with_the_baseline () =
+  let report =
+    report_of_peaks
+      [
+        ("n1000", "scan", 10240.);
+        ("n10000", "scan", 20480.);
+        ("n10000", "check", 30720.);
+        ("self", "scan", 5120.);
+        ("n1000", "check", 1024.);
+      ]
+  in
+  let baseline =
+    report_of_peaks
+      [
+        ("n1000", "scan", 10240.);
+        ("n10000", "scan", 10240.);
+        ("n10000", "check", 40960.);
+        ("n1000", "check", 0.);
+        ("n10000", "scan", 1.);
+      ]
+  in
+  let markdown = Report.to_markdown ~baseline report [] in
+  Alcotest.(check (list string))
+    "the header"
+    [
+      "| tree | command | exit | peak memory (MiB) | baseline (MiB) | \
+       difference (MiB, %) | instructions (G) | peak footprint (MiB) |";
+      "|---|---|---|---|---|---|---|---|";
+    ]
+    (List.filter
+       (fun line ->
+         String.starts_with ~prefix:"| tree " line
+         || String.starts_with ~prefix:"|---" line)
+       (String.split_on_char '\n' markdown));
+  Alcotest.(check (list string))
+    "the rows"
+    [
+      "| n1000 | scan | 0 | 10.0 [0.0%] | 10.0 | +0.0 (+0.0%) | - | - |";
+      "| n10000 | scan | 0 | 20.0 [0.0%] | 10.0 | +10.0 (+100.0%) | - | - |";
+      "| n10000 | check | 0 | 30.0 [0.0%] | 40.0 | -10.0 (-25.0%) | - | - |";
+      "| self | scan | 0 | 5.0 [0.0%] | no baseline | - | - | - |";
+      "| n1000 | check | 0 | 1.0 [0.0%] | 0.0 | +1.0 | - | - |";
+    ]
+    (table_rows markdown)
+
+let markdown_without_a_baseline_has_no_baseline_column () =
+  let report = report_of_peaks [ ("n1000", "scan", 10240.) ] in
+  Alcotest.(check string)
+    "the markdown"
+    "## Performance\n\n\
+     No instruction count: none.\n\n\
+     | tree | command | exit | peak memory (MiB) | instructions (G) | peak \
+     footprint (MiB) |\n\
+     |---|---|---|---|---|---|\n\
+     | n1000 | scan | 0 | 10.0 [0.0%] | - | - |\n"
+    (Report.to_markdown report [])
+
+let unique_rows (report : Report.t) =
+  {
+    report with
+    rows =
+      List.fold_left
+        (fun rows (row : Report.row) ->
+          if
+            List.exists
+              (fun (seen : Report.row) ->
+                String.equal seen.tree row.tree
+                && String.equal seen.command row.command)
+              rows
+          then rows
+          else rows @ [ row ])
+        [] report.rows;
+  }
+
+let a_report_is_its_own_baseline_with_no_difference =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:300
+       ~name:
+         "a report that is its own baseline shows its own peak and a \
+          difference of zero in every row" (Gen.map unique_rows report_gen)
+       (fun report ->
+         let rows =
+           table_rows (Report.to_markdown ~baseline:report report [])
+         in
+         List.length rows = List.length report.rows
+         && List.for_all2
+              (fun line (row : Report.row) ->
+                let median = row.peak_kib.median in
+                match String.split_on_char '|' line with
+                | [ ""; _; _; _; _; base; difference; _; _; "" ] ->
+                    String.equal (String.trim base)
+                      (Printf.sprintf "%.1f" (median /. 1024.))
+                    && String.equal (String.trim difference)
+                         (if median > 0. then "+0.0 (+0.0%)" else "+0.0")
+                | _ -> false)
+              rows report.rows))
 
 let a_report_names_the_key_it_lacks () =
   List.iter
@@ -602,12 +755,7 @@ let member name json = Yojson.Basic.Util.member name json
 let run_skips_every_budget_that_it_cannot_check () =
   let code, output, errors =
     measure ~extra:[ "--sizes"; "1000" ]
-      "[scan]\n\
-       peak-memory-kib = 1\n\
-       allocation-growth = 0.5\n\n\
-       [check]\n\
-       peak-memory-kib = 1\n\
-       allocation-growth = 0.5\n"
+      "[scan]\nallocation-growth = 0.5\n\n[check]\nallocation-growth = 0.5\n"
   in
   Alcotest.(check int) ("exit, with: " ^ errors) 0 code;
   let json = json_of output in
@@ -658,41 +806,25 @@ let run_skips_every_budget_that_it_cannot_check () =
     Yojson.Basic.Util.(to_list (member "results" json));
   Alcotest.(check (list string))
     "outcomes"
-    (if
-       String.equal "linux"
-         Yojson.Basic.Util.(to_string (member "platform" json))
-     then
-       [
-         "scan peak-memory-kib skipped: the run did not measure the tree n10000";
-         "scan allocation-growth skipped: the run counted no phase on the tree \
-          n1000 or on the tree n10000";
-         "check peak-memory-kib skipped: the run did not measure the tree \
-          n10000";
-         "check allocation-growth skipped: the run counted no phase on the \
-          tree n1000 or on the tree n10000";
-       ]
-     else
-       [
-         "scan peak-memory-kib skipped: the memory budget is a Linux number";
-         "scan allocation-growth skipped: the run counted no phase on the tree \
-          n1000 or on the tree n10000";
-         "check peak-memory-kib skipped: the memory budget is a Linux number";
-         "check allocation-growth skipped: the run counted no phase on the \
-          tree n1000 or on the tree n10000";
-       ])
+    [
+      "scan null skipped: the run counted no phase on the tree n1000 or on the \
+       tree n10000";
+      "check null skipped: the run counted no phase on the tree n1000 or on \
+       the tree n10000";
+    ]
     (List.map
        (fun outcome ->
          Yojson.Basic.Util.(
            String.concat " "
              [
                to_string (member "command" outcome);
-               to_string (member "budget" outcome);
+               Yojson.Basic.to_string (member "phase" outcome);
                to_string (member "result" outcome) ^ ":";
                to_string (member "reason" outcome);
              ]))
        Yojson.Basic.Util.(to_list (member "budgets" json)))
 
-let recorded ~platform ~small ~large =
+let recorded ?(seed = 1) ~platform ~small ~large () =
   let summary median =
     Printf.sprintf {|{"median":%g,"min":%g,"max":%g,"spread_percent":0.0}|}
       median median median
@@ -703,8 +835,8 @@ let recorded ~platform ~small ~large =
       tree command (summary peak) (records /. 10.) records
   in
   Printf.sprintf
-    {|{"platform":"%s","instruction_counter":null,"no_count_reason":"none","runs":5,"seed":1,"results":[%s],"budgets":[]}|}
-    platform
+    {|{"platform":"%s","instruction_counter":null,"no_count_reason":"none","runs":5,"seed":%d,"results":[%s],"budgets":[]}|}
+    platform seed
     (String.concat ","
        [
          row "n1000" "scan" small;
@@ -715,7 +847,7 @@ let recorded ~platform ~small ~large =
 
 let check_recorded ~platform ~small ~large budgets =
   let path = Filename.temp_file "sinter-results" ".json" in
-  write path (recorded ~platform ~small ~large);
+  write path (recorded ~platform ~small ~large ());
   let code, output, errors =
     run [ "--results"; path; "--budgets"; budgets_file budgets ]
   in
@@ -725,7 +857,6 @@ let check_recorded ~platform ~small ~large budgets =
         Yojson.Basic.Util.(
           String.concat " "
             (to_string (member "command" outcome)
-             :: to_string (member "budget" outcome)
              ::
              (match member "phase" outcome with
              | `String phase -> [ phase ]
@@ -735,12 +866,7 @@ let check_recorded ~platform ~small ~large budgets =
     errors )
 
 let limits =
-  "[scan]\n\
-   peak-memory-kib = 90000\n\
-   allocation-growth = 10\n\n\
-   [check]\n\
-   peak-memory-kib = 80000\n\
-   allocation-growth = 10\n"
+  "[scan]\nallocation-growth = 10\n\n[check]\nallocation-growth = 10\n"
 
 let run_fails_a_recorded_budget_with_exit_1 () =
   let code, outcomes, errors =
@@ -751,12 +877,10 @@ let run_fails_a_recorded_budget_with_exit_1 () =
   Alcotest.(check (list string))
     "outcomes"
     [
-      "scan peak-memory-kib pass";
-      "scan allocation-growth read fail";
-      "scan allocation-growth records fail";
-      "check peak-memory-kib fail";
-      "check allocation-growth read fail";
-      "check allocation-growth records fail";
+      "scan read fail";
+      "scan records fail";
+      "check read fail";
+      "check records fail";
     ]
     outcomes
 
@@ -769,32 +893,143 @@ let run_passes_recorded_budgets_with_exit_0 () =
   Alcotest.(check (list string))
     "outcomes"
     [
-      "scan peak-memory-kib pass";
-      "scan allocation-growth read pass";
-      "scan allocation-growth records pass";
-      "check peak-memory-kib pass";
-      "check allocation-growth read pass";
-      "check allocation-growth records pass";
+      "scan read pass";
+      "scan records pass";
+      "check read pass";
+      "check records pass";
     ]
     outcomes
 
-let run_reads_the_platform_of_recorded_measures () =
+let run_checks_the_growth_on_macos () =
   let code, outcomes, errors =
-    check_recorded ~platform:"macos" ~small:(20000., 2e6) ~large:(85000., 19e6)
+    check_recorded ~platform:"macos" ~small:(20000., 2e6) ~large:(85000., 21e6)
       limits
   in
-  Alcotest.(check int) ("exit, with: " ^ errors) 0 code;
+  Alcotest.(check int) ("exit, with: " ^ errors) 1 code;
   Alcotest.(check (list string))
     "outcomes"
     [
-      "scan peak-memory-kib skipped";
-      "scan allocation-growth read pass";
-      "scan allocation-growth records pass";
-      "check peak-memory-kib skipped";
-      "check allocation-growth read pass";
-      "check allocation-growth records pass";
+      "scan read fail";
+      "scan records fail";
+      "check read fail";
+      "check records fail";
     ]
     outcomes
+
+let recorded_file ?seed ~platform ~small ~large () =
+  let path = Filename.temp_file "sinter-results" ".json" in
+  write path (recorded ?seed ~platform ~small ~large ());
+  path
+
+let run_compares_the_peak_with_a_baseline () =
+  let results =
+    recorded_file ~platform:"linux" ~small:(20480., 2e6) ~large:(40960., 19e6)
+      ()
+  in
+  let baseline =
+    recorded_file ~platform:"linux" ~small:(20480., 2e6) ~large:(51200., 19e6)
+      ()
+  in
+  let code, output, errors =
+    run [ "--results"; results; "--baseline"; baseline ]
+  in
+  Alcotest.(check int) ("exit, with: " ^ errors) 0 code;
+  Alcotest.(check (list string))
+    "the rows"
+    [
+      "| n1000 | scan | 0 | 20.0 [0.0%] | 20.0 | +0.0 (+0.0%) | - | - |";
+      "| n1000 | check | 0 | 20.0 [0.0%] | 20.0 | +0.0 (+0.0%) | - | - |";
+      "| n10000 | scan | 0 | 40.0 [0.0%] | 50.0 | -10.0 (-20.0%) | - | - |";
+      "| n10000 | check | 0 | 40.0 [0.0%] | 50.0 | -10.0 (-20.0%) | - | - |";
+    ]
+    (table_rows errors);
+  let code, without, errors = run [ "--results"; results ] in
+  Alcotest.(check int) ("exit without a baseline, with: " ^ errors) 0 code;
+  Alcotest.(check string) "the JSON object holds no baseline" without output
+
+let run_refuses_a_baseline_of_another_platform () =
+  let results =
+    recorded_file ~platform:"linux" ~small:(20480., 2e6) ~large:(40960., 19e6)
+      ()
+  in
+  let baseline =
+    recorded_file ~platform:"macos" ~small:(20480., 2e6) ~large:(40960., 19e6)
+      ()
+  in
+  let code, output, errors =
+    run [ "--results"; results; "--baseline"; baseline ]
+  in
+  Alcotest.(check int) "exit" 2 code;
+  Alcotest.(check string) "output" "" output;
+  Alcotest.(check string)
+    "errors"
+    (Printf.sprintf
+       "run: %s: the baseline is from macos, and the measures are from linux\n"
+       baseline)
+    errors;
+  let other =
+    recorded_file ~platform:"plan9" ~small:(20480., 2e6) ~large:(40960., 19e6)
+      ()
+  in
+  let missing = Filename.concat (Git_fixture.temp_dir ()) "missing" in
+  let code, output, errors = run [ "--sinter"; missing; "--baseline"; other ] in
+  Alcotest.(check int) "before a measure: exit" 2 code;
+  Alcotest.(check string) "before a measure: output" "" output;
+  Alcotest.(check bool)
+    ("before a measure: errors: " ^ errors)
+    true
+    (String.starts_with
+       ~prefix:
+         (Printf.sprintf
+            "run: %s: the baseline is from plan9, and the measures are from "
+            other)
+       errors)
+
+let host_platform () =
+  let channel = Unix.open_process_in "uname -s" in
+  let name =
+    Fun.protect
+      ~finally:(fun () -> ignore (Unix.close_process_in channel))
+      (fun () -> In_channel.input_all channel)
+  in
+  if String.equal name "Darwin\n" then "macos" else "linux"
+
+let run_refuses_a_baseline_of_another_seed () =
+  let results =
+    recorded_file ~platform:"linux" ~small:(20480., 2e6) ~large:(40960., 19e6)
+      ()
+  in
+  let baseline =
+    recorded_file ~seed:7 ~platform:"linux" ~small:(20480., 2e6)
+      ~large:(40960., 19e6) ()
+  in
+  let code, output, errors =
+    run [ "--results"; results; "--baseline"; baseline ]
+  in
+  Alcotest.(check int) "exit" 2 code;
+  Alcotest.(check string) "output" "" output;
+  Alcotest.(check string)
+    "errors"
+    (Printf.sprintf
+       "run: %s: the baseline has the seed 7, and the measures have the seed 1\n"
+       baseline)
+    errors;
+  let host =
+    recorded_file ~platform:(host_platform ()) ~small:(20480., 2e6)
+      ~large:(40960., 19e6) ()
+  in
+  let missing = Filename.concat (Git_fixture.temp_dir ()) "missing" in
+  let code, output, errors =
+    run [ "--sinter"; missing; "--seed"; "3"; "--baseline"; host ]
+  in
+  Alcotest.(check int) "before a measure: exit" 2 code;
+  Alcotest.(check string) "before a measure: output" "" output;
+  Alcotest.(check string)
+    "before a measure: errors"
+    (Printf.sprintf
+       "run: %s: the baseline has the seed 1, and the measures have the seed 3\n"
+       host)
+    errors
 
 let run_writes_its_files () =
   let dir = Git_fixture.temp_dir () in
@@ -952,6 +1187,9 @@ let run_measures_the_checkout_as_self () =
 let run_stops_with_exit_2 () =
   let missing = Filename.concat (Git_fixture.temp_dir ()) "missing" in
   let bad = budgets_file "[scan]\n" in
+  let memory =
+    budgets_file "[scan]\nallocation-growth = 1\npeak-memory-kib = 90000\n"
+  in
   let outside = Git_fixture.temp_dir () in
   let not_json = budgets_file "{" in
   let not_json_message =
@@ -959,6 +1197,7 @@ let run_stops_with_exit_2 () =
     | _ -> Alcotest.fail "the text reads as JSON"
     | exception Yojson.Json_error message -> message
   in
+  let not_a_report = budgets_file "[1]" in
   let no_runs =
     budgets_file
       {|{"platform":"linux","instruction_counter":null,"no_count_reason":null,"seed":1,"results":[]}|}
@@ -975,7 +1214,10 @@ let run_stops_with_exit_2 () =
         "run: --runs is 0, and it must be 1 or more\n" );
       ([ "--sinter"; sinter; "--sizes"; "1" ], "run: the size 1 is below 2\n");
       ( [ "--sinter"; sinter; "--budgets"; bad ],
-        Printf.sprintf "run: %s: scan.peak-memory-kib is missing\n" bad );
+        Printf.sprintf "run: %s: scan.allocation-growth is missing\n" bad );
+      ( [ "--sinter"; sinter; "--budgets"; memory ],
+        Printf.sprintf "run: %s: [scan]: unknown key peak-memory-kib\n" memory
+      );
       ( [ "--sinter"; sinter; "--sizes"; "20" ],
         "run: --generator is missing, and --sizes names trees\n" );
       ([], "run: either --sinter or --results is required\n");
@@ -986,6 +1228,13 @@ let run_stops_with_exit_2 () =
       ( [ "--results"; no_runs ],
         Printf.sprintf "run: %s: the key runs is missing\n" no_runs );
       ( [ "--results"; missing ],
+        Printf.sprintf "run: %s: No such file or directory\n" missing );
+      ( [ "--results"; no_runs; "--baseline"; not_json ],
+        Printf.sprintf "run: %s: not JSON: %s\n" not_json not_json_message );
+      ( [ "--sinter"; missing; "--baseline"; not_a_report ],
+        Printf.sprintf "run: %s: the key platform is not in an object\n"
+          not_a_report );
+      ( [ "--sinter"; sinter; "--baseline"; missing ],
         Printf.sprintf "run: %s: No such file or directory\n" missing );
     ];
   let code, output, errors =
@@ -1007,8 +1256,7 @@ let run_with_an_unknown_option_is_a_usage_error () =
 
 let tests =
   [
-    case "budgets of check-diff need no memory number"
-      budgets_of_check_diff_need_no_memory_number;
+    case "budgets of check-diff are optional" budgets_of_check_diff_are_optional;
     case "check judges the budgets of check-diff"
       check_judges_the_budgets_of_check_diff;
     case "gnu time reads the last line" gnu_time_reads_the_last_line;
@@ -1030,8 +1278,10 @@ let tests =
     case "summary refuses no value" summary_refuses_no_value;
     summary_orders_its_values;
     case "budgets give each limit" budgets_give_each_limit;
+    case "budgets refuse a memory budget" budgets_refuse_a_memory_budget;
     case "budgets refuse a bad file" budgets_refuse_a_bad_file;
-    case "check judges each budget" check_judges_each_budget;
+    case "check judges each phase" check_judges_each_phase;
+    check_passes_a_phase_at_or_under_its_limit;
     case "check skips what the run did not measure"
       check_skips_what_the_run_did_not_measure;
     case "phase words reads a line per phase" phase_words_reads_a_line_per_phase;
@@ -1039,6 +1289,11 @@ let tests =
     report_round_trips;
     report_reader_never_raises;
     case "a report names the key it lacks" a_report_names_the_key_it_lacks;
+    case "markdown compares each row with the baseline"
+      markdown_compares_each_row_with_the_baseline;
+    case "markdown without a baseline has no baseline column"
+      markdown_without_a_baseline_has_no_baseline_column;
+    a_report_is_its_own_baseline_with_no_difference;
     case "a report reads the first row of a tree and command"
       a_report_reads_the_first_row_of_a_tree_and_command;
     case "run skips every budget that it cannot check"
@@ -1047,8 +1302,13 @@ let tests =
       run_fails_a_recorded_budget_with_exit_1;
     case "run passes recorded budgets with exit 0"
       run_passes_recorded_budgets_with_exit_0;
-    case "run reads the platform of recorded measures"
-      run_reads_the_platform_of_recorded_measures;
+    case "run checks the growth on macos" run_checks_the_growth_on_macos;
+    case "run compares the peak with a baseline"
+      run_compares_the_peak_with_a_baseline;
+    case "run refuses a baseline of another platform"
+      run_refuses_a_baseline_of_another_platform;
+    case "run refuses a baseline of another seed"
+      run_refuses_a_baseline_of_another_seed;
     case "run writes its files" run_writes_its_files;
     case "run measures a sinter that counts no phase"
       run_measures_a_sinter_that_counts_no_phase;

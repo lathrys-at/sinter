@@ -491,23 +491,27 @@ the variable for each run. The count is the
 same on every run of one input at one path. The counts of `repository`
 and `read` also grow with the length of the path of the tree.
 
-`bench/budgets.toml` holds two budgets for each command
-(`docs/decisions/performance-budgets.md`):
-
-- **Memory:** the median peak memory on the tree of 10,000
-  declarations, on Linux, in KiB.
-- **Growth:** for each phase, the words on the tree of 10,000
-  declarations, divided by the words on the tree of 1,000
-  declarations. A step whose cost grows faster than the tree raises
-  the number of its phase. This budget applies on every platform.
+`bench/budgets.toml` holds one budget for each command, the growth
+limit (`docs/decisions/performance-budgets.md`). The growth of a phase
+is the words on the tree of 10,000 declarations, divided by the words
+on the tree of 1,000 declarations. A step whose cost grows faster than
+the tree raises the growth of its phase. The limit applies to each
+phase, on every platform. No budget applies to the peak memory.
 
 The CI job "Measure performance" makes the same measures as `@bench`
-on `ubuntu-26.04`, and fails when a measure exceeds its budget. It
-runs on each push to `main`, on the daily schedule of the workflow, and
-on a pull request that changes `lib/`, `bin/`, `bridge/`, `bench/`, or
-a dependency. It writes the numbers to the job summary. The job is not
-a required check. A budget changes only in the pull request that needs
-the change, so that the reviewer sees it.
+on `ubuntu-26.04`. It fails only when the growth of a phase exceeds
+its limit. It runs on each push to `main`, on the daily schedule of the
+workflow, and on a pull request that changes `lib/`, `bin/`,
+`bridge/`, `bench/`, or a dependency. It writes the numbers to the job
+summary, and keeps the JSON object as the artifact `performance`.
+Before it measures, the job downloads that artifact from the newest
+run on `main` that has one, and gives it to `run.exe` with
+`--baseline`. The summary then shows the peak memory of each command
+next to the peak memory of `main`. When the job finds no such
+artifact, or the artifact does not read, the job measures with no
+baseline, and the summary says so. The job is not a required check. A
+growth limit changes only in the pull request that needs the change,
+so that the reviewer sees it.
 
 ## New files
 
