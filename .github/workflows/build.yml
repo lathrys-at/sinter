@@ -464,6 +464,9 @@ jobs:
     name: Measure performance
     runs-on: ubuntu-26.04
     # @cites performance-budgets
+    permissions:
+      actions: read
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -560,11 +563,63 @@ jobs:
       - name: Build
         if: steps.scope.outputs.measure == 'true'
         run: dune build bin/main.exe bench/run.exe bench/generate.exe
+      - name: Fetch the measures of main
+        if: steps.scope.outputs.measure == 'true'
+        id: baseline
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set +e
+          set -u
+          dir="$RUNNER_TEMP/baseline"
+          rm -rf "$dir"
+          if ! runs=$(gh run list --workflow build.yml --branch main --limit 30 \
+            --json databaseId,event,headSha,url \
+            --jq '.[] | select(.event == "push" or .event == "schedule") | "\(.databaseId) \(.headSha) \(.url)"'); then
+            echo "No baseline: the list of the runs of main did not load."
+            exit 0
+          fi
+          while read -r id commit url; do
+            if [ -z "$id" ] || [ "$id" = "$GITHUB_RUN_ID" ]; then
+              continue
+            fi
+            if gh run download "$id" --name performance --dir "$dir" &&
+              [ -f "$dir/results.json" ]; then
+              if ! _build/default/bench/run.exe --results "$dir/results.json" \
+                --json /dev/null >/dev/null 2>"$RUNNER_TEMP/baseline.err"; then
+                echo "No baseline: the measures of the run $url do not read."
+                tail -n 1 "$RUNNER_TEMP/baseline.err"
+                rm -rf "$dir"
+                exit 0
+              fi
+              echo "The baseline is the run $url of main, at the commit $commit."
+              {
+                echo "url=$url"
+                echo "commit=$commit"
+              } >>"$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "The run $url has no measures to download."
+            rm -rf "$dir"
+          done <<<"$runs"
+          echo "No baseline: none of the newest 30 runs of main has the artifact performance."
+          exit 0
       - name: Measure and check the budgets
         if: steps.scope.outputs.measure == 'true'
+        env:
+          BASELINE_URL: ${{ steps.baseline.outputs.url }}
+          BASELINE_COMMIT: ${{ steps.baseline.outputs.commit }}
         run: |
           set -eu
           mkdir -p _performance
+          baseline="$RUNNER_TEMP/baseline/results.json"
+          set --
+          if [ -f "$baseline" ]; then
+            set -- --baseline "$baseline"
+          fi
+          status=0
           _build/default/bench/run.exe \
             --sinter _build/default/bin/main.exe \
             --generator _build/default/bench/generate.exe \
@@ -572,7 +627,16 @@ jobs:
             --self-manifest bench/sinter-self.toml \
             --budgets bench/budgets.toml \
             --json _performance/results.json \
-            --markdown "$GITHUB_STEP_SUMMARY"
+            --markdown "$GITHUB_STEP_SUMMARY" \
+            "$@" || status=$?
+          if [ "$#" -gt 0 ]; then
+            printf '\nThe baseline is the run %s of main, at the commit %s.\n' \
+              "$BASELINE_URL" "$BASELINE_COMMIT" >>"$GITHUB_STEP_SUMMARY"
+          else
+            printf '\nNo baseline: the job found no measures of main that it can read.\n' \
+              >>"$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
       - name: Upload the measures
         if: always() && steps.scope.outputs.measure == 'true'
         uses: actions/upload-artifact@v7
