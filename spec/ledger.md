@@ -360,8 +360,11 @@ new approval is needed. The consequences of the three clauses:
 - Reordering steps is free.
 - Splitting a step is free when each new step keeps or narrows the
   scope of the original step.
-- Merging steps is free when the merged scope equals the union of the
-  original steps' scopes. Any other merge needs an approval.
+- Merging steps is free only when the scope of the merged step is
+  contained in the scope of each original step, for example when the
+  original steps have one scope. A merged step that takes the union of
+  different scopes widens the scope of some promise, fails clause 3,
+  and needs an approval.
 - Any promise added or removed fails clause 1 and needs an approval.
 
 ## 12. `pin` (deferred)

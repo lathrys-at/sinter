@@ -3,16 +3,8 @@
 
 # Roadmap
 
-- **Manifest reader** — `sinter.toml`, design notes section 14.
-  - The `[locations]` table: one default location per declaration
-    kind (issue #2). `spec/vocabulary.md` section 10.5 defines the
-    rule.
-  - The `shared` list: paths that every plan step may touch (issue
-    #9). `spec/vocabulary.md` section 10.4 defines the rule.
 - **Scanner** — the language-pack interface, design notes section 5.2.
-  - Markdown pack first: plans and decision records are markdown.
 - **`sinter scan`**
-  - Emit the facts that `spec/jsonl.md` defines.
   - Conformance fixtures.
   - Print the `setting` records and the `gate` records of
     `spec/jsonl.md` section 7. `config-changed` already uses their ids.
@@ -20,7 +12,6 @@
     records. Not designed.
 - **`sinter check`**
   - The built-in finding classes, `spec/algebra.md` section 9.
-  - Classes that need no ledger and no evidence first.
 - **Rule files** — the rules and the finding classes that a
   repository writes, `spec/manifest.md` section 15.
   - Decide, when rule files are built, whether an edit of a rule file
