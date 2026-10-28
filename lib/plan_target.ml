@@ -31,3 +31,5 @@ let parse text =
 
 let to_string { slug; id } =
   match id with None -> slug | Some id -> slug ^ "@" ^ id
+
+let derive ~base ~path = String.sub (Sha256.hex (base ^ "\n" ^ path)) 0 6

@@ -26,6 +26,7 @@ type t =
   | Duplicate
   | Scope_outside_plan
   | Misplaced_plan
+  | Missing_plan_id
   | Unpinned
   | Dangling
   | Renamed
@@ -70,6 +71,7 @@ let all =
     Duplicate;
     Scope_outside_plan;
     Misplaced_plan;
+    Missing_plan_id;
     Unpinned;
     Dangling;
     Renamed;
@@ -114,6 +116,7 @@ let name = function
   | Duplicate -> "duplicate"
   | Scope_outside_plan -> "scope-outside-plan"
   | Misplaced_plan -> "misplaced-plan"
+  | Missing_plan_id -> "missing-plan-id"
   | Unpinned -> "unpinned"
   | Dangling -> "dangling"
   | Renamed -> "renamed"
@@ -157,6 +160,7 @@ let tiers = function
   | Duplicate -> (Some Block, Some Block, Some Block)
   | Scope_outside_plan -> (Some Block, Some Block, None)
   | Misplaced_plan -> (Some Block, Some Block, Some Block)
+  | Missing_plan_id -> (Some Block, Some Block, Some Block)
   | Unpinned -> (Some Block, Some Block, Some Block)
   | Dangling -> (Some Block, Some Block, Some Block)
   | Renamed -> (Some Block, Some Block, Some Block)

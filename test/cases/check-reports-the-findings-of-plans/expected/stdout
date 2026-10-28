@@ -1,3 +1,5 @@
+.plans/work.md:3:1: missing-plan-id plan:work the plan work has no plan id
+  fix: @plan work@ea5ea3
 .plans/work.md:12:1: scope-outside-plan step:work/write-the-logout-req the scope of the plan does not hold src/**
 .plans/work.md:15:1: promise-out-of-scope promise:step:work/write-the-logout-req:req:logout req:logout at docs/reqs.md:8 is outside the scope of the step
 .plans/work.md:15:1: unverified-promise promise:step:work/write-the-logout-req:req:logout the plan promises no @verifies logout

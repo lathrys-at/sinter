@@ -94,7 +94,10 @@ val is_repair : fixes -> removed:tag list -> added:tag list -> bool
       [cites], with a member of [fixes.successors] in place of [fixes.renamed];
     - a corrected tag word: [o] and [n] have one tag target and one revision,
       two different words, and the word of [n] is [fixes.word] of the word of
-      [o].
+      [o];
+    - an added plan id: [o] and [n] have the word [plan] and one revision, the
+      tag target of [o] is a slug with no plan id, and the tag target of [n] is
+      that slug, [@], and any plan id, by {!Plan_target.parse}.
 
     The citation words are [satisfies], [verifies], [refines], [cites], and
     [supersedes]. Two tags that a re-pin, a bump, or a retarget compares have a

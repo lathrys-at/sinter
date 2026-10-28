@@ -2,6 +2,9 @@
 (* Copyright 2026 The Sinter Authors *)
 
 open Sinter_core
+
+let base_commit = "0123456789abcdef0123456789abcdef01234567"
+
 module Gen = QCheck2.Gen
 
 let property ?(count = 200) ~name ~print generator check =
@@ -260,7 +263,7 @@ let with_tree_findings base tree =
          List.mem finding.finding_class
            [ Finding_class.Dangling; Finding_class.Renamed ])
        (Adjudicator.classes ~base:(facts base) tree_facts
-          (Findings.of_facts tree_facts ~not_text:[])))
+          (Findings.of_facts tree_facts ~base:base_commit ~not_text:[])))
 
 let renamed_takes_the_place_of_dangling () =
   Alcotest.check strings "the findings"
@@ -510,7 +513,7 @@ let a_base_without_the_same_files_gives_the_same_classes =
       let same path =
         List.exists (fun (p, _, _, same) -> same && String.equal p path) files
       in
-      let found = Findings.of_facts tree ~not_text:[] in
+      let found = Findings.of_facts tree ~base:base_commit ~not_text:[] in
       let tombstone (t : Adjudicator.tombstone) = t.was in
       List.map show (Adjudicator.classes ~base:full tree found)
       = List.map show (Adjudicator.classes ~same ~base:part tree found)
@@ -568,7 +571,8 @@ let renamed_to_holds_for_the_edges_that_renamed_reports =
                 ( Finding.subject_id finding.subject,
                   Option.map Fix.text finding.fix )
             else None)
-          (Adjudicator.classes ~base tree (Findings.of_facts tree ~not_text:[]))
+          (Adjudicator.classes ~base tree
+             (Findings.of_facts tree ~base:base_commit ~not_text:[]))
       in
       let renamed_to = Adjudicator.renamed_to ~base tree in
       List.for_all

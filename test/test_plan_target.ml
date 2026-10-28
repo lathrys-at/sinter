@@ -153,6 +153,35 @@ let every_number_of_24_bits_is_an_id =
         (Plan_target.id_of_string (Printf.sprintf "%06x" n))
       = Some (Printf.sprintf "%06x" n))
 
+let derives cases () =
+  List.iter
+    (fun (base, path, expected) ->
+      Alcotest.(check string)
+        (Printf.sprintf "%S %S" base path)
+        expected
+        (Plan_target.derive ~base ~path :> string))
+    cases
+
+let commit = "0123456789abcdef0123456789abcdef01234567"
+
+let derives_an_id_from_the_base_and_the_path =
+  derives
+    [
+      (commit, ".plans/p.md", "a153a1");
+      (commit, ".plans/q.md", "04e9d9");
+      ("1123456789abcdef0123456789abcdef01234567", ".plans/p.md", "d31ccd");
+      ("", "", "01ba47");
+    ]
+
+let a_derived_id_is_six_lowercase_hex_digits =
+  property ~name:"a derived id is six lowercase hex digits"
+    ~print:QCheck2.Print.(pair string string)
+    (Gen.pair Gen.string Gen.string)
+    (fun (base, path) ->
+      let derived = (Plan_target.derive ~base ~path :> string) in
+      Plan_target.id_of_string derived <> None
+      && Plan_target.derive ~base ~path = Plan_target.derive ~base ~path)
+
 let any_bytes_parse_to_a_target_that_prints_them_or_to_an_error =
   property ~count:2000 ~name:"any bytes parse to a target that prints them"
     ~print:String.escaped
@@ -165,6 +194,9 @@ let any_bytes_parse_to_a_target_that_prints_them_or_to_an_error =
 
 let tests =
   [
+    Alcotest.test_case "derives an id from the base and the path" `Quick
+      derives_an_id_from_the_base_and_the_path;
+    a_derived_id_is_six_lowercase_hex_digits;
     any_bytes_parse_to_a_target_that_prints_them_or_to_an_error;
     Alcotest.test_case "reads a slug and a full form" `Quick
       reads_a_slug_and_a_full_form;

@@ -12,6 +12,7 @@ type t =
       first : string * int;
       others : (string * int) list;
     }
+  | Plan_id of { tag : Markdown.tag; id : Plan_target.id }
   | Ack of { last : Markdown.tag; block : Markdown.block; target : string }
 
 let fail reason = invalid_arg ("Fix: " ^ reason)
@@ -43,6 +44,10 @@ let rename tag target rev =
 let successors tag first others =
   targeted tag;
   Successors { tag; first; others }
+
+let plan_id tag id =
+  targeted tag;
+  Plan_id { tag; id }
 
 let ack (document : Markdown.t) ~block ~target =
   let block = document.blocks.(block) in
@@ -90,6 +95,14 @@ let alternatives = function
   | Word { tag; word } -> [ [ replace tag Tag_line.Word ("@" ^ word) ] ]
   | Pin { tag; rev } | Bump { tag; rev } -> [ [ revision tag rev ] ]
   | Spelling { tag; target } -> [ [ replace tag Tag_line.Target target ] ]
+  | Plan_id { tag; id } ->
+      let _, ecol = columns tag Tag_line.Target in
+      let line = tag.span.start.line in
+      [
+        [
+          { line; col = ecol; eline = line; ecol; text = "@" ^ (id :> string) };
+        ];
+      ]
   | Rename { tag; target; rev } -> [ retarget tag (target, rev) ]
   | Successors { tag; first; others } ->
       List.map (retarget tag) (first :: others)
@@ -115,6 +128,7 @@ let help = function
       "check that the citation still holds, then pin it to the current revision"
   | Bump _ -> "raise the revision above every revision in the base"
   | Spelling _ -> "write the slug as the declaration spells it"
+  | Plan_id _ -> "give the plan an id after its slug"
   | Rename _ -> "cite the declaration by its new slug"
   | Successors { others = []; _ } ->
       "cite the successor in place of the retired item"
@@ -130,6 +144,7 @@ let text = function
   | Word { word; _ } -> "@" ^ word
   | Pin { tag; rev } | Bump { tag; rev } -> head tag (target tag) (Some rev)
   | Spelling { tag; target } -> head tag target tag.rev
+  | Plan_id { tag; id } -> head tag (target tag ^ "@" ^ (id :> string)) tag.rev
   | Rename { tag; target; rev } ->
       head tag target (Option.map (fun _ -> rev) tag.rev)
   | Successors { tag; first; others } ->

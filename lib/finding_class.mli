@@ -41,6 +41,7 @@ type t =
   | Duplicate
   | Scope_outside_plan
   | Misplaced_plan
+  | Missing_plan_id
   | Unpinned
   | Dangling
   | Renamed

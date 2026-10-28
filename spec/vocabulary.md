@@ -212,8 +212,12 @@ digits, or a second `@`. A plan file whose `@plan` tag has a tag
 target that fails these rules gives no plan, no step, and no promise.
 It is still a plan file (section 10.1).
 
-A person or a tool takes a new plan id from a random source when the
-plan is made, for example with the command `openssl rand -hex 3`.
+A new plan takes a plan id from a random source when a person or a
+tool makes the plan, for example from the command
+`openssl rand -hex 3`. A plan with no plan id is an error (finding
+class `missing-plan-id`). The fix of that finding writes a plan id that
+it derives from the base commit and the path of the plan file
+([algebra.md](algebra.md) section 9).
 
 The slug alone names the open plan that has the slug: in tags, in
 commands, and in conversation. The full form names one plan exactly,

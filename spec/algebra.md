@@ -504,6 +504,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `duplicate` | tag or line | *engine*: two slugs in one namespace that are equal, or that differ only in case ([vocabulary.md](vocabulary.md) section 4.1): two declarations; two open plans; or two steps of one plan. Two plans of any state with one full form ([vocabulary.md](vocabulary.md) section 4.3) are also a group. Order the facts of one such group by the byte order of their paths, and then by their lines. Each fact after the first gives one finding. Its subject is the tag of that fact or, for a step, the line of the step's heading ([jsonl.md](jsonl.md) section 9). A plan that both rules of plans report gives one finding, by the rule of the full form. The `detail` names the rule that applies | tree | · | · | block, block, block |
 | `scope-outside-plan` | step | *engine*: a step whose `@scope` is not contained in its plan's `@scope`. The tool decides containment on the plain globs ([manifest.md](manifest.md) section 7.2), by the rule of glob containment of [ledger.md](ledger.md) section 11: each plain glob of the step must be contained in a plain glob of the plan. A `!` glob of the step only narrows the step's scope, so it never breaks containment | tree | · | · | block, block, — |
 | `misplaced-plan` | tag | *engine*: a `@plan` tag that does not stand in the first tag block of a file under `.plans/`: a `@plan` outside `.plans/**`, or a `@plan` in a later block of a file under `.plans/` ([vocabulary.md](vocabulary.md) section 10.1) | tree | · | · | block, block, block |
+| `missing-plan-id` | plan | *engine*: a plan whose `@plan` tag has no plan id ([vocabulary.md](vocabulary.md) section 4.3). The fix inserts `@` and a plan id at the end of the tag target. That plan id is the first six hex digits of the SHA-256 of three parts, as UTF-8 bytes: the object id of the base commit in lowercase hex (the field `base` of the `index` record, [jsonl.md](jsonl.md) section 10), one LF, and the path of the plan file, relative to the repository root | tree | · | F | block, block, block |
 | `unpinned` | edge | *engine*: a `satisfies`, `verifies`, `refines`, or `supersedes` edge without a revision | tree | · | F | block, block, block |
 | `dangling` | edge | `dangling(kind(edge))`, minus edges whose tag target a claim promises to declare — those surface as `waiting-on` instead — and minus the edges that `renamed` reports (*engine* performs these subtractions). When the tag target differs from a declared slug only in case, the fix of the finding writes the declared spelling in place of the tag target | tree | · | · | block, block, block |
 | `renamed` | edge | *engine*: a dangling edge whose slug has the tombstone of a declaration in `B`, when both of these conditions hold. First: exactly one tombstone of a declaration and exactly one new declaration have the extent hash of that tombstone. A new declaration is a declaration of `T` that the fact set of `B` does not hold. Second: the new declaration has the kind of the tombstone. When a condition fails, the edge is only `dangling`. `renamed` is reported in place of `dangling` on the edge. The fix writes the slug of the new declaration in place of the tag target. When the edge carries a revision, the fix also writes the revision of the new declaration in place of that revision | diff | · | F | block, block, block |
@@ -565,7 +566,9 @@ report such a hunk. These are the changes:
   fix of `renamed` write;
 - the citation of a successor in place of a citation of a retired
   declaration (the fix of `retired`);
-- the corrected tag word of a `typo-tag` line (the fix of `typo-tag`).
+- the corrected tag word of a `typo-tag` line (the fix of `typo-tag`);
+- a plan id added to the tag target of a `@plan` line (the fix of
+  `missing-plan-id`).
 
 When Sinter adds a fix, the change that its edits make joins this
 list.
@@ -585,8 +588,9 @@ write, by the facts of
 the working tree and, for `renamed`, of the base tree. For example, a
 re-pin and a revision added to a citation must write the current
 revision of the target, and the retarget of `renamed` must name the
-declaration that has the extent hash of the tombstone. One exception:
-a bump of a declaration can write any higher revision. The column of
+declaration that has the extent hash of the tombstone. Two exceptions:
+a bump of a declaration can write any higher revision, and an added
+plan id can be any six lowercase hex digits. The column of
 the `@` and the rest of each line of the pair, the inline description,
 must be equal.
 

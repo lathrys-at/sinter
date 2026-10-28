@@ -168,6 +168,35 @@ let a_bump_writes_any_higher_revision () =
         repair [ req ~rev:1 () ] [ tag "req" ~target:"b" ~rev:2 ] );
     ]
 
+let an_added_plan_id_is_any_id () =
+  let plan ?rev target = tag "plan" ~target ?rev in
+  verdicts "each change of a plan line"
+    [
+      ("an id added", true);
+      ("another id added", true);
+      ("an id changed", false);
+      ("a slug changed", false);
+      ("an id in upper case", false);
+      ("an id removed", false);
+      ("a revision changed", false);
+      ("nothing changed", false);
+      ("an id on a req", false);
+      ("an id on an invalid slug", false);
+    ]
+    [
+      ("an id added", repair [ plan "a" ] [ plan "a@3f2a9c" ]);
+      ("another id added", repair [ plan "a" ] [ plan "a@012345" ]);
+      ("an id changed", repair [ plan "a@3f2a9c" ] [ plan "a@012345" ]);
+      ("a slug changed", repair [ plan "a" ] [ plan "b@3f2a9c" ]);
+      ("an id in upper case", repair [ plan "a" ] [ plan "a@3F2A9C" ]);
+      ("an id removed", repair [ plan "a@3f2a9c" ] [ plan "a" ]);
+      ("a revision changed", repair [ plan ~rev:1 "a" ] [ plan "a@3f2a9c" ]);
+      ("nothing changed", repair [ plan "a" ] [ plan "a" ]);
+      ( "an id on a req",
+        repair [ tag "req" ~target:"a" ] [ tag "req" ~target:"a@3f2a9c" ] );
+      ("an id on an invalid slug", repair [ plan "-a" ] [ plan "-a@3f2a9c" ]);
+    ]
+
 let a_retarget_names_what_its_fix_names () =
   let table =
     {
@@ -637,7 +666,7 @@ let edit_gen =
     let kept = if pinned then Some old_rev else None in
     let written = Option.map (fun _ -> rev) kept in
     let* word = citation in
-    let* kind = int_bound 6 in
+    let* kind = int_bound 7 in
     match kind with
     | 0 ->
         pure
@@ -701,13 +730,21 @@ let edit_gen =
           old_tag = make "cites" a kept;
           new_tag = make "cites" b written;
         }
-    | _ ->
+    | 6 ->
         let+ target = option target_gen in
         {
           name = "corrected word";
           table = { no_fix with words = [ ("reqq", "req") ] };
           old_tag = { Repair.column; word = "reqq"; target; rev = kept; desc };
           new_tag = { Repair.column; word = "req"; target; rev = kept; desc };
+        }
+    | _ ->
+        let+ id = map (Printf.sprintf "%06x") (int_bound 0xffffff) in
+        {
+          name = "added plan id";
+          table = no_fix;
+          old_tag = make "plan" a kept;
+          new_tag = make "plan" (a ^ "@" ^ id) kept;
         })
 
 let print_edit edit =
@@ -755,6 +792,7 @@ let tests =
     case "an added revision needs a word that unpinned pins"
       an_added_revision_needs_a_word_that_unpinned_pins;
     case "a bump writes any higher revision" a_bump_writes_any_higher_revision;
+    case "an added plan id is any id" an_added_plan_id_is_any_id;
     case "a retarget names what its fix names"
       a_retarget_names_what_its_fix_names;
     case "a corrected word is the word of the fix"

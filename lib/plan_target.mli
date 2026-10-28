@@ -32,3 +32,12 @@ val to_string : t -> string
 (** [to_string target] is the full form of [target]: the slug, then [@] and the
     id when [target] has an id. [parse (to_string target)] is [Ok target] when
     the slug of [target] is valid. *)
+
+val derive : base:string -> path:string -> id
+(** [derive ~base ~path] is the plan id that the fix of [missing-plan-id]
+    writes: the first six hexadecimal digits of the SHA-256 of [base], one line
+    feed, and [path]. [base] is the object id of the base commit in lowercase
+    hexadecimal, and [path] is the path of the plan file relative to the
+    repository root.
+
+    @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)

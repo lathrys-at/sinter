@@ -3,6 +3,8 @@
 
 open Sinter_core
 
+let base_commit = "0123456789abcdef0123456789abcdef01234567"
+
 let reader =
   lazy
     (match Markdown.create (Sinter_bridge.create ()) with
@@ -27,7 +29,7 @@ let manifest extra =
 let findings ?(extra = "") ?(not_text = []) files =
   Findings.tree (manifest extra)
     (List.map (fun (path, text) -> (path, document text)) files)
-    ~not_text
+    ~base:base_commit ~not_text
 
 let place_text (finding : Finding.t) =
   match finding.place with
@@ -231,6 +233,24 @@ let duplicate_of_plans_names_the_full_form_or_the_open_slug () =
        plan with the slug up comes first at .plans/a.md:3";
       ".plans/e.md:3:1-3:11 | finding:duplicate:tag:.plans/e.md@L3C1 | a plan \
        with the full form down comes first at .plans/d.md:3";
+    ]
+
+let missing_plan_id_pastes_an_id_from_the_base_and_the_path () =
+  let plan path target = (path, "# P\n\n@plan " ^ target ^ "\n") in
+  check Finding_class.Missing_plan_id
+    [
+      plan ".plans/p.md" "p";
+      plan ".plans/q.md" "q@3f2a9c";
+      plan ".plans/work.md" "Work";
+      plan ".plans/x.md" "x@3F2A9C";
+      ("old/.plans/o.md", "# O\n\n@plan o\n");
+    ]
+    ~extra:"[check]\nhistorical = [\"old/**\"]\n"
+    [
+      ".plans/p.md:3:1-3:8 | finding:missing-plan-id:plan:p | the plan p has \
+       no plan id | fix: @plan p@a153a1";
+      ".plans/work.md:3:1-3:11 | finding:missing-plan-id:plan:Work | the plan \
+       Work has no plan id | fix: @plan Work@321afa";
     ]
 
 let unpinned_pastes_the_revision_of_the_target () =
@@ -740,6 +760,8 @@ let a_control_character_of_a_plan_stays_in_one_line () =
   Alcotest.(check (list string))
     "the findings"
     [
+      ".plans/p.md:3:1-3:8 | finding:missing-plan-id:plan:p | the plan p has \
+       no plan id | fix: @plan p@a153a1";
       ".plans/p.md:6:1-6:5 | finding:scope-outside-plan:step:p/a | the scope \
        of the plan does not hold src/**\\r";
       ".plans/p.md:12:1-12:9 | finding:invalid-target:tag:.plans/p.md@L12C1 | \
@@ -964,7 +986,7 @@ let declared_spelling_gives_the_fix_of_each_dangling_finding =
                    ( Finding.subject_id finding.subject,
                      Option.map Fix.text finding.fix )
                else None)
-             (Findings.of_facts facts ~not_text:[])
+             (Findings.of_facts facts ~base:base_commit ~not_text:[])
          in
          List.for_all
            (fun ((edge : Facts.edge), _) ->
@@ -999,8 +1021,11 @@ let of_facts_gives_the_findings_of_tree () =
     (Facts.files facts == files);
   Alcotest.(check (list string))
     "the findings"
-    (List.map show (Findings.tree m files ~not_text:[ ("docs/c.md", 3) ]))
-    (List.map show (Findings.of_facts facts ~not_text:[ ("docs/c.md", 3) ]))
+    (List.map show
+       (Findings.tree m files ~base:base_commit ~not_text:[ ("docs/c.md", 3) ]))
+    (List.map show
+       (Findings.of_facts facts ~base:base_commit
+          ~not_text:[ ("docs/c.md", 3) ]))
 
 let parts (finding : Finding.t) =
   String.concat " / "
@@ -1057,6 +1082,24 @@ let misplaced_plan_marks_the_word () =
     [
       ".plans/p.md:7 / 1-6 not in the first tag block";
       "docs/a.md:3 / 1-6 not in a file under .plans/";
+    ]
+
+let missing_plan_id_marks_the_target () =
+  check_parts Finding_class.Missing_plan_id
+    [ (".plans/p.md", "# P\n\n@plan  upkeep\n") ]
+    [ ".plans/p.md:3 / 8-14 no plan id" ]
+
+let invalid_target_marks_the_target_of_a_plan () =
+  check_parts Finding_class.Invalid_target
+    [
+      (".plans/a.md", "# A\n\n@plan a@3F2A9C\n");
+      (".plans/b.md", "# B\n\n@plan @3f2a9c\n");
+      (".plans/c.md", "# C\n\n@plan c!@3f2a9c\n");
+    ]
+    [
+      ".plans/a.md:3 / 7-15 not a valid plan id";
+      ".plans/b.md:3 / 7-14 no slug before the @";
+      ".plans/c.md:3 / 7-16 not a valid slug";
     ]
 
 let duplicate_marks_the_target_and_names_the_first () =
@@ -1380,7 +1423,7 @@ let marks_and_related_places_hold_on_any_tree =
          let tree_facts = facts tree in
          List.for_all (marks_hold tree)
            (Adjudicator.classes ~base:(facts base) tree_facts
-              (Findings.of_facts tree_facts ~not_text:[]))))
+              (Findings.of_facts tree_facts ~base:base_commit ~not_text:[]))))
 
 let tests =
   [
@@ -1390,6 +1433,10 @@ let tests =
       invalid_target_marks_the_target;
     Alcotest.test_case "misplaced-plan marks the word" `Quick
       misplaced_plan_marks_the_word;
+    Alcotest.test_case "missing-plan-id marks the target" `Quick
+      missing_plan_id_marks_the_target;
+    Alcotest.test_case "invalid-target marks the target of a plan" `Quick
+      invalid_target_marks_the_target_of_a_plan;
     Alcotest.test_case "duplicate marks the target and names the first" `Quick
       duplicate_marks_the_target_and_names_the_first;
     Alcotest.test_case "unpinned marks the target and names the declaration"
@@ -1439,6 +1486,8 @@ let tests =
       duplicate_sits_at_each_later_member_of_a_group;
     case "duplicate of plans names the full form or the open slug"
       duplicate_of_plans_names_the_full_form_or_the_open_slug;
+    case "missing-plan-id pastes an id from the base and the path"
+      missing_plan_id_pastes_an_id_from_the_base_and_the_path;
     case "unpinned pastes the revision of the target"
       unpinned_pastes_the_revision_of_the_target;
     case "dangling names the spelling that differs in case"

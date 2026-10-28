@@ -277,6 +277,26 @@ let duplicates facts =
              plan.steps))
       (Facts.plans facts)
 
+let missing_plan_ids facts ~base =
+  List.filter_map
+    (fun (plan : Facts.plan) ->
+      match plan.id with
+      | Some _ -> None
+      | None when not (is_open plan) -> None
+      | None ->
+          Some
+            (Finding.make Finding_class.Missing_plan_id
+               (Finding.Fact
+                  { id = Facts.plan_fact_id plan; ack_name = plan.slug })
+               ~place:(place plan.path plan.span)
+               ~detail:(Printf.sprintf "the plan %s has no plan id" plan.slug)
+               ~fix:
+                 (Fix.plan_id plan.tag
+                    (Plan_target.derive ~base ~path:plan.path))
+               ?mark:(Finding.part plan.tag Tag_line.Target "no plan id")
+               ()))
+    (Facts.plans facts)
+
 let pinned_words = [ "satisfies"; "verifies"; "refines"; "supersedes" ]
 
 let unpinned facts =
@@ -851,7 +871,7 @@ let historical manifest (finding : Finding.t) =
     (fun (place : Finding.place) -> Manifest.is_historical manifest place.path)
     (Option.to_list finding.place)
 
-let of_facts facts ~not_text =
+let of_facts facts ~base ~not_text =
   let manifest = Facts.manifest facts and documents = Facts.files facts in
   List.sort Finding.compare
     (List.filter
@@ -864,6 +884,7 @@ let of_facts facts ~not_text =
             invalid_targets manifest documents;
             misplaced_plans documents;
             duplicates facts;
+            missing_plan_ids facts ~base;
             unpinned facts;
             dangling facts;
             suspect facts;
@@ -881,8 +902,9 @@ let of_facts facts ~not_text =
             promises_out_of_scope facts;
           ]))
 
-let tree ?phases manifest documents ~not_text =
+let tree ?phases manifest documents ~base ~not_text =
   let facts =
     Allocation.measure phases "facts" (fun () -> Facts.make manifest documents)
   in
-  Allocation.measure phases "findings" (fun () -> of_facts facts ~not_text)
+  Allocation.measure phases "findings" (fun () ->
+      of_facts facts ~base ~not_text)

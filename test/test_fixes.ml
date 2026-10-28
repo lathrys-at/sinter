@@ -25,7 +25,8 @@ let facts files =
 let findings ~base files =
   let tree = facts files in
   Adjudicator.classes ~base:(facts base) tree
-    (Findings.of_facts tree ~not_text:[])
+    (Findings.of_facts tree ~base:"0123456789abcdef0123456789abcdef01234567"
+       ~not_text:[])
 
 let decisions =
   "# Decisions\n\n\
@@ -70,6 +71,7 @@ let tree guide =
     ( "docs/edited.md",
       "# Edited\n\n@req edited v2\nNew.\n\n## Plain\n\n@design plain\nNew.\n" );
     ("docs/guide.md", guide);
+    (".plans/p.md", "# P\n\n@plan p\n");
   ]
 
 type line = {
@@ -354,6 +356,7 @@ let probe =
        @cites dep v2  \r\n" );
     ("docs/end.md", "# End\n\n@cites login v2\n@cites dep caf\xc3\xa9");
     ("docs/bom.md", "\xef\xbb\xbf@cites dep\n@cites Login\n");
+    (".plans/p.md", "# P\n\n- @plan p Why.\n");
   ]
 
 let fix_lines_of_170c04b =
@@ -460,7 +463,10 @@ let the_fix_line_is_the_line_of_170c04b () =
   let entries =
     List.map
       (fun finding -> Check.text { Check.finding; tier = None })
-      (findings ~base probe)
+      (List.filter
+         (fun (finding : Finding.t) ->
+           finding.finding_class <> Finding_class.Missing_plan_id)
+         (findings ~base probe))
   in
   Alcotest.(check (list (pair string string)))
     "the fix lines" fix_lines_of_170c04b
