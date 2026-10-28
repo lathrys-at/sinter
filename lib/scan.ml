@@ -260,8 +260,9 @@ let documents ?phases reader ~root files =
   |> Result.map (fun (documents, not_text) ->
       (List.rev documents, List.rev not_text))
 
-let changed_paths repo commit =
-  let* changes = repository (Git.diff repo ~base:commit) in
+let changed_paths repo ~files commit =
+  let* base = repository (Git.read_base repo commit) in
+  let* changes = repository (Git.diff repo ~files ~base) in
   Ok
     (List.filter_map
        (fun (path, change) ->
@@ -274,6 +275,7 @@ let changed_paths repo commit =
 
 type tree = {
   repo : Git.t;
+  file_set : Git.file_set;
   manifest : Manifest.t;
   location : string;
   base : base;
@@ -300,8 +302,10 @@ let prepare ~env ~dir ~manifest ~base =
       (fun reason -> Unreadable_manifest { path = shown; reason })
       (manifest_location ~root path)
   in
-  let* all = repository (Git.files repo) in
-  let files, not_utf_8 = List.partition Sinter_bridge.Utf_8.is_valid all in
+  let* file_set = repository (Git.files repo) in
+  let files, not_utf_8 =
+    List.partition Sinter_bridge.Utf_8.is_valid (Git.paths file_set)
+  in
   let packs = Manifest.packs manifest_value in
   let* () =
     match two_packs packs files with Some e -> Error e | None -> Ok ()
@@ -331,6 +335,7 @@ let prepare ~env ~dir ~manifest ~base =
   let* base = find_base repo manifest_value base in
   Ok
     ( repo,
+      file_set,
       root,
       manifest_value,
       location,
@@ -389,9 +394,10 @@ let read_blobs reader repo wanted ~manifest =
     (fun (documents, not_text, _, found) -> (documents, not_text, found))
     read
 
-let base_files ~repo ~commit ~read_by_markdown ~location =
-  let* diff = repository (Git.diff repo ~base:commit) in
-  let* files = repository (Git.base_tree repo commit) in
+let base_files ~repo ~file_set ~commit ~read_by_markdown ~location =
+  let* base = repository (Git.read_base repo commit) in
+  let* diff = repository (Git.diff repo ~files:file_set ~base) in
+  let files = Git.base_files base in
   let manifest = List.assoc_opt location files in
   let files, not_utf_8 =
     List.partition (fun (path, _) -> Sinter_bridge.Utf_8.is_valid path) files
@@ -459,9 +465,11 @@ let read_base reader ~repo ~diff ~files ~documents ~not_text ~location ~manifest
          else Outside);
     }
 
-let assemble ~repo ~manifest ~location ~base ~documents ~not_text ~not_utf_8 =
+let assemble ~repo ~file_set ~manifest ~location ~base ~documents ~not_text
+    ~not_utf_8 =
   {
     repo;
+    file_set;
     manifest;
     location;
     base;
@@ -473,24 +481,34 @@ let assemble ~repo ~manifest ~location ~base ~documents ~not_text ~not_utf_8 =
   }
 
 let load ?phases ~env ~dir ~manifest ~base () =
-  let* repo, root, manifest, location, base, _, files, not_utf_8 =
+  let* repo, file_set, root, manifest, location, base, _, files, not_utf_8 =
     Allocation.measure phases "repository" (fun () ->
         prepare ~env ~dir ~manifest ~base)
   in
   let* documents, not_text =
     with_reader (fun reader -> documents ?phases reader ~root files)
   in
-  Ok (assemble ~repo ~manifest ~location ~base ~documents ~not_text ~not_utf_8)
+  Ok
+    (assemble ~repo ~file_set ~manifest ~location ~base ~documents ~not_text
+       ~not_utf_8)
 
 let load_with_base ?phases ~env ~dir ~manifest ~base () =
-  let* repo, root, manifest, location, base, read_by_markdown, files, not_utf_8
-      =
+  let* ( repo,
+         file_set,
+         root,
+         manifest,
+         location,
+         base,
+         read_by_markdown,
+         files,
+         not_utf_8 ) =
     Allocation.measure phases "repository" (fun () ->
         prepare ~env ~dir ~manifest ~base)
   in
   let* diff, base_files, base_not_utf_8, base_manifest =
     Allocation.measure phases "base-read" (fun () ->
-        base_files ~repo ~commit:(base_commit base) ~read_by_markdown ~location)
+        base_files ~repo ~file_set ~commit:(base_commit base) ~read_by_markdown
+          ~location)
   in
   let* documents, not_text, compared =
     with_reader (fun reader ->
@@ -503,7 +521,7 @@ let load_with_base ?phases ~env ~dir ~manifest ~base () =
         Ok (documents, not_text, compared))
   in
   Ok
-    ( assemble ~repo ~manifest ~location ~base ~documents ~not_text
+    ( assemble ~repo ~file_set ~manifest ~location ~base ~documents ~not_text
         ~not_utf_8:(not_utf_8 @ base_not_utf_8),
       compared )
 
@@ -526,7 +544,7 @@ let run ?phases ~env ~dir ~manifest ~base ~tool () =
   let* changed =
     Allocation.measure phases "repository" (fun () ->
         if Facts.needs_changes facts then
-          changed_paths tree.repo (base_commit tree.base)
+          changed_paths tree.repo ~files:tree.file_set (base_commit tree.base)
         else Ok [])
   in
   let records =

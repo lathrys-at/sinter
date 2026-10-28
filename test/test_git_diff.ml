@@ -7,6 +7,10 @@ let property ?(count = 500) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count ~name ~print generator check)
 
+let diff_against t rev =
+  Result.bind (Git.read_base t rev) (fun base ->
+      Result.bind (Git.files t) (fun files -> Git.diff t ~files ~base))
+
 let changes =
   Alcotest.testable
     (fun formatter value ->
@@ -603,7 +607,7 @@ let diff_names_a_base_with_a_nul_byte () =
   let _, t = open_shared () in
   Alcotest.(check (result changes error))
     "a NUL byte" (Error (Git.Bad_revision "ma\000in"))
-    (Git.diff t ~base:"ma\000in")
+    (diff_against t "ma\000in")
 
 let merge_base_names_a_revision_that_starts_with_a_hyphen () =
   let _, t = open_shared () in
@@ -705,7 +709,7 @@ let shared_diff =
     (let repo = Shared_repo.shared () in
      let t = open_with (configured_env repo) in
      let before = Git_fixture.index_state repo in
-     let changes = Git.diff t ~base:"HEAD" in
+     let changes = diff_against t "HEAD" in
      (before, changes, Git_fixture.index_state repo))
 
 let shared_changes () =
@@ -800,8 +804,7 @@ let diff_leaves_the_index_untouched () =
 let diff_of_a_bad_base_is_an_error () =
   let _, t = open_shared () in
   Alcotest.(check (result changes error))
-    "no such revision" (Error (Git.Bad_revision "nope"))
-    (Git.diff t ~base:"nope")
+    "no such revision" (Error (Git.Bad_revision "nope")) (diff_against t "nope")
 
 let case name f = Alcotest.test_case name `Quick f
 

@@ -73,6 +73,8 @@ val base_message : base -> string
 
 type tree = private {
   repo : Git.t;
+  file_set : Git.file_set;
+      (** the file set of the working tree, as {!Git.files} gives it *)
   manifest : Manifest.t;
   location : string;
       (** the path of the manifest: relative to the root of the working tree

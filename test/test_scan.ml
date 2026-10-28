@@ -184,6 +184,80 @@ let a_deleted_file_changes_the_tree_and_a_new_mode_does_not () =
        (fun id -> Option.map (fun value -> value = Jsonl.bool true) (done_ id))
        [ "step:p/gone"; "step:p/mode" ])
 
+let edited () =
+  let repo =
+    repository
+      [
+        ("sinter.toml", manifest);
+        ("docs/a.md", "# A\n\n@req a\n");
+        ("lib/old.ml", "old\n");
+        (".plans/p.md", "# P\n\n@plan p\n\n## Old\n\n@scope lib/old.ml\n");
+      ]
+  in
+  ignore (Git_fixture.git repo [ "repack"; "-q"; "-a"; "-d" ]);
+  Git_fixture.write repo "docs/a.md" "# A\n\n@req b\n";
+  Git_fixture.write repo "lib/old.ml" "new\n";
+  Git_fixture.write repo "docs/new.md" "# N\n";
+  repo
+
+let a_scan_writes_no_file_under_the_git_directory () =
+  let repo = edited () in
+  let before = Git_fixture.git_dir_state repo in
+  ignore (outcome (scan repo));
+  Alcotest.(check (list string))
+    "the files under .git" before
+    (Git_fixture.git_dir_state repo)
+
+let contains part text =
+  let length = String.length part in
+  let rec from index =
+    index + length <= String.length text
+    && (String.sub text index length = part || from (index + 1))
+  in
+  from 0
+
+let repeated commands =
+  List.filter
+    (fun command ->
+      List.length (List.filter (String.equal command) commands) > 1)
+    (List.sort_uniq String.compare commands)
+
+let a_scan_runs_no_git_command_twice () =
+  let repo = edited () in
+  let commands =
+    Git_fixture.git_commands repo (fun env ->
+        ignore
+          (outcome
+             (Scan.run ~env ~dir:(Git_fixture.root repo) ~manifest:None
+                ~base:None ~tool:"v1" ())))
+  in
+  Alcotest.(check bool)
+    "the scan ran the tree key and the diff" true
+    (List.exists (contains "write-tree") commands
+    && List.exists (contains "--no-ext-diff") commands);
+  Alcotest.(check (list string)) "the repeated commands" [] (repeated commands)
+
+let a_check_runs_no_git_command_twice () =
+  let repo = edited () in
+  let commands =
+    Git_fixture.git_commands repo (fun env ->
+        match
+          Check.run ~env ~dir:(Git_fixture.root repo) ~manifest:None ~base:None
+            ~mode:Mode.Tree ~gate:None ~strict:false ~format:Check.Json
+            ~tool:"v1" ()
+        with
+        | Ok _ -> ()
+        | Error error ->
+            Alcotest.failf "the check fails: %s"
+              (String.concat "; " (Scan.messages error)))
+  in
+  Alcotest.(check bool)
+    "the check ran the tree key, the diff, and the read of blobs" true
+    (List.exists (contains "write-tree") commands
+    && List.exists (contains "--no-ext-diff") commands
+    && List.exists (contains "cat-file") commands);
+  Alcotest.(check (list string)) "the repeated commands" [] (repeated commands)
+
 let outside =
   lazy
     (let repo = repository [ ("a.md", "# A\n") ] in
@@ -716,6 +790,10 @@ let tests =
       the_index_of_a_tree_is_the_first_record_of_its_scan;
     case "a deleted file changes the tree, and a new mode does not"
       a_deleted_file_changes_the_tree_and_a_new_mode_does_not;
+    case "a scan writes no file under the git directory"
+      a_scan_writes_no_file_under_the_git_directory;
+    case "a scan runs no git command twice" a_scan_runs_no_git_command_twice;
+    case "a check runs no git command twice" a_check_runs_no_git_command_twice;
     case "a manifest outside the repository is named by its absolute path"
       a_manifest_outside_the_repository_is_named_by_its_absolute_path;
     case "a relative manifest is relative to the folder"

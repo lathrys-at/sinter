@@ -48,8 +48,10 @@ val env : t -> string array
     - [HOME], a directory beside the working tree
     - fixed names, e-mail addresses, and dates of the author and the committer
     - the settings [init.defaultBranch=main]; [fastimport.unpackLimit=0]:
-      [git fast-import] keeps its objects in one pack; and
-      [core.logAllRefUpdates=false]: git keeps no log of references. *)
+      [git fast-import] keeps its objects in one pack;
+      [core.logAllRefUpdates=false]: git keeps no log of references; and
+      [maintenance.auto=false] and [gc.auto=0]: no command of git starts a
+      maintenance task. *)
 
 val git : t -> string list -> string
 (** [git repo args] runs git with [args] in the root of [repo], and gives its
@@ -93,6 +95,19 @@ val index_state : t -> string
 (** [index_state repo] describes the file [.git/index] of [repo]: its inode,
     size, modification time, and the digest of its content, or ["absent"]. Two
     equal states mean that the file did not change. *)
+
+val git_dir_state : t -> string list
+(** [git_dir_state repo] describes each directory and each file under [.git] of
+    [repo], in the byte order of their paths. A file has its inode, its size,
+    and the digest of its content, and, outside [.git/objects], its modification
+    time. Two equal states mean that no file under [.git] was made, removed, or
+    written, and that no time outside [.git/objects] changed. *)
+
+val git_commands : t -> (string array -> unit) -> string list
+(** [git_commands repo f] calls [f env], where [env] is {!env} with the variable
+    [GIT_TRACE], and gives each git command that ran under [env] while [f] ran,
+    in order: the text that git traces after [git ], with its arguments quoted
+    as git quotes them. *)
 
 (** {1 History}
 

@@ -55,7 +55,10 @@ type error =
 type t
 (** A git repository with a working tree. The value holds the root of the
     working tree, the environment of the child processes, and the object format
-    of the repository. It holds no open resource. *)
+    of the repository. It also holds the paths of the index file and of the
+    object folder of the repository: the first function that needs one of them
+    reads it from git, and each later call on the value takes the same path. The
+    value holds no open resource. *)
 
 (** The hash function that names the objects of a repository. *)
 type object_format = Sha1 | Sha256
@@ -102,7 +105,11 @@ val object_format : t -> object_format
 
 (** {1 Files} *)
 
-val files : t -> (string list, error) result
+type file_set
+(** The set of files of the working tree of one repository, as {!files} read it.
+*)
+
+val files : t -> (file_set, error) result
 (** [files repo] is the set of files of the working tree, as it is on disk. A
     path is in the set when git tracks it, or when git does not track it and
     does not ignore it, and when [lstat] shows a regular file at the path. A
@@ -119,23 +126,35 @@ val files : t -> (string list, error) result
     - each file under a directory that git does not track and that holds a
       repository of its own
 
-    The paths are sorted by byte order, with no path twice. A path with a
-    conflict, which has up to three entries in the index, comes once. The result
-    can change on each call while other processes change the working tree.
+    A path with a conflict, which has up to three entries in the index, comes
+    once. The result can change on each call while other processes change the
+    working tree.
 
     The error is [File_error] when [lstat] of a path fails for a reason other
     than that nothing is at the path, for example when a directory on the way to
     the path is not readable. *)
 
-val base_tree : t -> string -> ((string * string) list, error) result
-(** [base_tree repo rev] is the set of files of the commit that the revision
-    [rev] names. Each pair is a path and the object id of its content. The set
-    leaves out submodules and symbolic links. The pairs are sorted by path, in
-    byte order, with no path twice.
+val paths : file_set -> string list
+(** [paths set] is the paths of the files of [set], sorted by byte order, with
+    no path twice. *)
+
+type base
+(** A commit of one repository and its set of files, as {!read_base} read them.
+*)
+
+val read_base : t -> string -> (base, error) result
+(** [read_base repo rev] is the commit that the revision [rev] names, with its
+    set of files. A tag that points at a commit names that commit.
 
     The error is [Bad_revision rev] when [rev] names no commit, when [rev] is
     empty, when it starts with [-], or when it holds a NUL byte. Git never sees
     such a name. *)
+
+val base_files : base -> (string * string) list
+(** [base_files base] is the set of files of the commit of [base]. Each pair is
+    a path and the object id of its content. The set leaves out submodules and
+    symbolic links. The pairs are sorted by path, in byte order, with no path
+    twice. *)
 
 val fold_blobs :
   t ->
@@ -250,12 +269,14 @@ type change =
       (** both hold the path, and the content or the mode differs. A change of
           the mode alone is [Modified (Text [])]. *)
 
-val diff : t -> base:string -> ((string * change) list, error) result
-(** [diff repo ~base] is the change of each path that differs between the commit
-    that the revision [base] names and the working tree as it is on disk. The
-    two sets of files are {!base_tree} of [base] and {!files} of [repo], each
-    without the paths that are not valid UTF-8; a path that is in neither set is
-    not in the result.
+val diff :
+  t -> files:file_set -> base:base -> ((string * change) list, error) result
+(** [diff repo ~files ~base] is the change of each path that differs between the
+    commit of [base] and the working tree as it is on disk. The two sets of
+    files are {!base_files} of [base] and {!paths} of [files], each without the
+    paths that are not valid UTF-8; a path that is in neither set is not in the
+    result. Git reads the content of each file of [files] from disk when the
+    function runs.
 
     A path in both sets is compared by its content as git stores it: git applies
     the clean filter and the end-of-line conversion of the file on disk, as
@@ -278,8 +299,8 @@ val diff : t -> base:string -> ((string * change) list, error) result
     does on each read of the index. The objects of the folders that
     [GIT_ALTERNATE_OBJECT_DIRECTORIES] of the environment names stay readable.
 
-    The error is [Bad_revision base] when [base] names no commit, is empty,
-    starts with [-], or holds a NUL byte. *)
+    @raise Invalid_argument
+      if [files] or [base] is of a repository with another root than [repo]. *)
 
 val hunks : change -> hunk list
 (** [hunks change] is the hunks of [change]: its runs, with one hunk in place of
@@ -295,9 +316,20 @@ val tree_key : t -> (string, error) result
     is still on disk, and each file that git does not track and does not ignore,
     as [git add -A] adds them.
 
-    The function does not change the index of [repo]. It works on a copy of the
-    index, in a temporary file that it removes before it returns. It writes the
-    objects of the tree and of new content into the object store of [repo].
+    The function writes no file under the git directory of [repo]. It works on a
+    copy of the index, in a temporary file, and keeps the objects that it makes
+    in a temporary folder; it removes both before it returns. So the object
+    store of [repo] holds the tree of the result only when it held that tree
+    before the call. Git still reads each object of [repo]: the temporary folder
+    takes the object store of [repo] as an alternate, and the objects of the
+    folders that [GIT_ALTERNATE_OBJECT_DIRECTORIES] of the environment names
+    stay readable.
+
+    Git can still set the time of a file under the git directory. When git makes
+    an object that the object store of [repo] already holds, it sets the time of
+    the loose object file or the pack file that holds it, and writes no new
+    file. In a repository with a split index, git sets the time of the shared
+    index file, as it does on each read of the index.
 
     The error is [Command_failed] when [git add -A] fails, and its [stderr]
     holds the message of git. Two causes are a file that git cannot read, and a

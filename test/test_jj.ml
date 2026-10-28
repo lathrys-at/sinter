@@ -201,7 +201,7 @@ let same name testable f =
   Alcotest.check testable name plain jj
 
 let a_jj_state_gives_the_same_files () =
-  let plain, jj = both (fun repo -> ok (Git.files (opened repo))) in
+  let plain, jj = both (fun repo -> Git.paths (ok (Git.files (opened repo)))) in
   Alcotest.check strings "the files of the jj state" plain jj;
   Alcotest.(check bool)
     "the new files are in the set" true
@@ -237,10 +237,14 @@ let a_jj_state_takes_the_local_branch_as_the_default_branch () =
     ( (ok (Git.resolve_default_branch (opened plain) "main")).refname,
       (ok (Git.resolve_default_branch (opened jj) "main")).refname )
 
+let diff_against t rev =
+  Result.bind (Git.read_base t rev) (fun base ->
+      Result.bind (Git.files t) (fun files -> Git.diff t ~files ~base))
+
 let diff repo =
   List.map
     (fun (path, change) -> path ^ " " ^ Generators.print_change change)
-    (ok (Git.diff (opened repo) ~base:(trunk repo)))
+    (ok (diff_against (opened repo) (trunk repo)))
 
 let brought_back = "lib/back.ml"
 
@@ -250,8 +254,7 @@ let a_jj_state_gives_the_same_diff () =
 let a_file_brought_back_is_modified_in_jj_and_in_plain_git () =
   let change repo =
     match
-      List.assoc_opt brought_back
-        (ok (Git.diff (opened repo) ~base:(trunk repo)))
+      List.assoc_opt brought_back (ok (diff_against (opened repo) (trunk repo)))
     with
     | Some (Git.Modified (Git.Text [ { line = 1; added = 1; removed = 1; _ } ]))
       ->
@@ -415,7 +418,7 @@ let empty =
 let an_empty_working_copy_commit_gives_no_change_against_head () =
   let _, jj = Lazy.force empty in
   Alcotest.check strings "the diff against HEAD" []
-    (ok (Git.diff (opened jj) ~base:"HEAD") |> List.map fst)
+    (ok (diff_against (opened jj) "HEAD") |> List.map fst)
 
 let an_empty_working_copy_commit_gives_the_tree_of_head_as_its_key () =
   let _, jj = Lazy.force empty in

@@ -19,8 +19,12 @@ let with_base files =
   ignore (Repo.git repo [ "commit"; "-q"; "-m"; "base" ]);
   repo
 
+let diff_against t rev =
+  Result.bind (Git.read_base t rev) (fun base ->
+      Result.bind (Git.files t) (fun files -> Git.diff t ~files ~base))
+
 let diff repo =
-  match Git.diff (opened repo) ~base:"HEAD" with
+  match diff_against (opened repo) "HEAD" with
   | Ok changes -> changes
   | Error _ -> Alcotest.fail "the diff fails"
 
@@ -230,7 +234,7 @@ let an_unmerged_path_is_compared_by_its_content () =
   Repo.write repo "f" "1\nM\n";
   commit "main";
   ignore (Repo.git_status repo [ "merge"; "-q"; "other" ]);
-  match Git.diff (opened repo) ~base:"main~1" with
+  match diff_against (opened repo) "main~1" with
   | Ok
       [
         ( "f",
@@ -258,7 +262,7 @@ let objects_in_an_alternate_of_the_environment_are_read () =
   match Git.open_repo ~env (Repo.root repo) with
   | Error _ -> Alcotest.fail "the repository does not open"
   | Ok t -> (
-      match Git.diff t ~base:"HEAD" with
+      match diff_against t "HEAD" with
       | Ok changes ->
           Alcotest.check strings "the change"
             [ show "a.txt" (Git.Modified (Git.Text [ hunk 1 1 2 1 1 1 ])) ]
@@ -298,7 +302,7 @@ let a_missing_object_of_a_partial_clone_is_an_error () =
   | Ok t ->
       Alcotest.(check bool)
         "the diff fails" true
-        (match Git.diff t ~base:"HEAD" with
+        (match diff_against t "HEAD" with
         | Error (Git.Command_failed _) -> true
         | Ok _ | Error _ -> false);
       Alcotest.(check bool)
@@ -309,6 +313,32 @@ let a_missing_object_of_a_partial_clone_is_an_error () =
       Alcotest.(check bool)
         "the clone still lacks the blob" true
         (missing origin clone blob)
+
+let a_missing_tree_gives_the_error_of_ls_tree_on_the_commit () =
+  let origin = with_base [ ("d/a.txt", "a\n") ] in
+  ignore (Repo.git origin [ "config"; "uploadpack.allowFilter"; "true" ]);
+  let clone = Filename.concat (Filename.dirname (Repo.root origin)) "trees" in
+  ignore
+    (Repo.git origin
+       [
+         "clone";
+         "-q";
+         "--filter=tree:0";
+         "--no-checkout";
+         "file://" ^ Repo.root origin;
+         clone;
+       ]);
+  let commit = String.trim (Repo.git origin [ "rev-parse"; "HEAD" ]) in
+  match Git.open_repo ~env:(Repo.env origin) clone with
+  | Error _ -> Alcotest.fail "the clone does not open"
+  | Ok t -> (
+      match Git.read_base t commit with
+      | Error (Git.Command_failed { args; _ }) ->
+          Alcotest.(check (list string))
+            "the arguments"
+            [ "-C"; Git.root t; "ls-tree"; "-r"; "-z"; "--full-tree"; commit ]
+            args
+      | Ok _ | Error _ -> Alcotest.fail "the read of the base does not fail")
 
 let rec snapshot root relative =
   let path = Filename.concat root relative in
@@ -371,6 +401,116 @@ let the_tree_key_starts_no_file_system_monitor () =
         (Sys.file_exists
            (Filename.concat (Repo.root repo) ".git/fsmonitor--daemon.ipc"))
 
+let key repo =
+  match Git.tree_key (opened repo) with
+  | Ok key -> key
+  | Error _ -> Alcotest.fail "the tree key fails"
+
+let tree_of_git_add_all repo =
+  let copy = Repo.copy repo in
+  ignore (Repo.git copy [ "add"; "-A" ]);
+  String.trim (Repo.git copy [ "write-tree" ])
+
+let the_tree_key_writes_no_file_under_the_git_directory () =
+  let repo =
+    with_base
+      [
+        ("old.txt", "old\n");
+        ("touched.txt", "same\n");
+        ("gone.txt", "gone\n");
+        ("d/e.txt", "e\n");
+      ]
+  in
+  ignore (Repo.git repo [ "repack"; "-q"; "-a"; "-d" ]);
+  Repo.write repo "old.txt" "next\n";
+  ignore (Repo.git repo [ "commit"; "-q"; "-a"; "-m"; "next" ]);
+  Repo.write repo "old.txt" "old\n";
+  let touched = Filename.concat (Repo.root repo) "touched.txt" in
+  Unix.utimes touched 1_000_000_000. 1_000_000_000.;
+  Repo.remove repo "gone.txt";
+  Repo.write repo "d/e.txt" "changed\n";
+  Repo.write repo "new.txt" "new\n";
+  Repo.write repo "empty.txt" "";
+  let before = Repo.git_dir_state repo in
+  let expected = tree_of_git_add_all repo in
+  Alcotest.(check string) "the key" expected (key repo);
+  Alcotest.check strings "the files under .git" before (Repo.git_dir_state repo)
+
+type step =
+  | Write of int * int
+  | Delete of int
+  | Touch of int
+  | Executable of int
+  | Stage of int
+
+let names = [| "a.txt"; "d/b.txt"; "d/e/c.txt"; "f"; "x.log"; "d/x.log" |]
+let contents = [| ""; "1\n"; "2\n"; "1\n2\n" |]
+
+let print_step = function
+  | Write (name, content) ->
+      Printf.sprintf "write %s %S" names.(name) contents.(content)
+  | Delete name -> "delete " ^ names.(name)
+  | Touch name -> "touch " ^ names.(name)
+  | Executable name -> "chmod +x " ^ names.(name)
+  | Stage name -> "git add -f " ^ names.(name)
+
+let print_scenario (base, steps) =
+  String.concat "; "
+    (List.map
+       (fun (name, content) ->
+         Printf.sprintf "base %s %S" names.(name) contents.(content))
+       base
+    @ List.map print_step steps)
+
+let scenario =
+  let module Gen = QCheck2.Gen in
+  let name = Gen.int_range 0 (Array.length names - 1)
+  and content = Gen.int_range 0 (Array.length contents - 1) in
+  let step =
+    Gen.oneof
+      [
+        Gen.map2 (fun name content -> Write (name, content)) name content;
+        Gen.map (fun name -> Delete name) name;
+        Gen.map (fun name -> Touch name) name;
+        Gen.map (fun name -> Executable name) name;
+        Gen.map (fun name -> Stage name) name;
+      ]
+  in
+  Gen.pair
+    (Gen.list_size (Gen.int_range 0 4) (Gen.pair name content))
+    (Gen.list_size (Gen.int_range 1 6) step)
+
+let exists repo name = Sys.file_exists (Filename.concat (Repo.root repo) name)
+
+let apply repo index = function
+  | Write (name, content) -> Repo.write repo names.(name) contents.(content)
+  | Delete name ->
+      if exists repo names.(name) then Repo.remove repo names.(name)
+  | Touch name ->
+      if exists repo names.(name) then
+        let time = 1_000_000_000. +. float_of_int index in
+        Unix.utimes (Filename.concat (Repo.root repo) names.(name)) time time
+  | Executable name ->
+      if exists repo names.(name) then Repo.make_executable repo names.(name)
+  | Stage name ->
+      if exists repo names.(name) then
+        ignore (Repo.git repo [ "add"; "-f"; "--"; names.(name) ])
+
+let the_tree_key_is_the_tree_of_git_add_all =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:25
+       ~name:"the tree key is the tree of git add -A on a generated tree"
+       ~print:print_scenario scenario (fun (base, steps) ->
+         let repo =
+           with_base
+             ((".gitignore", "*.log\n")
+             :: List.map
+                  (fun (name, content) -> (names.(name), contents.(content)))
+                  base)
+         in
+         List.iteri (apply repo) steps;
+         String.equal (tree_of_git_add_all repo) (key repo)))
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -401,8 +541,13 @@ let tests =
       configuration_does_not_change_the_hunks;
     case "a missing object of a partial clone is an error"
       a_missing_object_of_a_partial_clone_is_an_error;
+    case "a missing tree gives the error of ls-tree on the commit"
+      a_missing_tree_gives_the_error_of_ls_tree_on_the_commit;
     case "the tree key starts no file system monitor"
       the_tree_key_starts_no_file_system_monitor;
     case "the diff writes nothing under the git directory"
       the_diff_writes_nothing_under_the_git_directory;
+    case "the tree key writes no file under the git directory"
+      the_tree_key_writes_no_file_under_the_git_directory;
+    the_tree_key_is_the_tree_of_git_add_all;
   ]

@@ -263,3 +263,45 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
   decision skill still gives the old slug pattern. Vocabulary 10.1 and
   the plan skill still say that a plan belongs to one branch (record
   `plans-span-branches`).
+
+## Add the git module
+
+- The tree key keeps the objects that it makes in a temporary folder,
+  with the object store of the repository as an alternate, as the diff
+  does. Git still sets the time of a loose object file or a pack file
+  when it makes an object that the store already holds. An object
+  written first into the temporary folder does not stop this, because
+  git looks in the packs first. The lead ruled to keep the same key and
+  to state this exception in `git.mli`.
+- Failed approach: a temporary folder with no alternate, and
+  `git write-tree --missing-ok`. It changes nothing under `.git`, but
+  git cannot read the old blob of a changed file. With
+  `core.autocrlf=true`, git keeps the line endings of a file whose old
+  blob holds a carriage return, and converts them when it cannot read
+  that blob. One repository gave the key 525990d7 with the alternate
+  and 826366b2 without it.
+- Failed approach: `git update-index --add --remove --info-only` on the
+  file list, then `git write-tree --missing-ok`. It writes no object,
+  but it is not `git add -A`. It gave another key for an untracked
+  nested repository and for entries with the flags assume-unchanged
+  and skip-worktree. It gave a key where `git add -A` fails, for a
+  nested repository with no commit.
+- `Git.diff` takes the file set and the base that the caller read, so
+  that a run reads each once. `Git.read_base` replaces
+  `Git.base_tree`. A `Git.t` reads the paths of its index file and of
+  its object folder once.
+- `Git.read_base` of a full object id runs only `git ls-tree <id>^{commit}`.
+  When that fails, it resolves the revision as before, so each error
+  stays the same.
+- The git commands of a run on this repository: `scan` from 17 to 13,
+  `check` and `check --diff` from 17 to 12, `check --json` from 20 to
+  14.
+- Two kinds of command stay. `ls-files -v` in the diff lists the copy
+  of the index whose flags the diff clears, so it cannot take the
+  first listing. The two `rev-parse --git-path` commands stay two
+  processes: one process would print both paths on lines, and a path
+  can hold a line feed.
+- Left for later: the copy of the index keeps the flags
+  assume-unchanged and skip-worktree, so the tree key does not see an
+  edit of a file with such a flag. The two `ls-files` of the file set
+  could be one, with `-t`.

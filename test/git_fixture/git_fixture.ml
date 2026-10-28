@@ -88,13 +88,17 @@ let fixed_variables home =
     "GIT_COMMITTER_NAME=C O Mitter";
     "GIT_COMMITTER_EMAIL=committer@example.com";
     "GIT_COMMITTER_DATE=1700000000 +0000";
-    "GIT_CONFIG_COUNT=3";
+    "GIT_CONFIG_COUNT=5";
     "GIT_CONFIG_KEY_0=init.defaultBranch";
     "GIT_CONFIG_VALUE_0=main";
     "GIT_CONFIG_KEY_1=fastimport.unpackLimit";
     "GIT_CONFIG_VALUE_1=0";
     "GIT_CONFIG_KEY_2=core.logAllRefUpdates";
     "GIT_CONFIG_VALUE_2=false";
+    "GIT_CONFIG_KEY_3=maintenance.auto";
+    "GIT_CONFIG_VALUE_3=false";
+    "GIT_CONFIG_KEY_4=gc.auto";
+    "GIT_CONFIG_VALUE_4=0";
   ]
 
 let make_env ~home ~ceiling =
@@ -214,6 +218,52 @@ let index_state repo =
         stat.Unix.st_ino stat.Unix.st_size stat.Unix.st_mtime
         (Digest.to_hex (Digest.file index))
   | exception Unix.Unix_error (Unix.ENOENT, _, _) -> "absent"
+
+let git_dir_state repo =
+  let git_dir = Filename.concat repo.root ".git" in
+  let rec walk relative =
+    let path = Filename.concat git_dir relative in
+    match Unix.lstat path with
+    | { Unix.st_kind = Unix.S_DIR; _ } ->
+        (relative ^ "/")
+        :: List.concat_map
+             (fun name ->
+               walk
+                 (if relative = "" then name else Filename.concat relative name))
+             (List.sort String.compare (Array.to_list (Sys.readdir path)))
+    | stat ->
+        let time =
+          if String.starts_with ~prefix:"objects/" relative then ""
+          else Printf.sprintf ", modified at %h" stat.st_mtime
+        in
+        [
+          Printf.sprintf "%s: inode %d, %d bytes%s, digest %s" relative
+            stat.st_ino stat.st_size time
+            (Digest.to_hex (Digest.file path));
+        ]
+  in
+  walk ""
+
+let is_command line =
+  let marker = "trace: built-in: git " in
+  let length = String.length marker in
+  let rec from index =
+    if index + length > String.length line then None
+    else if String.sub line index length = marker then
+      Some
+        (String.sub line (index + length) (String.length line - index - length))
+    else from (index + 1)
+  in
+  from 0
+
+let git_commands repo f =
+  let trace = Filename.temp_file "sinter-trace" ".txt" in
+  Fun.protect
+    ~finally:(fun () -> try Sys.remove trace with Sys_error _ -> ())
+    (fun () ->
+      f (Array.append (env repo) [| "GIT_TRACE=" ^ trace |]);
+      In_channel.with_open_bin trace In_channel.input_lines
+      |> List.filter_map is_command)
 
 type change =
   | File of string * string
