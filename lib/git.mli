@@ -295,9 +295,20 @@ val tree_key : t -> (string, error) result
     is still on disk, and each file that git does not track and does not ignore,
     as [git add -A] adds them.
 
-    The function does not change the index of [repo]. It works on a copy of the
-    index, in a temporary file that it removes before it returns. It writes the
-    objects of the tree and of new content into the object store of [repo].
+    The function writes no file under the git directory of [repo]. It works on a
+    copy of the index, in a temporary file, and keeps the objects that it makes
+    in a temporary folder; it removes both before it returns. So the object
+    store of [repo] holds the tree of the result only when it held that tree
+    before the call. Git still reads each object of [repo]: the temporary folder
+    takes the object store of [repo] as an alternate, and the objects of the
+    folders that [GIT_ALTERNATE_OBJECT_DIRECTORIES] of the environment names
+    stay readable.
+
+    Git can still set the time of a file under the git directory. When git makes
+    an object that the object store of [repo] already holds, it sets the time of
+    the loose object file or the pack file that holds it, and writes no new
+    file. In a repository with a split index, git sets the time of the shared
+    index file, as it does on each read of the index.
 
     The error is [Command_failed] when [git add -A] fails, and its [stderr]
     holds the message of git. Two causes are a file that git cannot read, and a

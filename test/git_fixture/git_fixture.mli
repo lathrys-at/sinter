@@ -94,6 +94,13 @@ val index_state : t -> string
     size, modification time, and the digest of its content, or ["absent"]. Two
     equal states mean that the file did not change. *)
 
+val git_dir_state : t -> string list
+(** [git_dir_state repo] describes each directory and each file under [.git] of
+    [repo], in the byte order of their paths. A file has its inode, its size,
+    and the digest of its content, and, outside [.git/objects], its modification
+    time. Two equal states mean that no file under [.git] was made, removed, or
+    written, and that no time outside [.git/objects] changed. *)
+
 (** {1 History}
 
     A history is a [git fast-import] stream, made from the commands below. One

@@ -184,6 +184,26 @@ let a_deleted_file_changes_the_tree_and_a_new_mode_does_not () =
        (fun id -> Option.map (fun value -> value = Jsonl.bool true) (done_ id))
        [ "step:p/gone"; "step:p/mode" ])
 
+let a_scan_writes_no_file_under_the_git_directory () =
+  let repo =
+    repository
+      [
+        ("sinter.toml", manifest);
+        ("docs/a.md", "# A\n\n@req a\n");
+        ("lib/old.ml", "old\n");
+        (".plans/p.md", "# P\n\n@plan p\n\n## Old\n\n@scope lib/old.ml\n");
+      ]
+  in
+  ignore (Git_fixture.git repo [ "repack"; "-q"; "-a"; "-d" ]);
+  Git_fixture.write repo "docs/a.md" "# A\n\n@req b\n";
+  Git_fixture.write repo "lib/old.ml" "new\n";
+  Git_fixture.write repo "docs/new.md" "# N\n";
+  let before = Git_fixture.git_dir_state repo in
+  ignore (outcome (scan repo));
+  Alcotest.(check (list string))
+    "the files under .git" before
+    (Git_fixture.git_dir_state repo)
+
 let outside =
   lazy
     (let repo = repository [ ("a.md", "# A\n") ] in
@@ -716,6 +736,8 @@ let tests =
       the_index_of_a_tree_is_the_first_record_of_its_scan;
     case "a deleted file changes the tree, and a new mode does not"
       a_deleted_file_changes_the_tree_and_a_new_mode_does_not;
+    case "a scan writes no file under the git directory"
+      a_scan_writes_no_file_under_the_git_directory;
     case "a manifest outside the repository is named by its absolute path"
       a_manifest_outside_the_repository_is_named_by_its_absolute_path;
     case "a relative manifest is relative to the folder"

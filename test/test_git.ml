@@ -761,7 +761,9 @@ let key = lazy (ok (Git.tree_key (Lazy.force opened)))
 
 let fold_blobs_refuses_an_id_that_names_a_tree () =
   let t = Lazy.force opened in
-  let tree = Lazy.force key in
+  let tree =
+    String.trim (Repo.git (Lazy.force shared) [ "rev-parse"; "HEAD^{tree}" ])
+  in
   match error (Git.fold_blobs t [ tree ] ~init:() ~f:(fun () _ _ -> ())) with
   | Bad_revision named -> Alcotest.(check string) "the id" tree named
   | other -> Alcotest.fail (print_error other)

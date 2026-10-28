@@ -1051,7 +1051,7 @@ let clear_flag t ~env flag paths =
         Result.ok
       |> Result.map ignore
 
-let with_view t ~untracked f =
+let with_store t f =
   let* objects = git_path t "objects" in
   with_temp_dir (fun dir ->
       let store = Filename.concat dir "objects" in
@@ -1064,59 +1064,57 @@ let with_view t ~untracked f =
             | Some more when more <> "" -> objects ^ ":" ^ more
             | _ -> objects
           in
-          let* _ =
-            run
-              ~env:
-                (with_variables t.env
-                   [
-                     ("GIT_OBJECT_DIRECTORY", store);
-                     ("GIT_ALTERNATE_OBJECT_DIRECTORIES", "");
-                   ])
-              t
-              [ "hash-object"; "-w"; "--stdin" ]
-              Decode.object_id
+          f ~store ~alternates)
+
+let in_store ~store ~alternates env =
+  with_variables env
+    [
+      ("GIT_OBJECT_DIRECTORY", store);
+      ("GIT_ALTERNATE_OBJECT_DIRECTORIES", alternates);
+    ]
+
+let with_view t ~untracked f =
+  with_store t (fun ~store ~alternates ->
+      let* _ =
+        run
+          ~env:(in_store ~store ~alternates:"" t.env)
+          t
+          [ "hash-object"; "-w"; "--stdin" ]
+          Decode.object_id
+      in
+      with_index_copy t (fun env ->
+          let env = in_store ~store ~alternates env in
+          let* flags =
+            run ~env t (view_options @ [ "ls-files"; "-z"; "-v" ]) flagged
           in
-          with_index_copy t (fun env ->
-              let env =
-                with_variables env
-                  [
-                    ("GIT_OBJECT_DIRECTORY", store);
-                    ("GIT_ALTERNATE_OBJECT_DIRECTORIES", alternates);
-                  ]
-              in
-              let* flags =
-                run ~env t (view_options @ [ "ls-files"; "-z"; "-v" ]) flagged
-              in
-              let* () =
-                clear_flag t ~env "--no-assume-unchanged"
-                  (List.filter_map
-                     (fun (path, assumed, _) ->
-                       if assumed then Some path else None)
-                     flags)
-              in
-              let* () =
-                clear_flag t ~env "--no-skip-worktree"
-                  (List.filter_map
-                     (fun (path, _, skipped) ->
-                       if skipped then Some path else None)
-                     flags)
-              in
-              let* () =
-                match untracked with
-                | [] -> Ok ()
-                | paths ->
-                    run ~env ~input:(nul_input paths) t
-                      (view_options
-                      @ [
-                          "add";
-                          "--intent-to-add";
-                          "--pathspec-from-file=-";
-                          "--pathspec-file-nul";
-                        ])
-                      Result.ok
-                    |> Result.map ignore
-              in
-              f env))
+          let* () =
+            clear_flag t ~env "--no-assume-unchanged"
+              (List.filter_map
+                 (fun (path, assumed, _) -> if assumed then Some path else None)
+                 flags)
+          in
+          let* () =
+            clear_flag t ~env "--no-skip-worktree"
+              (List.filter_map
+                 (fun (path, _, skipped) -> if skipped then Some path else None)
+                 flags)
+          in
+          let* () =
+            match untracked with
+            | [] -> Ok ()
+            | paths ->
+                run ~env ~input:(nul_input paths) t
+                  (view_options
+                  @ [
+                      "add";
+                      "--intent-to-add";
+                      "--pathspec-from-file=-";
+                      "--pathspec-file-nul";
+                    ])
+                  Result.ok
+                |> Result.map ignore
+          in
+          f env))
 
 let content_of side sections =
   match List.assoc_opt side sections with
@@ -1178,6 +1176,8 @@ let hunks = function
   | Added (Text runs) | Deleted (Text runs) | Modified (Text runs) -> runs
 
 let tree_key t =
-  with_index_copy t (fun env ->
-      let* _ = run ~env t (view_options @ [ "add"; "-A" ]) Result.ok in
-      run ~env t (view_options @ [ "write-tree" ]) Decode.object_id)
+  with_store t (fun ~store ~alternates ->
+      with_index_copy t (fun env ->
+          let env = in_store ~store ~alternates env in
+          let* _ = run ~env t (view_options @ [ "add"; "-A" ]) Result.ok in
+          run ~env t (view_options @ [ "write-tree" ]) Decode.object_id))

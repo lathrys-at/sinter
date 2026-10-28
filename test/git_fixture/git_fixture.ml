@@ -215,6 +215,31 @@ let index_state repo =
         (Digest.to_hex (Digest.file index))
   | exception Unix.Unix_error (Unix.ENOENT, _, _) -> "absent"
 
+let git_dir_state repo =
+  let git_dir = Filename.concat repo.root ".git" in
+  let rec walk relative =
+    let path = Filename.concat git_dir relative in
+    match Unix.lstat path with
+    | { Unix.st_kind = Unix.S_DIR; _ } ->
+        (relative ^ "/")
+        :: List.concat_map
+             (fun name ->
+               walk
+                 (if relative = "" then name else Filename.concat relative name))
+             (List.sort String.compare (Array.to_list (Sys.readdir path)))
+    | stat ->
+        let time =
+          if String.starts_with ~prefix:"objects/" relative then ""
+          else Printf.sprintf ", modified at %h" stat.st_mtime
+        in
+        [
+          Printf.sprintf "%s: inode %d, %d bytes%s, digest %s" relative
+            stat.st_ino stat.st_size time
+            (Digest.to_hex (Digest.file path));
+        ]
+  in
+  walk ""
+
 type change =
   | File of string * string
   | Executable of string * string

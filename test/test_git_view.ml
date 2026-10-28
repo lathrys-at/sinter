@@ -371,6 +371,116 @@ let the_tree_key_starts_no_file_system_monitor () =
         (Sys.file_exists
            (Filename.concat (Repo.root repo) ".git/fsmonitor--daemon.ipc"))
 
+let key repo =
+  match Git.tree_key (opened repo) with
+  | Ok key -> key
+  | Error _ -> Alcotest.fail "the tree key fails"
+
+let tree_of_git_add_all repo =
+  let copy = Repo.copy repo in
+  ignore (Repo.git copy [ "add"; "-A" ]);
+  String.trim (Repo.git copy [ "write-tree" ])
+
+let the_tree_key_writes_no_file_under_the_git_directory () =
+  let repo =
+    with_base
+      [
+        ("old.txt", "old\n");
+        ("touched.txt", "same\n");
+        ("gone.txt", "gone\n");
+        ("d/e.txt", "e\n");
+      ]
+  in
+  ignore (Repo.git repo [ "repack"; "-q"; "-a"; "-d" ]);
+  Repo.write repo "old.txt" "next\n";
+  ignore (Repo.git repo [ "commit"; "-q"; "-a"; "-m"; "next" ]);
+  Repo.write repo "old.txt" "old\n";
+  let touched = Filename.concat (Repo.root repo) "touched.txt" in
+  Unix.utimes touched 1_000_000_000. 1_000_000_000.;
+  Repo.remove repo "gone.txt";
+  Repo.write repo "d/e.txt" "changed\n";
+  Repo.write repo "new.txt" "new\n";
+  Repo.write repo "empty.txt" "";
+  let before = Repo.git_dir_state repo in
+  let expected = tree_of_git_add_all repo in
+  Alcotest.(check string) "the key" expected (key repo);
+  Alcotest.check strings "the files under .git" before (Repo.git_dir_state repo)
+
+type step =
+  | Write of int * int
+  | Delete of int
+  | Touch of int
+  | Executable of int
+  | Stage of int
+
+let names = [| "a.txt"; "d/b.txt"; "d/e/c.txt"; "f"; "x.log"; "d/x.log" |]
+let contents = [| ""; "1\n"; "2\n"; "1\n2\n" |]
+
+let print_step = function
+  | Write (name, content) ->
+      Printf.sprintf "write %s %S" names.(name) contents.(content)
+  | Delete name -> "delete " ^ names.(name)
+  | Touch name -> "touch " ^ names.(name)
+  | Executable name -> "chmod +x " ^ names.(name)
+  | Stage name -> "git add -f " ^ names.(name)
+
+let print_scenario (base, steps) =
+  String.concat "; "
+    (List.map
+       (fun (name, content) ->
+         Printf.sprintf "base %s %S" names.(name) contents.(content))
+       base
+    @ List.map print_step steps)
+
+let scenario =
+  let module Gen = QCheck2.Gen in
+  let name = Gen.int_range 0 (Array.length names - 1)
+  and content = Gen.int_range 0 (Array.length contents - 1) in
+  let step =
+    Gen.oneof
+      [
+        Gen.map2 (fun name content -> Write (name, content)) name content;
+        Gen.map (fun name -> Delete name) name;
+        Gen.map (fun name -> Touch name) name;
+        Gen.map (fun name -> Executable name) name;
+        Gen.map (fun name -> Stage name) name;
+      ]
+  in
+  Gen.pair
+    (Gen.list_size (Gen.int_range 0 4) (Gen.pair name content))
+    (Gen.list_size (Gen.int_range 1 6) step)
+
+let exists repo name = Sys.file_exists (Filename.concat (Repo.root repo) name)
+
+let apply repo index = function
+  | Write (name, content) -> Repo.write repo names.(name) contents.(content)
+  | Delete name ->
+      if exists repo names.(name) then Repo.remove repo names.(name)
+  | Touch name ->
+      if exists repo names.(name) then
+        let time = 1_000_000_000. +. float_of_int index in
+        Unix.utimes (Filename.concat (Repo.root repo) names.(name)) time time
+  | Executable name ->
+      if exists repo names.(name) then Repo.make_executable repo names.(name)
+  | Stage name ->
+      if exists repo names.(name) then
+        ignore (Repo.git repo [ "add"; "-f"; "--"; names.(name) ])
+
+let the_tree_key_is_the_tree_of_git_add_all =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:25
+       ~name:"the tree key is the tree of git add -A on a generated tree"
+       ~print:print_scenario scenario (fun (base, steps) ->
+         let repo =
+           with_base
+             ((".gitignore", "*.log\n")
+             :: List.map
+                  (fun (name, content) -> (names.(name), contents.(content)))
+                  base)
+         in
+         List.iteri (apply repo) steps;
+         String.equal (tree_of_git_add_all repo) (key repo)))
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -405,4 +515,7 @@ let tests =
       the_tree_key_starts_no_file_system_monitor;
     case "the diff writes nothing under the git directory"
       the_diff_writes_nothing_under_the_git_directory;
+    case "the tree key writes no file under the git directory"
+      the_tree_key_writes_no_file_under_the_git_directory;
+    the_tree_key_is_the_tree_of_git_add_all;
   ]
