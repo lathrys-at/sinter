@@ -199,3 +199,29 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
   7.3 would make it absent. A finding can sit at the line after the
   last line of the manifest, which the comment of `Finding.place` does
   not yet allow.
+
+## Rewrite the design notes
+
+- The design notes follow the specifications where the two disagree,
+  for example a skipped test now counts as not run, runner adapters
+  replace the menu of id strategies, and no namespace is built in.
+- The records `plans-span-branches` and `plan-ids` are decided, but
+  the specifications do not carry them yet. Sections 6.1, 6.3, and
+  6.7 state the specifications and name each record in one sentence.
+- The decided part of old section 10.1, the approval at the terminal
+  with agent markers, moved to section 6.4 with its reasons. The four
+  questions that stay open are roadmap entries.
+- Section 13 keeps the mapping of findings to SARIF, because no
+  specification holds it yet. Section 14 keeps the budgets of the
+  brief, which the manifest has no keys for.
+- The text is about 16,800 words against 24,990 before. Sections 12 to
+  14 lost their copies of the specifications. Sections 3, 6, and 11
+  keep only the reasons for rules that a specification or a record
+  holds, and name that place (ruled 2026-10-27). The other sections
+  grew a little: definitions at first use and shorter sentences cost
+  words.
+- Found in the specifications, out of scope: `spec/ledger.md` section
+  11.3 says that a merge of steps is free when the merged scope equals
+  the union of the old scopes, which clause 3 of section 11.1
+  contradicts. `spec/packs.md` section 12.5 says that only three
+  commands use the network, but the ledger commands use it too.

@@ -1,55 +1,183 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 <!-- Copyright 2026 The Sinter Authors -->
 
-# Design Notes: Plan-Centric Spec Tracing & Enforcement for Agentic Development
+# Sinter design notes
 
 ## 1. Thesis
 
-Agentic coding systems reliably fail at two things: following project conventions and staying on an agreed plan. This is architectural, not a capability gap:
+A coding agent is a program that writes code for a person with a
+language model. Coding agents often fail at two things: they do not
+follow the conventions of a project, and they do not stay on the plan
+that they agreed with the person. These failures come from how agents
+work, not from a lack of skill. Three published results show this:
 
-- Plan signal decays 4–12× within a single action-observation step; agents depend on the plan remaining literally in context ("Plans Don't Persist," arXiv:2606.22953).
-- Constraint violations rise from 0% with a policy in full context to 30–59% after compaction ("Governance Decay," arXiv:2606.22528).
-- Self-reported completion diverges from actual tool activity often enough that published enforcement patterns refuse to admit self-report as evidence (Proof-or-Stop, arXiv:2607.14890).
+- An agent depends on its plan being in its **context**: the text that
+  the model can see at one time. The signal of a plan falls by a
+  factor of 4 to 12 within one step of action and observation ("Plans
+  Don't Persist", arXiv:2606.22953).
+- While a whole policy was in the agents' context, the rate of broken
+  constraints was 0 percent. After **compaction**, which shortens the
+  context to make room, the rate rose to 30 to 59 percent ("Governance
+  Decay", arXiv:2606.22528).
+- An agent's report that its work is complete often differs from what
+  its tools did. Published patterns of enforcement therefore do not
+  accept the agent's own report as evidence ("Proof-or-Stop",
+  arXiv:2607.14890).
 
-So agreements cannot be enforced by instructions in context. They must be enforced by an external system that (a) derives status from artifacts, never from self-report, and (b) blocks illegal transitions deterministically at the merge boundary while making them unmissable everywhere earlier. Every state that Sinter reports must be one that the person who merges can check from the repository and its test results, without trusting an agent's report. Context injection is an informational channel, not an enforcement channel — and so is tool-call interception: hooks that deny edits or seize turn-ends are enforcement aimed at the agent's hands, and what that trains under pressure is bypass. Locally the tool computes the same deterministic verdict CI will and hands it to whoever runs the session's workflow — a human, or an orchestrating lead agent — which is where in-loop judgment belongs.
+So instructions in the context cannot enforce an agreement. A system
+outside the agent must enforce it, and that system needs two
+properties:
 
-**Threat model: the agent is collaborative.** The enemy is *decay* — plans falling out of context, conventions forgotten after compaction, completion pressure producing optimistic self-report — not a scheming adversary. The assumption is load-bearing: local evidence and hooks are trusted rather than tamper-proofed, approval prevents accidents and drift rather than forgery, and the manifest is agent-editable. Words like "laundering" name pressure gradients that arise without malice. Deployments that cannot make this assumption need hardening (§10.1 notes where it attaches) that the baseline deliberately does not carry.
+1. It reads the state of the work from artifacts, which are the files
+   of the repository and the results of test runs. It never reads the
+   state from the agent's report about its own work.
+2. It blocks a change that breaks an agreement at the merge, by rules
+   that give the same answer every time. Before the merge, it makes
+   each such change impossible to miss.
 
-**Prior art, and the gap.** Beads owns the agent-facing task graph, and it enforces that graph and its gates, but it binds no requirement to a test. Spec-driven tools (Spec Kit, OpenSpec, Kiro) treat specs mostly as prompt-level context: OpenSpec checks only the structure of a spec, and Kiro checks the requirements but takes the status of a task from the agent. The requirements-traceability tradition (Doorstop, StrictDoc, OpenFastTrace) owns typed graphs, suspect links, and coverage — proven under DO-178C — but predates agents. Two newer tools bind agreements to test results. The first, agent-spec, gives each requirement a verdict from `cargo test` and gates on it in pre-commit and CI, for Rust only. The second, coherence, binds claims in separate spec files to code symbols and test titles, in TypeScript, Python, and Ruby; it has no revisions, so nothing becomes suspect when a requirement changes. Claude Code hooks own deterministic blocking but have no data model. Luria (a truth-maintenance system over decision records) owns the *why*-layer and two operational lessons imported here: most propagation findings resolve by acknowledged judgment, not repair; and an enforcement field nobody ever moves is an enforcement mechanism that cannot fire. No tool checked in October 2026 has these five things:
+Sinter is such a system. The person who merges a change must be able to
+check every state that Sinter reports from the repository and its test
+results alone.
 
-- revision pins with a check that forces the bump, and no tool that writes into the files;
-- test evidence from any language, through JUnit XML;
-- tags read by a parser, not by a regular expression;
+Text that a tool puts into the agent's context is a channel of
+information, not of enforcement. A **hook** is a command that the
+agent's program runs at a fixed event, for example after each edit. A
+hook that stops an edit or holds the end of the agent's turn is also not
+enforcement. Such a hook acts on the agent's actions, not on the result
+of the work. Under pressure, it teaches the agent to go around it. So on
+a local machine, Sinter computes the same result that CI (continuous
+integration, the checks that the hosting service runs on each change)
+will compute. Sinter gives that result to whoever runs the session: a
+person, or a lead agent that directs other agents. That person or lead
+agent is the place for judgment during the work.
+
+**The threat model: the agent cooperates.** The problem is decay, not
+an attacker. Plans fall out of the context, conventions are lost after
+compaction, and the pressure to finish makes an agent's reports too
+hopeful. Sinter does not defend against an agent that schemes. This
+assumption carries weight in three places. Sinter trusts local
+evidence and hooks, and does not protect them against tampering.
+Approval prevents accidents and drift, not forgery. The agent can edit
+the manifest. A deployment that cannot make this assumption needs more
+protection, which Sinter by default does not carry, on purpose.
+Section 6.4 says where that protection attaches.
+
+**Prior art, and the gap.** Other tools hold parts of this design:
+
+- Beads holds the task graph that agents use. It enforces that graph
+  and its gates, but it binds no requirement to a test.
+- Spec Kit, OpenSpec, and Kiro use specifications mostly as text for
+  the prompt. OpenSpec checks only the structure of a specification.
+  Kiro checks the requirements, but it takes the status of a task from
+  the agent.
+- Doorstop, StrictDoc, and OpenFastTrace come from the tradition of
+  requirements traceability. They have graphs in which each item and
+  each link has a kind, suspect links, and coverage. Projects
+  certified under DO-178C, the standard for aircraft software, use the
+  method. A suspect link is a link to an item that changed after the
+  link was written. These tools are older than coding agents.
+- agent-spec gives each requirement a result from `cargo test`, and
+  gates on that result before a commit and in CI. It works for Rust
+  only.
+- coherence binds claims in separate specification files to symbols in
+  the code and to test titles, in TypeScript, Python, and Ruby. It has
+  no revisions, so nothing becomes suspect when a requirement changes.
+- Claude Code hooks can block an action with a fixed rule, but they
+  have no data model.
+- Luria is a truth-maintenance system over decision records: it holds
+  the reasons of a project. Sinter takes two lessons from it. Most of
+  the findings that a change causes end with a judgment that a person
+  records, not with a repair. And a field that sets off a check, such
+  as the status of a record, does nothing when nobody ever changes
+  it.
+
+No tool checked in October 2026 has these five things:
+
+- revision pins, so that a citation names the revision of the item
+  that it cites; a check that forces a revision to rise; and a tool
+  that never writes into the files;
+- test evidence from any language, through JUnit XML, a common file
+  format for test results;
+- tags that a parser reads, not a regular expression;
 - plans whose steps promise facts;
-- SARIF output.
+- output in SARIF, the standard format for the results of static
+  analysis.
 
-## 2. Shape: One Dynamic Object, Static Facts
+## 2. Shape: one changing object and static facts
 
-The system has exactly one dynamic object — the **plan** — and everything else is either the static facts that plans leave or machinery policing the conversion.
+The system has one object that changes over time: the **plan**.
+Everything else is a static fact that plans leave behind, or a
+mechanism that checks how plans turn into facts.
 
-A **plan** is a branch-scoped agreement between user and agent: steps, each promising graph deltas. It is born on its branch and its entire purpose is to convert itself into **static facts**: requirement and decision declarations in prose, `@satisfies` and `@verifies` citations at implementation and test sites, test evidence, ledger entries. **A plan dies by ledger entry, never by file event — `completed` at merge, and only when everything it promised has become static fact, or `abandoned` by a human (§6.3)** — and its file never moves: a dead plan stays in the tree as inert record beside the facts it produced. Nothing is archived elsewhere because nothing is deleted; the ledger, not the filesystem, says when scaffolding stopped being an agreement.
+A **tag** is a short line in a comment or a document, such as
+`@verifies auth-lockout v2`; section 3 defines the tags. A plan is an
+agreement between a person and an agent. It holds steps, and each step
+promises facts that its work will add to the repository. A plan exists
+to turn itself into **static facts**: declarations of requirements and
+decisions in prose, `@satisfies` and `@verifies` citations in the code
+and the tests, test evidence, and entries in the ledger, Sinter's record
+of judgments (section 6.4). A plan is **open** until the ledger records
+that it closed. It closes in one of two ways (section 6.3). CI records
+it as `completed` after the merge, and only when everything that it
+promised is a static fact. Or a person records it as `abandoned`. The
+plan file never moves. A closed plan stays in the tree as a record,
+beside the facts that it produced. Nothing goes to an archive, because
+nothing is deleted. The ledger, not the file system, says when a plan
+stopped being an agreement.
 
-- The **graph** (§3) is the accumulated facts: tags in the repo's own text.
-- **Evidence** (§4) binds `@verifies` citations to real test runs and coverage.
-- **Specifications** (§6.4) are approved projections of the graph, outliving every plan that fed them.
-- **The ledger** (§6.4) is the record of every judgment — approvals, declines, completions, abandonments — on a git ref outside the tree; a plan's death is one of its facts (§6.3).
-- **Obligations** (§7) are the computed difference between what agreements demand and what facts exist — never stored, recomputed at every gate.
-- **Rules** (§7) are standing law: checked-in query expressions that generate obligations forever.
-- **Gates** (§8) police the conversion.
+The parts of the system:
 
-Obligations attach to tags, plans, and diffs — never to the tree as a whole — so an existing repo starts with an empty graph and zero findings, and adoption is incremental by construction: any deliberate ratchet is a manifest rule, never a migration.
+- The **graph** (section 3) is the set of these facts, as tags in the
+  repository's own text.
+- **Evidence** (section 4) binds each `@verifies` citation to real
+  test runs and coverage.
+- **Compiled specifications** (section 6.4) are approved views of the
+  graph. They outlast every plan that added to them.
+- The **ledger** (section 6.4) is the record of every judgment:
+  approvals, declines, completions, and abandonments. It lives on a
+  git ref outside the tree. The closing of a plan is one of its
+  entries.
+- **Obligations** (section 7) are the difference between what the
+  agreements demand and the facts that exist. Sinter never stores an
+  obligation. It computes the obligations again at every gate.
+- **Rules** (section 7) are standing law: query expressions, checked
+  into the repository, that make obligations for as long as they
+  stand.
+- **Gates** (section 8) are the points where Sinter checks how plans
+  turn into facts.
 
-## 3. The Graph
+Obligations attach to tags, plans, and diffs, never to the tree as a
+whole. So an existing repository starts with an empty graph and no
+findings, and a project can adopt Sinter one step at a time. A project
+that wants to raise its standard over time writes a rule or a setting
+of the manifest, never a one-time change to the whole repository.
 
-### 3.1 Tags in the Repo's Own Text
+## 3. The graph
 
-These facts live as **doctags** in comments and markdown — no sidecar files. Colocation is the anti-divergence mechanism: a tag in a doc comment moves with the function, is reviewed in the same diff, dies when the code dies. The graph is a compiled artifact: a scanner extracts tags into an ephemeral index. Plain text in git is the sole source of truth.
+### 3.1 Tags in the repository's own text
 
-The scanner is **tree-sitter**, so it never scans raw text. Each file is parsed with its language pack (§5.2), and tags are recognized only inside nodes the pack designates as tag-bearing — comment nodes in code, the leading paragraph of a section in markdown. String literals, code fences, and `[[nodiscard]]`-style lookalikes are never scanned, because they are never those nodes. A comment attaches to the next named definition (function, struct, `it(...)` call — the pack says which), which is what makes test binding possible (§4).
+The facts live as **doctags**: tags in comments and in markdown, in
+the files that a project already keeps. A tag in the documentation
+comment of a function moves with the function, shows in the same diff
+for review, and goes away when the code goes away. So the facts and
+the code do not drift apart, and no separate file can fall out of
+date. The **graph** is the set of all these facts. Sinter reads it
+again from the text each time it runs, and plain text in git is the
+only source of truth.
+
+Sinter parses each file with **tree-sitter**, a library that turns
+source code into a syntax tree, and reads tags only in the nodes that
+the language pack marks as **tag-bearing** (section 5.2). It never
+searches raw text. So a tag in a string literal or in a code fence
+never counts. A comment attaches to the next definition, such as a
+function or a test, and that attachment is what binds a test to a
+requirement (section 4). `spec/vocabulary.md` section 2 and
+`spec/packs.md` sections 6 and 7 give the rules.
 
 ### 3.2 Grammar
 
-One shape: `@word target [vN]`, then description.
+Every tag has one shape: `@word target [vN]`, then an optional
+description.
 
 ```markdown
 ## Lock account after 5 failed attempts
@@ -70,145 +198,466 @@ fn enforce_lockout(...) { ... }
 fn locks_after_five_failures() { ... }
 ```
 
-- **Description.** A tag's *inline* description is the remainder of its own line. A block's *trailing prose* — non-`@` lines after the last tag line, up to a blank line or the end of the tag-bearing node — belongs to the block's declaration if it has one, otherwise to the block's first tag. (In the example above, "Five consecutive failures…" describes `auth-lockout`, not `@refines`.) Descriptions are used when compiling human-facing output and are part of the extent; otherwise the tool ignores them. Any `@`-prefixed line is a tag line, ours or not; unknown tags are simply not ours (a warn-tier `typo-tag` finding fires for unknown tags within edit distance 2 of the vocabulary — minus each pack's declared **foreign vocabulary**: tag words other toolchains own (`@see`, `@param`, `@returns` in JSDoc, Doxygen, odoc) are never typo candidates — since a typo's failure mode is a silently absent edge).
-- **Targets** are slugs (`auth-lockout`), unique across the citable declaration kinds — a citation names no type, so `req`, `design`, and `decision` share one namespace; plan slugs are their own namespace (a plan routinely shares its slug with the requirement it promises) and permanent — a dead plan keeps its slug, and reuse is a `duplicate` — and step slugs are scoped to their plan — or external ids (`gh/42`) whose namespace the manifest declares. A slug matches `[a-z0-9]+(-[a-z0-9]+)*`; an external id matches `<ns>/<id>` where `ns` is a declared namespace and `id` matches that namespace's pattern. A citation never names a type; the declaration owns it. Duplicate slugs are a finding (`duplicate`), as is a slug or external id that fails the pattern (`invalid-target`).
-- **`vN`** is the revision, `v` followed by a positive integer, starting at `v1`. It is load-bearing for suspect detection (§3.5). Mandatory on `@satisfies`, `@verifies`, `@refines`, and `@supersedes` (unpinned would silently opt out of suspect detection — finding `unpinned`), optional on `@cites`, absent on promises (the target doesn't exist yet), and defaulting to `v1` when omitted on a declaration — friendly to first tagging; the first `unbumped` patch writes it out. A bump must strictly increase the revision relative to the base; the emitted patch always uses `+1`.
-- **No titles.** In markdown the heading is the title; in code, declarations don't appear.
-- **Identity is the slug.** Rename is death-plus-birth; the adjudicator detects the resulting dangling citations in the same diff and emits a fix-up patch. No hidden machine IDs. Renaming an approved item yields an unapproved slug even with untouched content — correct, so the delta presentation renders it as "rename only, hash unchanged" to make the new approval a glance.
+`spec/vocabulary.md` sections 3 to 5 give the rules. The reasons:
+
+- **Unknown words.** Every line that starts with `@` is a tag line, but
+  only the words of the vocabulary have a meaning. A near miss of a word
+  gives the warning `typo-tag`, because a typo silently removes a
+  citation from the graph. Other tools own some words, such as `@param`.
+  Each pack lists those words as its **foreign vocabulary**, and they
+  never count as typos.
+- **Targets.** A citation never names the kind of its target, so the
+  kinds `req`, `design`, and `decision` share one namespace of slugs.
+  Plans have their own namespace, because a plan often has the slug of
+  the requirement that it promises.
+- **Revisions.** The detection of suspect citations depends on the
+  revision (section 3.5). So a citation that needs one and lacks it is
+  the finding `unpinned`, because it would silently escape that
+  detection. A declaration without a revision is `v1`, so a project
+  can start to tag with no ceremony.
+- **No titles.** In markdown, the heading is the title.
+- **The slug is the identity.** Sinter keeps no hidden machine ids. To
+  rename an item is to delete it and to declare a new one. When the
+  new declaration has the same extent hash, Sinter offers a mechanical
+  fix for the old citations (finding `renamed`). A renamed item needs
+  a new approval, because an approval belongs to a slug. The text that
+  `sinter approve` shows calls the change "rename only, hash
+  unchanged", so the new approval takes a glance.
 
 ### 3.3 Vocabulary
 
-Fourteen words. One more (`@pin`) is designed but deferred.
+The vocabulary has fifteen words, and `@pin` is designed but
+deferred. `spec/vocabulary.md` section 7 defines each word.
 
-**Declarations** — this text defines a thing.
+**Declarations** say: this text defines a thing. `@req` declares a
+requirement, `@design` a design item, `@decision` a decision, `@plan` a
+plan (section 6), and `@rule` a rule (section 7). `@design` differs from
+`@req` only in its purpose, the architecture between the requirements
+and the code, and in how strictly it needs approval. The chain from
+requirement to design to code is a property of the graph: the design
+item `@refines` the requirement, and the code `@satisfies` the design
+item. The kind is on the tag and not on a path, so a project can keep
+its design documents anywhere.
 
-| tag | where | what the tool checks |
-|---|---|---|
-| `@req <slug> vN` | requirements docs | satisfied? verified? approved at this rev? text changed without a bump? |
-| `@design <slug> vN` | design docs | same checks as `@req`; approval strictness is a per-type manifest setting |
-| `@decision <slug> vN` | decision records | text changed without a bump? still cited after retirement? never deleted (§3.6) |
-| `@plan <slug>` | plan files | see §6 |
+**Citations** say: this relates to that. `@satisfies` links code to a
+requirement, `@verifies` links a test to it, `@refines` links two
+requirements or design items, `@cites` links anything to anything,
+and `@supersedes` replaces a declaration. Each citation is an
+**edge** of the graph, from its source to its target. A source needs
+a name only when another part of Sinter must address it. So a
+`@satisfies` in code has a source with no name, a **site**: the file
+and the extent of the comment. A test must be addressed, because
+evidence binds to it, but the syntax tree already names the test, so
+it needs no declaration either.
 
-`@design` differs from `@req` only in what it is for — architecture between requirements and code — and in how strictly it is approved. The chain req → design → code is a graph property (design `@refines` req; code `@satisfies` design), and the type lives on the tag rather than on a path, so design documents live wherever a project keeps them.
+**Status tags** take an item out of force. `@deprecated` says that the
+item no longer applies and nothing replaces it. `@rejected` marks a
+decision that was considered and not chosen; its record stays, so that
+nobody argues the choice again. `@deferred` marks a decision that is not
+made yet. A status tag has effect only in the tag block of a
+declaration, so the `@deprecated` of JSDoc in a code comment is safe.
+Sinter has no tag for "done".
 
-**Citations** — this relates to that.
+An item is **in force** when no status tag and no effective
+`@supersedes` retires it; otherwise it is **retired**
+(`spec/vocabulary.md` section 8). A `@supersedes` is **effective** when
+its source carries no status tag and, where approval applies, is
+approved. Supersession is an edge, not a status. So the retirement of
+the old item takes effect with the approval of its successor, and the
+old item needs no approval of its own. A successor that nobody approved
+retires nothing yet, on purpose. In a chain, every item before the last
+one is retired (record `supersession-chains`).
 
-| tag | source → target | source | what the tool checks |
-|---|---|---|---|
-| `@satisfies <slug> vN` | code site → req or design | anonymous (file + extent) | target exists, rev current, target approved; feeds coverage |
-| `@verifies <slug> vN` | test → req or design | the attached test, identified from the AST | all of the above, plus the evidence ladder (§4) |
-| `@refines <slug> vN` | req or design → req or design | enclosing declaration | target exists, rev current; builds the hierarchy |
-| `@cites <slug or external id> [vN]` | anything → any declaration or external id | anonymous | target exists; if a decision, still in force |
-| `@supersedes <slug> vN` | T → T, same type | enclosing declaration | endpoint types match; an effective edge retires its target |
+**Directives** record a judgment at one place. `@ack` records that a
+person or an agent accepted a finding, or met the obligation of a
+rule, for one block of text as it stood. The ack holds the hash of the
+block (section 3.4), and it is **void** when the text changes or when
+the finding that it names goes away. A void ack is itself a finding
+(`stale-ack`), so a judgment never outlives what it judged.
+`sinter check` prints the exact line to paste, and the report lists
+every ack beside what it accepted. `spec/vocabulary.md` section 7.4
+gives the rules.
 
-The source rule follows one principle: *a name is needed exactly when other machinery must address the node; location suffices for everything that merely reads.* Coverage reports render anonymous sources as links. Tests are the case where machinery must address the node — and the AST already names them, so no declaration is needed.
-
-**Status** — we stopped standing behind this. Goes inside the declaration's extent; outside one it is inert, which is what makes code comments safe ground for JSDoc's and odoc's own `@deprecated`. There is no "done" status anywhere.
-
-| tag | applies to | effect |
-|---|---|---|
-| `@deprecated` | req, design, decision | no longer applies, nothing replaces it |
-| `@rejected` | decision | considered and not chosen; the record stays so nobody re-argues it |
-| `@deferred` | decision | undecided; the description says what would settle it |
-
-An item is **in force** iff it carries no status tag and no effective `@supersedes` targets it. A `@supersedes` edge is **effective** iff its source is itself in force and — for approval-gated types — approved at its current revision. Supersession is an edge, not a status, so the retirement rides the successor's approval turn instead of needing a second approval on the old item; an unapproved successor retires nothing yet, which is the point.
-
-**Directives** — recorded judgment at a site.
-
-| tag | effect |
-|---|---|
-| `@ack <finding> <hash>` | a judgment recorded at this site: the named finding is accepted, or the named rule is satisfied, for the text as hashed |
-| `@pin <external id>` *(deferred)* | arms an upstream-drift check on external content, endorsed through the approval flow |
-
-`@ack` is one mechanism for two jobs. Its grammar is `@ack <target> <hash>` where `<hash>` is the last token and `<target>` is everything between: a finding class with an optional subject (`retired cache-ttl`, `unexercised`) or a rule name (`ste-docs`) — exactly what `check` reported. The hash is the first eight or more hex digits of the block hash (§3.4). An ack is *live* iff the hash matches the block's current hash **and** the target still names something: an obligation of that rule at this site, or a finding of that class (with that subject, if given) at this site. It is void the moment either goes stale: the text changes, or the finding it names no longer exists. Liveness is judged against the *pre-ack* result — a rule's obligations are its trigger alone, a finding class its raw definition before ack subtraction, which is an engine step (§12.8) — so an ack cannot void itself by succeeding. Either way the void ack is itself a finding, so a judgment can never outlive what it judged. `check` prints the exact line to paste, so the ceremony is a copy, and the report lists every ack next to what it accepted or cleared. It is a *targeted* judgment, never a generic ignore: in Luria's first propagation wave, 42 of 70 findings were correct citations of retired records; without a way to say so, the only path to green is un-retiring things — the record lying to quiet a linter. A finding is ackable iff its honest resolution can be a judgment rather than an edit: retired citations, rule obligations whose `expect` is an `@ack`, and unexercised tests (an integration test may exercise a site through a path coverage cannot see) are; suspect and dangling citations are not, because their resolution is a mechanical edit the tool already emits.
-
-**Plan-only:** `@scope <globs>`. Headings are steps (§6.1).
+An ack accepts one finding at one place, never findings in general.
+The need for it came from Luria. In Luria's first wave of findings
+after a change, 42 of 70 findings were correct citations of retired
+records. Without a way to say so, the only way to a clean check was to
+bring the retired records back in force: the record would lie to quiet
+a linter. So a finding is **ackable** when its honest resolution can
+be a judgment instead of an edit. An unexercised test is one example,
+because an integration test can reach code along a path that coverage
+cannot see. `spec/algebra.md` section 9 marks the ackable classes. A
+citation of an item that has a successor moves to the successor
+instead (record `cite-the-successor`).
 
 ### 3.4 Extent
 
-An item's extent is what its revision covers. In code: the comment block, **excluding the attached code** — meaning lives in the comment and rev discipline polices it; behavior lives in the code and evidence polices it. In markdown: a tag block in the leading paragraph of a section claims the **whole section** as extent, up to the next same-or-higher heading — which is what makes prose governable. Two boundary rules: adjacency never merges (an extent ends where the next declaration begins), and a nested section declaration carves its section *out* of the enclosing extent — otherwise every leaf edit needs bumps up the whole ancestor chain. Prose outside any extent is visibly ungoverned, which is at least honest. Residual gap, half-closed: code drifting from an unchanged comment is not something a deterministic check can *prove*. But each site also carries a **code hash** `ch` over the attached definition's body (pack-normalized the same way). `ch` changed while `xh` is unchanged is a warn-tier `code-drift` finding — not evidence of drift, but the exact sampling frame the fresh-context judge (§8) draws from, and a count the report can show. "We sample" becomes "we sample *these*."
+The **extent** of an item is the text that its revision covers
+(`spec/vocabulary.md` section 6). In code, it is the comment, without
+the attached code: the meaning lives in the comment, and revision
+discipline checks it; the behavior lives in the code, and evidence
+checks it. In markdown, a declaration claims its whole section, and this
+rule is what lets Sinter govern prose. A declaration in a nested section
+takes that section out of the enclosing extent; otherwise each edit of a
+small section would need a bump of every section above it. Prose outside
+every extent is visibly not governed, which is at least honest.
 
-**The extent hash** is SHA-256 over the extent's *pack-normalized text*: the pack's query yields the comment's content lines with sigils (`///`, `#`, `*`) and leading indentation removed, trailing whitespace removed, line endings as LF, `@ack` lines dropped, the declaration's own `@word slug vN` prefix dropped from its tag line (so a rename, or a bare bump with no text change, leaves the hash equal — which is what lets the approval delta render "rename only, hash unchanged" and lets `renamed` fix-ups be mechanical), the `vN` token dropped from every citation line (so a re-pin after an upstream bump is hash-neutral: pin currency is `suspect`'s business, not approval's, and `sinter patch suspect` never cascades `unbumped` and new approvals up the graph), and a final LF. Markdown sections normalize the same way minus sigils. This is still the text domain — no parsing, no reflow, no semantic anything — but it means `rustfmt` re-indenting a doc comment or a human recording a judgment inside a section does not need a bump. Every other byte change does. The same normalized text, hashed, is the block hash `@ack` pins (§3.3); one hash function, one exclusion rule, two consumers.
+**The extent hash** is the SHA-256 of the extent's normalized text
+(`spec/vocabulary.md` section 6.1). Normalization leaves out what does
+not change the meaning, and each part has a reason:
 
-### 3.5 Revision Discipline & Suspect Links
+- A formatter can indent a doc comment again, and a person can record
+  an ack inside a section, with no bump.
+- A rename, or a bump with no other change, leaves the hash equal, so
+  the fix for `renamed` can be mechanical.
+- A new pin of a citation leaves the hash equal. Whether a pin is
+  current is the business of `suspect`, not of approval, so a new pin
+  never sets off new bumps and new approvals up the graph.
 
-Stored fingerprints want a write path, which is banned. OpenFastTrace's manual-revision model fits plain text: citations pin `v2`; bumping the declaration to `v3` makes every pinned citation suspect, visible in ordinary diffs. OFT's known gap: nothing forces the bump when meaning changes.
+Normalization stays in the domain of text: it parses nothing and reads
+no meaning. The same normalization of a block gives the hash that an
+`@ack` records, so one rule serves both uses.
 
-**The diff adjudicator closes exactly that gap:** the turn report or CI sees "extent changed, rev didn't" — flagged at hand-back, blocked at CI. Every extent edit needs a bump — there is no editorial escape hatch, because a self-reported "this didn't change meaning" is a second self-report channel to spot-check, and a typo-driven bump costs one emitted re-pin patch. Stateless, deterministic. A bump also un-approves the item until it is approved again (§6.4): one mechanism, two consequences.
+**A gap that is half closed.** No check with fixed rules can prove
+that code drifted from a comment that did not change. But each site in
+code also has a **code hash** of the attached definition. When the
+code hash changes and the comment's hash does not, Sinter reports the
+warning `code-drift`. It is not proof of drift. It tells a reviewer who
+checks code by samples, such as the check with a fresh context
+(section 8), which sites to sample.
 
-One collision statelessness cannot see locally: two branches each bump `v2`→`v3` with different meanings. Mitigation: PR CI checks out the host's merge ref — the branch as it would land — with `--base` at the *live tip of the default branch*, never a stale merge base, so the second branch lands as "extent changed, rev didn't"; approved items are further covered by the ledger's extent hash (same rev, different bytes → unapproved). The residual exposure on unapproved items is the price of statelessness, filed.
+### 3.5 Revision discipline and suspect citations
 
-### 3.6 Retirement & Propagation
+A stored fingerprint of each text would need a tool that writes it,
+and Sinter writes into no governed file. OpenFastTrace's model, in
+which a person writes each revision by hand, fits plain text. A
+citation pins `v2`. A bump of the declaration to `v3` makes every
+citation pinned to `v2` **suspect**, and the change shows in an
+ordinary diff. That model has a known gap: nothing forces the bump
+when the meaning changes.
 
-Two orthogonal propagation triggers share machinery and differ in what clears them:
+**The check of the diff closes that gap.** When an extent changed and
+its revision did not rise, Sinter reports `unbumped`
+(`spec/vocabulary.md` section 9). No exception exists for an editorial
+edit. A claim that "this edit did not change the meaning" would be a
+second report of the agent, and someone would have to check it. A bump
+after a typo costs only one new pin, which Sinter prints. A bump also
+removes the item's approval until a person approves it again (section
+6.4): one mechanism with two effects.
 
-- **Rev bump** — *the meaning changed*: pinned citations go suspect until re-pinned.
-- **Retirement** — *we no longer stand behind this*: via a status tag or an effective `@supersedes`. Every `@cites` of a retired item becomes a finding: "this argues from something the record no longer endorses."
+A check that keeps no state cannot see one collision: two branches
+each bump `v2` to `v3` with different meanings. So CI on a pull request
+checks the branch as it would land, against the live tip of the
+default branch, and the second branch to land shows an extent that
+changed while its revision did not. For approved items, the ledger
+also refuses a revision that another branch already took (section
+6.4). For other items, the remaining exposure is the price of a check
+that keeps no state.
 
-Propagation halts at the finding, never cascades: a bad argument for P is not a defeater of P — only a judgment can say whether the thing resting on a withdrawn premise stands on other grounds. (Classical TMS marks nodes OUT automatically; that is precisely the part not imported.) Retired items drop out of coverage queries. One polarity, filed: status tags fail closed; edge-derived retirement fails open — a deleted `@supersedes` restores its target and leaves no dangling edge behind to report it. What catches it is rev discipline: the edge's tag line is part of its source's extent, so the deletion needs a bump and, for gated kinds, a new approval.
+### 3.6 Retirement and propagation
 
-**Decisions are never deleted** — the one type whose death the adjudicator refuses. The moves are supersede (body intact; the old reasoning *is* the record of why the new decision exists), reject, or defer. The slug is permanent. The rule objects to *silent* revision, not to editing.
+Two independent triggers spread a change through the graph:
 
-**Historical text is exempt by class, not ceremony.** The manifest may declare paths *historical* (devlogs, journals): citations there resolve and render but generate no findings. Demanding per-site acks in history trains the bypass reflex.
+- **A revision bump** means that the meaning changed. Each pinned
+  citation is suspect until someone pins it again.
+- **Retirement** means that the authors no longer stand behind the
+  item. Each `@cites` of a retired item is a `retired` finding: this
+  text argues from something that the record no longer endorses.
 
-Decision records are ADR-shaped — context, choice, *alternatives considered* (the highest-value and most-skipped section: it stops re-litigation). One decision, one thing: a record with two halves is one nobody can cite half of. Do not blur: specifications are compiled views (§6.4); design and decision documents are authored prose hosting `@design` and `@decision` declarations. Design hosted in an issue tracker stays an external id — an issue body has no diff to adjudicate and no extent to hash.
+Propagation stops at the finding and never cascades. A bad argument
+for an item does not defeat the item, and only a judgment can say
+whether a thing that rests on a withdrawn premise stands on other
+grounds. A classical truth-maintenance system marks each dependent
+item as no longer believed; Sinter does not take that part.
 
-### 3.7 Governed Documentation
+When someone deletes a `@supersedes`, its target comes back in force,
+and no dangling edge remains to report it. Revision discipline catches
+this case: the tag line of the edge is in the extent of its source, so
+the deletion needs a bump and, where approval applies, a new approval.
 
-Nothing above is specific to requirements documents. A user-facing guide that `@cites auth-lockout v2` goes suspect the moment the requirement bumps to `v3`; a tutorial that cites a deprecated decision gets a `retired` finding. That is documentation-drift detection — one of the oldest unsolved pains in the trade — delivered by the same two mechanisms with no additional machinery, provided the docs are governed by the markdown pack. It is worth stating as a first-class use, because it also orders the pack roadmap (§5.2): the artifacts that most need tracing and least often get it are interfaces and data shapes, not code.
+**Decisions are never deleted.** A decision can be superseded, rejected,
+or deferred, and its old text stays, because the old reasons are the
+record of why the new decision exists (`spec/vocabulary.md` section
+8.3). The rule objects to silent revision, not to edits: a record that
+still decides the same question is edited with a bump, and a different
+choice takes a new record (record `revise-or-supersede`).
 
-## 4. Test Evidence
+**Historical text is exempt as a class.** The manifest can declare
+paths as **historical**, such as a log of development, and the
+journals of plans are historical by a built-in rule. Citations there
+resolve but make no findings. A demand for an ack at each place in
+history would teach people the reflex to bypass the check.
 
-This is the section the rest exists to make possible. A `@verifies` citation is a claim; the tool's job is to turn it into a fact or a finding, using nothing the agent said.
+Decision records follow the form of an architecture decision record:
+the context, the choice, and the alternatives considered. The last
+part has the most value and is skipped most often: it stops people from
+arguing the same choice again. One record holds one decision, because
+nobody can cite half of a record. A design that lives in an issue
+tracker stays an external id, because the body of an issue has no diff
+to check and no extent to hash.
 
-**Identity from the AST.** The language pack's `tests.scm` query captures test definitions and their names (and `describe`-style parents where the language has them). A `@verifies` in a comment attached to a captured definition *is* the test node; no `@test` declaration exists. The pack also selects an **ID strategy** from a fixed, compiled-in menu — Rust module path from file path plus `mod` nesting, Python dotted path from the package root, Go package plus function, JS title path — and parameterizes it. That strategy produces the same string the runner reports, so evidence binding is an exact join; a strategy may also declare a runner-ID normalization (pytest's parametrize suffixes, Jest's `it.each` expansions) so a family of runner rows binds to the one test fact that spawned it. The menu is code, extended by PR when a language genuinely needs a new strategy; packs are data.
+### 3.7 Governed documentation
 
-**Evidence artifacts.** Runner output in standard formats (JUnit XML first; `go test -json`, `cargo nextest` JUnit, pytest `--junitxml`, Jest reporters all produce it) plus coverage in standard formats (lcov, cobertura, coverage.py JSON). Locally, a gitignored evidence directory (`.sinter/evidence/<tree-key>/`) that `sinter evidence import` populates and the gate reads, keyed by **tree key** so stale evidence never binds to a newer tree. The tree key is the git tree hash of the working tree *as it is*, computed non-destructively: stage everything into a temporary index (`GIT_INDEX_FILE=… git add -A && git write-tree`), honoring `.gitignore`. In CI, recomputed from scratch as the authority. Stated plainly: the local evidence dir is agent-writable — trusted, not proof — acceptable because the failure being caught is "claimed the tests pass without running them," which forging well-formed XML does not resemble; PR CI is what makes the merged claim real. The tool never runs tests: whoever runs them — the agent, an orchestrator, a workflow step — points `evidence import` at the artifacts the run produced. And an absent evidence set is a state, not a violation: the ladder's finding classes evaluate only when one exists (§12.8), so a tree with no evidence reads as having none, never red — while `status --done` refuses regardless, because death requires measurement.
+Nothing above is specific to documents of requirements. A user guide
+that `@cites auth-lockout v2` becomes suspect when the requirement moves
+to `v3`. A tutorial that cites a deprecated decision gets a `retired`
+finding. So Sinter detects drift in documentation, one of the oldest
+unsolved problems of software work, with the same two mechanisms and no
+other machinery, when the markdown pack reads the documentation. This
+use also orders the list of packs (section 5.2): the artifacts that most
+need tracing and least often get it are interfaces and data shapes, not
+code.
 
-**The coverage of each test is the expensive rung.** Rung 4 below asks whether *this test* executed *that site*, which requires the coverage of each test. Lcov/cobertura data of the whole run cannot say; they only say the site was executed by *something in the run*. Sources of the coverage of each test that the packs understand: coverage.py with `dynamic_context = test_function` (Python), JaCoCo session data (JVM, when a pack exists), Jest's per-file `coverageProvider: v8` output combined with `--runTestsByPath` batches, and the universal fallback of running each `@verifies`-bearing test in its own process with its own coverage file — slow, always correct, and what the pack's conformance fixture does. `cargo llvm-cov` and `go test -cover` produce the coverage of the whole run unless driven per test. Each `cov` fact carries `attributed: true|false`. With only the coverage of the whole run, rung 4 reports **unmeasured** rather than *passing*: the site was executed by the run and the test passed, but the join is not proven. One case survives the coverage of the whole run: zero hits in it on every satisfying site proves **unexercised** outright — if the whole run never touched the site, neither did the test (§12.5). Unmeasured is warn-tier by default and never blocks; a repo that wants rung 4 to bite pays for the coverage of each test in its test configuration, and `sinter evidence import` says so when it sees only the coverage of the whole run.
+## 4. Test evidence
 
-**The findings ladder**, in order of how much each catches:
+The rest of the design exists to make this section possible. A
+`@verifies` citation is a claim that a test checks a requirement.
+Sinter turns the claim into a fact or into a finding, and it uses
+nothing that the agent said.
 
-1. **Wrong source** — `@verifies` attached to something `tests.scm` doesn't capture. Structural, deterministic.
-2. **Never ran** — the test's ID appears in no evidence artifact for this tree.
-3. **Failed or skipped** — present, not passing. The promise is not met.
-4. **Unexercised** — passed, but the coverage of each test shows it executes zero lines inside any site that `@satisfies` the same requirement. The closest deterministic proxy for a fraudulent verification. Both endpoints of the join already exist; what costs is attribution (above). When only the coverage of the whole run is present the rung reports **unmeasured** instead — unless the aggregate shows zero hits on every site, which proves the test unexercised without attribution.
-5. **Vacuous** — passed, connected, doesn't actually test the property. Reachable only by a judged rule (§7). This is the ceiling for structural checks, and it is worth saying plainly.
+**The test comes from the syntax tree.** The query file `tests.scm` of a
+language pack finds the tests of a file and their names. It also finds
+the groups that hold the tests, such as the `describe` blocks of
+JavaScript. A `@verifies` in a comment that attaches to such a test
+makes the test the source of the edge, so no `@test` declaration exists.
+A `@verifies` above a group covers every test in the group. Sinter does
+not read the ids of requirements in test titles: a title carries no
+revision, so a test bound by its title would never become suspect
+(record `tags-not-titles`).
 
-A `@verifies` edge is at exactly one rung at any time: `wrong-source`, `never-ran`, `failed`, `unexercised`, `unmeasured`, or `passing` (rung 5 is a sampled judgment, not a rung the tool assigns). The rung is a field on the edge fact and a family of predicates in the algebra (§12.5). Rungs 1–4 are what tree-sitter and standard artifacts buy. Rung 4 also gives `@satisfies` citations a job beyond coverage bookkeeping. The pack's conformance fixtures include a real runner run with the coverage of each test, so the join is verified end-to-end per language, not assumed.
+**Results bind to tests through adapters.** A test runner reports each
+test by a name of its own, and runners differ in how they build that
+name. So a language pack carries a **runner adapter** for each runner
+that needs code to match the reported names to the tests in the
+source. An adapter is a WebAssembly module that imports nothing, so it
+reads no file, uses no network, and sees no clock. A runner without
+an adapter of its own uses the default adapter, which joins the names
+of a test with the runner's separators. The adapters live in the
+packs and not in the tool, so a fix for a new version of a runner
+needs no release of Sinter. Sinter keeps the meaning of every result,
+so no adapter can make a failure pass. Record `runner-adapters` gives
+the reasons, and `spec/packs.md` sections 8 to 11 give the rules.
 
-## 5. Manifest, Language Packs, External Ids
+**Evidence files.** Sinter reads the reports of test runners in standard
+formats, JUnit XML first. It reads coverage in standard formats, such as
+lcov, Cobertura, and the JSON of coverage.py. `sinter evidence import`
+stores what it reads in a folder that git ignores,
+`.sinter/evidence/<tree-key>/`, and the gates read it from there. The
+**tree key** is the git tree hash of the working tree as it is on disk.
+Sinter computes it without a change to the real index of git. Git stages
+every file that it does not ignore into a temporary index, and writes a
+tree from that index. The key makes sure that old evidence never binds
+to a newer tree. In CI, Sinter computes the key again, and that result
+is the one that counts.
+
+The agent can write into the local evidence folder. Sinter trusts the
+folder, and the folder is not proof. That is acceptable, because the
+failure that Sinter catches is a claim that the tests pass when nobody
+ran them. A forged report is a deliberate act, and the threat model of
+section 1 leaves out deliberate attacks. CI on a pull request makes the
+claim real for the merge. Sinter never runs tests. Whoever runs them,
+the agent, a lead agent, or a step of CI, gives the files of that run to
+`sinter evidence import`.
+
+A tree with no evidence is a state, not a violation. The findings of the
+evidence ladder below appear only when evidence exists, so such a tree
+never fails a check for its evidence. `sinter status --done` still
+refuses. A step is done only when each of its `@verifies` edges is at an
+allowed rung, and with no evidence each edge is at `never-ran`
+(`spec/algebra.md` section 6.4). The review gate enforces the rungs, so
+a plan is checked against measured work before it merges.
+
+**The coverage of each test is the expensive rung.** Rung 4 below asks
+whether this test ran that site. Only the **coverage of each test**
+answers that question: the coverage of one test, run on its own. The
+**coverage of the whole run**, the usual output of lcov or Cobertura,
+says only that something in the run ran the site. Some tools give the
+coverage of each test:
+
+- coverage.py with `dynamic_context = test_function`, for Python;
+- the session data of JaCoCo, for the JVM, when a pack exists;
+- the V8 coverage of Jest, run in batches with `--runTestsByPath`;
+- the general fallback: each test that carries a `@verifies` runs in
+  its own process, with its own coverage file. This is slow and always
+  correct, and the conformance fixtures of each pack use it.
+
+`cargo llvm-cov` and `go test -cover` give the coverage of the whole
+run, unless a driver runs them one test at a time.
+
+With only the coverage of the whole run, rung 4 reports **unmeasured**,
+not passing: the run ran the site and the test passed, but the link
+between the two is not proven. One case still holds without the coverage
+of each test. When the whole run ran no line of any site that satisfies
+the requirement, the test ran none either, so the test is
+**unexercised**. `unmeasured` is off or a warning by default, so it does
+not block unless a repository raises its tier. A repository that wants
+rung 4 to bite pays for the coverage of each test in its test setup, and
+sets `evidence.test-coverage = "required"` (`spec/manifest.md` section
+12). `sinter evidence import` says so when it sees only the coverage of
+the whole run.
+
+**The evidence ladder**, in order of how much each rung catches:
+
+1. **Wrong source.** The `@verifies` attaches to something that
+   `tests.scm` does not find as a test. This is a check of structure.
+2. **Never ran.** No result in the evidence of this tree binds to the
+   test, or the test was skipped.
+3. **Failed.** A result that binds to the test fails or ends in an
+   error. The promise is not met.
+4. **Unexercised.** The test passed, but the coverage of each test
+   shows that it ran no line inside any site that `@satisfies` the
+   same requirement. This is the closest check with fixed rules to a
+   false verification. Both ends of the link already exist in the
+   graph; the cost is the coverage of each test. With only the
+   coverage of the whole run, the rung is **unmeasured**, unless that
+   coverage shows no line run in any of the sites.
+5. **Vacuous.** The test passed and is connected, but it does not test
+   the property. Only a judged rule (section 7) can reach this rung.
+   It is the limit of checks of structure, and the design says so
+   plainly.
+
+A `@verifies` edge is at exactly one rung at any time: `wrong-source`,
+`never-ran`, `failed`, `unexercised`, `unmeasured`, or `passing`.
+Rung 5 is a judgment on a sample, not a rung that Sinter assigns. The
+rung is a field of the edge, and a family of predicates in the query
+algebra (`spec/algebra.md` section 6.7). Rungs 1 to 4 are what
+tree-sitter and standard test reports can give. Rung 4 also gives
+`@satisfies` a job beyond the bookkeeping of coverage. The
+conformance fixtures of each pack include a real run with the coverage
+of each test, so the link is checked from end to end in each
+language, not assumed.
+
+## 5. Manifest, language packs, and external ids
 
 ### 5.1 Manifest
 
-A **TOML manifest at repo root**, `sinter.toml`, declares: the languages in use, as version constraints (exact versions and hashes live in `sinter.lock`, tool-owned, so a pack is the same bytes on every machine and in CI); namespaces of external ids; which kinds the ledger gates; historical and exempt paths (lockfiles and generated code — exempt from scope confinement, counted in the report); rules (§7); repo-defined finding classes; and gate tiers. Which files a pack governs is the pack's business, declared in its descriptor and overridable per language. TOML because it is pure config with zero prose; the reference is §14 and it fits on a screen.
+The **manifest** is a TOML file at the root of the repository,
+`sinter.toml`. It holds the settings of one repository. Among them:
 
-**The manifest is inside the boundary, on purpose.** The agent can edit it, gate settings included. Under the collaborative model the risk is drift, not sabotage, so the mitigation is visibility: a built-in, non-disableable rule surfaces any diff touching gate configuration or rules in the report and the turn report — "this change also loosened the law" — so a demotion can never ride silently inside an unrelated diff.
+- the packs that read the files, and the files that each pack reads;
+- the namespaces of external ids;
+- the kinds that need approval;
+- the historical paths, and the exempt paths, which a change can touch
+  with no plan step;
+- the tier of each finding class at each gate;
+- the test evidence that meets a promise.
 
-### 5.2 Language Packs
+A lock file that the tool writes, `sinter.lock`, holds the exact release
+and hash of each fetched pack, so a pack is the same bytes on every
+machine and in CI. A repository's own rules and finding classes live in
+rule files, not in the manifest (section 7). The manifest is TOML
+because it holds pure configuration and no prose. `spec/manifest.md`
+gives the format, and its section 3.1 lists every setting. Section 14 of
+these notes gives the reasons for the shape of the manifest.
 
-Language support is **data, not code**, loaded at runtime. A pack contains:
+**The agent can edit the manifest, on purpose**, the tiers included.
+Under the cooperative threat model the risk is drift, not sabotage, so
+the defense is visibility. The built-in finding class `config-changed`
+reports each change of a setting, in every report, the turn report
+included: "this change also loosened the law". Nothing can turn the
+class off, so a lowered tier never rides unseen inside an unrelated
+diff.
 
-- the grammar as **`.wasm`** — one file, every platform, built with `tree-sitter build --wasm`;
-- `.scm` queries: which nodes carry tags and what extent they govern, how a comment attaches to a definition, what is a test and what its name is;
-- a TOML descriptor: ID strategy and parameters, evidence formats understood, the foreign tag vocabulary exempt from `typo-tag` (§3.2), tree-sitter CLI and wasi-sdk versions it was built with (so "rebuild and compare hashes" is a procedure, not a hope);
-- conformance fixtures: a tiny project, expected JSONL, real runner output.
+### 5.2 Language packs
 
-**A pack contains no executable code except a lexer that cannot perform I/O.** A tree-sitter grammar wasm has no WASI imports; the host supplies linear memory and a handful of tree-sitter builtins, and that is the entire surface. Anyone can verify this by reading the wasm import section. This is why runtime loading is acceptable for a dev tool and why packs may be fetched from a registry by hash into a user cache without asking anyone to trust a `.so`. The cost accepted: the tool links wasmtime (the only runtime tree-sitter's wasm feature supports), the binary is 10–20 MB heavier, and a compiled-module cache makes warm load fast — cold load per grammar per machine is paid once. The tool binary is the only platform-specific artifact in the system.
+The support for a language is data, not code, and Sinter loads it
+when it runs. A **language pack** holds these parts:
 
-Markdown and TOML are packs too — markdown's queries designate sections and leading paragraphs as tag-bearing and mask code spans by omission. Adding a language is a PR to the packs repository, never a release of the tool. Unsupported languages are visibly ungoverned. V1 packs: Rust, Python, TypeScript/JavaScript, Go, OCaml, Markdown, TOML. Next, ordered by leverage rather than popularity: YAML (CI pipelines, Kubernetes manifests — where operational requirements actually live), SQL (migrations `@satisfies` data requirements), OpenAPI and protobuf (interface contracts, where a `@satisfies` in the schema description is the only place a requirement about a wire format can be traced). A pack that recognizes tags inside structured-data comments or description fields is no different from one that recognizes them in doc comments.
+- one or more tree-sitter grammars, compiled to WebAssembly (wasm),
+  each in one file that serves every platform;
+- query files: which comments carry tags (`tags.scm`), which
+  definitions a comment attaches to (`definitions.scm`), and which
+  nodes are tests and what their names are (`tests.scm`);
+- a descriptor, `pack.toml`, which lists the grammars, the comment
+  sigils, the foreign vocabulary (section 3.2), and the test runners;
+- the license notices;
+- runner adapters, when a runner needs one (section 4);
+- conformance fixtures: a small project, the JSONL that a scan of it
+  must give, and real output of a test runner.
 
-### 5.3 External Ids
+**A pack holds no code that can read or write anything outside itself.**
+A grammar in wasm imports only memory and a few functions of the
+tree-sitter host, such as tests of a character's class. A runner adapter
+imports nothing, and it runs under limits of time and memory. Anyone can
+check this in the import section of the wasm file. So a developer tool
+such as Sinter can safely load packs when it runs. It can also fetch a
+pack by hash into a user cache, and nobody has to trust a native
+library. The cost: the binary links wasmtime, the runtime that the wasm
+feature of tree-sitter supports, and the binary grows by about 15 MB
+(record `parser-bridge` gives the measurements). A cache of compiled
+modules makes a later load fast, so each machine compiles each grammar
+once. The binary of the tool is the only part of the system that is
+built for one platform.
 
-External ids (`gh/42`, `jira/PROJ-1`) are pointers, not nodes: no fingerprints, no fetching, no propagation by default; the scanner validates namespace and pattern locally. **`@pin` is the opt-in exception** (deferred): when reasoning genuinely depends on external content, the human endorses its current hash through the approval flow and CI thereafter reports upstream drift until re-endorsed. It runs opposite to every other directive — arming a check rather than quieting one.
+The markdown pack is built into the tool, because plans, decision
+records, and rule files are markdown; it changes with the tool. Every
+other pack comes from a packs repository. Sinter checks a fetched pack
+against its SHA-256 hash and records it in `sinter.lock` (record
+`pack-delivery`). So support for a new language is a pull request to
+the packs repository, never a release of the tool. A language that no
+pack reads stays visibly not governed.
 
-External ids recover the original motivating example ("close issues when done") without the tool touching GitHub: *presence* is a local rule ("every plan-declared item `@cites` a `gh/*`"); *remote state* is a networked-tier read — a plan can be blocked from dying while a declared item's external id resolves to an open issue, and `query` surfaces "facts with open external ids" for the agent to fix with the `gh` CLI it already has.
+The first packs are markdown, TypeScript, Rust, and OCaml. After them,
+the order goes by where requirements most need tracing, not by how
+popular the language is:
+
+1. YAML, for CI pipelines and Kubernetes manifests, where operational
+   requirements live;
+2. SQL, for migrations that `@satisfies` requirements about data;
+3. OpenAPI and protobuf, for the contracts of interfaces. A
+   `@satisfies` in the description field of a schema is the only place
+   to trace a requirement about a wire format.
+
+A pack that reads tags in the comments or the description fields of
+structured data works like a pack that reads them in doc comments.
+`spec/packs.md` gives the format of a pack and of the lock file.
+
+### 5.3 External ids
+
+An **external id**, such as `gh/42` or `jira/PROJ-1`, points at
+something outside the repository. It is a pointer, not a node: it has
+no revision, Sinter fetches nothing for it, and by default no change
+spreads from it. The scanner checks its namespace and its pattern
+against the manifest, with no network. No namespace is built in; a
+project on GitHub declares `gh`.
+
+`@pin` is the planned exception, and it is deferred. When an argument
+really depends on content outside the repository, a person endorses
+the current hash of that content through approval. CI then reports
+each change of that content until a person endorses the new hash. `@pin`
+works opposite to every other directive: it arms a check instead of
+quieting one.
+
+External ids give back the example that started the project, "close the
+issues when the work is done", without Sinter touching GitHub. A rule
+can check, with no network, that an external id is present: for example,
+every item that the plan declares cites a `gh/*`. The state of the issue
+on the host is a read over the network, in a networked layer such as CI
+on the default branch. That layer could keep a plan from closing while
+an item's external id points at an open issue. `sinter query` could list
+the facts whose external ids are open. The agent could then fix them
+with the `gh` command that it already has. That read is deferred with
+`@pin`. The query algebra itself never reads the network.
 
 ## 6. Plans
 
-### 6.1 The Plan File
+### 6.1 The plan file
 
-A markdown file under `.plans/`, e.g. `.plans/auth-lockout.md`, **committed on the branch and never deleted: a plan is *live* until the ledger says otherwise.** Death is a `completed` or `abandoned` entry (§6.3), and a dead plan is inert record — no findings, no claim, no scope, readable beside its journal forever. A file is a plan iff it lives under `.plans/` and its first tag block carries `@plan` — which is also what flips every tag in the file into promissory mood; a `@plan` anywhere else is a block-tier `misplaced-plan` finding, so plan discovery and death bookkeeping need only look there. Branch-committed because a gitignored plan doesn't travel across worktrees and is invisible to CI, leaving the anti-invention gate with no authoritative tier.
+A plan is a markdown file under `.plans/`, for example
+`.plans/auth-lockout.md`, committed on its branch. A file that git
+ignores would not travel between worktrees, and CI could not see it, so
+the check for unplanned work would have no authority. A plan is **open**
+until the ledger records that it closed (section 6.3), and a closed plan
+stays as a record beside its journal. `spec/vocabulary.md` section 10
+gives the rules of plan files.
+
+Two records change parts of sections 6.1, 6.3, and 6.7, and the
+specifications do not carry them yet. Record `plans-span-branches`
+says three things. A plan reaches the default branch in a pull request
+of its own. That merge is its approval. Later branches each deliver
+some of its steps. Record `plan-ids` gives each plan an id from its
+creation, written as in `@plan upkeep@3f2a9c`, and a closed plan frees
+its slug.
 
 ```markdown
 # Account lockout after failed logins
@@ -233,1264 +682,1060 @@ A markdown file under `.plans/`, e.g. `.plans/auth-lockout.md`, **committed on t
 @scope src/auth/session.rs
 ```
 
-**A plan is a set of promised facts.** Same tags, one semantic rule: inside a plan, tags are read in *promissory mood* — `@req auth-lockout` means this step will declare it; `@verifies auth-lockout` means this step will produce a passing, connected test carrying that citation. Every `##` heading carrying at least one plan tag — `@scope` or a promise — is a step (a bare section is prose: context, notes, nothing derived); a step's slug is the heading text lowercased, non-alphanumerics collapsed to single hyphens, trimmed (`## Verify against the reqs` → `verify-against-the-reqs`); two steps slugifying identically is a `duplicate` finding. Steps are unordered facts; document order is advice.
+**A plan is a set of promised facts.** A plan uses the same tags as
+the rest of the repository, but inside a plan, Sinter reads each tag
+as a **promise**. `@req auth-lockout` means that the step will declare
+`auth-lockout`. `@verifies auth-lockout` means that the step will
+produce a passing, connected test that carries that citation. Each
+`##` heading with a `@scope` or a promise is a **step**; a section
+without one is prose, from which Sinter derives nothing. Steps have no
+order; their order in the file is advice.
 
-**What meets a promise.** A promised declaration (`@req`, `@design`, `@decision`) is met iff a declaration with that slug exists, located within the step's scope. A promised `@satisfies`/`@refines`/`@cites`/`@supersedes` is met iff at least one such edge exists within the step's scope that is neither dangling nor suspect. A promised `@verifies` is met iff such an edge exists within scope at rung `passing` — or at rung `unmeasured`, when the manifest sets `evidence.require_attribution = false` (the default until a repo opts in). A fact that would meet a promise but sits *outside* the step's scope is a warn-tier finding (`promise-out-of-scope`), and it does not meet the promise: the scope is part of the agreement.
+A promise is met only by a fact inside the step's scope, or inside the
+default location of its kind that the manifest names. A fact outside
+both is reported as `promise-out-of-scope`, because the scope is part of
+the agreement. A promised `@verifies` needs a passing test, so a plan
+cannot be done on a test that never ran or that failed (section 4).
 
-**Scope globs** are gitignore-style patterns relative to the repo root, comma-separated on the `@scope` line: `*` within a segment, `**` across segments, `!` negation, a trailing `/` meaning "directory and everything under it." A step with no `@scope` inherits the plan's. A step's effective scope is what out-of-scope surfacing measures against and where a promise is met.
+**The active plan.** When exactly one plan is open on the branch, it
+is active. With several, `sinter declare` names one; until then, the
+brief (section 8.1) and the check of scope have no plan to anchor on,
+and `sinter status` says why.
 
-**Active plan.** If exactly one *in-force* plan exists on the branch it is active by default — dead plans, however many, are not candidates; with several live ones, `sinter declare <plan>` is required before the brief and out-of-scope surfacing have a plan to anchor on (until then `status` says why).
+- **The state of a step is derived, never ticked.** A step is done
+  when its promises are met and its evidence passes. Only when every
+  step is done can the work merge.
+- **The active step is the one statement of the agent that Sinter
+  accepts.** It is safe, because it can only narrow what the brief
+  covers and what the check of scope measures against. A wrong step
+  makes the reports noisier, never quieter. It lives in
+  `.sinter/session.json`, which git ignores, and it is the state of a
+  session, never truth. Where the **harness**, the program that runs the
+  agent, gives a session id, Sinter keeps the step per session (section
+  11.18), so parallel sessions in one worktree do not collide.
+- **A step with a scope and no promises is a refactor step.** It is
+  done when a change touched its scope and the evidence still passes.
+  That is a weaker condition, and visibly so.
+- **Plans are exempt from revision discipline.** Sinter judges a plan by
+  its commitments, never by its text (section 6.2). The count of its
+  approved amendments serves as its revision.
 
-- **Step status is derived, never ticked.** A step is done iff its promises are met, with evidence. The plan is done iff all steps are and all existing evidence is still green. Only then may the branch merge.
-- **Forward references resolve within the plan.** Promises float and are checked against the revision current when they are met.
-- **The active step is a declared claim — the rare claim safe to accept, because it is purely self-limiting:** it only narrows what the brief compiles for and what out-of-scope surfacing measures against; misdeclaring makes the reports noisier, never quieter. The claim lives in `.sinter/session.json`, beside the index cache and the evidence directory, all gitignored — session state, never truth — keyed by the harness's session id where one exists (§11.18), so parallel sessions in one worktree fight over nothing. Absent a step declaration, scope attribution falls back to plan-level scope.
-- **A step with scope and no promises is a refactor:** done when its scope was touched and existing evidence stays green. Weaker, and visibly so.
-- **Plan files are exempt from rev discipline** — they are judged by commitment-set diff, never text (§6.2). The plan's revision is the count of approved amendments.
+A **hunk** is one part of a diff that changed: a run of removed and
+added lines. The check of scope reports each hunk that no step covers
+(`unplanned-change`). The plan file, the manifest, and the lock file
+are outside that check, because other machinery governs them: a change
+to a plan is an amendment (section 6.2), and each change of a setting
+is reported (section 5.1). Exempt paths are outside it too. A hunk in
+`Cargo.lock` maps to no step and never will, and without exempt paths
+the first dependency that a step adds would flag its own lock file
+(`spec/manifest.md` section 10.2).
 
-**Three carve-outs from scope attribution**, each governed by other machinery: the plan file itself (routes to amendment adjudication); the manifest and lockfile (every touch is already loud); and exempt paths (a `Cargo.lock` hunk maps to no step and never will — without this, the first dependency added under a legitimate step flags its own lockfile).
+### 6.2 Amendment: the monotone rule
 
-### 6.2 Amendment: The Monotone Rule
+A plan must be easy to change in its structure during the work, and
+harder to loosen than code. Otherwise an agent can make invented work
+look approved: it amends the plan first and then does the work. What a
+person approved is the **commitment set**: the promises and the scope
+of each step. The rule is monotone: a change that only narrows the
+agreement is free, and a change that widens it or changes its promises
+needs a new approval. To rename, reorder, or split steps is free. To
+add a promise needs approval, because it would make invented work look
+approved; to remove one needs approval too, because it would break the
+agreement. `spec/ledger.md` section 11 gives the comparison.
 
-Plans must be refactorable on the fly *and* harder to loosen than code — otherwise the agent legitimizes invented work by amending the plan first. "What was approved" is the **commitment set** — the canonical facts for promises and scope per step — and the adjudicator diffs sets, never text:
+Sinter compares sets, never text, so the ledger stores the approved
+set itself: a hash cannot show that one set lies inside another. The
+main reason for the rule is **approval fatigue, the real adversary**.
+A person who approves by reflex gives approvals that are worth
+nothing. Many free changes keep the approvals that remain meaningful.
 
-- **Free:** narrowing scope; renaming and reordering steps; splitting a step; merging steps whose effective scopes are equal — all so long as the commitment multiset is preserved. Merging steps with *different* scopes widens where each merged promise may be met and is approved; §13.7 states the comparison exactly.
-- **Needs a new approval:** widening scope; promise-set changes in *both* directions — additions launder invented work, removals welch on the agreement.
+**To cut work early is the amendment rule at work.** To merge part of
+a plan is to approve a smaller set of promises. The half-done hunks of
+a cut step then map to no step, so `unplanned-change` reports them
+until someone reverts them or covers them honestly. Any part of the
+work that reached a declared fact stays visible as debt, in
+`untraced`. `sinter compile residual-plan` prints the unmet rest as a
+plan for a later branch.
 
-"Still approved" is a set comparison, not a path reconstruction, which is why the ledger stores the approved set itself (a hash cannot be diffed against). The rationale is defensive both ways: **approval fatigue is the real adversary.** Reflexively-granted approvals are worth nothing; maximizing the free region is what keeps the gated region meaningful.
+### 6.3 How a plan closes
 
-**Cutting work early is the amendment machinery working.** Merging partway is an approved promise-set shrink. The shrunk plan must then be complete against the tree it ships — half-done hunks from a cut step map to no remaining step, so anti-invention fires until they are reverted or honestly covered. Anything that reached a declared fact survives as visible debt in `untraced()`. `compile residual-plan` emits the unmet remainder as a plan skeleton for a later branch.
+A plan closes by a ledger entry, never by a change to a file, so no
+deletion needs to be arranged and no merge commit needs an edit. It
+closes as `completed` or as `abandoned` (section 6.7).
 
-### 6.3 Death Mechanics
+**The completion gate.** A plan can complete only when everything that
+it promised is a static fact. The review gate enforces this, where
+evidence exists, with `sinter status --done`. CI on the default branch
+writes the entry: on each push, it checks each open plan that has
+merged against the **completion condition**, and appends `completed`
+for each plan that passes (`spec/ledger.md` section 8). The writer is
+CI and not a person, so that the closing rests on the tree and the
+approvals, not on anyone's report. A second run writes nothing new, so
+a lost CI run costs a retry and loses no fact.
 
-Death is a **ledger fact, never a file event.** A plan dies `completed` or `abandoned` (§6.7); the file stays where it is. There is no deletion to orchestrate, no merge commit to edit, no host-specific machinery — this used to be the hardest section in the document and is now bookkeeping.
+An open plan on the default branch that fails the condition is the
+blocking finding `merged-incomplete`: someone merged half a plan.
+(Under record `plans-span-branches`, an open plan on the default branch
+is normal while its work goes on.) The honest ways out are an approved
+smaller plan (section 6.2) or a revert of the merge.
 
-The **death gate** is unchanged in substance: a plan may only be completed when everything it promised has become static fact. Enforcement sits at the review gate — `status --done`, run where evidence exists (PR CI, the merge queue, or whoever merges). What *writes* the entry is main CI: on every push to the default branch it finds in-force plans now on main — merged, in other words — checks each against the **completion condition** — every promise is met: declarations present, edges present and neither dangling nor suspect, `@verifies` edges at `passing` (or allowed `unmeasured`) when main's job measures, at any rung when it does not (§12.8; rung enforcement already happened at the review gate) — and appends its `completed` entry, recording the merge commit and the hash of the report compiled at completion. An in-force plan on main that *fails* the condition is the `merged-incomplete` finding, blocking: someone merged half a plan, and the honest exits are an approved shrink (§6.2) or reverting the merge. The writer is idempotent bookkeeping — the plan's approvals and the tree are the evidence — so a lost CI run costs a retry, not truth. (The job needs push rights to `refs/sinter/ledger`.)
+A closed plan makes no findings, holds no claim, and adds no scope. Plan
+slugs are permanent, like the slugs of decisions, so
+`compile residual-plan` prints its plan under a new slug. (Record
+`plan-ids` frees the slug of a closed plan; see section 6.1.) Without
+the ledger ref, every plan reads as open, and `sinter status` says so.
+This result on the default branch is intended. The plan and its journal
+stay beside the facts that they produced, and the ledger says who
+approved the plan, what it promised, and when it stopped being an
+agreement.
 
-A plan **not in force** — dead — is exempt from everything: its facts generate no findings (§12.8), it holds no claim, contributes no scope, and is skipped by the active-plan rule. Plan slugs are permanent, like decision slugs — reuse is a `duplicate` — so `compile residual-plan` emits its skeleton under a successor slug. Liveness is a ledger read: without the ledger ref every plan reads live, which `status` flags loudly (fetch the ledger). What this leaves on main is deliberate: the plan and its journal beside the facts they produced, with the ledger saying who approved it, what it promised, and when it stopped being an agreement.
+### 6.4 Compiled specifications and the approval ledger
 
-### 6.4 Cash-Out: Specifications & the Approval Ledger
+A **compiled specification** is a named view of the graph, such as
+all the requirements under a path. Sinter compiles the **delta**, the
+changes to the items since their last approval, into a document that a
+person can read and approve. The approval attaches to the slug, the
+revision, and the extent hash of each item, never to the document. The
+document is only the way to read the items.
 
-A **specification** is a named projection of the graph — all reqs under a path, a plan, a tag. The tool compiles the *delta since last approval* into a readable document; the human reviews and approves the batch. Approval attaches to `(slug, rev, extent-hash)` triples, never to the document — the document is the interface. This is the dynamic→static conversion in its purest form.
+**The ledger** is the record of approvals and other judgments. It is a
+file on a git ref of its own, `refs/sinter/ledger`, and entries are
+only ever added (`spec/ledger.md`). CI can fetch the ref and every
+worktree shares it, but it is outside every path that an editor or a
+file tool touches. Only the low-level commands of git, its plumbing,
+reach it, so to write it is a deliberate act. A kind needs approval
+only when the manifest lists it in `ledger.approval-required`
+(`spec/manifest.md` section 11.1).
 
-**The ledger** covers plans, reqs, and (per manifest) design items and decisions, plus pin endorsements. Append-only, living on a **dedicated git ref** (`refs/sinter/ledger`): fetchable by CI, shared across worktrees, outside every path an editor or file tool touches — reaching it takes git plumbing, a deliberate act. Main CI verifies the ref only fast-forwards and entries only accrete. Plan entries embed their approved commitment set; text-extent kinds keep hash-only entries. Every entry records the `HEAD` and branch it was written from.
+Because the ledger is a shared record with timestamps, it gives five
+more uses, each one a kind of entry or a query, and none a new
+mechanism:
 
-Because it is an append-only, timestamped, shared record, the ledger does more than hold approvals. Five things fall out of it, each one more entry kind or one more query, none a new mechanism:
+- **Declines.** A person who reads a delta and thinks "no, not like
+  that" needs a durable place to say so; otherwise the thought goes into
+  the chat and fades. A `decline` binds the reason to the exact text, by
+  its hash, and `status` and the brief show it until the text changes.
+  `sinter approve` asks before it approves over a live decline. It is an
+  instruction that cannot fall out of the context, because it is
+  attached to an artifact: the mechanism of section 1, used in the other
+  direction.
+- **Revision reservation.** The ledger refuses an approval of
+  `auth-lockout v3` when it already holds `v3` for that slug with a
+  different hash: "v3 is taken; bump to v4". So for approved items, the
+  collision of section 3.5 is prevented, not only detected.
+- **The archive of plans.** The ledger holds every promise of every
+  approved plan, each amendment, and the closing. It answers which plan
+  promised a requirement, who approved it, and when it landed, without
+  a tree.
+- **Signatures.** Ledger commits are git commits. A deployment that
+  signs them makes each approval impossible to deny, and
+  `sinter ledger verify --signers` checks them. This is the hardening
+  path of section 1, with no change to the design. A deployment that
+  wants the server to enforce that no approval comes from an agent's
+  shell puts the ref under `refs/heads/sinter/ledger`, where the push
+  rules of the host apply. The manifest has no setting for signatures
+  yet.
+- **History, release notes, and metrics.** Each entry has a commit and
+  a time, so `sinter compile spec --as-of` rebuilds what was approved
+  at any moment, and the delta between two points of the ledger is the
+  release notes of the requirements. The health signals of section 8
+  gain a time axis: the bumps of each item (a requirement at `v9` is
+  unstable or badly scoped), the amendments of each plan, the time from
+  approval to completion, and the seconds spent on each approval. The
+  last one measures directly the fatigue that this design calls its
+  real adversary.
 
-- **Declines.** A human who reads a delta and thinks "no, not like that" has, in v13, nowhere durable to say so; the thought goes into chat and decays. A `decline` entry — `(subject, xh, reason)` — is the human's voice bound to the exact text it was about. `status` and the brief (§8.1) surface it until the extent's hash changes — void, like an ack — or until a later approval of the subject supersedes it, the human overriding their own refusal (`approve` prompts before approving over a live decline). It is an instruction that cannot fall out of context, because it is attached to an artifact, not a context — the thesis's own mechanism, pointed the other way.
-- **Revision reservation.** Approving `auth-lockout v3` when the ledger already holds a `v3` for that slug with a different hash is a refusal: "v3 is taken; rebase to v4." The §3.5 collision on approved items moves from *detected at PR CI* to *prevented at approve*. The residual exposure on unapproved items remains the price of statelessness.
-- **The plan archive.** The plan's file is now its own record, and the ledger holds the judgment layer over it: every promise every approved plan ever made, each amendment, and the death. Main CI (§6.3) appends the `completed` entry — the one machine writer — recording the merge commit and the report hash at completion. A plan's whole life is closed in the ledger: approved, amended, completed or abandoned. "Which plan promised this requirement, who approved it, when did it land" is answerable from the ledger alone, without reading a tree.
-- **Signing for free.** Ledger commits are git commits. `commit.gpgsign` on the ref makes every approval non-repudiable; `ledger verify --signers` makes that checkable. The §10.1 hardening path attaches with zero design change. Deployments that want the "no approval path from an agent's shell" property enforced *server-side* place the ref under `refs/heads/sinter/ledger`, where hosting platforms' push restrictions apply.
-- **As-of, release notes, and metrics.** With `HEAD` and a timestamp on every entry, `compile spec --as-of <ledger-commit>` reconstructs exactly what was approved at any moment; the delta between two ledger points, rendered with extents, is release notes for the requirements layer, derived rather than written. And the §8 health signals gain a time axis: revision churn per item (a req on `v9` is unstable or mis-scoped), amendments per plan (six means it was underspecified), approval-to-completion time, and approvals per approval session with seconds per approval — a direct measurement of the fatigue this design names as its real adversary.
+The ledger works together with the revisions. An edit of an approved
+item needs a bump, and the item is then not approved until a person
+approves it, as its citations are suspect until someone pins them again.
+A status tag is an edit, so it needs a bump, and a supersession waits
+for the approval of its successor. So the retirement of an approved item
+reaches a person on every path, with no extra rule.
 
-The ledger unifies with revision machinery: editing an approved item bumps its rev, and `auth-lockout v3` is simply unapproved until approved — exactly as its citations are suspect until re-pinned. Retirement composes for free: a status tag is an extent edit (needs a bump, bump un-approves, routes through the approval); supersession routes through the successor's approval. Retirement of contract items reaches the human on every path, with no additional rule.
+**The approval gate.** A `@satisfies` or a `@verifies` of a requirement
+that nobody approved is the finding `unapproved-req`: work against an
+unapproved requirement. It blocks by default, and `unapproved-design`
+only warns. To block on the approval of design is too much ceremony for
+the work of one person, but an unapproved design is also how an agent
+can quietly reinterpret what the person meant.
 
-**The unapproved gate:** `@satisfies`/`@verifies` targeting an unapproved `req vN` is an obligation — "implementing against unapproved spec." Strictness is per type and per gate, expressed the ordinary way: the class splits into `unapproved-req` and `unapproved-design` (§12.8), each with its own tiers, and a kind outside `approve` is never unapproved at all — non-gated kinds count as approved. Requirements block; design defaults to warn, because blocking on design approval is too much ceremony for solo work, but unapproved architecture is also exactly how an agent launders a reinterpretation of intent.
+**Who can approve.** Under the cooperative model, an approval must be
+unmistakable, not undeniable: every bypass must take a deliberate act,
+and a deliberate act is outside the threat model. Two simple layers
+give this:
 
-**Known limit:** delta-based approval assumes deltas sized for review. A step dumping forty reqs leads the user to approve without reading; the report's health signals count the pending batch (the algebra has no arithmetic, so this cannot be a rule), but it is fundamentally the user's discipline.
+1. The commands that write the ledger read the confirmation from the
+   controlling terminal, `/dev/tty`, never from standard input. The
+   shell of an agent has no controlling terminal, so the command
+   refuses, and `yes | sinter approve` cannot work.
+2. An **agent marker** is an environment variable, such as
+   `CLAUDECODE`, that shows that an agent runs the command. When one is
+   set, the command refuses. This closes the gap of a terminal pane
+   that an agent drives (`spec/manifest.md` section 11.2).
 
-### 6.5 The Plan Journal
+Under these layers lies the structure: the ledger is outside every
+checkout, and no path to an approval starts from an agent's shell.
+Tokens issued for each session were considered and not chosen: they
+defend against a deliberate attacker, whom the threat model leaves out,
+and signatures already give that defense.
 
-Session scratch — the agent's running todo — belongs to the agent's own machinery and dies with the context window. Between scratch and the facts in the tree there is a third thing the design should give a home to: what was tried and why it failed. A plan may carry a journal, `.plans/<slug>.log.md`, historical by a built-in glob — no manifest line needed (§3.6): the agent appends, nothing in it generates findings, citations in it resolve and render. It stays beside its plan as part of the record; `compile residual-plan` carries it forward, and `compile report` includes it. Its purpose is to be the place where small decisions accumulate until one earns promotion to a `@decision` record — the promotion heuristic of §7 needs somewhere for the first instance to be written down. Under the collaborative model, most of a project's actual reasoning is small, and without this it is lost.
+**A known limit.** Approval by delta assumes deltas of a size that a
+person can review. A step that adds forty requirements leads a person to
+approve without reading. The report counts the pending batch, but the
+algebra has no arithmetic, so no rule can limit it; in the end it is the
+person's discipline.
 
-### 6.6 Plan Linting and Preview
+### 6.5 The plan journal
 
-Plans are the one dynamic object and, in v13, the one governed file nothing helps you write. Plan files are scanned like everything else, so plan-level findings are ordinary findings:
+The agent's running list of tasks belongs to the agent's own tools,
+and it ends with the agent's context. Between that list and the facts
+in the tree lies a third thing: what the agent tried and why it
+failed. A plan can carry a **journal**, `.plans/<slug>.log.md`. Its
+path is historical by a built-in rule (section 3.6): the agent adds to
+it, nothing in it makes findings, and its citations resolve. It stays
+beside its plan as part of the record, and `compile residual-plan`
+carries it forward.
 
-- `unverified-promise` — a promised `@req` or `@design` with no promised `@verifies` of it anywhere in the plan. The plan is agreeing, up front, to ship an unverified requirement. Warn by default; a repo can make it block.
-- `promise-collision` — a promised declaration of a slug that already existed at the base or is promised by another branch's approved claim (§6.7). The step would produce a `duplicate`. (The current tree is never consulted: a met promise is precisely a slug that now exists in the tree.)
-- `scope-overlap` — two steps in one plan with intersecting scopes *and* intersecting promise sets; document order is advice, but two steps racing for one edge is a plan that has not decided.
+The journal is the place where small decisions collect until one of
+them earns a `@decision` record. The rule of section 7 for when to
+write a rule needs a place where the first case is written down. Most
+of the reasoning of a project is small, and without a journal it is
+lost. Record `plan-journals` says how agents write and revise the
+entries.
 
-**Preview** (`compile plan-preview`) renders the graph *after* the plan as if every promise were met: the declarations that will exist, the edges they will carry, what becomes suspect or retired if a step promises a `@supersedes`, which `untraced` gaps close and which open. The human approves a plan with foresight instead of trust, and the preview is the document the plan approval is taken against.
+### 6.6 Plan checks and preview
 
-### 6.7 Multi-Plan Coordination
+A plan file is the one governed file that changes all the time, and
+people need help to write it. Sinter scans plan files like every other
+file, so the checks of a plan are ordinary findings (`spec/algebra.md`
+section 9):
 
-Plans are branch-scoped, and v13 is silently single-plan. A team lead running several worker agents on several branches needs three things the ledger can already supply.
+- `unverified-promise`: the plan promises a requirement and no test of
+  it, so it agrees in advance to ship a requirement that nothing
+  verifies.
+- `promise-collision`: a step promises a slug that already exists at the
+  base, or that another branch promises, so the step would produce a
+  `duplicate`. The check reads the base and not the current tree,
+  because in the tree a met promise is exactly such a slug.
+- `scope-overlap`: two steps of one plan compete for one edge, which
+  shows a plan that has not decided.
 
-**Scope claims.** Every approved plan's step scopes are in the ledger. `status` reads the last-fetched ledger ref — never the network; `sinter ledger fetch` or `inbox --fetch` refreshes it — and materializes each other branch's approved, still-claimed plan as a `claim` fact, and reports overlap: "plan `session-store` on branch `feat/store`, approved Tuesday, also claims `src/auth/**`." Overlap is a warn-tier `branch-overlap` finding, not a block — two plans may legitimately touch one directory — but it is the earliest possible moment to learn that two agents are about to conflict, days before the merge does. A claim dies three ways: its plan is completed; its plan is **abandoned** — `sinter ledger abandon plan:<slug> --reason …`, a human verb sharing `approve`'s refusal set, for the branch that will never merge; or its branch no longer existed on the remote at the last fetch — deleting a branch releases its claims, and the inbox names claims released that way since the last visit.
+**Preview.** `sinter compile plan-preview` shows the graph as if every
+promise were met: the new declarations and edges, what becomes suspect
+or retired, and which gaps close or open. A person then approves a plan
+with foresight instead of trust, and the approval of a plan is taken
+against its preview.
 
-**Cross-plan promises.** Plan B's `@satisfies auth-lockout` where `auth-lockout` exists nowhere on B's branch is, in v13, a dangling citation until A merges. With claims, the resolver sees that plan A promises to declare `auth-lockout` and reports `waiting-on A/write-the-requirements` instead — an ordering fact, not an error. Meeting B's promise still requires the real declaration (after A merges and B rebases), but B's status is honest in the meantime and its turn report does not misfire.
+### 6.7 Several plans at once
 
-**Merge order.** Cross-plan promises form a dependency graph over claims. `compile merge-order` prints a topological order — or names the cycle — and `status` on any branch says which claims it waits on and which wait on it. This is the team lead's decomposition, derived from what the plans actually promise rather than tracked in a separate list.
+Each plan belongs to a branch. (Record `plans-span-branches` lets a
+plan span several branches, and claims change with it.) A lead that
+runs several agents on several branches needs three things that the
+ledger can already give.
 
-None of this requires a plan to know about other plans. Claims are read-only projections of the ledger; a plan file never names a branch.
+**Claims.** For each approved, open plan of another branch, Sinter reads
+a **claim** from the ledger ref as it was last fetched, never from the
+network. It reports an overlap of scopes as the warning
+`branch-overlap`: "plan `session-store` on branch `feat/store`, approved
+Tuesday, also claims `src/auth/**`." It is a warning and not a block,
+because two plans can rightly touch one folder. But it is the earliest
+moment to learn that two agents will conflict, days before the merge
+shows it. A claim ends when its plan completes, when a person abandons
+the plan with `sinter ledger abandon`, or when its branch is deleted
+(`spec/ledger.md` section 9, `spec/jsonl.md` section 7).
 
-### 6.8 The Inbox
+**Promises across plans.** Plan B has `@satisfies auth-lockout`, and
+`auth-lockout` exists nowhere on B's branch. Without claims, that
+citation would dangle until A merges. With claims, Sinter sees that
+plan A promises to declare `auth-lockout`, and reports `waiting-on`
+instead: a fact about order, not an error. Only the real declaration
+meets B's promise, after A merges. But B's status is honest in the
+meantime, and its turn report does not fire by mistake.
 
-Under the collaborative model the human is the scarce resource. §6.2 *protects* their attention by maximizing the free region; nothing *schedules* it. `sinter inbox` is one place, across every branch and worktree the ledger and the remote know about, listing only things that need a human judgment: pending approvals per branch, with batch sizes; plans whose death is blocked, and on what; declines whose subject has since changed (rework landed — is it right now?); rule acks agents recorded since the last inbox visit, as the spot-check queue; claims that overlap. Each item names the command that resolves it. It is batched, not pushed: the design's position is that the tool should be the one truthful place to ask "what needs me," and should otherwise never ask.
+**The order of merges.** Promises across plans make a graph of
+dependencies between claims. `sinter compile merge-order` prints an
+order that respects the graph, or names its cycle. This is the lead's
+breakdown of the work, derived from what the plans promise instead of
+kept in a separate list.
 
-### 6.9 Out of Scope for Plans
+None of this needs a plan to know about other plans: claims are views
+of the ledger, and a plan file never names a branch.
 
-Plans do not model time, effort, priority, or assignment. Those belong to the tracker the external ids point at.
+### 6.8 The inbox
 
-## 7. Standing Law: Rules & Derived Obligations
+Under the cooperative model, the attention of the person is the scarce
+resource. Section 6.2 protects it, because free changes need no
+approval, but nothing else schedules it. `sinter inbox` is one place,
+across every branch that the ledger and the remote know, that lists
+only what needs a person's judgment: pending approvals, plans that
+cannot close, declines whose item changed since, rule acks that agents
+wrote, and overlapping claims. Each item names the command that
+resolves it. The inbox speaks only when a person asks: the tool should
+be the one truthful place to ask "what needs me", and otherwise never
+ask anything.
 
-Process conventions ("all drafted prose gets rewritten into Simplified Technical English") are neither derivable from the graph nor tasks. They are **rules**: *(origin, trigger, expect)* triples in the manifest, where trigger and expect are expressions in the query algebra (§9.2) and an obligation is literally `trigger − expect`:
+### 6.9 Out of scope for plans
 
-```toml
-[rules.ste-docs]
-origin    = "ste-adoption"                                   # a @decision slug
-trigger   = "kind(req|design) ^ path(docs/**) ^ changed(base)"
-expect    = "acked(ste-docs)"
-scope     = ["docs/**"]                                      # where the edits that clear the obligation are expected
-```
+Plans do not model time, effort, priority, or assignment. Those belong
+to the tracker that the external ids point at.
 
-The rules engine *is* the query engine — no second predicate language, and the exhaustive-match property OCaml buys covers rules for free. Because obligations attach to **artifacts, not contexts**, rules are immune to §1's decay: the turn report re-derives the obligation from the diff no matter what fell out of whose window. Rules are themselves facts in the universe (kind `rule`, §13.5), which is what lets the report and the algebra reason about the law the same way they reason about everything else.
+## 7. Rules and obligations
 
-**Every rule cites its origin** — the `decision` that earned it — because a law whose evidence is missing reads as taste, and taste gets re-litigated by the next agent. The origin is modeled as a `cites` edge whose source is the rule fact, so retiring the origin makes the rule surface as *law resting on withdrawn reasoning* through the ordinary `retired` finding — this system's own decay mode, caught by its own machinery with no special case. A rule's `scope` declares where the edits that clear its obligations land, so that work done to satisfy a triggered rule outside the plan's scope is not reported as invented (§12.8, `unplanned-change`). Promotion heuristic: one instance is a decision; write the rule on the second re-derivation.
+Some conventions of a process, such as "rewrite all drafted prose in
+Simplified Technical English", are not facts that Sinter can derive
+from the graph, and they are not tasks. They are **rules**. A rule has
+two expressions of the query algebra (section 9.2): a **trigger** and
+an **expect**. Its **obligations** are the facts that the trigger
+selects and the expect does not: the trigger minus the expect.
 
-**The why reaches the block.** Rules cite origins, and origins have extents with an *alternatives considered* section. In v13 that reasoning existed but never reached the moment it would change behavior. Now every `unmet-rule` finding carries its origin decision's extent (byte-budgeted by `[brief].why_budget`) in the turn report and in `sinter explain`. An agent told "obligation: rule `ste-docs`; its origin decision says *three users misread the lockout docs; alternatives considered: glossary (not chosen, nobody reads it), reviewer checklist (not chosen, decays)*" reframes; an agent told only "obligation: rule `ste-docs`" routes around.
+An example: a rule `ste-docs` has the trigger
+`kind(req|design) ^ path(docs/**) ^ changed(base)`, which selects each
+requirement and design item under `docs/` that the diff changed. Its
+expect is `acked(ste-docs)`, which selects each item whose block holds a
+live `@ack ste-docs`. So each changed item without such an ack is an
+obligation. A rule also has a scope: the paths where the edits that
+clear its obligations land. So work done for a triggered rule outside
+the plan's scope is not reported as `unplanned-change`.
 
-**Three kinds of `expect`**, in descending trust. A rule does not declare which; the tool reads it off the `expect` expression and labels the rule with it in every report, so it is always explicit which laws are enforced and which merely witnessed:
+A rule lives in a **rule file**: a markdown file that starts with front
+matter, a block of TOML. The front matter holds the expressions, and the
+text below it holds the reason for the rule. `@rule <slug> vN` declares
+the rule, and the extent of the rule is the whole file. So a change to
+the expressions or to the reason needs a bump. A rule file keeps a rule
+beside its argument, so the reviewer of a change sees both (record
+`rule-files`, `spec/manifest.md` section 15). Where rule files live, how
+a rule is approved, and what its scope means are settled with the work
+on rules.
 
-- **Checked** — the `expect` is a structural expression: the obligation is gone when the graph says so (`issue-linked` above is cleared by a `@cites gh/*` edge existing). Also the home for external linters: a checker writes `judgment` facts like the judge does, and the `expect` is `judged(<rule>)` with a program, not a model, as the judge. Use whenever one exists.
-- **Judged** — the `expect` is `judged(<rule>)`: an independent LLM call, never the working agent, against a rubric; a fresh context cannot be motivated by wanting to finish. Deferred with `sinter judge`.
-- **Acknowledged** — the `expect` is `acked(<rule>)`: `@ack <rule> <hash>` (§3.3). Self-report with a liveness mechanism: the text changes, the ack is void, the obligation is back. Known soft spot: an agent under completion pressure will eventually ack text it merely glanced at. Mitigations: every cleared obligation surfaced in the report and the inbox; later, a sampled fraction routed to the judge. No new grammar — acknowledgment arrives with rules, not after them.
+The engine of rules is the query engine. There is no second language of
+predicates, and the exhaustive matching that OCaml gives (section 9)
+covers the rules at no extra cost. Obligations attach to artifacts, not
+to a context, so the decay of section 1 cannot touch them. The turn
+report derives each obligation again from the diff, whatever fell out of
+any agent's context. Rules are facts like all others, of the kind
+`rule`, so the report and the algebra reason about rules as they reason
+about everything else.
 
-How hard a rule's obligations bite is a separate question from how they are cleared, and it is answered the way it is for every other finding: the `unmet-rule` class has a tier per gate, and a rule may override it with its own `tiers`.
+**A rule should cite its origin**, the decision that earned it, with
+`@cites`. A rule whose evidence is missing reads as taste, and the next
+agent argues against taste. The citation is an ordinary `cites` edge
+whose source is the rule. When the origin retires, the ordinary
+`retired` finding shows a rule that rests on withdrawn reasons. So the
+way this system decays is caught by its own machinery, with no special
+case. When to write a rule: one case is a decision. Write the rule when
+the same reasons come up a second time.
 
-The system does not model pipelines and does not care whether an obligation is cleared inline or by a subagent: it publishes the obligations; orchestration stays the agent's problem.
+**The reasons reach the finding.** The origin of a rule has an extent
+with the alternatives considered. That reasoning helps only when it
+reaches the moment where it would change what the agent does. So each
+`unmet-rule` finding carries the extent of its origin, cut to a budget
+of bytes, in the turn report and in `sinter explain`. Compare two
+agents. The first is told: "obligation: rule `ste-docs`; its origin
+says that three users misread the lockout documents; alternatives
+considered: a glossary (not chosen, nobody reads it), a checklist for
+reviewers (not chosen, it decays)". That agent understands the purpose
+and changes its approach. The second is told only "obligation: rule
+`ste-docs`", and works around it.
 
-## 8. Gates, and the Brief
+**Three kinds of expect**, from the most trusted to the least. A rule
+does not declare its kind. Sinter reads the kind from the expect, and it
+shows the kind in every report. So it is always clear which rules Sinter
+enforces and which it only records.
 
-**Adjudication is layered**, fast/local → authoritative, all installed by `init` (§11). Hooks, the CLI, and CI share one adjudication library, and **the local tiers inform; only CI blocks.** A position, not a concession: in-loop interception — denying tool calls, seizing turn-ends — is enforcement aimed at the agent's hands, and what it trains under pressure is bypass. Enforcement belongs at the merge boundary, which cannot be talked past, and in the workflow of whoever orchestrates the session — a human, or a lead agent running workers — consuming the same deterministic report CI will recompute. What the tool contributes is that the report is seconds-fast, identical at every tier, and derived from artifacts alone; a hand-edit meets the same adjudication as an agent edit.
+1. **Checked.** The expect is an expression of structure, and the
+   obligation ends when the graph says so. An example is a rule
+   `issue-linked` with the expect
+   `src(out(cites, kind(req)) ^ in(cites, external(gh/*)))`: a
+   `@cites gh/*` on the requirement clears it. External linters fit here
+   too. A checker writes `judgment` facts as the judge does, and the
+   expect is `judged(<rule>)`, with a program as the judge instead of a
+   model. Use this kind wherever it can work.
+2. **Judged.** The expect is `judged(<rule>)`: a separate call to a
+   language model, never the agent that does the work, against a
+   rubric. A fresh context has no wish to finish. This kind is
+   deferred, with `sinter judge`.
+3. **Acknowledged.** The expect is `acked(<rule>)`: an
+   `@ack <rule> <hash>` (section 3.3). This is a report of the agent
+   with a check that it is still live: when the text changes, the ack is
+   void, and the obligation returns. A known weak point: an agent under
+   pressure to finish will at some point ack text that it only glanced
+   at. The defenses: the report and the inbox show every cleared
+   obligation, and later the judge will check a sample.
 
-**One diff, adjudicated at several moments.** Every gate evaluates the working tree against the same **base**: the merge-base of `HEAD` and the manifest's default branch (`main` by default), overridable with `--base`. The working tree is always "now," uncommitted and untracked files included. Hooks, pre-commit, `sinter check`, and PR CI therefore see the same findings, differing only in when they look and which tiers they consult — pre-commit runs the turn tiers, and PR CI is the one variation in *what* it sees: it evaluates the host's merge ref with `--base` at the tip of the default branch (§3.5), so the diff is exactly the branch's contribution as it would land. Diff mode (`--diff`) reports the findings the diff *introduced*: those whose identity (§13.6) does not appear in the base tree's finding set. Intersecting with touched facts, as v13 said, would miss a citation nobody touched whose target was deleted.
+How hard the obligations of a rule bite is a separate question from
+how they are cleared, and it has the usual answer. The class
+`unmet-rule` has a tier at each gate, and a rule can set tiers of its
+own.
 
-- **PostToolUse** (surfaces): parse and validation failures on the just-edited file, seconds after writing, plus a note when the edit landed outside the active step's scope. Parse errors degrade toward *stricter* findings, never silent holes — an unparsed `@verifies` is an absent edge — which makes fast parse feedback load-bearing. Only file-path-bearing tools (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`) yield a just-edited file; shell writes surface at the next turn report, which re-derives everything from the actual diff.
-- **The turn report** (`check --diff --gate turn`) is the hand-back contract: what an orchestrator runs before accepting a worker's turn, a human before walking away, an agent before calling itself done — its exit code is what a workflow gates on. Its block tier marks **violations, never incompleteness.** Violations are states the tree must never be *left* in: a missing rev bump, dangling citations, out-of-plan work (every hunk maps onto a step or a triggered rule's scope), rule obligations triggered by artifacts touched this turn, claims-vs-evidence divergence. Incompleteness — unmet promises, untraced items — is never a violation; it is enforced solely by the death gate. An agent that cannot honestly hand back "not done yet" is an agent being trained to fabricate doneness — which is why nothing mechanical seizes the turn: the report is addressed to whoever accepts it.
-- **Fresh-context verification** (merge-request time and on demand): an independent agent re-derives expected work from the approved spec and plan, reporting drift both ways — missing *and invented*. It exists because the turn report is path-granular; only a semantic reading catches unrequested work inside a legitimate scope. Also the tier that samples rung 5 of the evidence ladder.
-- **CI, two tiers — the only mechanical blocks**: PR CI recomputes the full adjudication and evidence binding against the branch-committed plan — the authoritative backstop. Main CI recomputes the promise checks on the merged result, appends `completed` entries for merged complete plans (§6.3), runs networked checks, and enforces the evidence ladder iff its job imports evidence (§12.8).
+Sinter does not model pipelines: it publishes the obligations, and
+whether the agent clears one itself or through another agent is the
+agent's choice.
 
-**Rollout discipline:** every class ships as *warn*, promoted to *block* individually after its false-positive rate proves out. A gate that cries wolf trains bypass behavior, which is worse than no gate. Mechanically: `init` writes `enforce = "warn"`, a cap over the shipped tiers (§12.8); a class is promoted by naming it under `[gates.<gate>]`, and the cap is lifted for everything by deleting the line. Both are `law-touched`, so promotion is always a visible act. The `turn` tiers ride the same cap — under it `check --gate turn` exits 0, so an orchestrator's gate opens too.
+## 8. Gates and the brief
 
-**Reporting discipline:** the compiled report is a complete account — every ack and pin counted next to what it accepted, cleared, or armed — and carries **machinery-health signals**: a repo where no rev has ever bumped and no ack exists is not clean; it is one whose propagation has never fired, and its green says only that nobody has looked.
+**Checks come in layers**, from fast and local to authoritative.
+`sinter init` installs all of them (section 11.17). Hooks, the command
+line, and CI share one library for the checks. **The local layers
+inform, and only CI blocks.** A block inside the agent's loop, such as a
+denied tool call or a held end of a turn, acts on the agent's actions.
+Under pressure, it teaches the agent to go around the block. Enforcement
+belongs at the merge, which nobody can talk past, and in the workflow of
+whoever directs the session, a person or a lead agent. That person or
+lead agent reads the same report that CI will compute. What Sinter adds:
+the report takes seconds, it is the same at every layer, and it comes
+from artifacts alone. An edit by hand meets the same checks as an edit
+by an agent.
 
-### 8.1 The Informational Channel: The Brief
+**One diff, checked at several moments.** Every check compares the
+working tree with the same **base**. By default, the base is the merge
+base of `HEAD` and the default branch that the manifest names (`main`
+unless the manifest says otherwise), and `--base` overrides it. The
+working tree is always "now", with its uncommitted and untracked files.
+So hooks, the git hook before a commit, `sinter check`, and CI see the
+same findings. They differ only in when they look and in which gate's
+tiers they apply. The hook before a commit uses the tiers of the gate
+`turn`. CI on a pull request is the one place that sees something
+different. It checks the merge ref that the host makes, with the base at
+the tip of the default branch (section 3.5). So its diff is exactly what
+the branch adds, as it would land.
 
-§1 names two channels and v13 built only one. The cited results — plan signal decaying within a step, governance decaying after compaction — are answered on the enforcement side by gates and, on the informational side, by nothing: the agent is left to remember. But the tool is the one component that knows exactly what the agent needs right now, because it is all in the index.
+**Diff mode** (`--diff`) reports only the findings that the diff
+introduced: the findings that the base tree does not have. A simpler
+rule, to keep only the findings on lines that the diff touched, would
+miss a citation that nobody touched whose target the diff deleted.
+`spec/algebra.md` section 8 gives the rules.
 
-**`sinter brief`** compiles that: the active plan and step with its promises and their states; the *approved text* of every declaration the step's promises target (not a summary — the extent, since that is what the agent is implementing against); decisions in force reachable from the step's scope, by `paths` and by `@cites` from anything in scope; rules whose trigger intersects the scope, each with its origin's one-line summary; live declines on anything in scope; claims that overlap; and the current blocking findings with fix lines. Ranked by graph distance from the step's scope, cut to `[brief].budget` bytes, deterministic for a given index.
+A **gate** is a point where Sinter checks the work. Each finding class
+has a **tier** at each gate: `off`, `warn`, or `block`. A finding at
+`block` makes the check exit with code 1 (`spec/manifest.md` section
+9.1). The layers:
 
-**Delivery** is by hook. Claude Code's `SessionStart` fires with `source: compact` after a compaction, and `UserPromptSubmit` fires every turn; the stdout of either becomes context. `init --hook claude-code` registers `sinter hook session-start` and, optionally, `sinter hook user-prompt-submit` with a smaller budget. Re-injecting the agreement from artifacts after every compaction is the direct countermeasure to both cited failure modes, and it costs a projection of facts the tool already holds. The brief is informational: it enforces nothing, and nothing in it is trusted by any gate. It exists so the turn report stays short.
+- **After each edit.** A hook of the harness reports parse errors and
+  other findings in the file that the agent just edited, seconds after
+  the edit. It also notes when the edit landed outside the active
+  step's scope. A parse error makes the findings stricter, never a
+  silent gap: a `@verifies` that does not parse is a missing edge. That
+  is why fast feedback on parsing matters. Only a tool that names a
+  file gives the hook an edited file. A write by a shell command shows
+  at the next turn report, which derives everything again from the
+  actual diff.
+- **The turn report**, `sinter check --diff --gate turn`, is the
+  contract when an agent hands back its work. A lead agent runs it
+  before it accepts a worker's turn, a person before walking away, and
+  an agent before it calls itself done. Its exit code is what a workflow
+  gates on. Its tier `block` marks **violations, never incompleteness**.
+  A violation is a state that the tree must never be left in:
+
+  - a missing bump;
+  - a dangling citation;
+  - work outside the plan: each hunk must map to a step or to the
+    scope of a triggered rule;
+  - an obligation of a rule that the turn's changes triggered;
+  - a statement of the agent that the evidence contradicts.
+
+  Incompleteness, such as an unmet promise or an untraced item, is
+  never a violation; only the completion gate enforces it. An agent
+  that cannot honestly hand back "not done yet" learns to fake that it
+  is done. So nothing mechanical holds the turn: the report goes to
+  whoever accepts the work.
+- **A check with a fresh context**, at the time of the merge request
+  and on demand. A separate agent derives the expected work again from
+  the approved requirements and the plan, and reports drift in both
+  directions: missing work and invented work. This check exists
+  because the turn report works at the level of paths. Only a reading
+  of the meaning catches work that nobody asked for inside a
+  legitimate scope. This layer also takes the samples for rung 5 of
+  the evidence ladder (section 4).
+- **CI, at two gates, the only mechanical blocks.** At the gate
+  `review`, CI on a pull request computes every check, and binds the
+  evidence again, against the plan committed on the branch. It is the
+  authoritative backstop. At the gate `merged`, CI on the default branch
+  checks the promises again on the merged result. It appends the
+  `completed` entries of complete plans (section 6.3), and it runs the
+  checks that need the network. It enforces the evidence ladder when its
+  job imports evidence.
+
+**Each check starts as a warning.** Every finding class starts as a
+warning, and becomes a block only after it proves that it rarely reports
+a problem that is not real. A gate that often reports problems that are
+not real teaches people to bypass it, which is worse than no gate. In
+practice, `sinter init` writes `check.warn-only = true`, which lowers
+each built-in `block` to `warn`. A project makes one class block by
+writing its tier under `check.tiers`, and lifts `warn-only` for all
+classes by deleting its line. Both changes are `config-changed`
+findings, so a change of a tier is always visible. The gate `turn`
+follows `warn-only` too: under it, `sinter check --gate turn` exits 0,
+so a lead agent's gate opens too. `spec/manifest.md` section 9.3 gives
+the rule, and record `exit-codes-by-gate` gives the exit codes.
+
+**The report counts everything.** The compiled report is a complete
+account: it counts every ack and every pin beside what it accepted,
+cleared, or armed. It also carries signals about the health of the
+machinery. A repository where no revision ever rose and no ack exists
+is not clean. Its propagation has never fired, and its clean result
+says only that nobody has looked.
+
+### 8.1 The brief
+
+Section 1 names two channels, enforcement and information. Section 1
+cites two results: the decay of a plan within a step, and the decay of
+rules after compaction. On the side of enforcement, the gates answer
+them. On the side of information, without the brief, the agent would
+have to remember. But Sinter is the one part of the system that knows
+exactly what the agent needs now, because all of it is in the index.
+
+**`sinter brief`** compiles it:
+
+1. the active plan and step, with the state of each promise;
+2. the approved text of every declaration that the step's promises
+   target: the extent, not a summary, because the agent works against
+   that text;
+3. the decisions in force that the step's scope reaches, by `paths`
+   and by `@cites` from anything in the scope;
+4. the rules whose trigger meets the scope, each with the first line
+   of its origin;
+5. the live declines on anything in the scope;
+6. the claims that overlap the scope;
+7. the current blocking findings, with their fix lines.
+
+The brief ranks these items by their distance in the graph from the
+step's scope, and cuts them to a budget of bytes. For one index, it
+always gives the same output.
+
+**Delivery** is by hook. In Claude Code, the hook `SessionStart` fires
+with `source: compact` after a compaction, and `UserPromptSubmit` fires
+on every turn. The standard output of either hook becomes context.
+`sinter init --hook claude-code` registers `sinter hook session-start`,
+and on request `sinter hook user-prompt-submit` with a smaller budget.
+To put the agreement back into the context from artifacts after each
+compaction is the direct answer to both failures that section 1 cites.
+It costs one view of facts that Sinter already holds. The brief only
+informs: it enforces nothing, and no gate trusts anything in it. It
+exists so that the turn report can stay short.
 
 ## 9. Infrastructure
 
-**Implementation: OCaml.** The vocabulary is a variant type and every gate is an exhaustive match over it, so "no mouth carries logic of its own" is a compile error rather than a discipline: add a tag and every adjudicator, query, and compiler that hasn't handled it fails to build. Language packs, markdown, and TOML sit behind one module signature. Native startup in milliseconds keeps hook latency below where gates get disabled. Costs accepted: agents are weaker at OCaml than at Rust or TypeScript; the wasmtime link (§5.2); Windows unsupported in v1. Git is shelled out to, never linked.
+**Implementation: OCaml.** The vocabulary is a variant type, and every
+gate is an exhaustive match over it. So when someone adds a tag, every
+check, query, and compiler that does not handle it fails to build: the
+compiler enforces the rule, not a discipline. The language packs and
+markdown sit behind one module signature. A native program starts in
+milliseconds, which keeps the delay of a hook below the point where
+people turn the hook off. The costs: agents write OCaml less well than
+Rust or TypeScript; the binary links wasmtime (section 5.2) through a
+small bridge in Rust; and version 1 does not support Windows. Sinter
+runs git as a separate program and never links it. Records
+`implementation-language` and `rust-bridge` give the reasons.
 
-**Canonical interchange: JSON Lines, one fact per line** — node, edge, external id, plan fact, evidence fact, rule, or derived finding, each with a kind, a stable identity, and a schema version, canonicalized per RFC 8785 with values restricted to strings, integers, booleans, and flat arrays of those (which makes JCS trivial: sort keys, no floats). Only ever machine-written. Conformance is byte equality against checked-in fixtures. **The JSONL is always derived, never source.** **Hash domains never blur:** text extents hash as pack-normalized text (§3.4); semantic objects hash over canonical bytes. The index is in-memory with a rebuildable on-disk cache; no database. The schema is specified in §13.
+**The interchange format is JSON Lines (JSONL)**: one fact per line.
+Each line is a node, an edge, an external id, a plan fact, an evidence
+fact, a rule, or a finding, with a kind, a stable identity, and a schema
+version. Each line is in the canonical form of RFC 8785. The values are
+only strings, integers, booleans, flat arrays of those, and arrays of
+flat objects, whose values are again strings, integers, or booleans
+(record `json-handling`). This makes the canonical form simple to write:
+sort the keys, and no floats exist. Only a machine writes the JSONL.
+Conformance is byte equality with fixtures that the repository holds.
 
-### 9.1 Tool Surface
+- **The JSONL is always derived, never a source.**
+- **The two domains of hashes never mix.** An extent hashes as
+  normalized text (section 3.4). An object of meaning, such as a
+  commitment set, hashes over its canonical bytes.
+- **No database.** The index lives in memory, with a cache on disk
+  that Sinter can rebuild.
 
-The binary is `sinter` (sintering fuses loose particles into a solid mass under pressure, without melting them). One core library and thin mouths — CLI, hooks, CI — all speaking the same JSONL. Agents use the CLI through their shell like everyone else; there is no MCP server, because a stateless tool has no process to host one and a stdio shim over the CLI would add a tool surface without adding a capability. The surface is specified as help text in §11. Its principles:
+Section 13 gives the reasons for the format, and points to
+`spec/jsonl.md`.
 
-- **Suggest, never touch.** `init` is the one exception, and it touches only tool-owned integration files — workflows, hook settings, the manifest skeleton — never governed text. Otherwise the tool may *emit* a patch (`sinter patch`) on stdout; it never applies one. Whoever applies it authors the diff, and the adjudicator judges it like any other.
-- **Three verbs change durable state.** `approve`, `decline`, and `ledger abandon` write the ledger; all refuse to run under a harness (§10.1) and share one refusal set. Main CI appends `completed` entries (§6.3). `declare` and `evidence import` write session and evidence state under `.sinter/`, which is gitignored scratch, never truth.
-- **Absences by design:** no daemon, no web UI, no MCP server, no second predicate language — every addition in this document is a compiled projection, a ledger entry kind, or a finding definition. No `new`, no `close`, no `ack` (the tool prints the line; a human or agent pastes it, and that edit is adjudicated), no configuration outside the manifest.
-- **Every mouth is a saved query.** `check` is the union of finding definitions; the turn report is `check --diff --gate turn`; CI is `check --gate pr` or `--gate main`; a hook is a filtered `check` or a `brief`. There is nothing a gate can see that `sinter query` cannot show you.
+### 9.1 Tool surface
 
-### 9.2 Queries: A Closed Algebra
+The binary is `sinter`. Sintering fuses loose particles into a solid
+mass under pressure, without melting them. One core library sits
+under thin surfaces: the command line, the hooks, and CI. All of them
+speak the same JSONL. Agents use the command line through their shell,
+as everyone else does. Section 11 gives the design of the commands.
+Its principles:
 
-Not a menu, not Datalog: a Bazel-sized algebra over the fact stream, specified in §12. The universe is *facts* — nodes, edges, external ids, plan facts, evidence, rules, hunks, and derived findings, each with a kind — so a query returns fact lines, and `query --json` is simply a filtered `scan --json`. Bazel's universe is node sets only, which is its one structural mismatch with this domain: half of what matters here (suspect, dangling, evidence) is about edges or (edge, evidence) pairs.
+- **Suggest, never touch.** `sinter init` is the one exception, and it
+  touches only integration files that the tool owns, such as
+  workflows, hook settings, and the skeleton of the manifest. It never
+  touches governed text. Otherwise, Sinter can print a patch
+  (`sinter patch`) on standard output, but it never applies one.
+  Whoever applies the patch is the author of the diff, and the checks
+  judge it like any other diff.
+- **Three commands change durable state.** `approve`, `decline`, and
+  `ledger abandon` write the ledger. All three refuse to run under an
+  agent (section 6.4), and they share one set of refusals. CI on the
+  default branch appends the `completed` entries (section 6.3).
+  `declare` and `evidence import` write the state of the session and
+  the evidence under `.sinter/`, which git ignores and which is never
+  truth.
+- **Absences by design.** There is no web interface, and no second
+  language of predicates. Every feature in this document is a compiled
+  view, a kind of ledger entry, or a definition of a finding. There is
+  no `new`, no `close`, and no `ack` command. For an ack, Sinter prints
+  the line, a person or an agent pastes it, and the checks judge that
+  edit. There is no configuration outside the manifest and the rule
+  files.
+- **One serve loop.** A tool without state has no process to host a
+  server, and a thin layer over the command line adds a surface without
+  a capability. But a loop that keeps the WebAssembly runtime and the
+  grammars loaded is a capability, because each fresh call pays to start
+  the runtime and to compile the grammar. So Sinter has one serve loop.
+  Its first form is `sinter serve`, a child process of its caller, which
+  reads requests on standard input and answers on standard output. Later
+  forms are adapters over the same loop: a detached process on a socket,
+  a server of the Model Context Protocol (MCP), and a server of the
+  Language Server Protocol (record `serve-mode`, and `docs/roadmap.md`).
+- **Every surface is a saved query.** `sinter check` is the union of the
+  definitions of findings. The turn report is
+  `check --diff --gate turn`. CI runs `check --gate review` or
+  `check --gate merged`. A hook is a filtered `check` or a `brief`. A
+  gate can see nothing that `sinter query` cannot show.
 
-`changed(base)` is the one selector without a Bazel analog and the one that makes the unification real: the fact set touched by a diff against a base. With it, hooks, CI, and `check` are all `query` with a different base, and every mouth on the tool is a saved expression.
+### 9.2 Queries: a closed algebra
 
-**Output modes**, in order of who uses them: ripgrep-shaped lines by default — `docs/auth.md:12:1: req auth-lockout v2  untraced(verifies)` — in deterministic order always, sort key `(kind, path, line, col, id)`, never hash-iteration order (Bazel added `--order_output` after nondeterminism broke everyone's scripts); `--json` for JSONL facts; `--sarif` for findings, so PR CI gets file-and-line annotations from GitHub code scanning with zero integration work (CodeQL and Semgrep's lesson); `--dot` for anything graph-shaped; and `--jq`, bundled the way `gh` bundles it, as the escape hatch for whatever the algebra can't express. Templates (`--format`) wait until someone asks. Embedding a real engine — SQLite views, Datalog — remains the documented upgrade path, not a commitment; the revisit trigger is a *rule* that cannot be written in the algebra.
+Sinter has neither a fixed menu of queries nor Datalog. It has a small
+algebra over the stream of facts, about the size of the query language
+of Bazel, a build tool. Section 12 gives its reasons, and
+`spec/algebra.md` gives its rules. The universe of the algebra is the
+facts: nodes, edges, external ids, plan facts, evidence, rules, hunks,
+and findings, each with a kind. So a query returns fact lines, and
+`sinter query --json` is a filtered `sinter scan`. Bazel's universe
+holds only nodes, and that is its one mismatch with this domain. Half of
+what matters here concerns edges, or an edge with its evidence: suspect
+citations, dangling citations, and the evidence ladder.
 
-## 10. Open Questions
+`changed(base)` is the one selector with no counterpart in Bazel. It
+selects the facts that a diff against a base touches. With it, the
+hooks, CI, and `sinter check` are all `sinter query` with a different
+base, and every surface of the tool is a saved expression.
 
-**10.1 Approval UX** (mechanism decided). Under the collaborative model the requirement is *unmistakable*, not *undeniable*: every bypass must require a deliberate act, because a deliberate act is circumvention and circumvention is out of threat model. Two cheap layers: confirmation read from `/dev/tty`, never stdin (a harness's non-interactive shell has no controlling terminal, so the command refuses; `yes | approve` is dead for free); and a harness-envvar tripwire (`CLAUDECODE=1`, manifest-extensible) closing the tmux-pane gap. Plus the structural layer: ledger on a ref outside every checkout, no approval path reachable from an agent's shell. Not chosen: per-session token minting — the cryptographic path in a trench coat. For deployments outside the collaborative model the hardening path is now concrete and design-free: signed ledger commits with a signer allowlist, and the ref placed where the host's push restrictions reach it (§6.4). **Still open:** rendering the spec delta so that what is approved is actually read.
+**Output modes**, in the order of who uses them:
 
-**10.2 The coverage of each test on Rust and Go.** Rung 4 needs per-test coverage (§4). The universal fallback — one process per `@verifies`-bearing test — is correct and slow. Whether `cargo llvm-cov` profraw merging by test name, or a `go test -run` driver, can be made cheap enough to run in the PostToolUse tier rather than only in CI is unknown; until then those packs ship rung 4 as `unmeasured` locally and `unexercised`/`passing` in CI.
+- lines in the style of ripgrep by default, such as
+  `docs/auth.md:12:1: req auth-lockout v2  untraced(verifies)`. The
+  order is always fixed, by kind, path, line, column, and id, and never
+  the order of a hash table. Bazel added `--order_output` after an
+  unstable order broke the scripts of its users;
+- `--json`, for JSONL facts;
+- `--sarif`, for findings, so that CI on a pull request gets annotations
+  at each file and line from GitHub code scanning with no work of
+  integration, as CodeQL and Semgrep showed;
+- `--dot`, for anything that has the shape of a graph;
+- `--jq`, bundled as the `gh` command bundles it, for whatever the
+  algebra cannot express. Templates (`--format`) wait until someone asks
+  for them.
 
-**10.3 Brief ranking.** "Graph distance from the step's scope" is a heuristic, and a wrong brief is worse than a short one: it fills the budget with the wrong requirements. Whether to weight by citation count, by recency of approval, or by which declarations the step's promises transitively `@refines` is a question for measurement against real sessions — the metrics tables (§6.4) are where the answer will show up as fewer violations per turn report.
+To embed a real engine, such as views in SQLite or Datalog, stays the
+documented way to grow, not a commitment. The condition to reconsider it
+is a rule that the algebra cannot express.
 
-**10.4 ID strategies for unusual test conventions.** OCaml's `ppx_expect` and `ppx_inline_test` are anonymous inline extension nodes with no runner-reported names; JS `describe`/`it` nesting is a title path, not a symbol. The fixed strategy menu must cover these before those packs ship; the OCaml one matters because the tool dogfoods on itself.
+## 10. Open questions
 
----
+The questions of the design that are still open are in
+`docs/roadmap.md`, with the other directions that are agreed but not
+designed. Two earlier questions have answers:
 
-# Part II — Surfaces
+- How a person approves: the confirmation on the controlling terminal
+  and the agent markers (section 6.4).
+- How a test runner's names match the tests in the source: runner
+  adapters in the packs replace a fixed menu of strategies in the tool
+  (record `runner-adapters`, `spec/packs.md` sections 10 and 11). The
+  default adapter joins the names of the groups and the test, so the
+  nested `describe` and `it` blocks of JavaScript need no strategy of
+  their own.
 
-## 11. CLI Surface
+## 11. Command-line surface
 
-The surface is specified as the help text itself. Conventions that apply to every verb:
+No specification covers the commands as a whole yet. Where a
+specification holds a part of a command, the text gives the reason and
+names the specification. A command that exists states its options in its
+own help text, `sinter <command> --help`.
 
-- **Repo discovery.** Every verb runs from anywhere inside a git worktree; the repo root is `git rev-parse --show-toplevel` and the manifest is `sinter.toml` there. Nothing is looked up in the home directory except the pack cache.
-- **Base.** `--base <rev>` is accepted by every verb that reads the diff. Default: `git merge-base HEAD <branch>` where `<branch>` is the manifest's `default-branch` (`main`). The working tree is always "now."
-- **Output is deterministic.** Line output is sorted by `(kind, path, line, col, id)`. JSONL is canonical (§13.1). Two runs on the same tree, base, ledger, and evidence produce identical bytes.
-- **Exit codes** are shared: `0` clean/success · `1` findings present (or plan not done under `status --done`) · `2` usage error · `3` environment error (manifest invalid, pack missing or hash mismatch, git unavailable, parse error in a governed file when `--strict-parse`) · `4` refused (`approve`, `decline`, or `ledger abandon` without a tty or under an agent marker; ledger not fast-forward; revision taken). A hook translates these into its harness's protocol (§11.18).
-- **Line format** for findings, used by `check`, `status`, `query` when the result contains findings, and hook stderr:
+These conventions apply to every command:
+
+- **The repository and the base.** Every command runs from anywhere
+  inside a git worktree, and reads the manifest at the repository root
+  (`spec/manifest.md` section 2). The base of a diff is by default the
+  merge base of `HEAD` and the default branch, and `--base` overrides
+  it. The working tree is always "now".
+- **Fixed output.** Lines sort by kind, path, line, column, and id, and
+  JSONL is in its canonical form (`spec/jsonl.md` section 2). Two runs
+  on the same inputs give the same bytes, so a script or a diff of two
+  runs can rely on the output.
+- **One set of exit codes.** Every command uses five codes (record
+  `exit-codes-by-gate`). Code 1 means at least one finding that blocks
+  at the gate that `--gate` names, so a hook or a CI job decides with
+  one comparison. Without `--gate`, and without `--strict`, a command
+  reports every finding and exits 0. Code 2 means that the command line
+  is wrong, code 3 that the command could not run here, and code 4 that
+  it refused, as `approve` does for an agent.
+- **One line for each finding**, which `check`, `status`, `query`, and
+  the hooks print:
 
   ```
   <path>:<line>:<col>: <class> <subject> [<detail>]
     fix: <one-line instruction or the exact line to paste>
   ```
 
-  Identifiers containing whitespace (JS test titles) are double-quoted. Facts without a location (external ids, runs) print `-:-:-:` in the location slot so the column count is stable for `cut`/`awk`.
+  A finding with no place in a file prints `-:-:-:` in the place of
+  the location, so that the number of columns stays the same for
+  `cut` and `awk`.
 
 ### 11.1 `sinter`
 
-```
-sinter — plans die into facts; facts are checked
+| group | commands |
+|---|---|
+| everyday | `status`, `brief`, `check`, `explain`, `query`, `declare`, `patch` |
+| judgment | `inbox`, `approve`, `decline`, `compile`, `ledger` |
+| plumbing | `scan`, `evidence`, `pack`, `hook`, `init`, `parse`, `serve` |
 
-USAGE
-  sinter <command> [options]
-  sinter --help | --version
-
-COMMANDS
-  Everyday
-    status      What should happen next: active plan and step, derived step
-                states, open obligations, finding counts (recomputed every run)
-    brief       Compile the context the active step needs (for hooks)
-    check       Evaluate every finding definition; exit 1 if any fire
-    explain     Why a finding fired, and the reasoning behind the rule
-    query       Evaluate an expression in the fact algebra
-    declare     Record the active plan/step (session state, never truth)
-    patch       Print mechanical fix-ups as a unified diff (never applies them)
-
-  Cash-out
-    inbox       Everything that needs a human judgment, across branches
-    approve     Approve pending items into the ledger (human, on a terminal)
-    decline     Record a refusal with a reason, bound to the text refused
-    compile     Render specs, coverage, reports, previews, history, metrics
-    ledger      Inspect and verify the approval ledger ref
-
-  Plumbing
-    scan        Rebuild the fact index and print it as JSONL
-    evidence    Import runner and coverage artifacts for the current tree
-    pack        Fetch, verify, and list language packs
-    hook        Harness hook entrypoint (registered by init)
-    init        Install manifest skeleton, hooks, CI workflows, ledger ref
-
-GLOBAL OPTIONS
-  -C <dir>            Run as if started in <dir>
-  --manifest <path>   Manifest path (default: <repo>/sinter.toml)
-  --base <rev>        Diff base (default: merge-base of HEAD and the default branch)
-  --json              JSON Lines on stdout; one fact per line (see: sinter scan --help)
-  --color <when>      auto | always | never  (also honors NO_COLOR)
-  -q, --quiet         Findings only; no progress, hints, or health lines
-  -v, --verbose       More detail; repeatable
-  --no-cache          Ignore the on-disk index cache
-  -h, --help          Help for sinter or a command
-  -V, --version       Tool version, schema version, wasmtime version
-
-EXIT CODES
-  0  clean / success
-  1  findings present, or plan not done (status --done)
-  2  usage error
-  3  environment error (manifest, packs, git)
-  4  refused (approve, decline, or ledger abandon without a controlling
-     terminal or under a harness)
-
-ENVIRONMENT
-  SINTER_BASE          Default for --base
-  SINTER_PACK_CACHE    Pack cache directory (default: $XDG_CACHE_HOME/sinter/packs)
-  CLAUDECODE, …       Agent markers; approve refuses when any is set
-                      (list extended by refuse_env in the manifest)
-
-Run 'sinter <command> --help' for details. The algebra is documented in
-'sinter query --help'; the JSONL schema in 'sinter scan --help'.
-```
+The everyday commands serve the agent and the person during the work.
+The commands of judgment serve the person who approves, and only
+`approve`, `decline`, and `ledger abandon` change the ledger (section
+9.1). Every command accepts `-C <dir>`, `--manifest`, `--base`,
+`--json`, `--color`, `-q`, `-v`, and `--no-cache`, and the variables
+`SINTER_BASE` and `SINTER_PACK_CACHE` give defaults for the base and the
+cache of packs. `parse` and `serve` exist: `parse` prints the tree of a
+file or the matches of a query, and `serve` is the serve loop of section
+9.1.
 
 ### 11.2 `sinter status`
 
-```
-sinter status — what should happen next
-
-USAGE
-  sinter status [--plan <slug>] [--done] [--json] [--base <rev>]
-
-  Prints, in order:
-    1. Active plan and step (or why there is none), with the effective scope.
-    2. Every step of the active plan with its derived state and unmet promises:
-         done          every promise met, evidence green within scope
-         partial n/m   n of m promises met (0/m once a hunk lands in scope)
-         untouched     no promise met and no hunk in scope
-         refactor      no promises; done iff scope touched and evidence green
-    3. Open obligations: unplanned hunks, unmet-rule items, unapproved targets.
-    3a. Live declines on anything in scope, with their reasons.
-    3b. Claims: other branches' approved plans overlapping this scope, and
-        promises here that are waiting on promises there (§6.7).
-    4. Finding counts by class, split by tier under the turn tier set.
-    5. Machinery health: revisions bumped since base, live acks, void acks,
-       evidence age (tree key match), rules whose origin is not in force.
-    6. Next-action hints ("sinter patch suspect", "sinter evidence import …").
-  Nothing here is stored; every line is recomputed from the tree, the ledger
-  ref, and the evidence directory.
-
-OPTIONS
-  --plan <slug>   Report on this plan instead of the active one
-  --done          Print nothing; exit 0 iff the plan is done (every step done
-                  and no verifies edge within plan scope below rung 'passing',
-                  or 'unmeasured' where the manifest allows it). For merge
-                  queues and scripts.
-  --json          A leading {"kind":"summary"} fact followed by the plan, step,
-                  promise, and finding facts the report was built from
-
-EXAMPLES
-  sinter status
-  sinter status --done && git push
-  sinter status --json | jq -c 'select(.kind=="promise" and .met==false)'
-```
+`sinter status` answers "what should happen next". It prints the
+active plan and step; each step with its derived state and its unmet
+promises; the open obligations; the live declines and the claims that
+touch the scope; the counts of findings; the health of the machinery,
+such as the bumps since the base and the void acks; and a hint of the
+next command, such as `sinter patch suspect`. Sinter stores none of
+it, and computes every line again from the tree, the ledger, and the
+evidence. `--done` prints nothing and exits 0 only when the plan is
+done, for a merge queue or a script: `sinter status --done && git push`.
 
 ### 11.3 `sinter check`
 
-```
-sinter check — evaluate every finding definition
+`sinter check` evaluates every finding class over the working tree
+against the base. This one command is the turn report, the CI jobs,
+and the check before a commit: each is `sinter check --gate <gate>`,
+with `--diff` where only the change counts, and with its own base. So
+every gate sees what the others see (section 8). The classes and
+their tiers are in `spec/algebra.md` section 9, diff mode in section
+8.2, and the gates in `spec/manifest.md` section 9.
 
-USAGE
-  sinter check [options] [<class>...]
-
-  Evaluates each finding definition — built-in (sinter query --list) and
-  manifest-defined — over the working tree against --base, and prints one
-  line per finding. With no <class> argument every class runs. Exits 1 iff
-  any finding whose tier for the selected gate is 'block' fires; 'warn'
-  findings print but do not affect the exit code unless --strict.
-
-  This command is the turn report, the CI job, and the pre-commit check.
-  Each is 'sinter check --diff --gate <g>' with a different base and gate
-  (pre-commit uses the turn tiers).
-
-MODES
-  (default)         Tree mode: every finding on the working tree, pre-existing
-                    debt included. Diff-relative classes (unbumped, unplanned-
-                    change, config-changed, code-drift, renamed, promise-
-                    collision) are computed against --base and reported too.
-  --diff            Diff mode: only findings the diff introduced — those whose
-                    identity (sinter scan --help, "Finding identity") is absent
-                    from the finding set of the base tree.
-
-SELECTION
-  <class>...        Restrict to these finding classes
-  --gate <g>        Tier configuration to apply: turn | review | merged.
-                    Without it, everything is reported and nothing is 'block'
-                    for the exit code unless --strict. Classes at tier 'off'
-                    for the gate are not evaluated.
-  --path <glob>     Only findings located under <glob>; repeatable
-  --plan <slug>     Only findings located within a plan's scope
-  --strict          Treat 'warn' as 'block' for the exit code
-  --acked           Also print findings accepted by a live @ack (marked)
-  --strict-parse    Exit 3 on any parse error in a governed file instead of
-                    reporting it as a 'parse-error' finding
-
-OUTPUT
-  (default)         path:line:col: class subject [detail]
-                      fix: …        (present when a mechanical fix exists)
-  --json            JSONL finding facts (kind "finding")
-  --sarif           SARIF 2.1.0 to stdout; class → ruleId, tier → level,
-                    finding id → partialFingerprints.sinterId, patches → fixes
-  --summary         One line per class: count, tier, ackable
-  --explain         After each finding, the expanded definition it fired from
-
-EXAMPLES
-  sinter check
-  sinter check --diff --gate turn
-  sinter check dangling suspect --path 'src/auth/**'
-  sinter check --diff --sarif > sinter.sarif
-  sinter check --summary --gate review
-```
+The other options narrow or change the output: `--path` and `--plan`
+narrow it; `--strict` makes every finding block; `--acked` also shows
+the findings that an ack accepted; `--strict-parse` turns a parse error
+into exit code 3; `--summary` prints one line for each class; and
+`--explain` prints the definition behind each finding. `--json` prints
+the records of `spec/jsonl.md` section 8, and `--sarif` prints SARIF as
+section 13 maps it.
 
 ### 11.4 `sinter query`
 
+`sinter query <expr>` evaluates an expression of the algebra of
+section 9.2 over the facts (`spec/algebra.md`). `--list` lists the
+saved definitions, and `--explain <name>` expands one. Besides lines,
+it prints `--json`, `--dot` for Graphviz, and `--jq <filter>`.
+Examples:
+
 ```
-sinter query — evaluate an expression in the fact algebra
-
-USAGE
-  sinter query [options] <expr>
-  sinter query --list
-  sinter query --explain <name>
-
-  The universe is the fact set of the working tree (sinter scan). An
-  expression denotes a subset of it. Selectors pick facts; traversals and
-  closures walk edges; predicates filter by derived state; + ^ - combine.
-  Binary operators must be whitespace-separated: 'a - b' is difference,
-  'auth-lockout' is a slug. Full semantics: see the manual page or §12 of
-  the design notes; a one-screen reference follows.
-
-REFERENCE
-  Selectors   all  kind(k|…)  req(s) design(s) decision(s) plan(s) step(p/s)
-              test(id) external(ns/id) rule(n)  path(glob)  changed(base|<rev>)
-              active  historical  exempt  acked(target)  findings(class|…)
-  Traversal   out(k|…, S)  in(k|…, S)  src(E)  dst(E)  subject(F)
-  Closure     deps(k|…, S)  rdeps(k|…, S)  paths(S, T)
-  Plan        scope(S)  promises(S)  met(P)  done(S)  waiting(P)
-  Status      inforce(S)  approved(S)  bumped(S)  declined(S)
-  Edge        suspect(E)  dangling(E)
-  Evidence    wrong-source(E)  never-ran(E)  failed(E)  unexercised(E)
-              unmeasured(E)  passing(E)
-  Law         obligations(R)  triggered(R)  judged(n)
-  Operators   +  union    ^  intersection (binds tighter)    -  difference
-  Names may contain '*' as a glob. Kinds may be alternated with '|'. Saved
-  definitions are invoked like functions: untraced(verifies), unmet(active).
-
-OPTIONS
-  --list            List saved definitions: built-in and [findings] in the manifest
-  --explain <name>  Print a saved definition with every nested definition
-                    expanded, and its inferred category
-  --count           Print the cardinality only
-  --order <keys>    Sort keys, comma-separated, from: kind path line col id
-                    (default: kind,path,line,col,id)
-  --json            JSONL facts
-  --dot             Graphviz: node facts become nodes, edge facts become edges;
-                    other kinds are omitted with a note on stderr
-  --sarif           Only when the result is all findings
-  --jq <filter>     Pipe the JSONL through the bundled jq
-
-EXAMPLES
-  sinter query 'kind(req) ^ inforce(all) - dst(in(verifies, all))'
-  sinter query 'untraced(verifies) ^ path(docs/auth/**)'
-  sinter query --count 'suspect(kind(edge))'
-  sinter query --json 'deps(refines, req(auth-lockout))'
-  sinter query --dot 'rdeps(satisfies|verifies, req(auth-*))' | dot -Tsvg
-  sinter query 'kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - exempt'
-  sinter query --jq '.slug' 'kind(decision) - inforce(all)'
+sinter query 'untraced(verifies) ^ path(docs/auth/**)'
+sinter query --dot 'rdeps(satisfies|verifies, req(auth-*))' | dot -Tsvg
+sinter query 'kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - exempt'
 ```
 
 ### 11.5 `sinter declare`
 
-```
-sinter declare — record the active plan and step
-
-USAGE
-  sinter declare <plan>[/<step>]
-  sinter declare --clear
-  sinter declare --show
-
-  Writes the active-step claim to .sinter/session.json, keyed by harness
-  session id when one exists so parallel sessions in a worktree do not
-  fight. The claim is session state, never truth: it only anchors the brief and
-  out-of-scope surfacing (§8). Misdeclaring makes reports noisier, never
-  quieter, which is why this is the one self-report the tool accepts.
-
-  <plan> is the plan slug (the @plan tag), <step> the step slug derived from
-  its heading (sinter status lists them). With <plan> alone, scope falls back
-  to the plan's @scope.
-
-OPTIONS
-  --clear    Remove the claim; surfacing falls back to the sole plan's scope
-             if there is exactly one plan, otherwise says so on every edit
-  --show     Print the current claim and its effective scope
-
-EXAMPLES
-  sinter declare auth-lockout/implement-lockout-counter-and-freeze
-  sinter declare auth-lockout
-  sinter declare --show
-```
-
+`sinter declare <plan>[/<step>]` records the active plan and step for
+the session (section 6.1). The record only anchors the brief and the
+note about edits outside the scope, so it is the one statement of the
+agent that Sinter accepts. `--clear` removes it, and `--show` prints
+it with its effective scope.
 
 ### 11.6 `sinter brief`
 
-```
-sinter brief — compile the context the active step needs
-
-USAGE
-  sinter brief [--plan <slug>[/<step>]] [--budget <bytes>] [--json]
-
-  The informational channel (§8.1). Prints, ranked by graph distance from
-  the active step's scope and cut to the budget:
-
-    1. The active plan and step; each promise with its state.
-    2. The approved text — the extent, not a summary — of every declaration
-       the step's promises target. Unapproved targets are marked as such.
-    3. Decisions in force reachable from the scope: cited by anything in
-       scope, or on a paths() route from in-scope items.
-    4. Rules whose trigger intersects the scope, each with its origin's
-       first line.
-    5. Live declines on anything in scope, with reasons.
-    6. Claims overlapping the scope, and promises here waiting on promises
-       there.
-    7. Current block-tier findings with fix lines.
-
-  Deterministic for a given index. Enforces nothing; no gate trusts it.
-  Delivered by 'sinter hook session-start' after compaction, which is the
-  reason it exists.
-
-OPTIONS
-  --plan <p[/s]>    Brief for this plan/step instead of the active one
-  --budget <bytes>  Cut here (default [brief].budget)
-  --json            The facts the brief was built from, in rank order
-
-EXAMPLES
-  sinter brief
-  sinter brief --budget 4000
-```
+`sinter brief` prints the brief of section 8.1, and marks each target
+that nobody approved. `--plan` gives the brief of another step,
+`--budget` sets the budget, and `--json` prints the facts of the brief
+in the order of their rank.
 
 ### 11.7 `sinter explain`
 
-```
-sinter explain — why a finding fired, and the reasoning behind the rule
-
-USAGE
-  sinter explain <finding-id> | <class> | rule:<name> | <subject-id>
-
-  For a finding id: the finding line; the definition it fired from, fully
-  expanded; the facts on each side of the final set difference that put the
-  subject in the result; the fix line; and for unmet-rule findings the origin
-  decision's full extent — context, choice, alternatives considered.
-  For a class: its definition, tiers per gate, ackability, mechanical fix.
-  For a rule: trigger, `expect` and its kind, scope, and its origin's
-  extent.
-  For a subject: every finding on it and every ledger entry about it.
-
-  This is the why-layer reaching the moment it changes behavior (§7). The
-  turn report includes the same origin text, so an agent normally does not
-  need to run this; a human reviewing a finding does.
-
-EXAMPLES
-  sinter explain finding:unmet-rule:req:auth-lockout:ste-docs
-  sinter explain rule:ste-docs
-  sinter explain req:auth-lockout
-```
+`sinter explain` takes a finding, a class, a rule, or a subject. For a
+finding, it prints the definition that the finding fired from, the
+facts that put the subject in the result, the fix, and for an
+`unmet-rule` finding the whole extent of the rule's origin. For a
+subject, it prints every finding on it and every ledger entry about
+it. This is where the reasons reach the moment when they change
+behavior (section 7). The turn report carries the same text of the
+origin, so an agent rarely needs this command; a person who reviews a
+finding does.
 
 ### 11.8 `sinter decline`
 
-```
-sinter decline — record a refusal, bound to the text refused
-
-USAGE
-  sinter decline <subject> --reason <text>
-
-  Appends a decline entry (subject, current extent hash, reason) to the
-  ledger. The decline is live while the subject's extent hash is unchanged
-  and is surfaced by status, brief, and inbox until then; when the text
-  changes it is void and the subject returns to pending, with the old
-  reason shown beside the new delta so the reviewer can judge whether it
-  was addressed.
-
-  This is the human's durable voice: an instruction attached to an
-  artifact instead of a context, which is the only kind that survives
-  compaction. Shares approve's refusal set — controlling terminal required,
-  agent markers refuse, exit 4.
-
-OPTIONS
-  --reason <text>   Required. One paragraph is the right length.
-  --push            Push the ledger ref after writing
-
-EXAMPLES
-  sinter decline req:auth-lockout --reason "Lockout must be per principal, not per IP; see decision shared-nat"
-```
+`sinter decline <subject> --reason <text>` appends a decline to the
+ledger (section 6.4, `spec/ledger.md` section 7). When the text
+changes, the decline is void, and the old reason shows beside the new
+delta, so the reviewer can judge whether the rework answered it. The
+command has the refusals of `approve`.
 
 ### 11.9 `sinter inbox`
 
-```
-sinter inbox — everything that needs a human judgment, across branches
-
-USAGE
-  sinter inbox [--fetch] [--since <date>] [--json]
-
-  One list, batched, from the ledger and every branch the remote knows:
-
-    approvals     pending approvals per branch, with batch size — large
-                  batches flagged (review fatigue)
-    deaths        plans whose death is blocked, and on what
-    reworks       declines whose subject has since changed: the rework
-                  landed; is it right now?
-    spot-checks   rule acks recorded by agents since the last inbox visit
-    claims        overlapping scopes, waiting cross-plan promises, and
-                  claims released by branch deletion since the last visit
-
-  Each item names the command that resolves it. The tool never notifies;
-  this is the one place to ask "what needs me," so that nothing else ever
-  has to.
-
-OPTIONS
-  --fetch         Fetch the ledger and branch heads first
-  --since <date>  Spot-check window (default: last inbox run, from session)
-  --json          One fact per item
-
-EXAMPLES
-  sinter inbox --fetch
-```
+`sinter inbox` prints the list of section 6.8, from the ledger and
+every branch that the remote knows. It marks a large batch of
+approvals, because a large batch causes fatigue. `--fetch` fetches the
+ledger and the branches first.
 
 ### 11.10 `sinter patch`
 
-```
-sinter patch — print mechanical fix-ups as a unified diff
+`sinter patch` prints, for each finding with a mechanical fix, a hunk
+that resolves it, as a unified diff. Sinter writes nothing into the
+tree: a person or an agent applies the diff with `git apply`, for
+example `sinter patch suspect | git apply`, and the checks judge the
+edit like any other. So the tool suggests and never touches (section
+9.1). The classes with a mechanical fix are marked in `spec/algebra.md`
+section 9, and section 9.1 there lists their edits, which
+`unplanned-change` does not report as unplanned work. They include the
+new pin of a suspect citation, the bump of an unbumped declaration, and
+the move of a citation to the successor of a retired item, when the item
+has exactly one successor (record `cite-the-successor`).
 
-USAGE
-  sinter patch [options] [<class>...]
-
-  For every finding of a class with a mechanical resolution, prints a hunk
-  that resolves it, as a unified diff on stdout with repo-root-relative
-  paths (apply from the root, or 'git -C <root> apply'). Nothing is written to the
-  tree: apply with 'git apply' (or 'sinter patch | git apply') and the
-  resulting edit is adjudicated like any other. Classes with a mechanical
-  fix:
-
-    suspect        re-pin each citation to the target's current revision
-    renamed        retarget citations of a slug that was renamed in the
-                   diff (tombstone at base, new slug with equal extent hash)
-    unbumped       bump the revision by one and re-pin its citations
-    unpinned       pin @satisfies/@verifies to the target's current revision
-    typo-tag       replace a near-miss tag word with the vocabulary word
-    stale-ack      delete the void @ack line
-    ack            for findings of ackable classes, insert the @ack line
-                   'check' printed (requires --ack; a judgment, not a fix)
-
-  Anything not listed has no mechanical fix by design: dangling citations
-  whose target was never renamed, unexercised tests, and rule obligations
-  need an edit or a judgment.
-
-OPTIONS
-  --ack             Include @ack insertions (see above)
-  --path <glob>     Restrict to hunks under <glob>; repeatable
-  --plan <slug>     Restrict to the plan's scope
-  --dry-run         Print the count of hunks per class instead of the diff
-
-EXAMPLES
-  sinter patch suspect | git apply
-  sinter patch unbumped --path 'docs/**'
-  sinter patch --ack unexercised --path 'tests/integration/**' | git apply
-```
+With `--ack`, the command also inserts the `@ack` lines that `check`
+printed for ackable findings; that is a judgment, not a fix. Every other
+finding has no mechanical fix by design: a dangling citation that no
+rename and no difference of case explains, an unexercised test, and an
+obligation of a rule need an edit or a judgment from someone who knows
+the meaning.
 
 ### 11.11 `sinter approve`
 
-```
-sinter approve — approve pending items into the ledger
+`sinter approve` shows the pending delta, asks for a confirmation on
+the controlling terminal, and appends the approvals to the ledger
+(section 6.4). For each subject, the prompt offers three answers:
+approve, skip, or decline with a reason. An item is pending when it
+needs approval and the ledger holds no approval for its current text
+(`spec/ledger.md` sections 5 and 11). The delta shows the changes of
+words since the last approved text, one line for a rename with an
+unchanged hash, and for a plan the promises added or removed and the
+scopes widened.
 
-USAGE
-  sinter approve [options] [<subject>...]
-
-  Renders the pending delta and asks for confirmation on the controlling
-  terminal (/dev/tty, never stdin), then appends approvals to refs/sinter/ledger.
-  With 'decline' and 'ledger abandon', this is one of the three verbs that
-  change durable state.
-  Each approval records HEAD and the branch, and is signed when [ledger].sign
-  is set. At each subject the prompt offers: approve / skip / decline (with a
-  reason, written as a decline entry — see sinter decline --help).
-
-  Pending means: an approval-gated declaration whose (slug, rev, extent
-  hash) has no ledger entry — new items and bumped items; and a plan whose
-  current commitment set is not approved against its most recent approved
-  set (§13.7). Text changed under an unchanged rev is not pending — it is
-  unbumped here, and on another branch it is the reservation refusal below. Free amendments
-  (narrowing scope; splitting, merging, renaming, reordering steps with the
-  commitment multiset preserved) never make a plan pending.
-
-  The delta is rendered as 'sinter compile spec --pending' renders it: for
-  text kinds, the extent with word-level changes since the last approved
-  extent; for a rename with an unchanged hash, one line saying so; for
-  plans, added and removed promises and widened scope per step.
-
-REFUSES (exit 4) when
-  - /dev/tty cannot be opened (no controlling terminal)
-  - an agent marker is set: CLAUDECODE or any name in [approve].refuse_env
-  - refs/sinter/ledger is not a fast-forward of its fetched remote (--push
-    fetches first; without --push the check uses the last fetched state;
-    a lost race is recovered with 'sinter ledger push --replay')
-  - any subject being approved has a blocking finding on it (dangling,
-    duplicate, invalid-target, parse-error)
-  - the ledger already holds an approval for the same slug and rev with a
-    different extent hash: the revision is taken by another branch. The
-    refusal names it and the fix is a bump ("rebase to v4").
-
-OPTIONS
-  <subject>...      Restrict to these subjects, as 'req:auth-lockout',
-                    'design:session-store', 'plan:auth-lockout'
-  --dry-run         Render the delta, approve nothing, exit 0 (works anywhere,
-                    including under a harness)
-  --note <text>     Attach a note to every approval written this run
-  --push            Fetch, verify fast-forward, write, push the ledger ref
-  --no-pager        Do not page the delta
-  --yes             Skip the per-subject prompt after the delta is shown.
-                    Still requires a tty; 'yes | sinter approve' cannot work.
-
-EXAMPLES
-  sinter approve --dry-run
-  sinter approve
-  sinter approve plan:auth-lockout --note "cut step 4, ships without notify"
-  sinter approve --push
-```
+The command refuses, with exit code 4, when it has no controlling
+terminal or an agent marker is set (section 6.4), when the ledger ref
+would not move forward, when a subject has a blocking finding such as
+`dangling`, and when another branch took the revision (`spec/ledger.md`
+section 5.3). `--dry-run` shows the delta and works anywhere, also under
+an agent. `--yes` skips the prompt for each subject, but still needs a
+terminal, so `yes | sinter approve` cannot work.
 
 ### 11.12 `sinter compile`
 
-```
-sinter compile — render generated documents (never into the tree)
+`sinter compile` writes documents that are views of the facts. It never
+writes them into the repository, and for the same inputs each document
+is always the same, so a diff of two compilations has meaning.
 
-USAGE
-  sinter compile spec          [--pending | --plan <slug> | --path <glob>]
-                               [--as-of <ledger-commit>]
-  sinter compile coverage      [--plan <slug> | --path <glob>] [--edge verifies|satisfies]
-  sinter compile report        [--base <rev>]
-  sinter compile residual-plan --plan <slug>
-  sinter compile plan-preview  --plan <slug>
-  sinter compile history       <subject>
-  sinter compile release-notes --from <ledger-commit> [--to <ledger-commit>]
-  sinter compile merge-order
-  sinter compile metrics       [--since <date>]
-  … [--out <file>] [--format md|html]
-
-  Every compiled document is a projection of the fact set. None is written
-  into the repository by the tool; --out writes wherever you say, default
-  stdout. Documents are deterministic for a given tree, ledger, and
-  evidence, so diffing two compilations is meaningful.
-
-  spec            A specification: declarations under the selection,
-                  rendered as prose in document order with status, rev,
-                  approval, and coverage per item. --pending renders only the
-                  approval delta — exactly what 'approve' would show.
-  coverage        Requirements and design items with their satisfying sites
-                  and verifying tests (rung shown), plus untraced items.
-                  Anonymous sites render as path:line links.
-  report          The complete account for the diff: findings by class and
-                  tier; every ack and what it accepted or cleared; law
-                  touched by the diff; machinery health; evidence provenance.
-                  This is what PR CI posts.
-  residual-plan   The unmet remainder of a plan as a plan skeleton —
-                  steps with unmet promises and their scopes, and the plan's
-                  journal if it has one — under a successor slug (plan slugs
-                  are permanent, §6.3), for a later branch. Emitted, not
-                  written to .plans/.
-  plan-preview    The graph after the plan, as if every promise were met:
-                  declarations that will exist, edges they will carry, items
-                  that become suspect or retired, coverage gaps that close or
-                  open, and the plan-level findings (§6.6). This is what the
-                  plan approval is taken against.
-  history         A subject's life from the ledger joined with git: each
-                  approved revision's extent (word-diffed against the previous),
-                  who approved it and when, declines and their reasons, the
-                  plan that promised it, the merge that completed that plan.
-  release-notes   The requirements-layer delta between two ledger points:
-                  declarations approved, bumped, retired, or completed in the
-                  interval, rendered with extents. Derived, never written.
-  merge-order     Claims in dependency order from cross-plan promises (§6.7),
-                  or the cycle that prevents one.
-  metrics         Health signals with a time axis: revision churn per item,
-                  amendments per plan, approval-to-completion time, approvals per
-                  approval session and seconds per approval, acks per week,
-                  code-drift counts. Tables, not judgments.
-
-OPTIONS
-  --pending         (spec) Only items pending approval
-  --as-of <c>       (spec) Reconstruct what was approved as of ledger commit <c>
-  --plan <slug>     Selection: items promised by, or within the scope of, plan
-  --path <glob>     Selection: items located under glob
-  --edge <k>        (coverage) Which citation kind defines coverage
-  --out <file>      Write here instead of stdout
-  --format <f>      md (default) or html
-
-EXAMPLES
-  sinter compile spec --pending
-  sinter compile coverage --plan auth-lockout
-  sinter compile report --base origin/main > report.md
-  sinter compile residual-plan --plan auth-lockout > /tmp/auth-lockout-2.md
-```
+| document | content |
+|---|---|
+| `spec` | a compiled specification: the declarations of a selection, with the status, revision, approval, and coverage of each. `--pending` shows only the delta that `approve` would show. `--as-of` rebuilds what was approved at a point of the ledger |
+| `coverage` | the requirements, with their sites, their tests and rungs, and the untraced items |
+| `report` | the complete account of a diff (section 8), with the changes of configuration and where the evidence came from; CI on a pull request posts it |
+| `residual-plan` | the unmet rest of a plan, with its journal, as a plan for a later branch (section 6.2) |
+| `plan-preview` | the graph after the plan, and the checks of the plan (section 6.6) |
+| `history` | the life of a subject: each approved revision and its changes, who approved it, the declines, and the plan that promised it |
+| `release-notes` | the delta of the requirements between two points of the ledger (section 6.4) |
+| `merge-order` | the claims in the order that promises across plans require (section 6.7) |
+| `metrics` | the health signals with a time axis (section 6.4), as tables, not judgments |
 
 ### 11.13 `sinter ledger`
 
-```
-sinter ledger — inspect and verify the approval ledger ref
-
-USAGE
-  sinter ledger log    [-n <count>] [--subject <s>] [--json]
-  sinter ledger show   <subject> [--json]
-  sinter ledger verify [--against <remote>] [--signers <file>]
-  sinter ledger fetch  [<remote>]
-  sinter ledger push   [<remote>] [--replay]
-  sinter ledger abandon <plan> --reason <text>
-
-  The ledger is JSONL on refs/sinter/ledger (sinter scan --help, "Ledger
-  entries"). Each approve appends lines in a new commit whose parent is the
-  previous tip. The ledger is not a checkout path: no editor or file tool
-  reaches it without git plumbing, which is the point.
-
-  log       Entries newest first: approvals, declines, completions — id,
-            subject, rev, by, branch, when, note or reason
-  show      Every approval for a subject, and for plans the approved
-            commitment set alongside the current one with the delta marked
-  verify    Exit 0 iff every commit on the ref is a fast-forward of its
-            parent and every ledger file is a byte-prefix extension of its
-            parent's; --against also requires the local ref to be an
-            ancestor-or-equal of the remote's; --signers requires every
-            commit to carry a valid signature from a listed key. Main CI
-            runs this.
-  fetch     git fetch <remote> refs/sinter/ledger:refs/sinter/ledger, fast-
-            forward only
-  push      git push <remote> refs/sinter/ledger, refusing non-fast-forward;
-            --replay recovers a lost race: fetch, re-append the local
-            entries absent upstream (by id) in ts order, push again
-  abandon   Record that an approved plan will never merge: its claim dies,
-            with the waiting-on promises resting on it. A human verb —
-            shares approve's refusal set (tty required, harness refuses)
-
-EXAMPLES
-  sinter ledger log -n 10
-  sinter ledger show plan:auth-lockout
-  sinter ledger verify --against origin
-```
+`sinter ledger` reads and moves the ledger ref (`spec/ledger.md`). `log`
+and `show` print entries; `show` of a plan sets the approved commitment
+set beside the current one. `verify` checks that the ref only moved
+forward and that no entry changed (section 13 there), with `--signers`
+for the signatures of section 6.4; CI on the default branch runs it.
+`fetch` and `push` move the ref by fast-forward only, and
+`push --replay` recovers a lost race (section 3.2 there).
+`abandon <plan> --reason <text>` closes a plan that will never merge and
+ends its claim; it is a command for a person, with the refusals of
+`approve`.
 
 ### 11.14 `sinter evidence`
 
+`sinter evidence import <file>...` reads the reports of test runners and
+of coverage, binds each result to its test through the runner adapters,
+and stores the results by tree key (section 4, `spec/packs.md` section
+9). It warns when a report lies inside the worktree where git does not
+ignore it, because the report itself would change the tree key. It
+prints how many tests it bound, and names the tests that it could not
+bind, with the nearest test by name. `sinter evidence key` prints the
+current tree key, so that a test script can name its output folder.
+Example:
+
 ```
-sinter evidence — import runner and coverage artifacts for the current tree
-
-USAGE
-  sinter evidence import <file>... [--format <f>] [--tree <key>]
-  sinter evidence list   [--all]
-  sinter evidence clear  [--all]
-  sinter evidence key
-
-  Evidence binds to a tree key: the git tree hash of the working tree as it
-  is, computed through a temporary index so nothing is staged for real.
-  Artifacts imported for one key never bind to another; 'evidence key'
-  prints the current one so a test script can name its output directory.
-
-  import    Parse each artifact, bind test IDs to test facts through the
-            pack's ID strategy, and store the normalized facts under
-            .sinter/evidence/<key>/, warning when an artifact path sits
-            inside the worktree unignored (the artifact itself would perturb
-            the tree key). Prints a binding summary: tests seen,
-            tests bound, tests unbound (with the nearest test fact by
-            edit distance), coverage attributed or aggregate. Exit 1 if a
-            @verifies-bearing test was seen in no artifact.
-  list      Evidence sets present, newest first, with age relative to the
-            current key; --all includes keys for other trees
-  clear     Remove evidence for the current key; --all for every key
-  key       Print the current tree key
-
-FORMATS  (auto-detected from content; --format to force)
-  junit           JUnit XML (pytest --junitxml, cargo nextest, Jest reporters)
-  go-test-json    go test -json
-  lcov            lcov .info (aggregate unless the file carries TN: records
-                  per test, which some drivers emit)
-  cobertura       Cobertura XML (aggregate)
-  coverage-json   coverage.py JSON with contexts (attributed when
-                  dynamic_context = test_function was set)
-  jacoco          JaCoCo XML with session data (attributed)
-
-OPTIONS
-  --format <f>    Force a format for every file given
-  --tree <key>    Bind to a specific key instead of the current one
-
-EXAMPLES
-  pytest --junitxml .sinter/junit.xml --cov --cov-context test \
-      && coverage json -o .sinter/cov.json \
-      && sinter evidence import .sinter/junit.xml .sinter/cov.json
-  sinter evidence list
+pytest --junitxml .sinter/junit.xml --cov --cov-context test \
+    && coverage json -o .sinter/cov.json \
+    && sinter evidence import .sinter/junit.xml .sinter/cov.json
 ```
 
 ### 11.15 `sinter scan`
 
-```
-sinter scan — rebuild the fact index and print it
-
-USAGE
-  sinter scan [--json] [--path <glob>] [--kind <k|…>] [--stats] [--no-cache]
-
-  Parses every governed file with its language pack and prints the fact set
-  as JSON Lines: one fact per line, canonical (RFC 8785, keys sorted, no
-  floats, no nested objects), sorted by (kind, path, line, col, id). This is
-  the interchange the whole tool speaks; 'query --json' and 'check --json'
-  are filtered scans. The first line is the index header; conformance
-  fixtures compare every line after it.
-
-  Line output (no --json) is one summary line per governed file: path,
-  pack, facts, parse errors.
-
-OPTIONS
-  --path <glob>   Only facts under glob; repeatable
-  --kind <k|…>    Only facts of these kinds or categories
-  --stats         Counts per kind and per pack, and cache status
-  --no-cache      Parse everything; ignore and rewrite the on-disk cache
-
-SCHEMA
-  Documented in the manual page and in §13 of the design notes; the schema
-  version is the "v" field on every line and is printed by 'sinter -V'.
-
-EXAMPLES
-  sinter scan --json > facts.jsonl
-  sinter scan --json --kind edge | jq -c 'select(.suspect)'
-  sinter scan --stats
-```
+`sinter scan` prints the facts of every governed file as JSONL, in the
+form of `spec/jsonl.md`. `sinter query --json` and `sinter check --json`
+print filtered scans, so every tool that reads Sinter reads one
+format.
 
 ### 11.16 `sinter pack`
 
-```
-sinter pack — fetch, verify, and list language packs
-
-USAGE
-  sinter pack add    <name>[@<version>] [--hash <sha256>] [--registry <url>]
-  sinter pack verify <name> | --all
-  sinter pack list
-  sinter pack info   <name>
-
-  A pack is a directory: grammar.wasm, queries (*.scm), pack.toml, and
-  conformance fixtures. It contains no executable code except a lexer with
-  no WASI imports; 'verify' checks that too. Packs live in the user cache
-  keyed by hash. The manifest [languages] table names them with a version
-  constraint; sinter.lock pins the exact version and hash. A pack whose
-  hash does not match the lock is a refusal (exit 3) everywhere, not a
-  warning.
-
-  add      Resolve the constraint (or the given version) against the
-           registry, fetch into the cache, and write sinter.lock. Prints the
-           [languages] line to add if the manifest lacks one. With --hash,
-           refuse anything else.
-  verify   Run the pack's conformance fixtures: parse the fixture project,
-           compare the JSONL byte-for-byte, bind the fixture's runner
-           output, and check the wasm import section is empty
-  list     Pinned packs with cache status and the tree-sitter and wasi-sdk
-           versions each was built with
-  info     Descriptor, ID strategy and parameters, evidence formats and
-           the suggested runner invocation that produces them, designated
-           tag-bearing nodes
-
-EXAMPLES
-  sinter pack add rust@1.4.0
-  sinter pack verify --all
-  sinter pack info markdown
-```
+`sinter pack add <name>` fetches a pack from the packs repository,
+checks its hash, and records it in `sinter.lock`. `sinter pack fetch`
+fills the cache from the lock file on another machine (`spec/packs.md`
+section 12). `verify` runs the conformance fixtures of a pack and checks
+the import sections of its wasm files (section 5.2). `list` and `info`
+describe the packs. A pack whose hash does not match the lock stops
+every command with exit code 3, because a pack that changed could change
+every extent hash of its language.
 
 ### 11.17 `sinter init`
 
-```
-sinter init — install the integration the design assumes
+`sinter init` installs the integration that the design assumes. It
+writes only what is missing, reports drift in what exists, and never
+overwrites a user's edit. It touches only files that the tool owns:
 
-USAGE
-  sinter init [--hook <harness>]... [--ci <host>] [--default-branch <branch>]
-             [--check] [--yes] [--print]
+| file | content |
+|---|---|
+| `sinter.toml`, `sinter.lock` | a manifest that names the packs for the languages in the tree, with `check.warn-only = true` (section 8); the lock |
+| `.gitignore` | the line `.sinter/` |
+| `.plans/` | the folder of plans |
+| `refs/sinter/ledger` | an empty ledger commit, when the ref is absent |
+| the settings of the harness | the hooks that call `sinter hook <event>`; for Claude Code, in `.claude/settings.json` |
+| the CI workflows | a job for pull requests: `check --diff --gate review` on the host's merge ref, against the tip of the default branch (section 3.5), the import of evidence, the report, and SARIF. A job for the default branch: `check --gate merged`, `ledger verify`, and the step that appends `completed` (section 6.3), with the right to push the ledger ref. Both jobs fetch the ledger ref, because a clone does not |
 
-  Idempotent. Writes only what is missing; reports drift in what exists and
-  never overwrites a user's edits. Interactive when run bare on a terminal;
-  fully scriptable with flags. Touches only tool-owned integration files:
-
-    sinter.toml, sinter.lock     manifest skeleton naming the languages
-                                 found in the tree; lock with exact versions
-                                 and hashes; enforce = "warn" (§8)
-    .gitignore                   the '.sinter/' entry
-    .plans/.gitkeep              the plan directory
-    refs/sinter/ledger            an empty ledger commit, if absent
-    <harness settings>           PostToolUse/SessionStart entries calling
-                                 'sinter hook <event>' (--hook claude-code
-                                 writes .claude/settings.json;
-                                 UserPromptSubmit is offered, off by
-                                 default)
-    <ci workflows>               PR job, on the host's merge ref with
-                                 --base at the tip of the default branch
-                                 (§3.5): check --diff --gate pr, evidence
-                                 import, report as a comment, SARIF
-                                 upload. The test-run
-                                 line is the repo's own bash: init writes a
-                                 marked RUN-TESTS step it cannot fill,
-                                 seeded with each pack's suggested
-                                 invocation, and --check flags it while
-                                 unfilled. Both jobs fetch
-                                 refs/sinter/ledger explicitly — clones do
-                                 not.
-                                 Main job: check --gate main, ledger verify,
-                                 and the completion step — append 'completed'
-                                 for merged plans meeting §6.3's condition;
-                                 needs push rights to refs/sinter/ledger.
-                                 No merge tooling exists: death is a ledger
-                                 fact (--ci github writes .github/workflows/)
-
-OPTIONS
-  --hook <harness>   claude-code (others by PR to the harness table)
-  --ci <host>        github | gitlab
-  --default-branch <branch>
-                     Default branch for base computation (default: main)
-  --check            Write nothing; exit 1 if anything is missing or drifted
-  --yes              Accept defaults without prompting
-  --print            Print what would be written, to stdout, and stop
-
-EXAMPLES
-  sinter init
-  sinter init --hook claude-code --ci github --yes
-  sinter init --check
-```
+The command that runs the tests is the repository's own. `init` writes a
+marked step that it cannot fill, with the runner command that each pack
+suggests, and `--check` reports the step while it is empty. No tooling
+for merges exists, because the closing of a plan is a ledger entry.
+`--hook claude-code` chooses the harness, and `--ci github` or
+`--ci gitlab` the host. `--check` writes nothing and exits 1 when
+anything is missing, and `--print` prints what it would write. The
+skills of the Claude Code plugin reach a repository by the same route
+(record `skills-distribution`).
 
 ### 11.18 `sinter hook`
 
-```
-sinter hook — harness hook entrypoint
+`sinter hook <event>` is the entry point that `sinter init --hook`
+registers. Each event is a filtered `sinter check` or a `sinter brief`,
+so a hook sees nothing that those cannot see. Hooks inform and never
+block (section 8).
 
-USAGE
-  sinter hook <event> [--harness <h>]
-
-  Registered by 'sinter init --hook'. Reads the harness's hook payload on
-  stdin, evaluates the corresponding surface, and answers in the harness's
-  protocol. Every event is a filtered 'sinter check' or a 'sinter brief';
-  nothing here can see what they cannot. Hooks inform, never block: local
-  enforcement is the workflow of whoever runs the turn report (§8).
-
-EVENTS
-  post-tool-use   If the payload names a file path (Edit, Write, MultiEdit,
-                  NotebookEdit): re-parse the edited file; surface parse
-                  errors, typo-tags, invalid targets, any finding on facts in
-                  that file, and a note when the edit landed outside the
-                  active step's scope — each with its fix line. Tools
-                  without a path pass silently.
-  session-start   'sinter brief' on stdout, which the harness injects as
-                  context. Fires on new sessions and after compaction
-                  (source: compact), which is the case it exists for.
-  user-prompt-    'sinter brief' at a quarter of brief.budget, every turn.
-  submit          Smaller and cheaper; registered only if asked at init.
-
-HARNESS PROTOCOLS
-  claude-code     stdin JSON (hook_event_name, tool_name, tool_input,
-                  session_id, source). PostToolUse feedback is exit 2 with
-                  the findings on stderr — the tool already ran, so this
-                  surfaces to the agent without undoing anything; a clean
-                  file is exit 0. SessionStart and UserPromptSubmit stdout
-                  is added to the agent's context. Session state (the
-                  declared step) is keyed by session_id.
-
-OPTIONS
-  --harness <h>   Protocol to speak (default: claude-code)
-
-EXAMPLES
-  echo '{"hook_event_name":"PostToolUse","tool_input":{"file_path":"src/x.rs"}}' \
-      | sinter hook post-tool-use; echo $?
-```
-
-## 12. The Query Algebra
-
-### 12.1 Universe
-
-A query is evaluated against a **universe** `U`, the fact set produced by scanning one working tree `T` against one base `B`, with one ledger `L`, one evidence set `E` (for `T`'s tree key), and one session `S`. Every fact is an immutable record with a `kind` and a stable `id` (§13.6). A query denotes a subset of `U` and nothing else: no scalars, no tuples, no new facts. Because `U` is finite and every closure is a least fixpoint of a monotone step, every closure terminates; evaluation is a bottom-up fold with fixpoints only where the reference below says so.
-
-`U` is a function of `(T, B, L, E, S)`; two invocations with the same five inputs see the same universe and print the same bytes. The algebra has no access to time, environment, or the network. `ref-state` (networked external ids, §5.3) is therefore not a function of the algebra but a separate importer that materializes `refstate` facts into `E`-like scratch for the main CI tier, and is deferred with `@pin`.
-
-### 12.2 Kinds and categories
-
-Every kind belongs to exactly one **category**. `kind(x)` accepts either.
-
-| category | kinds | located? | notes |
-|---|---|---|---|
-| `node` | `req` `design` `decision` `plan` `step` `test` `site` | yes | `site` is an anonymous `@satisfies`/`@cites` source in code and carries the code hash `ch`; `test` is named by the pack's ID strategy |
-| `edge` | `satisfies` `verifies` `refines` `cites` `supersedes` | yes | `src` is a node or a rule; `dst` is a node, an external id, or unresolved |
-| `external` | `external` | no | one per distinct `ns/id` cited anywhere |
-| `promise` | `promise` | yes | one per promissory tag in a plan step |
-| `evidence` | `run` `cov` `judgment` | no | keyed to the tree key; `cov` is the site-level join, not raw lines; `judgment` is a judge's or checker's verdict |
-| `law` | `rule` `gate` | yes (manifest) | a rule's origin is a `cites` edge with the rule as `src` |
-| `ack` | `ack` | yes | live or void |
-| `ledger` | `claim` `decline` | no | projections of the ledger: a claim of another branch's approved plan (§13.5); a live refusal bound to an extent hash |
-| `hunk` | `hunk` | yes | one per hunk of `git diff B`, new-side coordinates |
-| `tombstone` | `tombstone` | yes (base coordinates) | a fact present in `B`'s index and absent from `T`'s; carries the old `id`, `kind`, and extent hash |
-| `finding` | `finding` | yes (its subject's) | derived; class and subject define identity |
-
-"Located" facts carry `path`, `line`, `col`, `eline`, `ecol`. Only located facts are returned by `path(…)`, `scope(…)`, `historical`, `exempt`, and `acked(…)`.
-
-### 12.3 Syntax
-
-```
-query    := expr
-expr     := term ( ws ('+' | '-') ws term )*
-term     := atom ( ws '^' ws atom )*
-atom     := '(' expr ')'
-          | 'all'
-          | word                              -- saved definition without parameters, or a keyword selector
-          | word '(' args ')'                 -- built-in or saved definition
-args     := arg ( ',' ws? arg )*
-arg      := expr | kinds | name | glob | revspec
-kinds    := word ( '|' word )*
-name     := slugpat | slugpat '/' slugpat | testpat
-slugpat  := [a-z0-9*]+ ( '-' [a-z0-9*]+ )*
-testpat  := any run of characters other than ',' and ')' ; quote with "…" otherwise; '*' globs
-glob     := gitignore-style pattern; quote with "…" if it contains whitespace or ','
-revspec  := 'base' | any git revision
-word     := [a-z][a-z0-9-]*
-ws       := one or more spaces
-```
-
-Lexical rules that matter:
-
-- **Binary operators are whitespace-delimited.** `a - b` is difference; `auth-lockout` is a slug. Without this rule slugs and difference are ambiguous, and slugs are the more common token. `^` and `+` follow the same rule for uniformity. Parentheses do not need whitespace.
-- **Precedence:** `^` binds tighter than `+` and `-`, which share a level and associate left. `a + b ^ c - d` is `(a + (b ^ c)) - d`. When in doubt, parenthesize; `--explain` prints the fully parenthesized form.
-- **Argument kinds are positional and declared per function** (§12.5). A `name` argument may contain `*` as a glob over the slug (or test ID) alphabet. A `kinds` argument may be a category name.
-- **Names are resolved after substitution**: a saved definition's parameters are substituted syntactically (§12.6) before the expression is parsed, so a parameter may stand for an expression, a kind list, a name, or a glob.
-- **Keywords** `all`, `active`, `historical`, `exempt`, `base` are reserved as bare words; a saved definition may not shadow a built-in.
-
-### 12.4 Categories as types
-
-Each expression is assigned a **category set** statically, before evaluation:
-
-- `all` → every category. `kind(K)` → the categories of the kinds in `K`. Name selectors → their kind's category. `path`, `historical`, `exempt`, `acked` → every located category. `changed` → every category (tombstones and hunks included). `active` → `{node}`. `findings` → `{finding}`.
-- `out`, `in` → `{edge}`. `src`, `dst`, `deps`, `rdeps`, `paths` → `{node, external, law}` (`src` of a rule's origin edge is a rule). `subject` → every category a finding can be about. `scope` → located categories plus `hunk` (and accepts `claim` in its argument). `promises` → `{promise}`. `met` → `{promise}`. `done` → `{node}`. Predicates, including `declined`, → the category set of their argument, intersected with what they accept. `obligations`, `judged` → every category (an obligation's subject is whatever the trigger selected). `triggered` → `{law}`.
-- `S + T` → union of category sets; `S ^ T` → intersection; `S - T` → the left's.
-
-Every function declares which categories it **accepts** per argument. Facts of other categories in an argument are dropped silently — `src(all)` is fine and means "sources of every edge." A static **error** is raised only when an argument's category set does not intersect the accepted set: `src(kind(req))` cannot mean anything and is rejected before evaluation with the message `src() accepts edge; argument has category {node}`. This catches definite mistakes without an annotation burden, and it is exactly the exhaustiveness the OCaml implementation gets from a variant of categories.
-
-### 12.5 Function reference
-
-Notation: `S`, `T` range over fact sets; `E` over sets of edges; `P` promises; `R` rules; `K` a kind list; `n` a name pattern; `g` a glob. `src(e)`, `dst(e)`, `rev(e)`, `rev(d)`, `xh(d)` are the fields of an edge or declaration. `⊥` is "unresolved." "Declaration" means a `req`, `design`, or `decision`.
-
-**Selectors**
-
-| function | accepts | denotes |
-|---|---|---|
-| `all` | — | `U` |
-| `kind(K)` | — | `{f : kind(f) ∈ K ∨ category(f) ∈ K}` |
-| `req(n)` `design(n)` `decision(n)` `plan(n)` `rule(n)` | — | facts of that kind whose slug or name matches `n` |
-| `step(p/s)` | — | steps whose plan slug matches `p` and step slug matches `s` |
-| `test(n)` | — | test nodes whose pack-assigned ID matches `n` |
-| `external(ns/id)` | — | external facts matching |
-| `path(g)` | — | located facts whose `path` matches `g` (a fact spanning lines is matched by its `path` alone) |
-| `changed(b)` | — | see §12.7; `b` is `base` or a revision |
-| `active` | — | the active plan and, if declared, the active step (§6.1); only in-force plans are candidates; `∅` if no plan is active |
-| `historical` | — | located facts under a manifest `historical` path |
-| `exempt` | — | located facts under a manifest `exempt` path, in a plan file, in the manifest, or in the lockfile |
-| `acked(t)` | — | located facts `f` such that the tag-bearing block containing `f` carries a **live** `@ack` whose target `t` applies to `f`: the class or rule name matches, and the ack's subject, if given, equals `f`'s key (`dst` slug for an edge, slug for a node, `id` otherwise) |
-| `findings(C)` | — | finding facts whose class ∈ `C` |
-
-**Traversal** (one hop, typed)
-
-| function | accepts | denotes |
-|---|---|---|
-| `out(K, S)` | `S`: node, law | `{e ∈ edges : kind(e) ∈ K ∧ src(e) ∈ S}` |
-| `in(K, S)` | `S`: node, external | `{e ∈ edges : kind(e) ∈ K ∧ dst(e) ∈ S}` |
-| `src(E)` | edge | `{src(e) : e ∈ E}` |
-| `dst(E)` | edge | `{dst(e) : e ∈ E ∧ dst(e) ≠ ⊥}` — dangling edges contribute nothing |
-| `subject(F)` | finding | `{subject(f) : f ∈ F}` |
-
-**Closures** (least fixpoints; dangling edges are ignored; suspect edges are followed — a stale citation is still a citation)
-
-| function | accepts | denotes |
-|---|---|---|
-| `deps(K, S)` | node, law | least `X ⊇ S` with `dst(out(K, X)) ⊆ X` |
-| `rdeps(K, S)` | node, external | least `X ⊇ S` with `src(in(K, X)) ⊆ X` |
-| `paths(S, T)` | node, external, law | `deps(edge, S) ^ rdeps(edge, T)`: every node on some path from `S` to `T` over any edge kind. This is Bazel's `allpaths`; `somepath` is omitted because its answer is not a deterministic function of the graph |
-
-**Plan**
-
-| function | accepts | denotes |
-|---|---|---|
-| `scope(S)` | plan, step, rule, claim | located facts and hunks whose `path` matches the effective scope of some `x ∈ S`. A step's effective scope is its own `@scope` if present, else its plan's; a plan's effective scope is the union of its steps' (its own `@scope` is the default for steps and the bound on them — a step exceeding it is a `scope-outside-plan` finding); a rule's is its `scope` field. `∅` if `S` has no scope-bearing fact |
-| `promises(S)` | plan, step | promise facts whose step is in `S` or whose plan is in `S` |
-| `met(P)` | promise | promises that are met (§6.1: a declaration with that slug within the step's scope; an edge of that kind within scope that is neither dangling nor suspect; a `verifies` edge within scope at rung `passing`, or `unmeasured` if the manifest allows) |
-| `done(S)` | plan, step | steps all of whose promises are met — or, for a step with no promises, whose scope intersects `changed(base)` — and whose in-scope `verifies` edges are all at rung `passing`/allowed; plans all of whose steps are done and whose in-scope `verifies` edges are all at `passing`/allowed |
-
-**Status predicates** (filters: `pred(S) ⊆ S`)
-
-| function | accepts | keeps `f ∈ S` iff |
-|---|---|---|
-| `inforce(S)` | any | for a declaration: `f` carries no status tag and no effective `@supersedes` edge has `dst = f` (effective: the edge's source is in force and, if its kind is approval-gated, approved, §3.3 — a fixpoint over supersession chains; on a `supersedes` cycle every member is treated as in force and retired by nothing, and the `cycle` finding blocks, so the state is loud rather than guessed). For a plan, its steps, and its promises: the ledger holds no `completed` or `abandoned` entry for the plan (§6.3). Every other kind: kept |
-| `approved(S)` | any | `f` is a declaration of a gated kind with a ledger approval for `(slug, rev, xh)`; or a declaration of a non-gated kind; or a plan whose current commitment set is approved against its latest approved set (§13.7 containment, not `csh` equality); or a step of an approved plan; or any other kind |
-| `bumped(S)` | node | `f` is a declaration absent from `B`'s index, or present with `rev_B(f) < rev_T(f)` |
-| `declined(S)` | node | `f` is a declaration or plan with a live `decline` fact: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
-| `waiting(P)` | promise | `p` targets a slug declared nowhere in `T` but promised for declaration by some `claim` — an ordering fact, reported instead of `dangling` |
-
-**Edge predicates**
-
-| function | keeps `e ∈ E` iff |
+| event | effect |
 |---|---|
-| `suspect(E)` | `rev(e) ≠ ⊥ ∧ dst(e) ≠ ⊥ ∧ dst(e)` is a declaration `∧ rev(dst(e)) ≠ rev(e)` |
-| `dangling(E)` | `dst(e) = ⊥` — no declaration has the slug, or the external id's namespace is undeclared or its id fails the pattern |
+| `post-tool-use` | when the payload names a file (the tools `Edit`, `Write`, `MultiEdit`, and `NotebookEdit`), parse that file again and report its findings with their fix lines, and note an edit outside the active step's scope |
+| `session-start` | print the brief, which the harness adds to the context; it fires after a compaction, the case that it exists for |
+| `user-prompt-submit` | print the brief at a quarter of its budget, on every turn; registered only on request |
 
-**Evidence predicates** partition `kind(verifies)`: every verifies edge satisfies exactly one, tested in this order. `t = src(e)`, `sites(e) = src(in(satisfies, dst(e)))` minus test nodes (a test's own `@satisfies` never connects itself), `runs(t)` the run facts for `t` at `T`'s tree key, `cov(t, s)` the attributed cov fact for `(t, s)`, `agg(s)` the aggregate cov fact for `s`.
+**The protocol of Claude Code.** The payload is JSON on standard input,
+with `hook_event_name`, `tool_name`, `tool_input`, `session_id`, and
+`source`. Feedback after a tool is exit code 2 with the findings on
+standard error: the tool already ran, so the agent sees the findings and
+nothing is undone. A clean file is exit code 0. The standard output of
+`SessionStart` and `UserPromptSubmit` goes into the agent's context. The
+state of the session, the declared step, is kept per `session_id`.
+`--harness <h>` names the protocol, and the default is `claude-code`.
 
-| function | keeps `e ∈ E` iff |
-|---|---|
-| `wrong-source(E)` | `kind(t) ≠ test` — the comment attached to something `tests.scm` does not capture |
-| `never-ran(E)` | `runs(t) = ∅` |
-| `failed(E)` | some `r ∈ runs(t)` has `status ∈ {fail, error, skip}` |
-| `unexercised(E)` | all runs pass, `sites(e) ≠ ∅`, and either the coverage of each test exists for `t` and `∀s ∈ sites(e): cov(t, s).hit = 0`, or only the coverage of the whole run exists and `∀s ∈ sites(e): agg(s).hit = 0` — the run as a whole never touched the sites, so neither did `t` |
-| `unmeasured(E)` | all runs pass, `sites(e) ≠ ∅`, no coverage of each test for `t`, and some `agg(s).hit > 0` or no coverage at all was imported |
-| `passing(E)` | all runs pass and either `sites(e) = ∅` (nothing to connect to; `untraced(satisfies)` reports the target separately) or some `cov(t, s).hit > 0` |
+## 12. The query algebra
 
-**Law**
+`spec/algebra.md` defines the algebra: its universe, syntax, types,
+functions, and built-in finding classes.
 
-| function | accepts | denotes |
-|---|---|---|
-| `obligations(R)` | law | `⋃_{r ∈ R} ( eval(trigger(r)) - eval(expect(r)) )` — the obligation subjects of each rule. Rule expressions are evaluated in the same universe; a rule whose trigger or `expect` mentions `obligations` is rejected at manifest load (no recursion through the law) |
-| `triggered(R)` | law | `{r ∈ R : eval(trigger(r)) ≠ ∅}` |
-| `judged(n)` | — | subjects with a `judgment` evidence fact for rule `n` whose verdict is `pass` and whose recorded hash matches the subject's current extent (or commitment-set) hash — the `expect` selector for judged rules |
+**The universe is one fixed set of facts.** Sinter builds the facts
+from five inputs: one working tree, one base, one ledger, one
+evidence set, and one session. A query selects a subset of those
+facts, and nothing else: it makes no numbers, no tuples, and no new
+facts. Two queries with the same five inputs give the same bytes,
+because the algebra has no access to the time, the environment, or the
+network. Every gate depends on this: a check on a laptop and a check
+in CI must agree.
 
-For an `acked` `expect`, ack liveness is `subject ∈ eval(trigger)` — the `expect` side never re-enters (§3.3); no circularity.
+**Categories work as types.** Each kind of fact belongs to one category,
+such as `node`, `edge`, or `finding`. Sinter gives each expression a set
+of categories before it evaluates the expression, and each function
+states the categories that it accepts. When an argument's categories
+cannot meet the accepted ones, Sinter rejects the query before it runs,
+with a message such as
+`src() accepts edge; argument has category {node}`. When the sets
+overlap, Sinter drops the facts of the other categories silently, so
+`src(all)` means "the sources of every edge". So the check catches
+definite mistakes, and the writer of a query needs no annotations. This
+is the same exhaustive check that OCaml gives the implementation from a
+variant type of categories.
 
-**Set operators.** `S + T` union, `S ^ T` intersection, `S - T` difference, all over fact identity.
+**Binary operators need spaces around them.** `a - b` is a
+difference, and `auth-lockout` is one slug. Without this rule, a
+parser could not tell a slug with a hyphen from a difference, and
+slugs are the more common of the two. `^` and `+` follow the same
+rule, so that all three look alike. `^` binds tighter than `+` and
+`-`.
 
-That is 37 names. Grouped as above they fit on two pages, and every one is either a comprehension over fields the JSONL already carries or a least fixpoint over a finite graph. There are no user-defined functions, no recursion beyond the three built-in closures and the two fixpoint predicates, no arithmetic, and no strings other than names and globs.
+**The algebra stays small.** Every function is a filter over fields that
+the JSONL already carries, or a closure over a finite graph, which adds
+facts until nothing new comes, so every query ends. The closures `deps`,
+`rdeps`, and `paths` follow suspect edges, because a citation of an old
+revision is still a citation, and they ignore dangling edges. `paths` is
+Bazel's `allpaths`. Bazel's `somepath` is left out, because its answer
+is not a fixed function of the graph. Users cannot add functions, and
+the algebra has no recursion beyond the closures and the fixpoint of
+supersession, no arithmetic, and no strings other than names and globs.
 
-### 12.6 Saved definitions
+**A finding class is a saved definition with tiers.** A saved
+definition is a name, optional parameters, and an expression. A
+definition with tiers is a finding class, which `sinter check`
+evaluates; one without tiers is only for queries. So one form serves
+both, because a finding is a definition that someone decided to
+enforce. A repository's own definitions live in rule files (section
+7), and they cannot take the name of a built-in definition.
 
-A saved definition is a name, an optional parameter list, and an expression. Built-ins ship in the tool; the manifest adds or overrides in `[findings]`:
+**`changed(base)` defines "touched" for each category.** The simple
+rule, "the extent meets a hunk", is wrong for declarations in both
+directions. An `@ack` line added inside a section is not a change of
+meaning, and a section deleted as a whole leaves nothing to meet. So a
+declaration counts as changed when it is new, its kind changed, or its
+extent hash differs from the base, and a plan when its commitment set
+differs. A citation whose target vanished counts as changed, even when
+its own bytes did not change. `spec/algebra.md` section 8.1 gives the
+table.
 
-```toml
-[findings.untraced]
-params = ["e"]
-expr   = "kind(req|design) ^ inforce(all) - dst(in($e, all))"
+**Diff mode subtracts the findings of the base.** `check --diff`
+reports the findings of the working tree minus the findings of the
+base tree, compared by their ids. It reads the base tree from the
+objects of git, with no checkout, and with an empty evidence set. A
+finding that existed at the base and still exists is debt, not a
+violation. This rule also catches a new `dangling` or `retired`
+finding on a line that the diff never touched. The cost: a test that
+was already unexercised at the base shows as new on the first change
+that measures it. This cost comes once for each such test, and it is
+accepted.
 
-[findings.design-awaiting-approval]
-expr   = "kind(design) ^ inforce(all) - approved(all)"
-```
+**Some classes come from the engine.** A class that concerns input
+that does not parse, or that compares two trees in a way that the
+algebra does not model, comes straight from the scanner or from the
+comparison of the trees. Such a class is marked *engine*, and its
+findings are ordinary finding facts. Four global rules apply after
+evaluation and are never written into a definition: historical facts
+make no findings; a live `@ack` accepts what it names; the classes of
+the evidence ladder appear only when evidence exists; and a closed
+plan makes no findings.
 
-Invocation is `untraced(verifies)` or bare `design-awaiting-approval`. Parameters are substituted as text for `$name` tokens before parsing; a parameter may therefore be an expression, a kind list, a name, or a glob, and the result is parsed and category-checked as a whole. Definitions may reference other definitions; cycles are a manifest load error. A definition with `tiers` (per gate), and optionally `ackable`, `detail`, and `fix` (the mechanical fix class), is a finding class and is evaluated by `check`; one without `tiers` is query-only. There is one table, because a finding is just a definition someone decided to enforce. Overriding a built-in finding's `expr` is allowed and is itself a `law-touched` finding on the diff that does it.
+**Three classes measure incompleteness, not violations.** `untraced`,
+`unmet-promise`, and `awaiting-approval` exist so that `sinter status`
+and the closing of a plan can read them. The turn report never lists
+them as violations (section 8).
 
-### 12.7 `changed(base)` and diff mode
+**A name that matches nothing is not an error.** `req(auth-lockout)`
+gives the empty set on a branch where nobody declared `auth-lockout`
+yet, which is what the query should mean there.
 
-`changed(b)` is the fact set touched by `git diff b` against the working tree. The diff compares each file of the working tree that git does not ignore with its blob in the base, whether git tracks the file or not, and a file that the base does not hold is wholly added ([spec/algebra.md](../spec/algebra.md) section 8.1). "Touched" is defined per category, because the naive definition — extent intersects a hunk — is wrong for declarations in both directions (an `@ack` line added inside a section is not a change of meaning; a section deleted wholesale leaves nothing to intersect):
-
-| category | `f ∈ changed(b)` iff |
-|---|---|
-| `req` `design` `decision` | `f ∉ index(b)`, or `xh_b(f) ≠ xh_T(f)` (the normalized extent hash, §3.4) |
-| `plan` `step` `promise` | the plan's commitment set differs from `index(b)`'s for that plan, or the fact is new |
-| other located facts | new, or the fact's line span intersects a hunk's new-side span |
-| `hunk` | always (hunks exist only relative to `b`) |
-| `tombstone` | always |
-| `edge` | new, or its line intersects a hunk, or `dst(e)` is a tombstone — a citation whose target vanished is changed even if its bytes are not |
-| `evidence` `external` | never |
-
-`b` may be `base` (the `--base` value) or a git revision. Evaluating `changed(x)` for an `x` other than the base requires a second index for `x`, built and cached on demand.
-
-**Diff mode** (`check --diff`) is **baseline subtraction**: `check --diff` reports `F(T) - F(b)` where `F(x)` is the finding set of tree `x` and subtraction is by finding identity (§13.6). `F(b)` is evaluated on the base tree read straight from git objects — no checkout — with the same ledger and an **empty evidence set**: evidence-ladder findings at the base are all `never-ran`, so a pre-existing `unexercised` test surfaces as introduced on the first PR that measures it, a one-time cost of first light, accepted. A finding that existed at the base and still exists is debt, not a violation; a finding absent at the base is what this diff introduced. This subsumes the intersection rule for every class where it was right and repairs it for `dangling` and `retired`, where the introduced finding sits on a line the diff never touched. Diff-relative classes — `unbumped`, `unplanned-change`, `config-changed`, `code-drift`, `renamed`, `promise-collision` — have `F(b) = ∅` by construction and appear in both modes.
-
-### 12.8 Built-in finding definitions
-
-`check` is the union of these. `expr` is the definition where the class is expressible; *engine* marks classes the scanner or adjudicator emits directly because they concern malformed input or two-tree comparisons the algebra does not model (their subjects and details are still ordinary finding facts). Two subtractions are engine steps applied after evaluation to every class, never written into definitions: `historical` facts generate no findings of any class (§3.6), and live `@ack`s accept findings of ackable classes (liveness judged pre-subtraction, §3.3). A third rule governs the evidence ladder: `never-ran`, `failed`, `unexercised`, and `unmeasured` are evaluated only when an evidence set exists for the tree — the tool judges measurements that exist and never demands one nobody took; wanting the measurement is expressed by importing it (PR CI does; a main job may), and `status --done` refuses without one, because death requires measurement. The `rung` field reads `never-ran` either way; only the finding is withheld. A fourth: facts belonging to a plan not in force — the plan, its steps, its promises — generate no findings; a dead plan is record, not agreement (§6.3). Tiers are the shipped defaults for `(turn, pr, main)`; every class ships at `warn` under warn-only and is promoted per §8. `A` = ackable, `F` = mechanical fix exists.
-
-| class | subject | definition | mode | A | F | tiers |
-|---|---|---|---|---|---|---|
-| `parse-error` | file | *engine*: a governed file its pack cannot parse; the whole file's facts are absent | tree | · | · | warn, block, block |
-| `typo-tag` | line | *engine*: an unknown `@word` within Damerau–Levenshtein distance 2 of the vocabulary, the pack's foreign vocabulary exempt (§3.2) | tree | · | F | warn, warn, warn |
-| `invalid-target` | tag | *engine*: a slug or external id failing its pattern, or an undeclared namespace | tree | · | · | block, block, block |
-| `duplicate` | node | *engine*: two declarations of one slug, two plans of one slug (dead ones included — plan slugs are permanent), or two steps of one plan slugifying identically | tree | · | · | block, block, block |
-| `scope-outside-plan` | step | *engine*: a step whose `@scope` is not contained in its plan's (§13.7 containment) | tree | · | · | block, block, — |
-| `misplaced-plan` | node | *engine*: a `@plan` declaration outside `.plans/**` (§6.1) | tree | · | · | block, block, block |
-| `unpinned` | edge | *engine*: a `satisfies`, `verifies`, `refines`, or `supersedes` edge with `rev = ⊥` | tree | · | F | block, block, block |
-| `dangling` | edge | `dangling(kind(edge))`, minus edges whose target a claim promises to declare — those surface as `waiting-on` on the promise instead (*engine* performs the subtraction) | tree | · | · | block, block, block |
-| `renamed` | edge | *engine*: dangling edges whose slug has a tombstone in `B` and a new declaration in `T` with equal `xh` | diff | · | F | block, block, block |
-| `suspect` | edge | `suspect(kind(edge))` | tree | · | F | block, block, block |
-| `unbumped` | node | `kind(req\|design\|decision) ^ changed(base) - bumped(all)` | diff | · | F | block, block, block |
-| `cycle` | node | *engine*: a cycle in `supersedes` or `refines` | tree | · | · | block, block, block |
-| `code-drift` | site | *engine*: `ch` changed since base while the site's comment `xh` did not (§3.4); the judge's sampling frame. Not ackable: the class is diff-relative, so an ack would void on merge | diff | · | · | warn, warn, — |
-| `declined` | node | `declined(kind(req\|design\|decision\|plan))` — a live refusal; the detail is the reason | tree | · | · | warn, block, — |
-| `unapproved-req` | edge | `in(satisfies\|verifies, kind(req) - approved(all))` — a kind outside `approve` counts approved, so the class self-silences | tree | · | · | block, block, block |
-| `unapproved-design` | edge | `in(satisfies\|verifies, kind(design) - approved(all))` | tree | · | · | warn, warn, warn |
-| `awaiting-approval` | node | `kind(req\|design\|decision) ^ inforce(all) - approved(all)` — informational; the subject is what `approve` will show | tree | · | · | off, warn, warn |
-| `unapproved-plan` | plan | `kind(plan) ^ inforce(all) - approved(all)`; *engine* supplies the set delta as detail | tree | · | · | warn, block, — |
-| `retired` | edge | `kind(cites) - dangling(all) - in(cites, inforce(all))` — includes a rule's origin edge, hence "law resting on withdrawn reasoning" | tree | A | · | warn, block, block |
-| `stale-ack` | ack | *engine*: an `@ack` whose hash no longer matches its block, or whose target names nothing at that site | tree | · | F | block, block, block |
-| `wrong-source` | edge | `wrong-source(kind(verifies))` | tree | · | · | block, block, block |
-| `never-ran` | edge | `never-ran(kind(verifies)) ^ scope(inforce(kind(plan)))` at turn; `never-ran(kind(verifies))` at pr and main | tree | · | · | warn, block, block |
-| `failed` | edge | `failed(kind(verifies))` | tree | · | · | block, block, block |
-| `unexercised` | edge | `unexercised(kind(verifies))` | tree | A | · | warn, block, block |
-| `unmeasured` | edge | `unmeasured(kind(verifies))` | tree | · | · | off, warn, warn |
-| `untraced` | node | `untraced(verifies) + untraced(satisfies)` — incompleteness; never blocks turn-end | tree | · | · | off, warn, warn |
-| `unmet-promise` | promise | `unmet(active)` where `unmet(p) = promises($p) - met(promises($p))` — incompleteness; enforced only by `status --done` | tree | · | · | off, off, — |
-| `promise-out-of-scope` | promise | *engine*: a promise met only by facts outside its step's scope | tree | · | · | warn, warn, — |
-| `unverified-promise` | promise | *engine*: a promised `req`/`design` with no promised `verifies` of it in the same plan (§6.6) | tree | · | · | warn, warn, — |
-| `promise-collision` | promise | *engine*: a promised declaration whose slug exists in `index(B)` or is promised by a claim | tree | · | · | block, block, — |
-| `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets | tree | · | · | warn, warn, — |
-| `waiting-on` | promise | `waiting(promises(kind(plan)))` — reported in place of `dangling` for the citation, with the claim and step named (§6.7) | tree | · | · | off, warn, — |
-| `branch-overlap` | step | *engine*: a step's scope intersects a claim's scope on another branch | tree | · | · | warn, warn, — |
-| `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - exempt`; *engine* also exempts hunks that are wholly the tool's own medicine — tag-line re-pins and `@ack` insertions or deletions | diff | · | · | block, block, — |
-| `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable iff the rule's `expect` is `acked`; a rule's `tiers` overrides the class's | tree | A* | · | warn, block, block |
-| `law-touched` | law | `kind(rule\|gate) ^ changed(base)` — non-disableable; always reported, never blocks | diff | · | · | warn, warn, warn |
-| `merged-incomplete` | plan | *engine*: an in-force plan on the default branch failing the §6.3 completion condition — merged incomplete; a plan meeting it is completed by main CI, not a finding | tree | · | · | —, —, block |
-| `ledger-broken` | ledger | *engine*: `ledger verify` fails | tree | · | · | —, —, block |
-| `pack-mismatch` | pack | *engine*: a pinned pack's hash does not match the cache | tree | · | · | exit 3 everywhere |
-
-`untraced`, `unmet-promise`, and `awaiting-approval` are the incompleteness classes: they exist so `status` and the death gate can see them, and the turn report never lists them as violations (§8). Everything else is a violation or a health signal.
-
-### 12.9 Evaluation, ordering, errors
-
-- Evaluation is bottom-up over the parse tree. Selectors are answered from per-kind indexes; traversals from adjacency maps built once per scan; fixpoints by worklist. A saved definition is expanded once per invocation site, not memoized across differing parameters.
-- Results print in order `(kind, path, line, col, id)` with unlocated facts after located ones, ordered by `id`. `--order` reorders; it never changes the set.
-- Static errors (category mismatch, unknown function, arity, unknown saved definition, parameter count) exit 2 before evaluation and name the offending subexpression. A name selector that matches nothing is not an error — it denotes `∅` — because that is what `req(auth-lockout)` should mean on a branch that has not written it yet. `changed(x)` for an `x` git cannot resolve exits 3.
-
-### 12.10 Worked evaluation
-
-On the plan from §6.1 after the second step has landed but before tests exist:
+**An example.** Take the plan of section 6.1, after its second step
+landed and before any test exists:
 
 ```
 $ sinter query 'promises(active) - met(promises(active))'
@@ -1505,473 +1750,141 @@ $ sinter query 'kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(
 src/session/store.rs:88:1: hunk +14/-3
 ```
 
-The last line is a hunk outside every step's scope — the agent simplified a store the plan never mentioned. It is exactly what the turn report names as a violation — the state an orchestrator refuses to accept a hand-back in. The honest resolutions are the two the monotone rule allows: revert it (`git checkout src/session/store.rs`), or widen the plan's scope in `.plans/auth-lockout.md`, which routes to an approval. What the report will not bless is the hunk staying while the plan stays silent.
-
-## 13. JSONL Interchange
-
-### 13.1 Canonical form
-
-One fact per line. Each line is a JSON object canonicalized per RFC 8785 (JCS): keys sorted by UTF-16 code units, no insignificant whitespace, strings escaped per JCS, UTF-8, LF terminated. The schema restricts values so that JCS is trivial to implement and impossible to get subtly wrong:
-
-- **Value types:** string, integer in `[-(2^53-1), 2^53-1]`, boolean, or an array of those. **No floats, no nulls, no nested objects.** An absent value is an omitted key, never `null`.
-- **Strings** are NFC-normalized where they come from file text; ids and paths are used as-is.
-- **Paths** are repository-relative with forward slashes, no leading `./`.
-- **Hashes** are lowercase hex. `xh` is 64 hex characters (SHA-256). The tree key and git revisions are 40 hex characters.
-
-A file of facts is sorted by `(kind, path, line, col, id)`; unlocated facts sort after located ones by `id`. The first line is the `index` header (§13.8). Two scans of the same `(T, B, L, E, S)` produce byte-identical output; conformance fixtures compare every line after the header.
-
-The schema version is the integer `v` on every line. It is bumped only for incompatible changes to a kind's required fields or identity; adding an optional field is not a bump.
-
-### 13.2 Envelope
-
-Every fact carries:
-
-| field | type | meaning |
-|---|---|---|
-| `v` | int | schema version (`1`) |
-| `kind` | string | one of the kinds in §12.2, or `index`, `summary`, or a ledger kind (§13.7) |
-| `id` | string | stable identity (§13.6) |
-| `pack` | string | for facts extracted from a governed file: the pack name that produced it |
-
-Located facts add:
-
-| field | type | meaning |
-|---|---|---|
-| `path` | string | file |
-| `line` `col` | int | 1-based start |
-| `eline` `ecol` | int | inclusive end line; exclusive end column |
-
-For a declaration in markdown, the span is the tag line; the extent (whole section) is separate (`xline`, `xeline`) so that tools can highlight the tag without highlighting pages of prose.
-
-Fields marked *derived* below are computed from the ledger, evidence, session, or base — not from the file — and are present so that `jq` users need not re-derive them. They are included in conformance comparison, which is why fixtures ship their own ledger and evidence.
-
-### 13.3 Nodes
-
-**`req` / `design` / `decision`**
-
-| field | type | meaning |
-|---|---|---|
-| `slug` | string | |
-| `rev` | int | `N` from `vN` |
-| `xh` | string | extent hash (§3.4) |
-| `xline` `xeline` | int | extent span |
-| `title` | string | markdown: heading text; code: omitted |
-| `desc` | string | description per §3.2; omitted if empty |
-| `status` | string | `deprecated` `rejected` `deferred`; omitted if none |
-| `inforce` | bool | *derived* |
-| `approved` | bool | *derived* |
-| `approval` | string | *derived*: ledger approval id when approved |
-| `gated` | bool | whether the manifest gates this kind on approval |
-| `declined` | bool | *derived*: a live decline exists for `(slug, xh)` |
-
-```json
-{"approval":"e-3f9a1c0b7d42","approved":true,"col":1,"desc":"Five consecutive failures within ten minutes freeze the account.","ecol":21,"eline":13,"gated":true,"id":"req:auth-lockout","inforce":true,"kind":"req","line":13,"pack":"markdown","path":"docs/auth.md","rev":2,"slug":"auth-lockout","title":"Lock account after 5 failed attempts","v":1,"xeline":29,"xh":"9f3a…","xline":12}
-```
-
-**`plan`**
-
-| field | type | meaning |
-|---|---|---|
-| `slug` `title` | string | |
-| `scope` | array of string | plan-level globs |
-| `approved` | bool | *derived*: current commitment set approved against the last approval (§13.7) |
-| `approval` | string | *derived* |
-| `active` | bool | *derived* from session |
-| `open` | bool | *derived*: no `completed` or `abandoned` ledger entry for the plan (§6.3); its in-force state |
-| `csh` | string | commitment-set hash: SHA-256 over a canonical, step-name-free form — sorted `(word, target, effective step scope)` triples plus the plan scope — so free renames leave it unchanged and a `decline` bound to it survives them |
-| `declined` | bool | *derived* |
-
-**`step`**
-
-| field | type | meaning |
-|---|---|---|
-| `plan` | string | plan slug |
-| `slug` `title` | string | slug derived per §6.1 |
-| `scope` | array of string | *effective* scope |
-| `own_scope` | bool | whether the step declared its own `@scope` |
-| `refactor` | bool | no promises |
-| `met` `total` | int | *derived* promise counts |
-| `done` | bool | *derived* |
-| `active` | bool | *derived* |
-
-**`test`**
-
-| field | type | meaning |
-|---|---|---|
-| `name` | string | the ID the pack's strategy produced — the same string the runner reports |
-| `parents` | array of string | `describe`-style ancestry where the language has it, outermost first |
-| `dline` `deline` | int | span of the test's body |
-
-**`site`**
-
-| field | type | meaning |
-|---|---|---|
-| `name` | string | name of the attached definition, if the pack captured one — qualified (impl, class, module path) where the language nests, so two `new`s in one file stay distinct |
-| `node` | string | tree-sitter node type of the attached definition (`function_item`, `class_definition`) |
-| `dline` `deline` | int | span of the attached definition's body — the frame the `cov` join measures against |
-| `ch` | string | code hash: SHA-256 over the attached definition's pack-normalized body |
-
-### 13.4 Edges, external ids, promises
-
-**edge** (`kind` is `satisfies` `verifies` `refines` `cites` `supersedes`)
-
-| field | type | meaning |
-|---|---|---|
-| `src` | string | id of the source fact (a node or a rule) |
-| `target` | string | the target as written: slug or `ns/id` |
-| `dst` | string | *derived*: id of the resolved target; omitted when dangling |
-| `rev` | int | pinned revision; omitted when unpinned |
-| `desc` | string | inline description; omitted if empty |
-| `suspect` `dangling` | bool | *derived* |
-| `rung` | string | `verifies` only, *derived*: `wrong-source` `never-ran` `failed` `unexercised` `unmeasured` `passing` |
-| `effective` | bool | `supersedes` only, *derived* |
-
-Tags inside plan files never produce edges; they are `promise` facts (§6.1).
-
-```json
-{"col":5,"dst":"req:auth-lockout","ecol":31,"eline":40,"id":"verifies:test:auth::lockout::tests::locks_after_five_failures->auth-lockout","kind":"verifies","line":40,"pack":"rust","path":"src/auth/lockout.rs","rev":2,"rung":"passing","src":"test:auth::lockout::tests::locks_after_five_failures","target":"auth-lockout","v":1}
-```
-
-**`external`**
-
-| field | type | meaning |
-|---|---|---|
-| `ns` | string | namespace |
-| `name` | string | id within the namespace |
-
-Unlocated; one per distinct target. (`refstate`, the networked read, is deferred with `@pin`.)
-
-**`promise`**
-
-| field | type | meaning |
-|---|---|---|
-| `plan` `step` | string | slugs |
-| `word` | string | `req` `design` `decision` `satisfies` `verifies` `refines` `cites` `supersedes` |
-| `target` | string | as written |
-| `met` | bool | *derived* |
-| `by` | string | *derived*: id of the fact that meets it, when met |
-| `out_of_scope` | bool | *derived*: facts that would meet it exist only outside the step's scope; `met` stays false (§6.1) |
-
-Duplicate promissory tags within one step collapse to a single promise fact.
-
-### 13.5 Evidence, law, acks, hunks, tombstones
-
-**`run`** (unlocated)
-
-| field | type | meaning |
-|---|---|---|
-| `test` | string | test fact id; a run that binds to no test fact is not emitted as a fact but is reported by `evidence import` |
-| `status` | string | `pass` `fail` `error` `skip` — several artifacts for one test merge to the worst |
-| `tree` | string | tree key |
-| `sources` | array of string | artifact paths, as imported |
-| `ms` | int | duration, when the artifact reports one |
-
-**`cov`** (unlocated; the site-level join, not raw line data)
-
-| field | type | meaning |
-|---|---|---|
-| `test` | string | test fact id, or `*` for the coverage of the whole run |
-| `site` | string | site fact id |
-| `hit` `of` | int | executable lines inside the site's attached definition that were hit / that exist |
-| `attributed` | bool | `false` iff `test` is `*` |
-| `tree` | string | tree key |
-
-**`judgment`** (unlocated; written by the judge or an external checker into the evidence directory, never the tree)
-
-| field | type | meaning |
-|---|---|---|
-| `rule` | string | rule name |
-| `subject` | string | fact id judged |
-| `verdict` | string | `pass` `fail` |
-| `judge` | string | model or program identifier |
-| `hash` | string | the subject's extent (or commitment-set) hash at judgment; live while it matches — bound to the text, not the tree, so unrelated edits do not void it |
-| `reason` | string | one line |
-
-**`claim`** (unlocated; projected from the ledger for each approved plan on another branch that is neither completed nor abandoned and whose branch existed on the remote at the last fetch)
-
-| field | type | meaning |
-|---|---|---|
-| `plan` | string | plan slug |
-| `branch` | string | branch the approval was written from |
-| `approval` | string | latest approval id |
-| `scope` | array of string | union of approved step scopes |
-| `declares` | array of string | slugs the claim promises to declare |
-| `ts` | string | RFC 3339 timestamp of the approval |
-
-**`decline`** (unlocated; projected from the ledger, live entries only)
-
-| field | type | meaning |
-|---|---|---|
-| `subject` | string | fact id |
-| `hash` | string | extent or commitment-set hash the refusal was bound to |
-| `reason` | string | |
-| `by` `ts` | string | |
-| `entry` | string | ledger entry id |
-
-**`rule`** (located in the manifest)
-
-| field | type | meaning |
-|---|---|---|
-| `name` `origin` `trigger` `expect` | string | as declared |
-| `via` | string | `checked` `judged` `acked` — inferred from `expect` |
-| `scope` | array of string | |
-| `triggered` | bool | *derived* |
-| `obligations` | int | *derived* obligation count |
-
-**`gate`** (located in the manifest, one per `(gate, class)` pair, defaults materialized)
-
-| field | type | meaning |
-|---|---|---|
-| `gate` | string | `turn` `pr` `main` |
-| `class` | string | finding class |
-| `tier` | string | `off` `warn` `block` |
-| `default` | bool | `true` when not set in the manifest |
-
-**`ack`**
-
-| field | type | meaning |
-|---|---|---|
-| `block` | string | id of the block's primary fact: the declaration, site, or test the block belongs to |
-| `target` | string | as written, e.g. `retired cache-ttl` or `ste-docs` |
-| `hash` | string | as written |
-| `live` | bool | *derived* |
-| `void` | string | *derived*: `hash` or `target`; omitted when live |
-| `for` | string | *derived*: id of the finding accepted, or the rule, when live |
-
-**`hunk`** (new-side coordinates; a pure deletion has `line = eline = ` the line after the deletion and `added = 0`)
-
-| field | type | meaning |
-|---|---|---|
-| `added` `removed` | int | |
-| `exempt` | bool | *derived* |
-| `planned` | array of string | *derived*: ids of steps or rules whose scope covers the hunk; empty when no step and no rule covers the hunk |
-
-**`tombstone`** (base coordinates)
-
-| field | type | meaning |
-|---|---|---|
-| `of` | string | the kind of the vanished fact |
-| `was` | string | its id at the base |
-| `slug` `rev` `xh` | | for declarations, so `renamed` can be computed |
-
-### 13.6 Findings and identity
-
-**`finding`** (located at its subject)
-
-| field | type | meaning |
-|---|---|---|
-| `class` | string | §12.8 |
-| `subject` | string | id of the fact the finding is about |
-| `rule` | string | `unmet-rule` only |
-| `detail` | string | one line, human-facing; deterministic |
-| `fix` | string | the exact `@ack` line or a one-line instruction; omitted when none |
-| `ackable` | bool | |
-| `acked` | bool | present only under `--acked` |
-| `tier` `gate` | string | tier under the gate `check` ran with |
-| `mode` | string | `tree` or `diff` |
-
-**Identity.** Ids are what makes baseline subtraction, `@ack` targeting, and SARIF fingerprints work across line shifts, so they are content-derived wherever content exists and positional only as a last resort:
-
-| kind | id | notes |
-|---|---|---|
-| `req` `design` `decision` `plan` | `<kind>:<slug>` | |
-| `step` | `step:<plan>/<step>` | |
-| `test` | `test:<name>` | `name` may contain spaces; quoted in line output |
-| `site` | `site:<path>#<name>` | `name` from the pack's `defs.scm`; fallback `site:<path>@L<line>` is positional and marked with `"positional":true` |
-| edges | `<kind>:<src-id>-><target>` | parse from the right: `target` cannot contain `->` |
-| `external` | `external:<ns>/<id>` | |
-| `promise` | `promise:<step-id>:<word>:<target>` | parse from the right |
-| `run` | `run:<test-id>@<tree>` | |
-| `cov` | `cov:<test-id or *>@<site-id>` | |
-| `judgment` | `judgment:<rule>:<subject-id>@<hash>` | |
-| `claim` | `claim:<plan>@<branch>` | |
-| `decline` | `decline:<entry-id>` | |
-| `rule` | `rule:<name>` | |
-| `gate` | `gate:<gate>/<class>` | |
-| `ack` | `ack:<block-id>:<target>` | block-anchored, not line-anchored |
-| `hunk` | `hunk:<path>:<line>-<eline>` | positional by nature |
-| `tombstone` | `tombstone:<was>` | |
-| `finding` | `finding:<class>:<subject-id>[:<rule>]` | |
-
-An id is stable under: re-indentation, reformatting, line shifts, and re-pinning. It changes under: slug rename (by design — rename is death plus birth), moving a site to a different named definition, and retargeting an edge.
-
-**SARIF mapping** (`--sarif`): `class` → `ruleId`; `tier` → `level` (`warn` → `warning`, `block` → `error`, `off` → not emitted); location → `physicalLocation` with `artifactLocation.uri` and `region`; `id` → `partialFingerprints.sinterId/v1`; mechanical fixes → `fixes[]` with the patch hunk; `detail` → `message.text`; `fix` for ackable findings → a second `message` line.
-
-### 13.7 Ledger entries
-
-The ledger is a JSONL file `ledger.jsonl` in the tree of `refs/sinter/ledger`. Every `approve` run appends lines and commits with the previous tip as parent. Verification (§11.13) checks fast-forward and byte-prefix accretion. Timestamps and authorship are legitimate here — the ledger is history, not a derivation.
-
-Four writers exist: `approve` writes `approval` (with its `approved-*` lines), `decline` writes `decline`, `ledger abandon` writes `abandoned`, and main CI writes `completed` (§6.3). Entry ids are content-derived: `e-` plus the first twelve hex digits of SHA-256 over the entry's canonical bytes with the `id` key absent. Two writers can never mint one id for different entries, so replay after a lost push race is a set union (`ledger push --replay`); accretion is checked per file — every commit's ledger is a byte-prefix extension of its parent's, and ids never repeat. Where order matters (a decline superseded by a later approval), `ts` decides, never file position. When `[ledger].sign` is set, every ledger commit is signed and `ledger verify --signers` enforces the allowlist.
-
-**Every entry** carries `id`, `kind`, `v`, `by`, `ts` (RFC 3339, UTC), `head` (the commit the writer stood on), `branch`, and `tool`.
-
-**`approval`**
-
-| field | type | meaning |
-|---|---|---|
-| `subject` | string | `req:auth-lockout`, `plan:auth-lockout`, … |
-| `rev` `xh` | | declarations only |
-| `csh` | string | plans only: commitment-set hash (§13.3) |
-| `note` | string | omitted if none |
-
-**Revision reservation.** `approve` refuses to write an `approval` for `(slug, rev)` when the ledger already holds an approval for that pair with a different `xh`; the refusal names the earlier entry and branch. An approval with equal `xh` is idempotent and skipped.
-
-**`decline`**
-
-| field | type | meaning |
-|---|---|---|
-| `subject` | string | |
-| `hash` | string | `xh` or `csh` at the moment of refusal |
-| `reason` | string | required |
-
-A decline is live while the subject's current hash equals `hash` and no later approval of the subject exists. It is never deleted; a later approval — at a different hash, or at the same one, the human overriding their own refusal after an `approve` prompt — supersedes it in effect, and `compile history` shows both.
-
-**`completed`**
-
-| field | type | meaning |
-|---|---|---|
-| `subject` | string | `plan:<slug>` |
-| `approval` | string | the approval the plan died under |
-| `merge` | string | merge commit |
-| `report` | string | SHA-256 of the report compiled at completion |
-
-**`abandoned`**
-
-| field | type | meaning |
-|---|---|---|
-| `subject` | string | `plan:<slug>` |
-| `reason` | string | required |
-
-Abandonment kills the claim and every `waiting-on` resting on it; `compile residual-plan` remains the path back for whatever work the plan still had to do.
-
-**`approved-scope`** — one per glob, plan-level when `step` is omitted
-
-| field | type |
+The last line is a hunk outside the scope of every step: the agent
+simplified a store that the plan never mentions. The turn report names
+exactly this hunk as a violation (`unplanned-change`), and a lead
+refuses the hand-back while it stands. The honest ways out are the two
+that the amendment rule allows. Revert the hunk
+(`git checkout src/session/store.rs`), or widen the plan's scope in
+`.plans/auth-lockout.md`, which needs a new approval. Sinter does not
+accept the hunk while the plan says nothing about it.
+
+## 13. JSONL interchange
+
+`spec/jsonl.md` defines the JSONL: its canonical form, the record of
+each kind, and the identity of facts. `spec/ledger.md` defines the
+entries of the ledger, which are JSONL records too.
+
+**A strict canonical form.** Each line is a JSON object in the canonical
+form of RFC 8785. The values are only strings, integers in a safe range,
+booleans, and flat arrays of those. One more shape exists: an array of
+flat objects, whose values are only strings, integers, and booleans. An
+object appears only as a member of such an array. A finding needs this
+shape to carry its related places, each with a label (record
+`related-places`). There are no floats and no nulls, and an absent value
+is a missing key. With these limits, the canonical form is simple to
+write and hard to get subtly wrong: sort the keys, and no number needs a
+rule for its format. So conformance can be byte equality. A string from
+a file keeps the characters that the file holds, with no Unicode
+normalization (record `text-as-written`). The schema version `v` rises
+only for an incompatible change, never for a new optional field.
+
+**Derived fields are in the records.** A record carries fields that
+Sinter derives from the ledger, the evidence, the session, or the
+base, such as `inforce`, `approved`, and the rung of a `@verifies`
+edge. A user of `jq` then needs to derive nothing again. The
+conformance comparison includes these fields, so the fixture of each
+pack holds its own ledger and evidence, and checks the whole path
+from a report of a test runner to the rung of an edge, not only
+parsing. A release of the tool that changes the meaning of a derived
+field must make every pack's fixture again. That cost is intended.
+
+**A declaration records two spans.** The span of a declaration in
+markdown is its tag line, and its extent, the whole section, is a
+separate span. So a tool can mark the tag without marking pages of
+prose.
+
+**Ids come from content.** Three operations need a fact to keep its
+id when lines move: the subtraction of diff mode, the target of an
+`@ack`, and the fingerprint of a finding in SARIF. So an id comes from
+content wherever content exists, such as `req:auth-lockout`, and from
+a position only as a last resort. An id stays the same when the text
+is indented again, formatted again, moved down the file, or pinned
+again. It changes when the slug changes, because a rename is a
+deletion and a declaration. The hash of a commitment set leaves out
+the names of the steps, so a free rename of a step does not change
+it, and a decline bound to it stays live.
+
+**The ledger is history.** The records of a scan are derived, so they
+carry no time and no author. Entries of the ledger record judgments,
+so they carry both. The id of an entry comes from its content, so two
+writers never make one id for two entries, and the recovery from a
+lost push race is a union of sets. Where order matters, the time of
+an entry decides it, never its place in the file. An approval of a
+plan stores the approved commitment set itself, because only the set
+can show that a later set lies inside it. Containment of globs is
+decided by structure and with caution: what the check cannot prove
+counts as a wider scope. So the check errs toward asking the person,
+which is the right direction for an approval.
+
+**SARIF output.** No specification covers SARIF yet. The design maps a
+finding to SARIF as follows:
+
+| finding | SARIF |
 |---|---|
-| `approval` | string |
-| `step` | string (slug), omitted for plan scope |
-| `glob` | string |
+| class | `ruleId` |
+| tier | `level`: `warn` is `warning`, `block` is `error`, and `off` is not written |
+| location | `physicalLocation`, with `artifactLocation.uri` and `region` |
+| id | `partialFingerprints.sinterId/v1` |
+| mechanical fix | `fixes[]`, with the hunk of the patch |
+| detail | `message.text` |
+| related places | `relatedLocations` (record `related-places`) |
+| fix of an ackable finding | a second line of the message |
 
-**`approved-promise`** — one per promise
+## 14. Manifest reference
 
-| field | type |
-|---|---|
-| `approval` | string |
-| `step` | string |
-| `word` `target` | string |
+`spec/manifest.md` defines the manifest `sinter.toml`: its tables,
+its keys, its errors, and the facts that it yields.
 
-**Commitment-set comparison.** The current set `C` and the approved set `C₀` are compared as follows; `approved(plan)` iff every clause holds.
+**Short, with defaults.** Every key with a sensible default is
+absent from a manifest until a project needs another value.
+`sinter init` writes only what it had to choose. The smallest useful
+manifest names the files of the markdown pack, and nothing more.
 
-1. The multiset of `(word, target)` over all promises is equal.
-2. The plan scope is contained: `scope(C) ⊆ scope(C₀)`.
-3. For each promise `p`, matched by `(word, target)` (matching among duplicates is by step slug first, then arbitrary — duplicates are rare and identical in effect), the effective scope of `p`'s step in `C` is contained in the effective scope of its step in `C₀`.
+**One meaning for each name.** Each setting has a name with one
+meaning, and two settings with one effect became one (record
+`manifest-names`). The keys sit in tables by the part of Sinter that
+they act on: `[scan]`, `[check]`, `[plan]`, `[ledger]`, and
+`[evidence]`.
 
-**Glob containment** `G' ⊆ G` is decided structurally and conservatively: every glob in `G'` either appears verbatim in `G`, or is a literal path or path prefix that some glob in `G` matches (checked by matching the literal against the glob), or is `<g>/<segments>` for some `<g>/**` in `G`. Anything the checker cannot prove is treated as widening. This is decidable, deterministic, and errs toward asking the human, which is the correct direction for an approval gate.
+**The agent can edit it, and every change shows.** The manifest is
+inside what the agent can change (section 5.1). The finding
+`config-changed` reports each change of a setting on every diff, and
+nothing can turn it off. So a lowered tier is always visible.
 
-The consequences: renaming steps is free (clause 3 matches by promise, not by step); reordering is free; splitting is free when each fragment keeps or narrows its scope; merging is free when the merged scope equals the originals' and approved otherwise; any promise added or removed fails clause 1. This is the precise form of §6.2.
+**A manifest and a lock file.** The manifest names the release of a
+pack as `MAJOR.MINOR`, which any patch release meets. The lock file
+`sinter.lock`, which the tool writes, holds the exact release and hash
+that CI checks. This is the split of Cargo, for the same reason: the
+manifest stays readable, and the lock stays exact. `pack-mismatch`
+compares the cache with the lock.
 
-**`pin`** (deferred): `{"approval":…,"external":"gh/42","hash":…,"kind":"pin"}`.
+**Each file in one pack.** The manifest names the files of each pack.
+A file in the files of two packs is an error, not a case for a rule of
+precedence.
 
-### 13.8 Header and summary
+**Rules live outside the manifest.** A repository's rules and finding
+classes live in rule files, beside their reasons (section 7, record
+`rule-files`). The manifest holds settings only, and no rule or finding
+class.
 
-**`index`** — first line of every scan; excluded from conformance comparison
+**Three gates.** `turn`, `review`, and `merged` each have a set of
+tiers. Only `review` and `merged` block by machine, in CI. `turn` is
+the scale of severity that the turn report, its exit code, and a lead
+agent read (section 8).
 
-| field | type | meaning |
-|---|---|---|
-| `tree` | string | tree key |
-| `base` | string | resolved base revision |
-| `default_branch` | string | default branch |
-| `ledger` | string | ledger tip commit; omitted if the ref is absent |
-| `evidence` | bool | whether evidence exists for `tree` |
-| `packs` | array of string | `name@version#hash`, from `sinter.lock` |
-| `tool` | string | version |
-| `mode` | string | `tree` or `diff` |
-
-**`summary`** — first line of `status --json`
-
-| field | type |
-|---|---|
-| `plan` `step` | string, omitted if none |
-| `done` | bool |
-| `steps_done` `steps_total` | int |
-| `block` `warn` | int (finding counts under the turn tier set) |
-| `unplanned` | int (hunks) |
-| `obligations` | int (rule obligations) |
-| `evidence_fresh` | bool |
-| `bumps` | int (declarations bumped since base) |
-| `acks_live` `acks_void` | int |
-| `declines` | int (live, in scope) |
-| `claims` `waiting` | int |
-| `code_drift` | int |
-| `law_touched` | bool |
-
-### 13.9 Conformance
-
-A pack's fixture directory contains a tiny project, `expected.jsonl`, a fixture ledger (`ledger.jsonl`), and real runner and coverage artifacts with the coverage of each test. `sinter pack verify` scans the fixture with the fixture ledger and evidence, drops the header line, and requires byte equality with `expected.jsonl`. Because derived fields are included, the fixture exercises binding and the evidence ladder end to end, not just parsing. A tool release that changes any derived field's semantics must regenerate every pack's fixture, which is the intended friction.
-
-## 14. Manifest Reference
-
-`sinter.toml` is pure configuration, and short. Everything with a sensible default is absent; `sinter init` writes only what it had to choose. The whole file is inside the boundary (§5.1): edits to `[gates]`, `[findings]`, `[rules]`, and `approve` are `law-touched` on any diff, always.
-
-```toml
-enforce    = "warn"                        # warn-only: nothing blocks or exits 1 until this line goes or a class is promoted below (§8)
-approve    = ["req"]                       # kinds the ledger gates; kinds not listed count approved (§12.8)
-historical = ["docs/devlog/**"]            # citations resolve and render; no findings (.plans/*.log.md is built-in)
-exempt     = ["Cargo.lock", "**/generated/**"]   # exempt from scope confinement; counted in the report
-
-[languages]                                # constraints here; exact versions and hashes in sinter.lock
-rust   = "1.4"
-python = "1.2"
-
-[languages.markdown]                       # long form: override the pack's default file set
-version = "1.0"
-files   = ["docs/**/*.md", ".plans/*.md"]  # the pack's default is **/*.md
-
-[namespaces]                               # namespace → anchored id pattern; gh is built in
-jira = "[A-Z]+-[0-9]+"
-
-[gates.turn]                               # per-class promotion past the cap; omitted → shipped default (§12.8)
-unplanned-change = "block"
-unbumped      = "block"
-[gates.pr]
-unexercised   = "block"
-
-[rules.ste-docs]                           # standing law (§7)
-origin    = "ste-adoption"
-trigger   = "kind(req|design) ^ path(docs/**) ^ changed(base)"
-expect    = "acked(ste-docs)"                # acknowledged: an @ack at the site
-
-[rules.issue-linked]
-origin    = "issues-are-truth"
-trigger   = "kind(req) ^ changed(base)"
-expect    = "src(out(cites, kind(req)) ^ in(cites, external(gh/*)))"   # checked: the graph says so
-
-[findings.decision-uncited]                # a repo-defined finding; without tiers it is query-only
-expr    = "kind(decision) ^ inforce(all) - dst(in(cites, all))"
-detail  = "decision in force that nothing cites"
-ackable = true
-tiers   = { pr = "warn" }
-```
-
-**What the packs own.** A pack's descriptor declares the files it governs (`files = ["**/*.rs"]`), so the manifest never maps paths to packs. `[languages.<name>]` may narrow or replace a pack's `files` — the markdown case above, where governing every README in the tree is not wanted — and may add `exclude`. A file matched by two packs is a manifest load error, not a precedence rule.
-
-**The lockfile.** `sinter.lock` is tool-owned, written by `sinter pack add` and `sinter init`, and holds the exact version and hash for every language in `[languages]`. Versions in the manifest are constraints (`"1.4"` means `1.4.x`); the lock is the truth CI verifies. This is Cargo's split, adopted for the same reason: the manifest stays readable and the lock stays exact. `pack-mismatch` compares the cache against the lock.
-
-**Saved definitions** are `[findings.<class>]` entries; a finding with no `tiers` is evaluated by `query` and never by `check`, which is what a reusable definition is. There is no separate `[defs]` table.
-
-**Tier sets** are three — `turn`, `pr`, `main`. Only `pr` and `main` block mechanically, in CI; `turn` is the severity vocabulary the report, its exit code, and orchestrators consult (§8). `check` and the PostToolUse hook always report everything.
-
-**Tuning keys** exist but are not in the example; each has a default that should be right for most repositories:
-
-| key | default | meaning |
-|---|---|---|
-| `default-branch` | `"main"` | branch whose merge-base is the default `--base` |
-| `brief.budget` | `12000` | bytes; the turn-level brief uses a quarter of it |
-| `brief.why_budget` | `2000` | bytes; the origin-decision extent attached to an `unmet-rule` block (§7) |
-| `evidence.require_attribution` | `false` | `true`: rung `unmeasured` never meets a `@verifies` promise |
-| `ledger.sign`, `ledger.signers` | `false`, `[]` | signed ledger commits and the allowlist (§6.4) |
-| `refuse_env` | `["CLAUDECODE"]` | agent markers that make `approve`/`decline` refuse |
-| `rules.<name>.scope` | `[]` | where the edits that clear a rule's obligations land (§7); only needed when outside the plan's scope |
-| `rules.<name>.tiers` | from `[gates]` `unmet-rule` | per-gate override for one rule's obligations |
-
-Deliberately absent: a hooks table (hook registration lives in the harness's own settings file, which `init` writes; there is nothing to configure twice), a journal switch (a journal exists iff the file does), an evidence directory (fixed at `.sinter/evidence`), the ledger ref (fixed), a schema version (assumed `1` until a `2` exists), sampling of acknowledged obligations by the judge (waits for `sinter judge`), a classification-tag table (an earlier draft's `compile spec --tag` — a selection nobody has asked for yet), and per-kind declaration paths (`[declare]` in an earlier draft — a warn-tier nicety that cost a table and two finding classes; if a repo wants it, it is one `[findings]` entry away: `kind(req) - path(docs/requirements/**)`).
+**Deliberately absent.** The manifest has no table for hooks: the
+settings file of the harness holds the hooks, and `init` writes it, so
+nothing needs to be set twice. It has no switch for journals, because a
+journal exists when its file exists. The folder of evidence
+(`.sinter/evidence`) and the ledger ref are fixed. Some settings wait
+for the work that needs them: the budgets of the brief (12,000 bytes, a
+quarter of that for the brief on each turn, and 2,000 bytes for the
+origin of an unmet rule), the signatures of the ledger, and the share of
+acknowledged obligations that the judge samples. There is no table of
+tags for the classification of items, which nobody has asked for. A
+check that declarations of a kind live under one path needs no table
+either: it is one finding class, such as
+`kind(req) - path(docs/requirements/**)`. `plan.locations` is a
+different setting: it says where a promised declaration can be met
+(section 6.1).
