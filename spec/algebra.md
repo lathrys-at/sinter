@@ -107,8 +107,11 @@ atom     := '(' expr ')'
 args     := arg ( ',' ws? arg )*
 arg      := expr | kinds | name | glob | revspec
 kinds    := word ( '|' word )*
-name     := slugpat | slugpat '/' slugpat | testpat
+name     := slugpat | fullform | ( slugpat | fullform ) '/' slugpat
+          | testpat
+fullform := slugpat '@' hex6
 slugpat  := [A-Za-z0-9*]+ ( [-_.] [A-Za-z0-9*]+ )*
+hex6     := [0-9a-f]{6}
 testpat  := any sequence of characters other than ',' and ')' ;
             quote with "…" otherwise; '*' globs
 glob     := a glob of manifest.md section 7.1; quote with "…" if it
@@ -132,7 +135,10 @@ Lexical rules:
   type that it accepts in each position (section 6). A `name` argument
   can contain `*` as a glob. A `name` matches a slug only when the
   case of each letter is equal ([vocabulary.md](vocabulary.md) section
-  4.1). A `kinds` argument can be a category name.
+  4.1). A `name` of the form `fullform` is the full form of a plan
+  ([vocabulary.md](vocabulary.md) section 4.3); only `plan(n)` takes
+  it, and `step(p/s)` takes it as `p`. A `kinds` argument can be a
+  category name.
 - **Names are resolved after substitution.** A saved definition's
   parameters are substituted as text before the expression is parsed
   (section 7). A parameter can therefore stand for an expression, a
@@ -182,8 +188,9 @@ declaration. "Declaration" means a `req`, `design`, or `decision`.
 |---|---|
 | `all` | `U` |
 | `kind(K)` | facts whose kind or category is in `K` |
-| `req(n)` `design(n)` `decision(n)` `plan(n)` `rule(n)` | facts of that kind whose slug or name matches `n` |
-| `step(p/s)` | steps whose plan slug matches `p` and step slug matches `s` |
+| `req(n)` `design(n)` `decision(n)` `rule(n)` | facts of that kind whose slug or name matches `n` |
+| `plan(n)` | when `n` is a full form `<slug>@<id>`: the plan with that full form, open or closed. Otherwise: the open plans whose slug matches `n` ([vocabulary.md](vocabulary.md) section 4.3) |
+| `step(p/s)` | steps whose step slug matches `s`, of the plans that `plan(p)` gives |
 | `test(n)` | test nodes whose full name matches `n` ([packs.md](packs.md) section 8.3) |
 | `external(ns/id)` | external facts matching |
 | `path(g)` | located facts whose `path` matches `g` |
@@ -231,7 +238,7 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 
 | function | accepts | keeps `f ∈ S` iff |
 |---|---|---|
-| `inforce(S)` | any | For a declaration: `f` carries no status tag and no effective `@supersedes` edge points at `f` ([vocabulary.md](vocabulary.md) section 8.1). A member of a cycle of `@supersedes` edges that carries no status tag is in force, and the tool reports the `cycle` finding. For a plan, for its steps, and for its promises: the plan is open — the ledger holds no `completed` entry and no `abandoned` entry for it. The predicate keeps every fact of every other kind |
+| `inforce(S)` | any | For a declaration: `f` carries no status tag and no effective `@supersedes` edge points at `f` ([vocabulary.md](vocabulary.md) section 8.1). A member of a cycle of `@supersedes` edges that carries no status tag is in force, and the tool reports the `cycle` finding. For a plan, for its steps, and for its promises: the plan is open — the ledger holds no `completed` entry and no `abandoned` entry for its full form. The predicate keeps every fact of every other kind |
 | `approved(S)` | any | A kind needs approval when `ledger.approval-required` lists it ([manifest.md](manifest.md) section 11.1). The predicate keeps `f` when any one of these conditions holds: `f` is a declaration of a kind that needs approval, and the ledger holds an approval for `f`'s `(slug, rev, xh)`; `f` is a declaration of a kind that does not need approval; `f` is a plan, the kind `plan` needs approval, and `f`'s current commitment set is approved against the plan's latest approved set ([ledger.md](ledger.md) section 11); `f` is a plan, and the kind `plan` does not need approval; `f` is a step of an approved plan; `f` is a fact of any other kind |
 | `bumped(S)` | node | `f` is a declaration, and the fact set of `B` holds no declaration with the slug of `f`, or holds one with a smaller revision. The compare is by slug, across the kinds that share the namespace ([vocabulary.md](vocabulary.md) section 9) |
 | `declined(S)` | node | `f` is a declaration or a plan with a live decline: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
@@ -493,8 +500,8 @@ column to `warn`, at every gate. `sinter init` writes
 | `parse-error` | file | *engine*: a governed file with a parse failure ([packs.md](packs.md) section 5.2). In a file of a fetched pack, the file's facts are absent. In a markdown file, the facts stay, one finding sits at each error, and the tier of such a finding is `warn` where the class's tier is `block` | tree | · | · | warn, block, block |
 | `typo-tag` | line | *engine*: a tag line whose tag word ([vocabulary.md](vocabulary.md) section 3.1) is not in the vocabulary and lies within Damerau–Levenshtein distance 2 of a word of the vocabulary. The pack's foreign vocabulary is exempt. The fix writes the nearest word of the vocabulary in place of the tag word. When two words are equally near, it writes the first in byte order, as [manifest.md](manifest.md) section 4.2 does for keys | tree | · | F | warn, warn, warn |
 | `ignored-tag` | line | *engine*: in markdown, a paragraph that a section or a list item holds directly, that is not the first paragraph of that section or list item, that no block quote holds, and whose first line is a tag line. The scanner reads no tag in it ([packs.md](packs.md) section 7.2) | tree | · | · | warn, warn, warn |
-| `invalid-target` | tag | *engine*: a tag target that fails its pattern: a slug that fails the slug pattern, or an external id whose namespace is undeclared or whose id fails the pattern of its namespace ([vocabulary.md](vocabulary.md) sections 4.1 and 4.2). Such a tag target is never `dangling` | tree | · | · | block, block, block |
-| `duplicate` | tag or line | *engine*: two slugs in one namespace that are equal, or that differ only in case ([vocabulary.md](vocabulary.md) section 4.1): two declarations; two plans (closed plans included); or two steps of one plan. Order the facts of one such group by the byte order of their paths, and then by their lines. Each fact after the first gives one finding. Its subject is the tag of that fact or, for a step, the line of the step's heading ([jsonl.md](jsonl.md) section 9) | tree | · | · | block, block, block |
+| `invalid-target` | tag | *engine*: a tag target that fails its pattern: a slug that fails the slug pattern, an external id whose namespace is undeclared or whose id fails the pattern of its namespace, or a tag target of `@plan` that fails the rules of the full form ([vocabulary.md](vocabulary.md) sections 4.1, 4.2, and 4.3). Such a tag target is never `dangling` | tree | · | · | block, block, block |
+| `duplicate` | tag or line | *engine*: two slugs in one namespace that are equal, or that differ only in case ([vocabulary.md](vocabulary.md) section 4.1): two declarations; two open plans; or two steps of one plan. Two plans of any state with one full form ([vocabulary.md](vocabulary.md) section 4.3) are also a group. Order the facts of one such group by the byte order of their paths, and then by their lines. Each fact after the first gives one finding. Its subject is the tag of that fact or, for a step, the line of the step's heading ([jsonl.md](jsonl.md) section 9). A plan that both rules of plans report gives one finding, by the rule of the full form. The `detail` names the rule that applies | tree | · | · | block, block, block |
 | `scope-outside-plan` | step | *engine*: a step whose `@scope` is not contained in its plan's `@scope`. The tool decides containment on the plain globs ([manifest.md](manifest.md) section 7.2), by the rule of glob containment of [ledger.md](ledger.md) section 11: each plain glob of the step must be contained in a plain glob of the plan. A `!` glob of the step only narrows the step's scope, so it never breaks containment | tree | · | · | block, block, — |
 | `misplaced-plan` | tag | *engine*: a `@plan` tag that does not stand in the first tag block of a file under `.plans/`: a `@plan` outside `.plans/**`, or a `@plan` in a later block of a file under `.plans/` ([vocabulary.md](vocabulary.md) section 10.1) | tree | · | · | block, block, block |
 | `unpinned` | edge | *engine*: a `satisfies`, `verifies`, `refines`, or `supersedes` edge without a revision | tree | · | F | block, block, block |
@@ -521,7 +528,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `unmet-promise` | promise | `unmet(active)` where `unmet(p) = promises($p) - met(promises($p))` — incompleteness; enforced only by `status --done` | tree | · | · | off, off, — |
 | `promise-out-of-scope` | promise | *engine*: a promise met only by facts outside its step's scope | tree | · | · | warn, warn, — |
 | `unverified-promise` | promise | *engine*: a promised `req` or `design` with no promised `verifies` of it in the same plan | tree | · | · | warn, warn, — |
-| `promise-collision` | promise | *engine*: a promised declaration whose slug a claim promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise with the same plan, step, word, and target. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered. A tool that does not read the ledger has no claims, so it reports only the second case | diff | · | · | block, block, — |
+| `promise-collision` | promise | *engine*: a promised declaration whose slug a claim promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise of the same plan with the same step, word, and target. A plan of `B` and a plan of `T` are the same plan when their full forms are equal ([vocabulary.md](vocabulary.md) section 4.3), or when the plan of `B` has no plan id and the two have the same slug and the same path. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered, and a plan id added to a plan makes none of its promises new. A tool that does not read the ledger has no claims, so it reports only the second case | diff | · | · | block, block, — |
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets. Two scopes intersect when a plain glob of one contains a plain glob of the other, or is contained in it, by the rule of glob containment of [ledger.md](ledger.md) section 11 | tree | · | · | warn, warn, — |
 | `waiting-on` | promise | `waiting(promises(kind(plan)))` — reported in place of `dangling`, with the claim and step named | tree | · | · | off, warn, — |
 | `branch-overlap` | step | *engine*: a step's scope intersects the scope of another branch's claim | tree | · | · | warn, warn, — |
@@ -611,8 +618,8 @@ is complete and whose tests do not exist yet:
 
 ```
 $ sinter query 'promises(active) - met(promises(active))'
-.plans/auth-lockout.md:19:1: promise auth-lockout/verify-against-the-reqs verifies auth-lockout
-.plans/auth-lockout.md:20:1: promise auth-lockout/verify-against-the-reqs verifies lockout-notify
+.plans/auth-lockout.md:19:1: promise auth-lockout@3f2a9c/verify-against-the-reqs verifies auth-lockout
+.plans/auth-lockout.md:20:1: promise auth-lockout@3f2a9c/verify-against-the-reqs verifies lockout-notify
 
 $ sinter query 'untraced(verifies)'
 docs/auth.md:12:1: req auth-lockout v2
