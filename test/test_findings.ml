@@ -140,6 +140,37 @@ let invalid_target_names_why_the_target_fails () =
        not a valid slug";
     ]
 
+let invalid_target_names_the_part_of_a_plan_target_that_fails () =
+  let plan path target = (path, "# P\n\n@plan " ^ target ^ "\n") in
+  check Finding_class.Invalid_target
+    [
+      plan ".plans/a.md" "a@3F2A9C";
+      plan ".plans/b.md" "b@3f2a9";
+      plan ".plans/c.md" "c@3f2a9c0";
+      plan ".plans/d.md" "d@3f2a9c@012345";
+      plan ".plans/e.md" "e@";
+      plan ".plans/f.md" "-f@3f2a9c";
+      plan ".plans/g.md" "g@3f2a9c";
+      plan ".plans/h.md" "@3f2a9c";
+    ]
+    [
+      ".plans/a.md:3:1-3:15 | finding:invalid-target:tag:.plans/a.md@L3C1 | \
+       the plan id after the @ in a@3F2A9C is not six lowercase hex digits";
+      ".plans/b.md:3:1-3:14 | finding:invalid-target:tag:.plans/b.md@L3C1 | \
+       the plan id after the @ in b@3f2a9 is not six lowercase hex digits";
+      ".plans/c.md:3:1-3:16 | finding:invalid-target:tag:.plans/c.md@L3C1 | \
+       the plan id after the @ in c@3f2a9c0 is not six lowercase hex digits";
+      ".plans/d.md:3:1-3:22 | finding:invalid-target:tag:.plans/d.md@L3C1 | \
+       the plan id after the @ in d@3f2a9c@012345 is not six lowercase hex \
+       digits";
+      ".plans/e.md:3:1-3:9 | finding:invalid-target:tag:.plans/e.md@L3C1 | the \
+       plan id after the @ in e@ is not six lowercase hex digits";
+      ".plans/f.md:3:1-3:16 | finding:invalid-target:tag:.plans/f.md@L3C1 | -f \
+       is not a valid slug";
+      ".plans/h.md:3:1-3:14 | finding:invalid-target:tag:.plans/h.md@L3C1 | \
+       @3f2a9c has no slug before the @";
+    ]
+
 let misplaced_plan_sits_outside_the_first_block_of_a_plan_file () =
   check Finding_class.Misplaced_plan
     [
@@ -172,14 +203,34 @@ let duplicate_sits_at_each_later_member_of_a_group () =
       (".plans/p.md", "# P\n\n@plan p\n");
     ]
     [
-      ".plans/q.md:3:1-3:8 | finding:duplicate:tag:.plans/q.md@L3C1 | the slug \
-       p comes first at .plans/p.md:3";
+      ".plans/q.md:3:1-3:8 | finding:duplicate:tag:.plans/q.md@L3C1 | an open \
+       plan with the slug p comes first at .plans/p.md:3";
       ".plans/q.md:9:1-9:8 | finding:duplicate:line:.plans/q.md@L9 | the slug \
        one comes first at .plans/q.md:5";
       "docs/b.md:3:1-3:13 | finding:duplicate:tag:docs/b.md@L3C1 | the slug \
        auth comes first at docs/a.md:3";
       "docs/b.md:7:1-7:13 | finding:duplicate:tag:docs/b.md@L7C1 | the slug \
        auth comes first at docs/a.md:3";
+    ]
+
+let duplicate_of_plans_names_the_full_form_or_the_open_slug () =
+  let plan path target = (path, "# P\n\n@plan " ^ target ^ "\n") in
+  check Finding_class.Duplicate
+    [
+      plan ".plans/a.md" "up@3f2a9c";
+      plan ".plans/b.md" "up@3f2a9c";
+      plan ".plans/c.md" "Up@012345";
+      plan ".plans/d.md" "down";
+      plan ".plans/e.md" "down";
+      plan ".plans/f.md" "side@012345";
+    ]
+    [
+      ".plans/b.md:3:1-3:16 | finding:duplicate:tag:.plans/b.md@L3C1 | a plan \
+       with the full form up@3f2a9c comes first at .plans/a.md:3";
+      ".plans/c.md:3:1-3:16 | finding:duplicate:tag:.plans/c.md@L3C1 | an open \
+       plan with the slug up comes first at .plans/a.md:3";
+      ".plans/e.md:3:1-3:11 | finding:duplicate:tag:.plans/e.md@L3C1 | a plan \
+       with the full form down comes first at .plans/d.md:3";
     ]
 
 let unpinned_pastes_the_revision_of_the_target () =
@@ -1382,8 +1433,12 @@ let tests =
       invalid_target_names_why_the_target_fails;
     case "misplaced-plan sits outside the first block of a plan file"
       misplaced_plan_sits_outside_the_first_block_of_a_plan_file;
+    case "invalid-target names the part of a plan target that fails"
+      invalid_target_names_the_part_of_a_plan_target_that_fails;
     case "duplicate sits at each later member of a group"
       duplicate_sits_at_each_later_member_of_a_group;
+    case "duplicate of plans names the full form or the open slug"
+      duplicate_of_plans_names_the_full_form_or_the_open_slug;
     case "unpinned pastes the revision of the target"
       unpinned_pastes_the_revision_of_the_target;
     case "dangling names the spelling that differs in case"

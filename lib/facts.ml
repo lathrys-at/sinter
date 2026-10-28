@@ -144,6 +144,7 @@ type step = {
 
 type plan = {
   slug : string;
+  id : Plan_target.id option;
   path : string;
   span : Markdown.span;
   title : string option;
@@ -187,6 +188,7 @@ type t = {
   sites : site list;
   acks : ack list;
   plans : plan list;
+  plan_files : string list;
   lookups : lookups Lazy.t;
   block_hashes : string array Paths.t Lazy.t;
   block_acks : ack list Blocks.t Lazy.t;
@@ -404,8 +406,8 @@ let promises_of (document : Markdown.t) indices =
 
 let plan_file ~path (document : Markdown.t) plan_index =
   let plan_tag = document.tags.(plan_index) in
-  match plan_tag.target with
-  | Some slug when Slug.is_valid slug ->
+  match Option.map Plan_target.parse plan_tag.target with
+  | Some (Ok { slug; id }) ->
       let first_block = document.blocks.(0).tags in
       let later =
         List.filter
@@ -439,6 +441,7 @@ let plan_file ~path (document : Markdown.t) plan_index =
       Some
         {
           slug;
+          id;
           path;
           span = plan_tag.span;
           title =
@@ -451,7 +454,7 @@ let plan_file ~path (document : Markdown.t) plan_index =
               (List.init (Array.length document.sections) Fun.id);
           tag = plan_tag;
         }
-  | Some _ | None -> None
+  | Some (Error _) | None -> None
 
 let compare_declarations (a : declaration) (b : declaration) =
   compare
@@ -593,7 +596,7 @@ let make manifest files =
     List.partition_map
       (fun (path, document) ->
         match plan_tag ~path document with
-        | Some index -> Right (plan_file ~path document index)
+        | Some index -> Right (path, plan_file ~path document index)
         | None -> Left (path, document))
       files
   in
@@ -615,7 +618,8 @@ let make manifest files =
     List.map (fun edge -> resolve edge.target_text) edges
   in
   let retirers = retirers manifest declarations edges targets in
-  let plans = List.filter_map Fun.id plans in
+  let plan_files = List.map fst plans in
+  let plans = List.filter_map snd plans in
   let acks = List.rev acks in
   {
     manifest;
@@ -628,6 +632,7 @@ let make manifest files =
     sites = List.rev sites;
     acks;
     plans;
+    plan_files;
     lookups = lazy (lookups declarations edges targets plans);
     block_hashes =
       lazy
@@ -883,7 +888,11 @@ let standing facts plan step =
       invalid_arg "Facts.standing: the promise is not one of this step";
     standing_within facts ~in_scope promise
 
-let step_id (plan : plan) (step : step) = "step:" ^ plan.slug ^ "/" ^ step.slug
+let full_form (plan : plan) =
+  Plan_target.to_string { slug = plan.slug; id = plan.id }
+
+let plan_fact_id plan = "plan:" ^ full_form plan
+let step_id plan (step : step) = "step:" ^ full_form plan ^ "/" ^ step.slug
 
 let promise_id plan step (promise : promise) =
   String.concat ":"
@@ -892,8 +901,7 @@ let promise_id plan step (promise : promise) =
 let plan_records facts ~changed plan =
   let required = Manifest.approval_required facts.manifest in
   let plan_record =
-    located ~kind:"plan" ~id:("plan:" ^ plan.slug) ~path:plan.path
-      ~span:plan.span
+    located ~kind:"plan" ~id:(plan_fact_id plan) ~path:plan.path ~span:plan.span
       ([
          ("slug", Jsonl.string plan.slug);
          ("scope", Jsonl.strings plan.scope);
@@ -903,6 +911,10 @@ let plan_records facts ~changed plan =
          ("csh", Jsonl.string (commitment_hash plan));
          ("declined", Jsonl.bool false);
        ]
+      @ optional "plan_id"
+          (Option.map
+             (fun (id : Plan_target.id) -> Jsonl.string (id :> string))
+             plan.id)
       @ optional "title" (Option.map Jsonl.string plan.title))
   in
   let step_records (step : step) =
@@ -929,7 +941,7 @@ let plan_records facts ~changed plan =
     in
     located ~kind:"step" ~id:step_id ~path:plan.path ~span:step.span
       [
-        ("plan", Jsonl.string plan.slug);
+        ("plan", Jsonl.string (full_form plan));
         ("slug", Jsonl.string step.slug);
         ("title", Jsonl.string step.title);
         ("scope", Jsonl.strings scope);
@@ -946,7 +958,7 @@ let plan_records facts ~changed plan =
              ~id:(promise_id plan step promise)
              ~path:plan.path ~span:promise.span
              ([
-                ("plan", Jsonl.string plan.slug);
+                ("plan", Jsonl.string (full_form plan));
                 ("step", Jsonl.string step.slug);
                 ("word", Jsonl.string promise.word);
                 ("target", Jsonl.string promise.target);
@@ -1004,7 +1016,7 @@ let iter_identities ?(within = fun _ -> true) facts f =
     facts.acks;
   List.iter
     (fun plan ->
-      at "plan" ("plan:" ^ plan.slug) plan.path plan.span;
+      at "plan" (plan_fact_id plan) plan.path plan.span;
       List.iter
         (fun (step : step) ->
           at "step" (step_id plan step) plan.path step.span;
@@ -1088,6 +1100,7 @@ let edges facts = List.combine facts.edges facts.targets
 let resolve facts = resolver facts.manifest facts.declarations
 let acks facts = facts.acks
 let plans facts = facts.plans
+let plan_files facts = facts.plan_files
 
 let covering facts =
   let scopes =

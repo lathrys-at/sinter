@@ -4,11 +4,13 @@
 (** The facts of the markdown files of one tree, as JSON Lines records.
 
     A file is a plan file when its path starts with [.plans/] and its first tag
-    block holds a tag of the word [plan]. A plan file gives a [plan] record, a
-    [step] record for each step, and a [promise] record for each promise. Every
-    other file gives a record for each declaration of the kinds [req], [design],
-    and [decision], each edge, each site, and each ack. Each distinct external
-    id that an edge names and that resolves gives one [external] record.
+    block holds a tag of the word [plan]. A plan file whose tag target of [plan]
+    {!Plan_target.parse} reads gives a [plan] record, a [step] record for each
+    step, and a [promise] record for each promise; any other plan file gives no
+    record. Every other file gives a record for each declaration of the kinds
+    [req], [design], and [decision], each edge, each site, and each ack. Each
+    distinct external id that an edge names and that resolves gives one
+    [external] record.
 
     The records take the values that hold when the ledger, the evidence, and the
     session are absent: every plan is open, no plan and no step is active,
@@ -155,6 +157,7 @@ type step = private {
 
 type plan = private {
   slug : string;
+  id : Plan_target.id option;  (** the plan id, when the tag target has one *)
   path : string;
   span : Markdown.span;  (** the tag line of [@plan] *)
   title : string option;
@@ -171,8 +174,15 @@ val declaration_id : declaration -> string
 val edge_id : edge -> string
 (** [edge_id edge] is [<word>:<src>-><tag target>]. *)
 
+val full_form : plan -> string
+(** [full_form plan] is the full form of [plan]: its slug, then [@] and its plan
+    id when it has one. *)
+
+val plan_fact_id : plan -> string
+(** [plan_fact_id plan] is [plan:<full form>]. *)
+
 val step_id : plan -> step -> string
-(** [step_id plan step] is [step:<plan slug>/<step slug>]. *)
+(** [step_id plan step] is [step:<full form of the plan>/<step slug>]. *)
 
 val promise_id : plan -> step -> promise -> string
 (** [promise_id plan step promise] is [promise:<step id>:<word>:<tag target>].
@@ -233,6 +243,12 @@ val block_acks : t -> string -> int -> ack list
 
 val plans : t -> plan list
 (** [plans facts] is every plan, in the order of the files of {!make}. *)
+
+val plan_files : t -> string list
+(** [plan_files facts] is the path of each plan file of {!make}, in the order of
+    the files: the path of each plan of {!plans}, and the path of each plan file
+    that gives no plan because {!Plan_target.parse} refuses the tag target of
+    its tag [plan], or because that tag has no target. *)
 
 val effective_scope : plan -> step -> string list
 (** [effective_scope plan step] is the globs of the [@scope] of [step], or of

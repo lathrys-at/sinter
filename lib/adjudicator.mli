@@ -59,8 +59,11 @@ val classes :
       [findings] about such an edge leaves the result.
     - [promise-collision]: a promise of a declaration of the kind [req],
       [design], or [decision] whose tag target is the slug of a declaration of
-      the base of one of these kinds, when the base has no promise with the same
-      plan, step, word, and tag target. The detail names the first such
+      the base of one of these kinds, when the base has no promise of the same
+      plan with the same step slug, word, and tag target. A plan of the base is
+      the same plan as a plan of the working tree when their {!Facts.full_form}s
+      are equal, or when the plan of the base has no plan id and the two have
+      the same slug and the same path. The detail names the first such
       declaration of the base in the order of their paths and lines. The ledger
       is absent, so no claim counts.
 

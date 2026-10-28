@@ -181,9 +181,7 @@ module Paths = Map.Make (String)
 
 let configuration (tree : Scan.tree) (compared : Scan.compared) facts =
   let read base =
-    let plan_files =
-      List.map (fun (plan : Facts.plan) -> plan.path) (Facts.plans facts)
-    in
+    let plan_files = Facts.plan_files facts in
     Config_change.findings
       ~plan_file:(fun path -> List.mem path plan_files)
       ~location:tree.location

@@ -373,6 +373,28 @@ let a_new_promise_of_a_slug_of_the_base_collides () =
               @req free\n" );
        ])
 
+let collisions ~base:(base_path, base_target) (path, target) =
+  let plan target =
+    "# P\n\n@plan " ^ target ^ "\n@scope docs/**\n\n## S\n\n@req taken\n"
+  in
+  let declared = ("docs/a.md", "# A\n\n@req taken v1\n") in
+  List.length
+    (compared
+       [ declared; (base_path, plan base_target) ]
+       [ declared; (path, plan target) ])
+
+let the_same_plan_across_the_base_holds_its_promises () =
+  Alcotest.(check (list int))
+    "the counts of promise-collision" [ 0; 0; 0; 1; 1; 1 ]
+    [
+      collisions ~base:(".plans/p.md", "p") (".plans/p.md", "p@3f2a9c");
+      collisions ~base:(".plans/p.md", "p@3f2a9c") (".plans/q.md", "p@3f2a9c");
+      collisions ~base:(".plans/p.md", "p") (".plans/q.md", "p");
+      collisions ~base:(".plans/p.md", "p") (".plans/q.md", "p@3f2a9c");
+      collisions ~base:(".plans/p.md", "p@3f2a9c") (".plans/p.md", "p@012345");
+      collisions ~base:(".plans/p.md", "p@3f2a9c") (".plans/p.md", "p");
+    ]
+
 let text_gen =
   Gen.(
     let* words =
@@ -413,10 +435,12 @@ let file_gen =
 let plan_gen =
   Gen.(
     map
-      (fun slug ->
-        Printf.sprintf "# P\n\n@plan p\n@scope docs/**\n\n## S\n\n@req %s\n"
-          slug)
-      (oneof_list [ "a"; "b"; "c" ]))
+      (fun (plan, slug) ->
+        Printf.sprintf "# P\n\n@plan %s\n@scope docs/**\n\n## S\n\n@req %s\n"
+          plan slug)
+      (pair
+         (oneof_list [ "p"; "p@3f2a9c"; "p@012345" ])
+         (oneof_list [ "a"; "b"; "c" ])))
 
 type version =
   | Same of string
@@ -674,6 +698,8 @@ let tests =
       a_slug_with_two_tombstones_leaves_the_edge_dangling;
     case "a new promise of a slug of the base collides"
       a_new_promise_of_a_slug_of_the_base_collides;
+    case "the same plan across the base holds its promises"
+      the_same_plan_across_the_base_holds_its_promises;
     a_tree_like_its_base_has_no_finding;
     a_base_without_the_same_files_gives_the_same_classes;
     case "renamed_to names the new declaration of the fix"

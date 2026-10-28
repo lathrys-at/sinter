@@ -74,12 +74,11 @@ let ignored_tags documents =
         document.unread)
     documents
 
+let not_a_slug slug =
+  Some (Printf.sprintf "%s is not a valid slug" slug, "not a valid slug")
+
 let target_problem manifest ~word target =
-  let slug () =
-    if Slug.is_valid target then None
-    else
-      Some (Printf.sprintf "%s is not a valid slug" target, "not a valid slug")
-  in
+  let slug () = if Slug.is_valid target then None else not_a_slug target in
   if List.mem word citation_words then
     match String.index_opt target '/' with
     | None -> slug ()
@@ -108,7 +107,21 @@ let target_problem manifest ~word target =
                 ( Printf.sprintf
                     "%s does not match the id pattern of the namespace %s" id ns,
                   "does not match the id pattern" ))
-  else if List.mem word ("plan" :: declaration_words) then slug ()
+  else if String.equal word "plan" then
+    match Plan_target.parse target with
+    | Ok _ -> None
+    | Error (Plan_target.Invalid_slug "") ->
+        Some
+          ( Printf.sprintf "%s has no slug before the @" target,
+            "no slug before the @" )
+    | Error (Plan_target.Invalid_slug slug) -> not_a_slug slug
+    | Error (Plan_target.Invalid_id _) ->
+        Some
+          ( Printf.sprintf
+              "the plan id after the @ in %s is not six lowercase hex digits"
+              target,
+            "not a valid plan id" )
+  else if List.mem word declaration_words then slug ()
   else None
 
 let invalid_targets manifest documents =
@@ -176,6 +189,41 @@ let first_declared = "first declared here"
 let comes_first slug path line =
   Printf.sprintf "the slug %s comes first at %s:%d" slug path line
 
+let is_open (_ : Facts.plan) = true
+
+let plan_duplicates facts =
+  let by_place (a : Facts.plan) (b : Facts.plan) =
+    compare (a.path, a.span.start.line) (b.path, b.span.start.line)
+  in
+  let plans = Facts.plans facts in
+  let full =
+    later_of_groups ~key:Facts.full_form ~order:by_place plans
+    |> List.map (fun ((plan : Facts.plan), (first : Facts.plan)) ->
+        ( plan,
+          ( first,
+            Printf.sprintf "a plan with the full form %s comes first at %s:%d"
+              (Facts.full_form first) first.path first.span.start.line ) ))
+  in
+  let reported (plan : Facts.plan) =
+    List.exists (fun (p, _) -> p == plan) full
+  in
+  let slug =
+    later_of_groups
+      ~key:(fun (plan : Facts.plan) -> String.lowercase_ascii plan.slug)
+      ~order:by_place
+      (List.filter is_open plans)
+    |> List.filter_map (fun ((plan : Facts.plan), (first : Facts.plan)) ->
+        if reported plan then None
+        else
+          Some
+            ( plan,
+              ( first,
+                Printf.sprintf
+                  "an open plan with the slug %s comes first at %s:%d"
+                  first.slug first.path first.span.start.line ) ))
+  in
+  full @ slug
+
 let duplicates facts =
   let by_place (path_a, (span_a : Markdown.span))
       (path_b, (span_b : Markdown.span)) =
@@ -190,13 +238,7 @@ let duplicates facts =
          (fun (d : Facts.declaration) -> not (String.equal d.kind "rule"))
          (Facts.declarations facts))
   in
-  let plans =
-    later_of_groups
-      ~key:(fun (plan : Facts.plan) -> String.lowercase_ascii plan.slug)
-      ~order:(fun (a : Facts.plan) (b : Facts.plan) ->
-        by_place (a.path, a.span) (b.path, b.span))
-      (Facts.plans facts)
-  in
+  let plans = plan_duplicates facts in
   let tag path (span : Markdown.span) =
     Finding.Tag { path; position = span.start }
   in
@@ -210,10 +252,10 @@ let duplicates facts =
         ())
     declarations
   @ List.map
-      (fun ((plan : Facts.plan), (first : Facts.plan)) ->
+      (fun ((plan : Facts.plan), ((first : Facts.plan), detail)) ->
         Finding.make Finding_class.Duplicate (tag plan.path plan.span)
           ~place:(place plan.path plan.span)
-          ~detail:(comes_first first.slug first.path first.span.start.line)
+          ~detail
           ?mark:(Finding.part plan.tag Tag_line.Target declared_again)
           ~related:[ related first_declared first.path first.span ]
           ())
