@@ -336,9 +336,10 @@ let row result =
             first);
   }
 
-let measure_trees ~phases ~sinter ~generator ~self ~self_manifest ~sizes ~seed
-    ~runs ~trees ~outputs =
-  let platform = platform () in
+let platform_name = function Linux -> "linux" | Macos -> "macos"
+
+let measure_trees ~platform ~phases ~sinter ~generator ~self ~self_manifest
+    ~sizes ~seed ~runs ~trees ~outputs =
   if not (Sys.file_exists time) then stop "%s is missing" time;
   if not (Sys.file_exists sinter) then stop "%s is missing" sinter;
   if runs < 1 then stop "--runs is %d, and it must be 1 or more" runs;
@@ -384,8 +385,7 @@ let measure_trees ~phases ~sinter ~generator ~self ~self_manifest ~sizes ~seed
       targets
   in
   {
-    Report.platform =
-      (match platform with Linux -> "linux" | Macos -> "macos");
+    Report.platform = platform_name platform;
     instruction_counter =
       (match counter with
       | Perf _ -> Some "perf"
@@ -398,8 +398,25 @@ let measure_trees ~phases ~sinter ~generator ~self ~self_manifest ~sizes ~seed
     rows = List.map row results;
   }
 
+let read_report path =
+  match Report.of_string (read path) with
+  | Ok report -> report
+  | Error message -> stop "%s: %s" path message
+
+let comparable baseline ~platform ~seed =
+  Option.iter
+    (fun (path, (baseline : Report.t)) ->
+      if not (String.equal baseline.platform platform) then
+        stop "%s: the baseline is from %s, and the measures are from %s" path
+          baseline.platform platform;
+      if baseline.seed <> seed then
+        stop
+          "%s: the baseline has the seed %d, and the measures have the seed %d"
+          path baseline.seed seed)
+    baseline
+
 let main sinter generator self self_manifest sizes seed runs budgets trees
-    outputs results json markdown =
+    outputs results baseline json markdown =
   try
     let budgets =
       Option.map
@@ -409,15 +426,18 @@ let main sinter generator self self_manifest sizes seed runs budgets trees
           | Error message -> stop "%s: %s" path message)
         budgets
     in
+    let baseline = Option.map (fun path -> (path, read_report path)) baseline in
     let report =
       match (results, sinter) with
-      | Some path, None -> (
-          match Report.of_string (read path) with
-          | Ok report -> report
-          | Error message -> stop "%s: %s" path message)
+      | Some path, None ->
+          let report = read_report path in
+          comparable baseline ~platform:report.platform ~seed:report.seed;
+          report
       | None, Some sinter ->
-          measure_trees ~phases:(Option.is_some budgets) ~sinter ~generator
-            ~self ~self_manifest ~sizes ~seed ~runs ~trees ~outputs
+          let platform = platform () in
+          comparable baseline ~platform:(platform_name platform) ~seed;
+          measure_trees ~platform ~phases:(Option.is_some budgets) ~sinter
+            ~generator ~self ~self_manifest ~sizes ~seed ~runs ~trees ~outputs
       | Some _, Some _ -> stop "--results and --sinter exclude each other"
       | None, None -> stop "either --sinter or --results is required"
     in
@@ -435,7 +455,9 @@ let main sinter generator self self_manifest sizes seed runs budgets trees
         Out_channel.with_open_bin path (fun channel ->
             Out_channel.output_string channel text)
     | None -> print_string text);
-    let table = Report.to_markdown report outcomes in
+    let table =
+      Report.to_markdown ?baseline:(Option.map snd baseline) report outcomes
+    in
     prerr_string table;
     Option.iter
       (fun path ->
@@ -527,7 +549,11 @@ let () =
          $(i,skipped), with the cause in $(i,reason).";
       `P
         "A table in markdown goes to standard error, and is appended to the \
-         file of $(b,--markdown).";
+         file of $(b,--markdown). With $(b,--baseline), the table also shows, \
+         for each tree and command, the median peak memory of the baseline, \
+         and the difference from it in MiB and in percent. A tree and command \
+         that the baseline does not have show $(i,no baseline). The JSON \
+         object does not hold the baseline.";
     ]
   in
   let exits =
@@ -548,6 +574,13 @@ let () =
       "A JSON object that an earlier run wrote. The run reads its measures, \
        measures nothing, and checks the growth limits of $(b,--budgets) \
        against them."
+  in
+  let baseline =
+    path_opt [ "baseline" ] "PATH"
+      "A JSON object that an earlier run wrote, to compare the peak memory \
+       with. It must come from the platform of the measures, because Linux and \
+       macOS count the memory of different processes. It must have the seed of \
+       the measures, because another seed makes other trees."
   in
   let generator =
     path_opt [ "generator" ] "PATH"
@@ -609,5 +642,5 @@ let () =
           (Cmd.info "run" ~doc ~man ~exits)
           Term.(
             const main $ sinter $ generator $ self $ self_manifest $ sizes
-            $ seed $ runs $ budgets $ trees $ outputs $ results $ json
-            $ markdown)))
+            $ seed $ runs $ budgets $ trees $ outputs $ results $ baseline
+            $ json $ markdown)))

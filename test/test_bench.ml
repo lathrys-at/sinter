@@ -486,6 +486,134 @@ let report_reader_never_raises =
           ])
        (fun text -> match Report.of_string text with Ok _ | Error _ -> true))
 
+let report_of_peaks ?(platform = "linux") peaks =
+  {
+    Report.platform;
+    instruction_counter = None;
+    no_count_reason = Some "none";
+    runs = 1;
+    seed = 1;
+    rows =
+      List.map
+        (fun (tree, command, peak) ->
+          {
+            Report.tree;
+            declarations = None;
+            command;
+            exit_code = 0;
+            peak_kib =
+              { Measurement.median = peak; min = peak; max = peak; spread = 0. };
+            instructions = None;
+            footprint_kib = None;
+            phase_words = [];
+          })
+        peaks;
+  }
+
+let table_rows markdown =
+  List.filter
+    (fun line ->
+      String.starts_with ~prefix:"| " line
+      && not (String.starts_with ~prefix:"| tree " line))
+    (String.split_on_char '\n' markdown)
+
+let markdown_compares_each_row_with_the_baseline () =
+  let report =
+    report_of_peaks
+      [
+        ("n1000", "scan", 10240.);
+        ("n10000", "scan", 20480.);
+        ("n10000", "check", 30720.);
+        ("self", "scan", 5120.);
+        ("n1000", "check", 1024.);
+      ]
+  in
+  let baseline =
+    report_of_peaks
+      [
+        ("n1000", "scan", 10240.);
+        ("n10000", "scan", 10240.);
+        ("n10000", "check", 40960.);
+        ("n1000", "check", 0.);
+        ("n10000", "scan", 1.);
+      ]
+  in
+  let markdown = Report.to_markdown ~baseline report [] in
+  Alcotest.(check (list string))
+    "the header"
+    [
+      "| tree | command | exit | peak memory (MiB) | baseline (MiB) | \
+       difference (MiB, %) | instructions (G) | peak footprint (MiB) |";
+      "|---|---|---|---|---|---|---|---|";
+    ]
+    (List.filter
+       (fun line ->
+         String.starts_with ~prefix:"| tree " line
+         || String.starts_with ~prefix:"|---" line)
+       (String.split_on_char '\n' markdown));
+  Alcotest.(check (list string))
+    "the rows"
+    [
+      "| n1000 | scan | 0 | 10.0 [0.0%] | 10.0 | +0.0 (+0.0%) | - | - |";
+      "| n10000 | scan | 0 | 20.0 [0.0%] | 10.0 | +10.0 (+100.0%) | - | - |";
+      "| n10000 | check | 0 | 30.0 [0.0%] | 40.0 | -10.0 (-25.0%) | - | - |";
+      "| self | scan | 0 | 5.0 [0.0%] | no baseline | - | - | - |";
+      "| n1000 | check | 0 | 1.0 [0.0%] | 0.0 | +1.0 | - | - |";
+    ]
+    (table_rows markdown)
+
+let markdown_without_a_baseline_has_no_baseline_column () =
+  let report = report_of_peaks [ ("n1000", "scan", 10240.) ] in
+  Alcotest.(check string)
+    "the markdown"
+    "## Performance\n\n\
+     No instruction count: none.\n\n\
+     | tree | command | exit | peak memory (MiB) | instructions (G) | peak \
+     footprint (MiB) |\n\
+     |---|---|---|---|---|---|\n\
+     | n1000 | scan | 0 | 10.0 [0.0%] | - | - |\n"
+    (Report.to_markdown report [])
+
+let unique_rows (report : Report.t) =
+  {
+    report with
+    rows =
+      List.fold_left
+        (fun rows (row : Report.row) ->
+          if
+            List.exists
+              (fun (seen : Report.row) ->
+                String.equal seen.tree row.tree
+                && String.equal seen.command row.command)
+              rows
+          then rows
+          else rows @ [ row ])
+        [] report.rows;
+  }
+
+let a_report_is_its_own_baseline_with_no_difference =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:300
+       ~name:
+         "a report that is its own baseline shows its own peak and a \
+          difference of zero in every row" (Gen.map unique_rows report_gen)
+       (fun report ->
+         let rows =
+           table_rows (Report.to_markdown ~baseline:report report [])
+         in
+         List.length rows = List.length report.rows
+         && List.for_all2
+              (fun line (row : Report.row) ->
+                let median = row.peak_kib.median in
+                match String.split_on_char '|' line with
+                | [ ""; _; _; _; _; base; difference; _; _; "" ] ->
+                    String.equal (String.trim base)
+                      (Printf.sprintf "%.1f" (median /. 1024.))
+                    && String.equal (String.trim difference)
+                         (if median > 0. then "+0.0 (+0.0%)" else "+0.0")
+                | _ -> false)
+              rows report.rows))
+
 let a_report_names_the_key_it_lacks () =
   List.iter
     (fun (text, expected) ->
@@ -696,7 +824,7 @@ let run_skips_every_budget_that_it_cannot_check () =
              ]))
        Yojson.Basic.Util.(to_list (member "budgets" json)))
 
-let recorded ~platform ~small ~large =
+let recorded ?(seed = 1) ~platform ~small ~large () =
   let summary median =
     Printf.sprintf {|{"median":%g,"min":%g,"max":%g,"spread_percent":0.0}|}
       median median median
@@ -707,8 +835,8 @@ let recorded ~platform ~small ~large =
       tree command (summary peak) (records /. 10.) records
   in
   Printf.sprintf
-    {|{"platform":"%s","instruction_counter":null,"no_count_reason":"none","runs":5,"seed":1,"results":[%s],"budgets":[]}|}
-    platform
+    {|{"platform":"%s","instruction_counter":null,"no_count_reason":"none","runs":5,"seed":%d,"results":[%s],"budgets":[]}|}
+    platform seed
     (String.concat ","
        [
          row "n1000" "scan" small;
@@ -719,7 +847,7 @@ let recorded ~platform ~small ~large =
 
 let check_recorded ~platform ~small ~large budgets =
   let path = Filename.temp_file "sinter-results" ".json" in
-  write path (recorded ~platform ~small ~large);
+  write path (recorded ~platform ~small ~large ());
   let code, output, errors =
     run [ "--results"; path; "--budgets"; budgets_file budgets ]
   in
@@ -787,6 +915,121 @@ let run_checks_the_growth_on_macos () =
       "check records fail";
     ]
     outcomes
+
+let recorded_file ?seed ~platform ~small ~large () =
+  let path = Filename.temp_file "sinter-results" ".json" in
+  write path (recorded ?seed ~platform ~small ~large ());
+  path
+
+let run_compares_the_peak_with_a_baseline () =
+  let results =
+    recorded_file ~platform:"linux" ~small:(20480., 2e6) ~large:(40960., 19e6)
+      ()
+  in
+  let baseline =
+    recorded_file ~platform:"linux" ~small:(20480., 2e6) ~large:(51200., 19e6)
+      ()
+  in
+  let code, output, errors =
+    run [ "--results"; results; "--baseline"; baseline ]
+  in
+  Alcotest.(check int) ("exit, with: " ^ errors) 0 code;
+  Alcotest.(check (list string))
+    "the rows"
+    [
+      "| n1000 | scan | 0 | 20.0 [0.0%] | 20.0 | +0.0 (+0.0%) | - | - |";
+      "| n1000 | check | 0 | 20.0 [0.0%] | 20.0 | +0.0 (+0.0%) | - | - |";
+      "| n10000 | scan | 0 | 40.0 [0.0%] | 50.0 | -10.0 (-20.0%) | - | - |";
+      "| n10000 | check | 0 | 40.0 [0.0%] | 50.0 | -10.0 (-20.0%) | - | - |";
+    ]
+    (table_rows errors);
+  let code, without, errors = run [ "--results"; results ] in
+  Alcotest.(check int) ("exit without a baseline, with: " ^ errors) 0 code;
+  Alcotest.(check string) "the JSON object holds no baseline" without output
+
+let run_refuses_a_baseline_of_another_platform () =
+  let results =
+    recorded_file ~platform:"linux" ~small:(20480., 2e6) ~large:(40960., 19e6)
+      ()
+  in
+  let baseline =
+    recorded_file ~platform:"macos" ~small:(20480., 2e6) ~large:(40960., 19e6)
+      ()
+  in
+  let code, output, errors =
+    run [ "--results"; results; "--baseline"; baseline ]
+  in
+  Alcotest.(check int) "exit" 2 code;
+  Alcotest.(check string) "output" "" output;
+  Alcotest.(check string)
+    "errors"
+    (Printf.sprintf
+       "run: %s: the baseline is from macos, and the measures are from linux\n"
+       baseline)
+    errors;
+  let other =
+    recorded_file ~platform:"plan9" ~small:(20480., 2e6) ~large:(40960., 19e6)
+      ()
+  in
+  let missing = Filename.concat (Git_fixture.temp_dir ()) "missing" in
+  let code, output, errors = run [ "--sinter"; missing; "--baseline"; other ] in
+  Alcotest.(check int) "before a measure: exit" 2 code;
+  Alcotest.(check string) "before a measure: output" "" output;
+  Alcotest.(check bool)
+    ("before a measure: errors: " ^ errors)
+    true
+    (String.starts_with
+       ~prefix:
+         (Printf.sprintf
+            "run: %s: the baseline is from plan9, and the measures are from "
+            other)
+       errors)
+
+let host_platform () =
+  let channel = Unix.open_process_in "uname -s" in
+  let name =
+    Fun.protect
+      ~finally:(fun () -> ignore (Unix.close_process_in channel))
+      (fun () -> In_channel.input_all channel)
+  in
+  if String.equal name "Darwin\n" then "macos" else "linux"
+
+let run_refuses_a_baseline_of_another_seed () =
+  let results =
+    recorded_file ~platform:"linux" ~small:(20480., 2e6) ~large:(40960., 19e6)
+      ()
+  in
+  let baseline =
+    recorded_file ~seed:7 ~platform:"linux" ~small:(20480., 2e6)
+      ~large:(40960., 19e6) ()
+  in
+  let code, output, errors =
+    run [ "--results"; results; "--baseline"; baseline ]
+  in
+  Alcotest.(check int) "exit" 2 code;
+  Alcotest.(check string) "output" "" output;
+  Alcotest.(check string)
+    "errors"
+    (Printf.sprintf
+       "run: %s: the baseline has the seed 7, and the measures have the seed 1\n"
+       baseline)
+    errors;
+  let host =
+    recorded_file ~platform:(host_platform ()) ~small:(20480., 2e6)
+      ~large:(40960., 19e6) ()
+  in
+  let missing = Filename.concat (Git_fixture.temp_dir ()) "missing" in
+  let code, output, errors =
+    run [ "--sinter"; missing; "--seed"; "3"; "--baseline"; host ]
+  in
+  Alcotest.(check int) "before a measure: exit" 2 code;
+  Alcotest.(check string) "before a measure: output" "" output;
+  Alcotest.(check string)
+    "before a measure: errors"
+    (Printf.sprintf
+       "run: %s: the baseline has the seed 1, and the measures have the seed 3\n"
+       host)
+    errors
 
 let run_writes_its_files () =
   let dir = Git_fixture.temp_dir () in
@@ -954,6 +1197,7 @@ let run_stops_with_exit_2 () =
     | _ -> Alcotest.fail "the text reads as JSON"
     | exception Yojson.Json_error message -> message
   in
+  let not_a_report = budgets_file "[1]" in
   let no_runs =
     budgets_file
       {|{"platform":"linux","instruction_counter":null,"no_count_reason":null,"seed":1,"results":[]}|}
@@ -984,6 +1228,13 @@ let run_stops_with_exit_2 () =
       ( [ "--results"; no_runs ],
         Printf.sprintf "run: %s: the key runs is missing\n" no_runs );
       ( [ "--results"; missing ],
+        Printf.sprintf "run: %s: No such file or directory\n" missing );
+      ( [ "--results"; no_runs; "--baseline"; not_json ],
+        Printf.sprintf "run: %s: not JSON: %s\n" not_json not_json_message );
+      ( [ "--sinter"; missing; "--baseline"; not_a_report ],
+        Printf.sprintf "run: %s: the key platform is not in an object\n"
+          not_a_report );
+      ( [ "--sinter"; sinter; "--baseline"; missing ],
         Printf.sprintf "run: %s: No such file or directory\n" missing );
     ];
   let code, output, errors =
@@ -1038,6 +1289,11 @@ let tests =
     report_round_trips;
     report_reader_never_raises;
     case "a report names the key it lacks" a_report_names_the_key_it_lacks;
+    case "markdown compares each row with the baseline"
+      markdown_compares_each_row_with_the_baseline;
+    case "markdown without a baseline has no baseline column"
+      markdown_without_a_baseline_has_no_baseline_column;
+    a_report_is_its_own_baseline_with_no_difference;
     case "a report reads the first row of a tree and command"
       a_report_reads_the_first_row_of_a_tree_and_command;
     case "run skips every budget that it cannot check"
@@ -1047,6 +1303,12 @@ let tests =
     case "run passes recorded budgets with exit 0"
       run_passes_recorded_budgets_with_exit_0;
     case "run checks the growth on macos" run_checks_the_growth_on_macos;
+    case "run compares the peak with a baseline"
+      run_compares_the_peak_with_a_baseline;
+    case "run refuses a baseline of another platform"
+      run_refuses_a_baseline_of_another_platform;
+    case "run refuses a baseline of another seed"
+      run_refuses_a_baseline_of_another_seed;
     case "run writes its files" run_writes_its_files;
     case "run measures a sinter that counts no phase"
       run_measures_a_sinter_that_counts_no_phase;

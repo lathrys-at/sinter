@@ -56,9 +56,16 @@ val of_string : string -> (t, string) result
     [Ok report] for every report whose floats are finite. The error names the
     first key that is missing or of the wrong kind. *)
 
-val to_markdown : t -> Budgets.outcome list -> string
-(** [to_markdown report outcomes] is a markdown section, headed
+val to_markdown : ?baseline:t -> t -> Budgets.outcome list -> string
+(** [to_markdown ?baseline report outcomes] is a markdown section, headed
     [## Performance]: one line on the instruction count, a table of the medians
     and spreads of the rows, in MiB and in billions of instructions, and a table
     of the outcomes, with the phase, the limit, and the growth of each, when
-    there are any. It ends with a line feed. *)
+    there are any. It ends with a line feed.
+
+    With [baseline], each row of the table of medians also shows the median peak
+    memory of [baseline] for the same tree and command, as {!peak} gives it, in
+    MiB, and the difference of the row's median from it, in MiB and in percent
+    of it. A row for which {!peak} gives [None] shows [no baseline]. A baseline
+    of [0.] KiB shows the difference in MiB only. [to_markdown] does not compare
+    the platforms of [report] and [baseline]. *)
