@@ -66,10 +66,14 @@ type base =
 val base_commit : base -> string
 (** [base_commit base] is the object id of the base commit. *)
 
-val base_message : base -> string
-(** [base_message base] names the base for the person who runs the tool: the
-    revision or the ref that gave it, and its commit. The line ends with no full
-    stop. *)
+val base_note : base -> string
+(** [base_note base] names the base for the person who runs the tool, as the
+    text of a note: [base <commit>, the merge base of HEAD and <ref>] for a
+    merge base, where [<ref>] is the ref without a leading [refs/remotes/] or
+    [refs/heads/]; and [base <commit>, from --base <revision>] for a base that
+    the caller named. [<commit>] is the first 7 hexadecimal digits of the
+    commit. The ref and the revision print as {!Display.clean} gives them. The
+    text ends with no full stop. *)
 
 type tree = private {
   repo : Git.t;

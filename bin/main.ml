@@ -244,7 +244,7 @@ let scan_cmd =
             report (Sinter_core.Scan.messages error);
             environment_error
         | Ok { warnings; records } -> (
-            report warnings;
+            List.iter prerr_endline warnings;
             try
               Sinter_core.Allocation.measure phases "output" (fun () ->
                   List.iter (Sinter_core.Jsonl.output stdout) records;
@@ -294,9 +294,14 @@ let check_cmd =
          prints the tier before the class, as in $(b,warn[untraced]). Without \
          $(b,--gate), the command reports every finding, and prints no tier.";
       `P
-        "Some checks compare the working tree with a base commit. The command \
-         prints the base on standard error, or, with $(b,-o json), in the \
-         first record. Warnings also go to standard error.";
+        "After the findings, the full and brief forms print a summary on \
+         standard error, for example $(b,8 findings in 2 files: 7 block, 1 \
+         warn; 4 have a fix). Warnings also go to standard error. The JSON \
+         form prints no summary.";
+      `P
+        "Some checks compare the working tree with a base commit. With \
+         $(b,-v), the full and brief forms name the base on standard error. \
+         The JSON form names it in the first record.";
       `P
         "With $(b,--diff), the command reports only the findings that the \
          changes since the base add. It checks the base with the same \
@@ -330,6 +335,8 @@ let check_cmd =
          example on a pull request in a repository that has findings already.";
       `Pre "  sinter check -o brief";
       `P "Print one line for each finding.";
+      `Pre "  sinter check -q -o brief";
+      `P "Print one line for each finding, and no summary.";
       `Pre "  sinter check -o json";
       `P "Print the findings as JSON, for a program to read.";
     ]
@@ -403,29 +410,48 @@ let check_cmd =
     Arg.(value & flag & info [ "diff" ] ~doc)
   in
   let report lines = List.iter (Printf.eprintf "sinter: %s\n") lines in
-  let run manifest base diff gate strict form =
+  let verbose =
+    let doc = "In the full and brief forms, name the base on standard error." in
+    Arg.(value & flag & info [ "v"; "verbose" ] ~doc)
+  in
+  let quiet =
+    let doc =
+      "Print no summary and no note on standard error. Warnings still print."
+    in
+    Arg.(value & flag & info [ "q"; "quiet" ] ~doc)
+  in
+  let run manifest base diff gate strict form verbose quiet =
     with_phases @@ fun phases ->
     match
       Sinter_core.Check.run ?phases ~env:(Unix.environment ())
         ~dir:(Sys.getcwd ()) ~manifest ~base
         ~mode:(if diff then Sinter_core.Mode.Diff else Sinter_core.Mode.Tree)
-        ~gate ~strict ~form ~tool:version ()
+        ~gate ~strict ~form ~verbose ~quiet ~tool:version ()
     with
     | Error error ->
         report (Sinter_core.Scan.messages error);
         environment_error
     | Ok outcome -> (
-        report (Sinter_core.Check.messages outcome);
-        try
+        match
           Sinter_core.Check.write ?phases
             (Sinter_core.Style.formatter stdout Sinter_core.Style.Output)
-            outcome;
-          Sinter_core.Check.code outcome
-        with Sys_error message ->
-          report [ Printf.sprintf "cannot write the output: %s" message ];
-          environment_error)
+            outcome
+        with
+        | () -> (
+            try
+              Sinter_core.Check.notices
+                (Sinter_core.Style.formatter stderr Sinter_core.Style.Errors)
+                outcome;
+              Sinter_core.Check.code outcome
+            with Sys_error _ -> environment_error)
+        | exception Sys_error message ->
+            report [ Printf.sprintf "cannot write the output: %s" message ];
+            environment_error)
   in
-  Cmd.v info Term.(const run $ manifest $ base $ diff $ gate $ strict $ output)
+  Cmd.v info
+    Term.(
+      const run $ manifest $ base $ diff $ gate $ strict $ output $ verbose
+      $ quiet)
 
 let cmd =
   let doc = "a linter for keeping your specs, plans, and code in sync" in

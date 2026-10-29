@@ -140,9 +140,70 @@ let record ~mode { finding; tier } =
   @ fix @ place @ mark @ related @ gate
 
 type form = Full | Brief | Json
+type notice = Line of string | Note of string
+
+module Names = Set.Make (String)
+
+let plural count one many = if count = 1 then one else many
+
+let summary ~documents entries =
+  match entries with
+  | [] ->
+      Printf.sprintf "no findings in %d %s" documents
+        (plural documents "file" "files")
+  | _ :: _ ->
+      let count = List.length entries in
+      let files =
+        Names.cardinal
+          (Names.of_list
+             (List.filter_map
+                (fun entry ->
+                  Option.map
+                    (fun ({ path; _ } : Finding.place) -> path)
+                    entry.finding.place)
+                entries))
+      in
+      let tiers tier =
+        List.length
+          (List.filter
+             (fun entry ->
+               match entry.tier with
+               | Some (_, found) -> found = tier
+               | None -> false)
+             entries)
+      in
+      let counted =
+        List.filter_map
+          (fun (tier, name) ->
+            match tiers tier with
+            | 0 -> None
+            | found -> Some (Printf.sprintf "%d %s" found name))
+          [ (Finding_class.Block, "block"); (Finding_class.Warn, "warn") ]
+      in
+      let fixes =
+        List.length
+          (List.filter (fun entry -> Option.is_some entry.finding.fix) entries)
+      in
+      String.concat ""
+        ([
+           Printf.sprintf "%d %s in %d %s" count
+             (plural count "finding" "findings")
+             files
+             (plural files "file" "files");
+         ]
+        @ (match counted with
+          | [] -> []
+          | _ :: _ -> [ ": "; String.concat ", " counted ])
+        @
+        if fixes = 0 then []
+        else
+          [
+            Printf.sprintf "; %d %s" fixes
+              (plural fixes "has a fix" "have a fix");
+          ])
 
 type report = {
-  messages : string list;
+  notices : notice list;
   code : int;
   form : form;
   entries : entry list;
@@ -151,7 +212,24 @@ type report = {
   index : Jsonl.record option;
 }
 
-let messages report = report.messages
+let messages report =
+  List.map
+    (function Line line -> line | Note note -> "note: " ^ note)
+    report.notices
+
+let notices ppf report =
+  List.iter
+    (fun notice ->
+      (match notice with
+      | Line line -> Fmt.string ppf line
+      | Note note ->
+          Style.string Style.Note ppf "note:";
+          Fmt.string ppf " ";
+          Fmt.string ppf note);
+      Format.pp_force_newline ppf ())
+    report.notices;
+  Format.pp_print_flush ppf ()
+
 let code report = report.code
 let tier_of entry = Option.map snd entry.tier
 
@@ -247,7 +325,8 @@ let compare_with_base ?phases ~mode (tree : Scan.tree)
                facts compared.diff))
         (List.sort Finding.compare (configuration tree compared facts)))
 
-let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~tool () =
+let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
+    ~quiet ~tool () =
   let* tree, compared =
     Scan.load_with_base ?phases ~env ~dir ~manifest ~base ()
   in
@@ -267,15 +346,27 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~tool () =
         select tree.manifest gate findings)
   in
   let code = exit_code ~strict entries in
-  let report messages index =
-    { messages; code; form; entries; root = Git.root tree.repo; mode; index }
+  let report notices index =
+    { notices; code; form; entries; root = Git.root tree.repo; mode; index }
   in
+  let warnings = List.map (fun warning -> Line warning) tree.warnings in
   match form with
   | Full | Brief ->
-      Ok (report (Scan.base_message tree.base :: tree.warnings) None)
+      Ok
+        (report
+           ((if quiet then []
+             else
+               [
+                 Line (summary ~documents:(List.length tree.documents) entries);
+               ])
+           @ warnings
+           @
+           if verbose && not quiet then [ Note (Scan.base_note tree.base) ]
+           else [])
+           None)
   | Json ->
       let* index =
         Allocation.measure phases "repository" (fun () ->
             Scan.index ~mode tree ~tool)
       in
-      Ok (report tree.warnings (Some index))
+      Ok (report warnings (Some index))

@@ -190,12 +190,26 @@ type base =
 let base_commit = function
   | Given { commit; _ } | Merge_base { commit; _ } -> commit
 
-let base_message = function
+let short commit = String.sub commit 0 (min 7 (String.length commit))
+
+let without_prefix refname =
+  match
+    List.find_opt
+      (fun prefix -> String.starts_with ~prefix refname)
+      [ "refs/remotes/"; "refs/heads/" ]
+  with
+  | Some prefix ->
+      String.sub refname (String.length prefix)
+        (String.length refname - String.length prefix)
+  | None -> refname
+
+let base_note = function
   | Given { revision; commit } ->
-      Printf.sprintf "the base is %s, %s" revision commit
+      Printf.sprintf "base %s, from --base %s" (short commit)
+        (Display.clean revision)
   | Merge_base { refname; commit } ->
-      Printf.sprintf "the base is the merge base of HEAD and %s, %s" refname
-        commit
+      Printf.sprintf "base %s, the merge base of HEAD and %s" (short commit)
+        (Display.clean (without_prefix refname))
 
 let unless_shallow repo name error =
   match Git.is_shallow repo with

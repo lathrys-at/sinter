@@ -55,6 +55,17 @@ val record : mode:Mode.t -> entry -> Jsonl.record
     are those of the edit. The objects are sorted by
     [(alt, path, line, col, eline, ecol, text)], and no two are equal. *)
 
+val summary : documents:int -> entry list -> string
+(** [summary ~documents entries] is the summary of a check that reports
+    [entries], one line for the person who runs the tool. With no entry, it is
+    [no findings in <documents> files], with [1 file] when [documents] is 1.
+    Otherwise it is [<n> findings in <f> files], where [<n>] is the number of
+    entries and [<f>] the number of distinct paths of their places, with
+    [1 finding] and [1 file] for a count of 1. When the entries have a tier, a
+    colon, a space, and the count of each tier follow: [<b> block], then
+    [<w> warn], joined by [", "], and a tier with no entry left out. When [<x>]
+    entries have a fix, [; <x> have a fix] follows, or [; 1 has a fix]. *)
+
 (** {1 The check} *)
 
 (** The form of the output. *)
@@ -70,8 +81,18 @@ type report
 
 val messages : report -> string list
 (** [messages report] is the lines for the person who runs the tool, without
-    line feeds: in the forms [Full] and [Brief], the line that names the base
-    first; then the warnings of the tree. *)
+    line feeds. In the forms [Full] and [Brief]: the {!summary} of the entries,
+    with the number of documents of the tree, unless the check is quiet; then
+    the warnings of the tree; then, when the check is verbose and not quiet,
+    [note: ] and {!Scan.base_note} of the base. In the form [Json]: the warnings
+    of the tree. *)
+
+val notices : Format.formatter -> report -> unit
+(** [notices ppf report] writes {!messages} of [report] to [ppf], each with a
+    line feed, with the word [note:] in the style {!Style.Note}, and flushes
+    [ppf].
+
+    @raise Sys_error if [ppf] cannot write. *)
 
 val code : report -> int
 (** [code report] is the exit code, as {!exit_code} gives it. *)
@@ -96,14 +117,17 @@ val run :
   gate:Finding_class.gate option ->
   strict:bool ->
   form:form ->
+  verbose:bool ->
+  quiet:bool ->
   tool:string ->
   unit ->
   (report, Scan.error) result
-(** [run ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~tool ()] checks
-    the working tree that {!Scan.load_with_base} reads with [env], [dir],
-    [manifest], and [base]. [gate] is the gate of the check, [strict] says
-    whether every finding counts for the exit code, and [tool] is the version of
-    the tool, for the index record.
+(** [run ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose ~quiet
+     ~tool ()] checks the working tree that {!Scan.load_with_base} reads with
+    [env], [dir], [manifest], and [base]. [gate] is the gate of the check,
+    [strict] says whether every finding counts for the exit code, [form] is the
+    form of the output, [verbose] and [quiet] select the lines of {!messages},
+    and [tool] is the version of the tool, for the index record.
 
     In the mode [Tree], the findings are those of the working tree. In the mode
     [Diff], they are the findings of the working tree less the findings of the

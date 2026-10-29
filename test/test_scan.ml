@@ -146,16 +146,38 @@ let a_tree_with_no_base_takes_the_merge_base_with_the_default_branch () =
   Alcotest.(check (pair string string))
     "the commit and the message"
     ( head repo,
-      "the base is the merge base of HEAD and refs/heads/main, " ^ head repo )
-    (Scan.base_commit tree.base, Scan.base_message tree.base)
+      "base " ^ String.sub (head repo) 0 7 ^ ", the merge base of HEAD and main"
+    )
+    (Scan.base_commit tree.base, Scan.base_note tree.base)
 
 let a_tree_with_a_base_names_its_revision () =
   let repo, _ = Lazy.force shared_tree in
   let tree = load ~base:"HEAD" repo in
   Alcotest.(check (pair string string))
     "the commit and the message"
-    (head repo, "the base is HEAD, " ^ head repo)
-    (Scan.base_commit tree.base, Scan.base_message tree.base)
+    (head repo, "base " ^ String.sub (head repo) 0 7 ^ ", from --base HEAD")
+    (Scan.base_commit tree.base, Scan.base_note tree.base)
+
+let a_base_note_names_the_short_ref_and_the_short_commit () =
+  let commit = "0123456789abcdef0123456789abcdef01234567" in
+  Alcotest.(check (list string))
+    "a remote branch, a local branch, another ref, a ref with a bidirectional \
+     character, and a revision with a control character"
+    [
+      "base 0123456, the merge base of HEAD and origin/main";
+      "base 0123456, the merge base of HEAD and main";
+      "base 0123456, the merge base of HEAD and refs/other/main";
+      "base 0123456, the merge base of HEAD and ma\xef\xbf\xbdin";
+      "base 0123456, from --base x\xef\xbf\xbd[31m";
+    ]
+    (List.map Scan.base_note
+       [
+         Scan.Merge_base { refname = "refs/remotes/origin/main"; commit };
+         Scan.Merge_base { refname = "refs/heads/main"; commit };
+         Scan.Merge_base { refname = "refs/other/main"; commit };
+         Scan.Merge_base { refname = "refs/heads/ma\xe2\x80\xaein"; commit };
+         Scan.Given { revision = "x\x1b[31m"; commit };
+       ])
 
 let the_index_of_a_tree_is_the_first_record_of_its_scan () =
   let _, _, { Scan.records; _ } = Lazy.force shared in
@@ -243,8 +265,8 @@ let a_check_runs_no_git_command_twice () =
     Git_fixture.git_commands repo (fun env ->
         match
           Check.run ~env ~dir:(Git_fixture.root repo) ~manifest:None ~base:None
-            ~mode:Mode.Tree ~gate:None ~strict:false ~form:Check.Json ~tool:"v1"
-            ()
+            ~mode:Mode.Tree ~gate:None ~strict:false ~form:Check.Json
+            ~verbose:false ~quiet:false ~tool:"v1" ()
         with
         | Ok _ -> ()
         | Error error ->
@@ -443,22 +465,15 @@ let a_scan_that_cannot_write_its_output_says_so () =
   let status, errors = into_a_closed_pipe "scan" in
   Alcotest.(check (pair int (list string)))
     "the exit code and the lines of standard error"
-    ( 3,
-      List.map (fun warning -> "sinter: " ^ warning) warnings
-      @ [ "sinter: cannot write the output: Broken pipe" ] )
+    (3, warnings @ [ "sinter: cannot write the output: Broken pipe" ])
     ( status,
       List.filter (fun line -> line <> "") (String.split_on_char '\n' errors) )
 
 let a_check_that_cannot_write_its_output_says_so () =
-  let _, (tree : Scan.tree) = Lazy.force shared_tree in
   let status, errors = into_a_closed_pipe "check" in
   Alcotest.(check (pair int (list string)))
     "the exit code and the lines of standard error"
-    ( 3,
-      List.map
-        (fun line -> "sinter: " ^ line)
-        ((Scan.base_message tree.base :: tree.warnings)
-        @ [ "cannot write the output: Broken pipe" ]) )
+    (3, [ "sinter: cannot write the output: Broken pipe" ])
     ( status,
       List.filter (fun line -> line <> "") (String.split_on_char '\n' errors) )
 
@@ -774,6 +789,8 @@ let tests =
       a_conversion_alone_reuses_the_document;
     case "a base path that is not UTF-8 gives one warning"
       a_base_path_that_is_not_utf_8_gives_one_warning;
+    case "a base note names the short ref and the short commit"
+      a_base_note_names_the_short_ref_and_the_short_commit;
     case "a scan starts with the index of the tree and the base"
       a_scan_starts_with_the_index_of_the_tree_and_the_base;
     case "a path that is not UTF-8 gives a warning and no fact"

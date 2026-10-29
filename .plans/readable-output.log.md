@@ -136,3 +136,5 @@
 - `Format` breaks a line at a break hint when the queue is flushed,
   whatever the margin. The renderer writes no break hint, and the large
   margin guards only text inside a box.
+- The full and brief output name the base only with `-v`, so
+  `spec/manifest.md` section 6 now says so (ruling of the lead).

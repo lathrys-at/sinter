@@ -1,0 +1,5 @@
+docs/binary.md:1:1: block[parse-error] the file is not UTF-8 text at byte 15
+docs/guide.md:3:1: block[dangling] no declaration has the slug nothing
+docs/guide.md:4:1: warn[typo-tag] @decisoin is not a tag word of sinter
+  fix: @decision
+docs/table.md:5:1: warn[parse-error] the markdown parser cannot read the text here

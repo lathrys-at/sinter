@@ -276,6 +276,126 @@ let a_finding_blocks_at_its_tier_or_under_strict =
       then Exit_code.findings
       else Exit_code.clean)
 
+let entry ?tier ?(path = "a.md") ?fix () =
+  {
+    Check.finding =
+      Finding.make Finding_class.Untraced
+        (Finding.Line { path; line = 1 })
+        ~place:(place ~path ()) ?fix ();
+    tier = Option.map (fun tier -> (Finding_class.Review, tier)) tier;
+  }
+
+let the_summary_counts_findings_files_tiers_and_fixes () =
+  let fix = Edits.word_fix "f" in
+  Alcotest.(check (list string))
+    "the summaries"
+    [
+      "no findings in 0 files";
+      "no findings in 1 file";
+      "no findings in 7 files";
+      "1 finding in 1 file";
+      "1 finding in 1 file: 1 warn; 1 has a fix";
+      "3 findings in 2 files: 2 block, 1 warn; 2 have a fix";
+      "2 findings in 2 files: 2 block";
+      "2 findings in 1 file; 2 have a fix";
+    ]
+    [
+      Check.summary ~documents:0 [];
+      Check.summary ~documents:1 [];
+      Check.summary ~documents:7 [];
+      Check.summary ~documents:3 [ entry () ];
+      Check.summary ~documents:3 [ entry ~tier:Finding_class.Warn ~fix () ];
+      Check.summary ~documents:3
+        [
+          entry ~tier:Finding_class.Block ~fix ();
+          entry ~tier:Finding_class.Warn ();
+          entry ~tier:Finding_class.Block ~path:"b.md" ~fix ();
+        ];
+      Check.summary ~documents:3
+        [
+          entry ~tier:Finding_class.Block ();
+          entry ~tier:Finding_class.Block ~path:"b.md" ();
+        ];
+      Check.summary ~documents:3 [ entry ~fix (); entry ~fix () ];
+    ]
+
+let entries_gen =
+  Gen.(
+    bind
+      (option (oneof_list Finding_class.gates))
+      (fun gate ->
+        list_size (int_range 1 8)
+          (map2
+             (fun finding tier ->
+               {
+                 Check.finding;
+                 tier = Option.map (fun gate -> (gate, tier)) gate;
+               })
+             finding_gen
+             (oneof_list [ Finding_class.Warn; Finding_class.Block ]))))
+
+let number_before text word =
+  let words = String.split_on_char ' ' text in
+  let rec find = function
+    | number :: next :: rest ->
+        if
+          String.equal next word
+          || String.equal next (word ^ ",")
+          || String.equal next (word ^ ";")
+          || String.equal next (word ^ ":")
+        then int_of_string_opt number
+        else find (next :: rest)
+    | _ -> None
+  in
+  find words
+
+let the_summary_counts_equal_the_entries =
+  property "the counts of the summary equal the entries" entries_gen
+    (fun entries ->
+      String.concat "; "
+        (List.map (fun (e : Check.entry) -> print_finding e.finding) entries))
+    (fun entries ->
+      let text = Check.summary ~documents:9 entries in
+      let count word = Option.value (number_before text word) ~default:0 in
+      let total = List.length entries in
+      let files =
+        List.length
+          (List.sort_uniq String.compare
+             (List.filter_map
+                (fun (entry : Check.entry) ->
+                  Option.map
+                    (fun ({ path; _ } : Finding.place) -> path)
+                    entry.finding.place)
+                entries))
+      in
+      let fixes =
+        List.length
+          (List.filter
+             (fun (entry : Check.entry) -> Option.is_some entry.finding.fix)
+             entries)
+      in
+      let gated =
+        List.exists
+          (fun (entry : Check.entry) -> Option.is_some entry.tier)
+          entries
+      in
+      count (if total = 1 then "finding" else "findings") = total
+      && count (if files = 1 then "file" else "files") = files
+      && count "has" + count "have" = fixes
+      && (if gated then count "block" + count "warn" = total
+          else count "block" + count "warn" = 0)
+      && List.for_all
+           (fun (tier, word) ->
+             count word
+             = List.length
+                 (List.filter
+                    (fun (entry : Check.entry) ->
+                      match entry.tier with
+                      | Some (_, t) -> t = tier
+                      | None -> false)
+                    entries))
+           [ (Finding_class.Block, "block"); (Finding_class.Warn, "warn") ])
+
 let a_record_holds_every_field_of_a_finding () =
   Alcotest.(check string)
     "the record"
@@ -429,7 +549,7 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
     match
       Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
         ~manifest:None ~base:None ~mode:Mode.Tree ~gate ~strict:false ~form
-        ~tool:"v1" ()
+        ~verbose:true ~quiet:false ~tool:"v1" ()
     with
     | Ok report -> report
     | Error error ->
@@ -440,10 +560,11 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
   Alcotest.(check (list string))
     "the messages of the text"
     [
-      "the base is the merge base of HEAD and refs/heads/main, " ^ head;
+      (if line_feed then "3 findings in 3 files" else "2 findings in 2 files");
       "warning: the ledger ref refs/sinter/ledger is absent, so every plan \
        counts as open; fetch it with git fetch origin \
        refs/sinter/ledger:refs/sinter/ledger";
+      "note: base " ^ String.sub head 0 7 ^ ", the merge base of HEAD and main";
     ]
     (Check.messages text);
   Alcotest.(check (pair int (list string)))
@@ -468,11 +589,85 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
 
 let case name f = Alcotest.test_case name `Quick f
 
+let the_options_choose_the_lines_of_standard_error () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "sinter.toml" packs;
+  Git_fixture.write repo "docs/a.md" "# A\n\n@cites x\n";
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  let head = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]) in
+  let messages form verbose quiet =
+    match
+      Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+        ~manifest:None ~base:(Some "HEAD") ~mode:Mode.Tree ~gate:None
+        ~strict:false ~form ~verbose ~quiet ~tool:"v1" ()
+    with
+    | Ok report -> Check.messages report
+    | Error error ->
+        Alcotest.failf "the check fails: %s"
+          (String.concat "; " (Scan.messages error))
+  in
+  let note = "note: base " ^ String.sub head 0 7 ^ ", from --base HEAD" in
+  let warning =
+    "warning: the ledger ref refs/sinter/ledger is absent, so every plan \
+     counts as open; fetch it with git fetch origin \
+     refs/sinter/ledger:refs/sinter/ledger"
+  in
+  Alcotest.(check (list (list string)))
+    "full, brief with -v, full with -q, full with -v and -q, and JSON with -v"
+    [
+      [ "1 finding in 1 file"; warning ];
+      [ "1 finding in 1 file"; warning; note ];
+      [ warning ];
+      [ warning ];
+      [ warning ];
+    ]
+    [
+      messages Check.Full false false;
+      messages Check.Brief true false;
+      messages Check.Full false true;
+      messages Check.Full true true;
+      messages Check.Json true false;
+    ]
+
+let notices_write_the_note_in_its_style () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "sinter.toml" packs;
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  match
+    Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+      ~manifest:None ~base:(Some "HEAD") ~mode:Mode.Tree ~gate:None
+      ~strict:false ~form:Check.Full ~verbose:true ~quiet:false ~tool:"v1" ()
+  with
+  | Error _ -> Alcotest.fail "the check fails"
+  | Ok report ->
+      let written renderer =
+        let buffer = Buffer.create 128 in
+        let ppf = Format.formatter_of_buffer buffer in
+        Style.prepare ppf renderer;
+        Check.notices ppf report;
+        Buffer.contents buffer
+      in
+      let head = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]) in
+      let base = "base " ^ String.sub head 0 7 ^ ", from --base HEAD\n" in
+      let warning =
+        "warning: the ledger ref refs/sinter/ledger is absent, so every plan \
+         counts as open; fetch it with git fetch origin \
+         refs/sinter/ledger:refs/sinter/ledger\n"
+      in
+      Alcotest.(check (pair string string))
+        "the lines with no style and with styles"
+        ( "no findings in 0 files\n" ^ warning ^ "note: " ^ base,
+          "no findings in 0 files\n" ^ warning ^ "\x1b[1mnote:\x1b[0m " ^ base
+        )
+        (written `None, written `Ansi_tty)
+
 let diff_lines ?base repo =
   match
     Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
       ~manifest:None ~base ~mode:Mode.Diff ~gate:None ~strict:false
-      ~form:Check.Brief ~tool:"v1" ()
+      ~form:Check.Brief ~verbose:false ~quiet:false ~tool:"v1" ()
   with
   | Ok report -> written report
   | Error error ->
@@ -566,6 +761,9 @@ let tests =
     case "the exit code follows the blocking findings"
       the_exit_code_follows_the_blocking_findings;
     a_finding_blocks_at_its_tier_or_under_strict;
+    case "the summary counts findings, files, tiers, and fixes"
+      the_summary_counts_findings_files_tiers_and_fixes;
+    the_summary_counts_equal_the_entries;
     case "a record holds every field of a finding"
       a_record_holds_every_field_of_a_finding;
     case "a record leaves out what a finding does not have"
@@ -574,6 +772,10 @@ let tests =
     case "a record holds the mark and the related places"
       a_record_holds_the_mark_and_the_related_places;
     a_record_writes_the_mark_and_the_related_places_it_has;
+    case "the options choose the lines of standard error"
+      the_options_choose_the_lines_of_standard_error;
+    case "notices write the note in its style"
+      notices_write_the_note_in_its_style;
     case "a check reads the repository and reports at its gate"
       a_check_reads_the_repository_and_reports_at_its_gate;
   ]
