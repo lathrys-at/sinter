@@ -72,3 +72,7 @@
 (subdir
  cases/check-diff-passes-a-mechanical-repair-and-reports-other-edits/tree
  (dirs :standard .plans))
+
+(subdir
+ cases/check-at-a-gate-blocks-a-step-without-promises/tree
+ (dirs :standard .plans))

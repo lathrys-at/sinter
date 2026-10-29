@@ -493,7 +493,7 @@ let resolver manifest (declarations : declaration array) =
 
 let approved manifest (declarations : declaration array) index =
   match manifest_kind declarations.(index).kind with
-  | Some kind -> not (List.mem kind (Manifest.approval_required manifest))
+  | Some kind -> Manifest.approval manifest kind = Manifest.Declaration
   | None -> true
 
 let effective_source manifest (declarations : declaration array) index =
@@ -660,10 +660,11 @@ let make manifest files =
   }
 
 let needs_changes facts =
-  List.exists
-    (fun plan ->
-      List.exists (fun (step : step) -> step.promises = []) plan.steps)
-    facts.plans
+  Manifest.step facts.manifest = Manifest.Change
+  && List.exists
+       (fun plan ->
+         List.exists (fun (step : step) -> step.promises = []) plan.steps)
+       facts.plans
 
 type fact = {
   key : string * string * int * int * string;
@@ -732,8 +733,10 @@ let commitment_hash plan =
     ^ json_strings (canonical plan.scope)
     ^ "}")
 
+let needs_approval manifest kind =
+  Manifest.approval manifest kind = Manifest.Approval
+
 let declaration_records facts ~inforce ~approved =
-  let required = Manifest.approval_required facts.manifest in
   List.filter_map Fun.id
     (List.mapi
        (fun index (d : declaration) ->
@@ -749,7 +752,8 @@ let declaration_records facts ~inforce ~approved =
                   ("xeline", Jsonl.int d.extent.last);
                   ("inforce", Jsonl.bool inforce.(index));
                   ("approved", Jsonl.bool (approved index));
-                  ("approval_required", Jsonl.bool (List.mem kind required));
+                  ( "approval_required",
+                    Jsonl.bool (needs_approval facts.manifest kind) );
                   ("declined", Jsonl.bool false);
                 ]
                @ optional "title" (Option.map Jsonl.string d.title)
@@ -898,14 +902,17 @@ let promise_id plan step (promise : promise) =
   String.concat ":"
     [ "promise"; step_id plan step; promise.word; promise.target ]
 
+let step_hash scope =
+  Sha256.hex (Jsonl.to_string [ ("scope", Jsonl.strings (canonical scope)) ])
+
 let plan_records facts ~changed plan =
-  let required = Manifest.approval_required facts.manifest in
+  let plan_approved = not (needs_approval facts.manifest Manifest.Plan) in
   let plan_record =
     located ~kind:"plan" ~id:(plan_fact_id plan) ~path:plan.path ~span:plan.span
       ([
          ("slug", Jsonl.string plan.slug);
          ("scope", Jsonl.strings plan.scope);
-         ("approved", Jsonl.bool (not (List.mem Manifest.Plan required)));
+         ("approved", Jsonl.bool plan_approved);
          ("active", Jsonl.bool false);
          ("open", Jsonl.bool true);
          ("csh", Jsonl.string (commitment_hash plan));
@@ -935,10 +942,19 @@ let plan_records facts ~changed plan =
     let verified =
       not (List.exists in_scope (Lazy.force facts.lookups).verifies)
     in
-    let done_ =
-      verified
-      && if total = 0 then List.exists in_scope changed else met = total
+    let own_approval =
+      total = 0 && Manifest.step facts.manifest = Manifest.Step_approval
     in
+    let approved = plan_approved && not own_approval in
+    let settled =
+      if total > 0 then met = total
+      else
+        match Manifest.step facts.manifest with
+        | Manifest.Change -> List.exists in_scope changed
+        | Manifest.Step_approval -> approved
+        | Manifest.Promises -> false
+    in
+    let done_ = verified && settled in
     located ~kind:"step" ~id:step_id ~path:plan.path ~span:step.span
       [
         ("plan", Jsonl.string (full_form plan));
@@ -950,6 +966,8 @@ let plan_records facts ~changed plan =
         ("met", Jsonl.int met);
         ("total", Jsonl.int total);
         ("done", Jsonl.bool done_);
+        ("csh", Jsonl.string (step_hash scope));
+        ("approved", Jsonl.bool approved);
         ("active", Jsonl.bool false);
       ]
     :: List.map

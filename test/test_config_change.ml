@@ -35,12 +35,26 @@ let defaults =
   [
     "setting:check.warn-only false";
     "setting:default-branch \"main\"";
-    "setting:evidence.test-coverage \"optional\"";
+    "setting:proof.decision \"declaration\"";
+    "setting:proof.design \"declaration\"";
+    "setting:proof.plan \"declaration\"";
+    "setting:proof.req \"declaration\"";
+    "setting:proof.step \"change\"";
+    "setting:proof.verifies \"whole-run\"";
   ]
 
-let with_defaults written = List.sort compare (written @ defaults)
+let with_defaults written =
+  let written_ids =
+    List.map (fun entry -> List.hd (String.split_on_char ' ' entry)) written
+  in
+  List.sort compare
+    (written
+    @ List.filter
+        (fun entry ->
+          not (List.mem (List.hd (String.split_on_char ' ' entry)) written_ids))
+        defaults)
 
-let an_empty_manifest_has_the_three_defaults () =
+let an_empty_manifest_has_every_default () =
   Alcotest.check strings "the entries" defaults (entries "")
 
 let every_setting_gives_its_entries () =
@@ -48,15 +62,18 @@ let every_setting_gives_its_entries () =
     [
       "gate:merged/cycle \"off\"";
       "gate:review/dangling \"warn\"";
-      "setting:check.historical=docs/devlog/ \"docs/devlog/\"";
       "setting:check.warn-only true";
       "setting:default-branch \"trunk\"";
-      "setting:evidence.test-coverage \"required\"";
-      "setting:ledger.agent-markers=MY_AGENT \"MY_AGENT\"";
-      "setting:ledger.approval-required=plan \"plan\"";
-      "setting:ledger.approval-required=req \"req\"";
-      "setting:plan.exempt=gen/ \"gen/\"";
-      "setting:plan.locations.decision=docs/decisions/ \"docs/decisions/\"";
+      "setting:paths.decision=docs/decisions/ \"docs/decisions/\"";
+      "setting:paths.exempt=gen/ \"gen/\"";
+      "setting:paths.historical=docs/devlog/ \"docs/devlog/\"";
+      "setting:proof.agent-markers=MY_AGENT \"MY_AGENT\"";
+      "setting:proof.decision \"declaration\"";
+      "setting:proof.design \"declaration\"";
+      "setting:proof.plan \"approval\"";
+      "setting:proof.req \"approval\"";
+      "setting:proof.step \"promises\"";
+      "setting:proof.verifies \"each-test\"";
       "setting:scan.namespaces.gh \"[1-9][0-9]*\"";
       "setting:scan.packs.markdown.files=!old/ \"!old/\"";
       "setting:scan.packs.markdown.files=**/*.md \"**/*.md\"";
@@ -73,39 +90,40 @@ let every_setting_gives_its_entries () =
         packs.ocaml.version = \"1.2\"\n\
         packs.ocaml.runners.dune-test = { timeout = 5 }\n\
         namespaces.gh = \"[1-9][0-9]*\"\n\
+        [paths]\n\
+        exempt = [\"gen/\"]\n\
+        historical = [\"docs/devlog/\"]\n\
+        decision = [\"docs/decisions/\"]\n\
+        [proof]\n\
+        req = \"approval\"\n\
+        plan = \"approval\"\n\
+        design = \"declaration\"\n\
+        agent-markers = [\"MY_AGENT\"]\n\
+        verifies = \"each-test\"\n\
+        step = \"promises\"\n\
         [check]\n\
         warn-only = true\n\
-        historical = [\"docs/devlog/\"]\n\
         tiers.review.dangling = \"warn\"\n\
-        tiers.merged.cycle = \"off\"\n\
-        [plan]\n\
-        exempt = [\"gen/\"]\n\
-        locations.decision = [\"docs/decisions/\"]\n\
-        [ledger]\n\
-        approval-required = [\"req\", \"plan\"]\n\
-        agent-markers = [\"MY_AGENT\"]\n\
-        [evidence]\n\
-        test-coverage = \"required\"\n")
+        tiers.merged.cycle = \"off\"\n")
 
 let a_built_in_member_gives_no_entry () =
   Alcotest.check strings "the entries"
     (with_defaults
        [
-         "setting:check.historical=old/ \"old/\"";
-         "setting:plan.exempt=docs/ \"docs/\"";
+         "setting:paths.exempt=docs/ \"docs/\"";
+         "setting:paths.historical=old/ \"old/\"";
        ])
     (entries
        ~plan_file:(fun path -> path = ".plans/p.md")
-       "[check]\n\
+       "[paths]\n\
         historical = [\".plans/**/*.log.md\", \"old/\"]\n\
-        [plan]\n\
         exempt = [\".plans/p.md\", \"sinter.toml\", \"sinter.lock\", \"docs/\"]\n")
 
 let a_member_written_twice_gives_one_entry () =
   Alcotest.check strings "the entries"
-    (with_defaults [ "setting:ledger.agent-markers=A \"A\"" ])
-    (entries "[ledger]\nagent-markers = [\"A\", \"A\"]\n");
-  match changes "" "[ledger]\nagent-markers = [\"A\", \"B\", \"A\"]\n" with
+    (with_defaults [ "setting:proof.agent-markers=A \"A\"" ])
+    (entries "[proof]\nagent-markers = [\"A\", \"A\"]\n");
+  match changes "" "[proof]\nagent-markers = [\"A\", \"B\", \"A\"]\n" with
   | [ first; _ ] -> (
       match first.written with
       | Some span ->
@@ -120,7 +138,8 @@ let what_the_base_side_leaves_out =
     ("a key of no place", "colour = \"red\"\n[scan]\nx = 1\n[check]\ny = 2\n");
     ("sinter-spec", "sinter-spec = \"1.0\"\n");
     ("a default branch of the wrong type", "default-branch = 1\n");
-    ("a table of the wrong type", "scan = 1\ncheck = \"x\"\nplan = []\n");
+    ( "a table of the wrong type",
+      "scan = 1\ncheck = \"x\"\npaths = []\nproof = true\n" );
     ("an array of tables", "[[scan]]\nx = 1\n[[check.tiers]]\n");
     ("a pack of the wrong type", "[scan.packs]\nocaml = 1\n");
     ("packs of the wrong type", "[scan]\npacks = 2\n");
@@ -149,8 +168,8 @@ let what_the_base_side_leaves_out =
        namespaces.gh = 7\n\
        namespaces.\"g h\" = \"x\"\n" );
     ("a warn-only of the wrong type", "[check]\nwarn-only = \"true\"\n");
-    ( "a historical of the wrong type",
-      "[check]\nhistorical = \"old/\"\n[plan]\nexempt = { a = 1 }\n" );
+    ( "a path set of the wrong type",
+      "[paths]\nhistorical = \"old/\"\nexempt = { a = 1 }\ndecision = true\n" );
     ( "tiers that Sinter does not know",
       "[check.tiers]\n\
        review.dangeling = \"warn\"\n\
@@ -163,13 +182,30 @@ let what_the_base_side_leaves_out =
     ("a gate of the wrong type", "[check.tiers]\nmerged = \"warn\"\n");
     ("a tier table of the wrong type", "[check]\ntiers = 3\n");
     ( "locations of no kind",
-      "[plan.locations]\nplan = [\"x\"]\nissue = [\"y\"]\nreq = \"z\"\n" );
-    ( "approval kinds that are not kinds",
-      "[ledger]\napproval-required = [\"test\", \"Req\", 3]\n" );
-    ("agent markers that are not strings", "[ledger]\nagent-markers = [1]\n");
-    ( "a test coverage that is not a word",
-      "[evidence]\ntest-coverage = \"always\"\n" );
-    ("a test coverage of the wrong type", "[evidence]\ntest-coverage = true\n");
+      "[paths]\nplan = [\"x\"]\nissue = [\"y\"]\nreq = \"z\"\n" );
+    ( "approvals of no kind or of no word",
+      "[proof]\n\
+       test = \"approval\"\n\
+       Req = \"approval\"\n\
+       req = 3\n\
+       plan = \"yes\"\n\
+       design = [\"approval\"]\n" );
+    ("agent markers that are not strings", "[proof]\nagent-markers = [1]\n");
+    ("a verifies that is not a word", "[proof]\nverifies = \"always\"\n");
+    ("a verifies of the wrong type", "[proof]\nverifies = true\n");
+    ("a step that is not a word", "[proof]\nstep = \"approve\"\n");
+    ("a step of the wrong type", "[proof]\nstep = [\"promises\"]\n");
+    ( "the tables and keys of an older layout",
+      "[plan]\n\
+       exempt = [\"a/\"]\n\
+       locations.decision = [\"d/\"]\n\
+       [ledger]\n\
+       approval-required = [\"req\"]\n\
+       agent-markers = [\"A\"]\n\
+       [evidence]\n\
+       test-coverage = \"required\"\n\
+       [check]\n\
+       historical = [\"h/\"]\n" );
   ]
 
 let the_base_side_counts_only_what_sinter_knows () =
@@ -181,18 +217,32 @@ let a_member_of_the_wrong_type_leaves_the_others () =
   Alcotest.check strings "the entries"
     (with_defaults
        [
-         "setting:ledger.approval-required=req \"req\"";
+         "setting:proof.agent-markers=A \"A\"";
          "setting:scan.packs.a.files=x \"x\"";
        ])
     (entries
        "[scan]\n\
         packs.a.files = [1, \"x\", false]\n\
-        [ledger]\n\
-        approval-required = [\"req\", \"task\", 2]\n")
+        [proof]\n\
+        agent-markers = [\"A\", 2]\n")
 
 let a_manifest_compared_with_itself_has_no_change () =
   Alcotest.check strings "no change" []
     (details "[check]\nwarn-only = true\n" "[check]\nwarn-only = true\n")
+
+let a_written_default_is_no_change () =
+  Alcotest.check strings "no change" []
+    (details ""
+       "default-branch = \"main\"\n\
+        [proof]\n\
+        req = \"declaration\"\n\
+        design = \"declaration\"\n\
+        decision = \"declaration\"\n\
+        plan = \"declaration\"\n\
+        verifies = \"whole-run\"\n\
+        step = \"change\"\n\
+        [check]\n\
+        warn-only = false\n")
 
 let rows =
   [
@@ -257,41 +307,57 @@ let rows =
       "check.tiers.review.dangling: \"block\" -> \"block\" (changes)",
       "check.tiers.review.dangling: \"block\" -> \"block\" (changes)" );
     ( "",
-      "[check]\nhistorical = [\"docs/devlog/\"]\n",
-      "check.historical: added \"docs/devlog/\" (weakens)",
-      "check.historical: removed \"docs/devlog/\" (strengthens)" );
+      "[paths]\nexempt = [\"gen/\"]\n",
+      "paths.exempt: added \"gen/\" (weakens)",
+      "paths.exempt: removed \"gen/\" (strengthens)" );
     ( "",
-      "[check]\nhistorical = [\"!docs/devlog/\"]\n",
-      "check.historical: added \"!docs/devlog/\" (strengthens)",
-      "check.historical: removed \"!docs/devlog/\" (weakens)" );
+      "[paths]\nexempt = [\"!gen/\"]\n",
+      "paths.exempt: added \"!gen/\" (strengthens)",
+      "paths.exempt: removed \"!gen/\" (weakens)" );
     ( "",
-      "[plan]\nexempt = [\"gen/\"]\n",
-      "plan.exempt: added \"gen/\" (weakens)",
-      "plan.exempt: removed \"gen/\" (strengthens)" );
+      "[paths]\nhistorical = [\"docs/devlog/\"]\n",
+      "paths.historical: added \"docs/devlog/\" (weakens)",
+      "paths.historical: removed \"docs/devlog/\" (strengthens)" );
     ( "",
-      "[plan]\nexempt = [\"!gen/\"]\n",
-      "plan.exempt: added \"!gen/\" (strengthens)",
-      "plan.exempt: removed \"!gen/\" (weakens)" );
+      "[paths]\nhistorical = [\"!docs/devlog/\"]\n",
+      "paths.historical: added \"!docs/devlog/\" (strengthens)",
+      "paths.historical: removed \"!docs/devlog/\" (weakens)" );
     ( "",
-      "[plan]\nlocations.req = [\"docs/\"]\n",
-      "plan.locations.req: added \"docs/\" (weakens)",
-      "plan.locations.req: removed \"docs/\" (strengthens)" );
+      "[paths]\nreq = [\"docs/\"]\n",
+      "paths.req: added \"docs/\" (weakens)",
+      "paths.req: removed \"docs/\" (strengthens)" );
     ( "",
-      "[plan]\nlocations.design = [\"!docs/\"]\n",
-      "plan.locations.design: added \"!docs/\" (strengthens)",
-      "plan.locations.design: removed \"!docs/\" (weakens)" );
+      "[paths]\ndesign = [\"!docs/\"]\n",
+      "paths.design: added \"!docs/\" (strengthens)",
+      "paths.design: removed \"!docs/\" (weakens)" );
     ( "",
-      "[ledger]\napproval-required = [\"req\"]\n",
-      "ledger.approval-required: added \"req\" (strengthens)",
-      "ledger.approval-required: removed \"req\" (weakens)" );
+      "[proof]\nreq = \"approval\"\n",
+      "proof.req: \"declaration\" -> \"approval\" (strengthens)",
+      "proof.req: \"approval\" -> \"declaration\" (weakens)" );
+    ( "[proof]\nplan = \"declaration\"\n",
+      "[proof]\nplan = \"approval\"\n",
+      "proof.plan: \"declaration\" -> \"approval\" (strengthens)",
+      "proof.plan: \"approval\" -> \"declaration\" (weakens)" );
     ( "",
-      "[ledger]\nagent-markers = [\"BOT\"]\n",
-      "ledger.agent-markers: added \"BOT\" (strengthens)",
-      "ledger.agent-markers: removed \"BOT\" (weakens)" );
+      "[proof]\nagent-markers = [\"BOT\"]\n",
+      "proof.agent-markers: added \"BOT\" (strengthens)",
+      "proof.agent-markers: removed \"BOT\" (weakens)" );
     ( "",
-      "[evidence]\ntest-coverage = \"required\"\n",
-      "evidence.test-coverage: \"optional\" -> \"required\" (strengthens)",
-      "evidence.test-coverage: \"required\" -> \"optional\" (weakens)" );
+      "[proof]\nverifies = \"each-test\"\n",
+      "proof.verifies: \"whole-run\" -> \"each-test\" (strengthens)",
+      "proof.verifies: \"each-test\" -> \"whole-run\" (weakens)" );
+    ( "",
+      "[proof]\nstep = \"promises\"\n",
+      "proof.step: \"change\" -> \"promises\" (strengthens)",
+      "proof.step: \"promises\" -> \"change\" (weakens)" );
+    ( "[proof]\nstep = \"approval\"\n",
+      "[proof]\nstep = \"promises\"\n",
+      "proof.step: \"approval\" -> \"promises\" (strengthens)",
+      "proof.step: \"promises\" -> \"approval\" (weakens)" );
+    ( "",
+      "[proof]\nstep = \"approval\"\n",
+      "proof.step: \"change\" -> \"approval\" (changes)",
+      "proof.step: \"approval\" -> \"change\" (changes)" );
   ]
 
 let each_row_of_the_direction_table_holds_both_ways () =
@@ -391,8 +457,8 @@ let a_change_names_its_places_and_its_subject () =
 
 let a_detail_writes_a_string_as_toml_does () =
   Alcotest.check strings "the details"
-    [ "ledger.agent-markers: added \"A\\\"B\\\\\" (strengthens)" ]
-    (details "" "[ledger]\nagent-markers = ['A\"B\\']\n")
+    [ "proof.agent-markers: added \"A\\\"B\\\\\" (strengthens)" ]
+    (details "" "[proof]\nagent-markers = ['A\"B\\']\n")
 
 let hunk ~line ~eline ~ecol ~old_line ~added ~removed =
   { Git.line; eline; ecol; old_line; added; removed }
@@ -459,7 +525,7 @@ let a_finding_sits_at_its_subject_or_at_a_hunk () =
        ~base:(Some base) now)
 
 let a_hunk_must_hold_the_first_line_of_the_entry () =
-  let base = "[check]\n\nhistorical = [\n  \"a/\",\n  \"b/\",\n]\n" in
+  let base = "[paths]\n\nhistorical = [\n  \"a/\",\n  \"b/\",\n]\n" in
   let at hunks = findings ~hunks ~base:(Some base) "" in
   let place lines =
     List.map (fun line -> List.nth (String.split_on_char ' ' line) 0) lines
@@ -586,7 +652,7 @@ let config =
                ([ "scan"; "namespaces"; ns ], Text pattern)))
           (sublist [ ("gh", "[1-9][0-9]*"); ("jira", "[A-Z]+-[0-9]+") ]);
         optional [ "check"; "warn-only" ] (map (fun b -> Flag b) bool);
-        members [ "check"; "historical" ] (".plans/**/*.log.md" :: globs);
+        members [ "paths"; "historical" ] (".plans/**/*.log.md" :: globs);
         flatten_list
           (List.map
              (fun (gate, cls) -> optional [ "check"; "tiers"; gate; cls ] tier)
@@ -597,16 +663,25 @@ let config =
                ("turn", "suspect");
              ])
         >|= List.concat;
-        members [ "plan"; "exempt" ] ("sinter.toml" :: "sinter.lock" :: globs);
-        members [ "plan"; "locations"; "req" ] globs;
-        members [ "plan"; "locations"; "decision" ] globs;
-        members
-          [ "ledger"; "approval-required" ]
-          [ "req"; "design"; "decision"; "plan" ];
-        members [ "ledger"; "agent-markers" ] [ "CI_AGENT"; "MY_BOT" ];
-        optional
-          [ "evidence"; "test-coverage" ]
-          (map (fun c -> Text c) (oneof_list [ "optional"; "required" ]));
+        members [ "paths"; "exempt" ] ("sinter.toml" :: "sinter.lock" :: globs);
+        members [ "paths"; "req" ] globs;
+        members [ "paths"; "decision" ] globs;
+        flatten_list
+          (List.map
+             (fun kind ->
+               optional [ "proof"; kind ]
+                 (map
+                    (fun word -> Text word)
+                    (oneof_list [ "declaration"; "approval" ])))
+             [ "req"; "design"; "decision"; "plan" ])
+        >|= List.concat;
+        members [ "proof"; "agent-markers" ] [ "CI_AGENT"; "MY_BOT" ];
+        optional [ "proof"; "verifies" ]
+          (map (fun c -> Text c) (oneof_list [ "whole-run"; "each-test" ]));
+        optional [ "proof"; "step" ]
+          (map
+             (fun c -> Text c)
+             (oneof_list [ "change"; "approval"; "promises" ]));
       ]
     >|= List.concat)
 
@@ -869,6 +944,12 @@ let names =
     "\x01";
     "plan";
     "exempt";
+    "paths";
+    "proof";
+    "req";
+    "verifies";
+    "step";
+    "historical";
     "ledger";
     "agent-markers";
     "runners";
@@ -890,6 +971,9 @@ let wild_value =
       "07:32:00";
       "[{ a = 1 }]";
       "\"warn\"";
+      "\"approval\"";
+      "\"each-test\"";
+      "\"promises\"";
       "[\"x\", \"x\"]";
     ]
 
@@ -919,12 +1003,39 @@ let every_entry_of_any_document_has_an_id_that_parses =
             (Config_change.entries
                (Config_change.side ~plan_file ~location:"sinter.toml" document)))
 
+let proof_defaults =
+  [
+    ([ "proof"; "req" ], "declaration");
+    ([ "proof"; "design" ], "declaration");
+    ([ "proof"; "decision" ], "declaration");
+    ([ "proof"; "plan" ], "declaration");
+    ([ "proof"; "verifies" ], "whole-run");
+    ([ "proof"; "step" ], "change");
+  ]
+
+let each_key_of_proof_has_its_written_value_or_its_default =
+  property ~name:"each key of [proof] has its written value or its default"
+    ~print:print_settings
+    Gen.(pair int config)
+    (fun (seed, settings) ->
+      let entries = Config_change.entries (side_of seed settings) in
+      List.for_all
+        (fun (key, default) ->
+          let expected =
+            match List.assoc_opt key settings with
+            | Some (Text word) -> word
+            | Some _ | None -> default
+          in
+          List.assoc_opt (Fact_id.setting key) entries
+          = Some (Config_change.String expected))
+        proof_defaults)
+
 let case name test = Alcotest.test_case name `Quick test
 
 let tests =
   [
-    case "an empty manifest has the three defaults"
-      an_empty_manifest_has_the_three_defaults;
+    case "an empty manifest has every default"
+      an_empty_manifest_has_every_default;
     case "every setting gives its entries" every_setting_gives_its_entries;
     case "a built-in member gives no entry" a_built_in_member_gives_no_entry;
     case "a member written twice gives one entry"
@@ -935,6 +1046,7 @@ let tests =
       a_member_of_the_wrong_type_leaves_the_others;
     case "a manifest compared with itself has no change"
       a_manifest_compared_with_itself_has_no_change;
+    case "a written default is no change" a_written_default_is_no_change;
     case "each row of the direction table holds both ways"
       each_row_of_the_direction_table_holds_both_ways;
     case "a tier applies under the warn-only of its side"
@@ -960,4 +1072,5 @@ let tests =
     each_difference_gives_one_finding;
     any_base_text_gives_findings;
     every_entry_of_any_document_has_an_id_that_parses;
+    each_key_of_proof_has_its_written_value_or_its_default;
   ]

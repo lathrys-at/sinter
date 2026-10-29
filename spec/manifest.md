@@ -9,9 +9,8 @@ Status: draft. The six specifications share one version; see [docs/versioning.md
 
 The **manifest** is a TOML file that holds the settings of one
 repository for Sinter. Its settings say which files Sinter reads and
-which external ids resolve. They set how hard each finding class
-bites. They say which changes need a plan step, which kinds need
-approval, and which test evidence meets a promise.
+which external ids resolve. They say what each path means, what
+settles each item, and how hard each finding class bites.
 
 This document defines the file, its tables, and its keys. It says how
 a tool reads the file, and which errors a manifest can hold. It also
@@ -115,14 +114,14 @@ stops with exit code 3 in each of these cases:
 ### 2.5 One configuration for both trees
 
 The **configuration** of a repository is its manifest and its rule
-files (section 15).
+files (section 14).
 
 Sinter reads two trees: the working tree and the base tree
 ([algebra.md](algebra.md) section 8). Sinter reads both trees with one
 configuration: the configuration of the working tree. So
 Sinter reads the base tree with the manifest, the rule files, and the
 packs of the working tree. It reads the manifest of the base tree only
-to compare the two configurations (section 14.4).
+to compare the two configurations (section 13.4).
 
 A manifest that `--manifest` names applies to both trees. Its globs
 stay relative to the repository root.
@@ -132,24 +131,16 @@ stay relative to the repository root.
 ### 3.1 Tables and key paths
 
 The top level of the manifest holds two keys, `sinter-spec` and
-`default-branch`. They act on every part of Sinter. Every other key is
-in one of five tables, and each table holds the settings of one part
-of Sinter:
+`default-branch`. Every other key is in one of four tables. The top
+level and each table answer one question about the project:
 
-| table | part of Sinter | what its settings decide |
-|---|---|---|
-| top level | every part | the version of the specifications; the default branch |
-| `[scan]` | the scanner | which files each pack reads; which test runners write the reports for its tests; which external ids resolve |
-| `[check]` | findings | which facts can make findings; the tier of each built-in finding class |
-| `[plan]` | the plan check and promises | which changes need a plan step; where a promised declaration can be met |
-| `[ledger]` | approval and the ledger | which kinds need approval; where the commands that write the ledger refuse |
-| `[evidence]` | test evidence | which rung of a `@verifies` edge meets a promise |
-
-The **plan check** compares the hunks of a diff with the scopes of the
-open plans. It reports each hunk outside them as `unplanned-change`
-([algebra.md](algebra.md) section 9). The keys of `[plan]` also decide
-where a promised declaration can be met ([vocabulary.md](vocabulary.md)
-section 10.5).
+| table | question |
+|---|---|
+| top level | Which version of the specifications applies, and which branch is the default? |
+| `[scan]` | What does Sinter read? |
+| `[paths]` | What does each path mean? |
+| `[proof]` | What settles each item? |
+| `[check]` | How hard does each gap bite? |
 
 No other top-level key and no other table exists.
 
@@ -178,14 +169,15 @@ the key (section 5).
 | `scan.packs.<name>.runners.<runner>` | table: the runner settings of the runner `<runner>` | absent: the runner is off; an error on `markdown` | test evidence: the runner `<runner>`, whose reports bind to the tests of pack `<name>` | 8.1 | 1.0 |
 | `scan.packs.<name>.runners.<runner>.<key>` | the type that the descriptor of pack `<name>` gives the runner setting `<key>` | the default that the descriptor gives | test evidence: the runner setting `<key>` of the runner `<runner>` | 8.1 | 1.0 |
 | `scan.namespaces.<ns>` | string: an id pattern | absent: the namespace `<ns>` does not exist | the scanner and findings: which external ids resolve | 8.3 | 1.0 |
-| `check.warn-only` | boolean | `false` | findings: tiers | 9.3 | 1.0 |
-| `check.historical` | path set | empty, with one built-in member | findings: which facts can make findings | 9.4 | 1.0 |
-| `check.tiers.<gate>.<class>` | string: a tier | the tier in algebra.md section 9 | findings: tiers | 9.2 | 1.0 |
-| `plan.exempt` | path set | empty, with built-in members | the plan check | 10.2 | 1.0 |
-| `plan.locations.<kind>` | path set | absent: the kind has no default location | promises | 10.3 | 1.0 |
-| `ledger.approval-required` | array of strings: kinds | empty: no kind needs approval | approval | 11.1 | 1.0 |
-| `ledger.agent-markers` | array of strings | empty: the tool's built-in list only | the commands that write the ledger | 11.2 | 1.0 |
-| `evidence.test-coverage` | string: `"optional"` or `"required"` | `"optional"` | promises | 12 | 1.0 |
+| `paths.exempt` | path set | empty, with built-in members | the plan check | 9.1 | 1.0 |
+| `paths.historical` | path set | empty, with one built-in member | findings: which facts can make findings | 9.2 | 1.0 |
+| `paths.<kind>` | path set | absent: the kind has no default location | promises | 9.3 | 1.0 |
+| `proof.<kind>` | string: `"declaration"` or `"approval"` | `"declaration"` | approval | 10.1 | 1.0 |
+| `proof.agent-markers` | array of strings | empty: the tool's built-in list only | the commands that write the ledger | 10.2 | 1.0 |
+| `proof.verifies` | string: `"whole-run"` or `"each-test"` | `"whole-run"` | promises | 10.3 | 1.0 |
+| `proof.step` | string: `"change"`, `"approval"`, or `"promises"` | `"change"` | steps without promises | 10.4 | 1.0 |
+| `check.warn-only` | boolean | `false` | findings: tiers | 11.3 | 1.0 |
+| `check.tiers.<gate>.<class>` | string: a tier | the tier in algebra.md section 9 | findings: tiers | 11.2 | 1.0 |
 
 ### 3.3 The canonical form
 
@@ -241,8 +233,8 @@ are equally near, the message suggests the first in byte order.
 
 **A key at the wrong place.** When an unknown key is a fixed name of
 another place in the layout, the message names that place. Example: a
-line `default-branch = "trunk"` under the header `[evidence]` gives the
-key path `evidence.default-branch`. The message says that
+line `default-branch = "trunk"` under the header `[check]` gives the
+key path `check.default-branch`. The message says that
 `default-branch` belongs at the top level, above the first table
 header.
 
@@ -254,11 +246,11 @@ type at every key: an integer, a float, a date or a time, or an array
 of tables.
 
 **A wrong value.** A value of the right type that breaks a rule of its
-key is an error. Sections 5 to 12 give the rules. When the value must
+key is an error. Sections 5 to 11 give the rules. When the value must
 be one word of a fixed list, the message suggests the nearest word, by
 the rule for an unknown key.
 
-The front matter of a rule file follows the same rules (section 15).
+The front matter of a rule file follows the same rules (section 14).
 
 ### 4.3 Example messages
 
@@ -267,7 +259,7 @@ This list is informative.
 ```
 sinter: no sinter.toml at the repository root; create one, or name one with --manifest
 sinter: sinter.toml names no pack; add a line such as packs.markdown.files = ["**/*.md"] under [scan]
-sinter: sinter.toml:9:1: unknown key 'historic' in [check]; did you mean 'historical'?
+sinter: sinter.toml:9:1: unknown key 'historic' in [paths]; did you mean 'historical'?
 sinter: sinter.toml:14:1: 'default-branch' belongs at the top level, above the first table header
 sinter: sinter.toml:8:13: 'warn-only' takes true or false, not a string
 sinter: sinter.toml:4:1: the dotted key 'b.ct' adds a key to the table 'a.b', which a table header made; write 'ct' under the header [a.b]
@@ -316,7 +308,7 @@ compares `sinter-spec` with its own version:
    message names the key, the version that added it, and the line
    `sinter-spec = "<version>"` to write.
 
-`sinter-spec` yields no fact (section 14.1).
+`sinter-spec` yields no fact (section 13.1).
 
 ## 6. The default branch: `default-branch`
 
@@ -593,9 +585,163 @@ TOML basic string and in a TOML literal string.
 | `[1-9][0-9]*` | the numbers of GitHub issues and pull requests, such as `42` |
 | `[A-Z]+-[1-9][0-9]*` | Jira keys, such as `PROJ-1` |
 
-## 9. `[check]`: findings and tiers
+## 9. `[paths]`: what each path means
 
-### 9.1 Gates and tiers
+A **path role** is the meaning that a path set of `[paths]` gives to
+each of its paths: an exempt path, a historical path, or the default
+location of a kind. Each role has its own key. A path with two roles
+is written in two keys. Example: a folder of generated documentation
+can be in `paths.exempt` and in `paths.historical`.
+
+### 9.1 Exempt paths
+
+The **plan check** compares the hunks of a diff with the scopes of the
+open plans. It reports each hunk outside them as `unplanned-change`
+([algebra.md](algebra.md) section 9).
+
+`paths.exempt` is a path set. A hunk under an **exempt** path needs no
+plan step: the plan check does not report it. Use the key for files
+that tools write, such as lock files and generated code. Also use it
+for files that every step of every plan can change, such as the
+dependency and license files at the repository root. An exempt path
+does not widen the place where a promise can be met
+([vocabulary.md](vocabulary.md) section 10.4).
+
+The path set has these built-in members:
+
+- each plan file ([vocabulary.md](vocabulary.md) section 10.1) of the
+  working tree or of the base tree, so that a plan file that a branch
+  moves or deletes is exempt;
+- the manifest, when it is inside the repository;
+- the lock file `sinter.lock`.
+
+The members of the manifest add to them. A `!` glob of the manifest
+leaves out paths of the manifest's own members only. It never removes
+a built-in member.
+
+### 9.2 Historical paths
+
+`paths.historical` is a path set. A located fact under a
+**historical** path makes no finding of any class
+([algebra.md](algebra.md) section 9, global rule 1). Sinter still
+reads a file under a historical path, and a citation in the file still
+resolves to its tag target ([vocabulary.md](vocabulary.md) section
+8.4). Use the key for text that records the past, such as a log of
+development.
+
+The path set has one built-in member: `.plans/**/*.log.md`, the
+journals of plans. The members of the manifest add to it. A `!` glob
+of the manifest leaves out paths of the manifest's own members only.
+It never removes the built-in member.
+
+### 9.3 Default locations
+
+`paths.<kind>` is a path set. `<kind>` is `req`, `design`, or
+`decision`. The path set is the **default location** of the kind. A
+promised declaration of the kind is met when a declaration with its
+slug exists in one of two places ([vocabulary.md](vocabulary.md)
+section 10.5): inside the effective scope of its step, or inside the
+default location of the kind. A kind with no key has no default
+location.
+
+`paths.plan` is an error. Plan files always live under `.plans/`
+([vocabulary.md](vocabulary.md) section 10.1).
+
+## 10. `[proof]`: what settles each item
+
+The keys of `[proof]` name the evidence that settles each of these
+questions:
+
+| question | evidence that settles it | key |
+|---|---|---|
+| Is an item approved? | its declaration, or the approval of a person in the ledger | `proof.<kind>` (section 10.1) |
+| Is a promised `@verifies` met? | a passing test, with the coverage of the whole run or the coverage of each test | `proof.verifies` (section 10.3) |
+| Is a step without promises done? | a change in its scope, or the approval of a person in the ledger; or nothing, so that each step needs promises | `proof.step` (section 10.4) |
+
+### 10.1 Approval
+
+`proof.<kind>` is `"declaration"` or `"approval"`. `<kind>` is `req`,
+`design`, `decision`, or `plan`. The default is `"declaration"`. A
+kind **needs approval** when its key `proof.<kind>` is `"approval"`.
+
+An **approval** is a ledger entry that records that a person approved
+an item ([ledger.md](ledger.md) section 5). An item of a kind that
+needs approval is approved only when the ledger holds an approval for
+it:
+
+- a declaration of the kind `req`, `design`, or `decision` needs an
+  approval for its current slug, revision, and extent hash;
+- a plan needs an approval against which its current commitment set is
+  approved ([ledger.md](ledger.md) section 11).
+
+An item of a kind that does not need approval counts as approved. The
+predicate `approved()` ([algebra.md](algebra.md) section 6.5), each
+finding class that uses it, and the liveness of a `@supersedes` edge
+([vocabulary.md](vocabulary.md) section 8.1) follow this rule.
+
+### 10.2 Agent markers
+
+An **agent marker** is an environment variable that shows that an
+agent runs the command. The commands `sinter approve`,
+`sinter decline`, and `sinter ledger abandon` refuse with exit code 4
+when the environment holds an agent marker, whatever its value.
+
+The tool holds a built-in list of agent markers.
+`proof.agent-markers` is an array of names that add to that list.
+Each name matches `[A-Za-z_][A-Za-z0-9_]*`, and no name occurs twice.
+The default is empty. The manifest can only add names. It cannot
+remove a name from the built-in list of the tool. A name that is
+already in that list is valid, and it changes nothing.
+
+### 10.3 Test evidence
+
+`proof.verifies` is `"whole-run"` or `"each-test"`. The default is
+`"whole-run"`. The value decides which rungs of a `@verifies` edge
+meet a promise. [algebra.md](algebra.md) section 6.7 defines the
+rungs. **The coverage of each test** is the coverage that Sinter
+measures for one test on its own. **The coverage of the whole run** is
+the coverage of all the tests of a run together. An edge is at rung
+`unmeasured` when its tests pass and the run covered its sites, but
+the evidence holds no coverage of each test for its tests.
+
+| value | rungs that meet a promise |
+|---|---|
+| `"each-test"` | `passing` |
+| `"whole-run"` | `passing` and `unmeasured` |
+
+The rule applies in three places:
+
+- when a promised `@verifies` is met ([vocabulary.md](vocabulary.md)
+  section 10.5);
+- when a step or a plan is done (`done()`,
+  [algebra.md](algebra.md) section 6.4);
+- when a plan passes the completion condition ([ledger.md](ledger.md)
+  section 8).
+
+The tier of the class `unmeasured` is a separate setting. It decides
+how hard an edge at rung `unmeasured` bites as a finding.
+
+### 10.4 Steps without promises
+
+`proof.step` is `"change"`, `"approval"`, or `"promises"`. The default
+is `"change"`. The value decides when a step without promises is done
+([vocabulary.md](vocabulary.md) section 10.5). It does not change when
+a step with promises is done.
+
+| value | a step without promises is done when |
+|---|---|
+| `"change"` | a hunk of the diff changes a file inside the effective scope of the step |
+| `"approval"` | the ledger holds an approval of the step that matches its current step hash ([ledger.md](ledger.md) section 5.1) |
+| `"promises"` | never: each step needs promises |
+
+Under each value, the step is done only when every `@verifies` edge in
+its scope is also at a rung that section 10.3 allows. Under
+`"promises"`, each step without promises of an open plan is the
+finding `step-without-promises` ([algebra.md](algebra.md) section 9).
+
+## 11. `[check]`: findings and tiers
+
+### 11.1 Gates and tiers
 
 A **gate** is a point where Sinter checks a repository. There are three
 gates:
@@ -618,7 +764,7 @@ A **tier** says how hard a finding class bites at one gate:
 finding class at each gate. A `—` there means that the class takes no
 tier at that gate.
 
-### 9.2 Tiers in the manifest
+### 11.2 Tiers in the manifest
 
 `check.tiers.<gate>.<class>` sets the tier of the built-in finding
 class `<class>` at the gate `<gate>`. The value is `"off"`, `"warn"`,
@@ -633,7 +779,7 @@ These are errors:
 - `<class>` is `config-changed`, which always reports and never blocks;
 - `<class>` is `pack-mismatch`, which takes no tier at any gate.
 
-### 9.3 Warn-only and the tier that applies
+### 11.3 Warn-only and the tier that applies
 
 `check.warn-only` is a boolean. The default is `false`. While the
 value is `true`, Sinter lowers to `warn` each tier that
@@ -653,132 +799,7 @@ So a tier that the manifest writes for a class at one gate applies
 while `check.warn-only` is `true`. Example:
 `tiers.review.dangling = "block"` under `[check]`.
 
-### 9.4 Historical paths
-
-`check.historical` is a path set. A located fact under a
-**historical** path makes no finding of any class
-([algebra.md](algebra.md) section 9, global rule 1). Sinter still
-reads a file under a historical path, and a citation in the file still
-resolves to its tag target ([vocabulary.md](vocabulary.md) section
-8.4). Use the key for text that records the past, such as a log of
-development.
-
-The path set has one built-in member: `.plans/**/*.log.md`, the
-journals of plans. The members of the manifest add to it. A `!` glob
-of the manifest leaves out paths of the manifest's own members only.
-It never removes the built-in member.
-
-## 10. `[plan]`: the plan check and promises
-
-### 10.1 Path roles
-
-A **path role** is the meaning that a path set gives to each of its
-paths: a historical path (section 9.4), an exempt path, or the default
-location of a kind. Each role has its own setting. A path with two
-roles is written in two settings. Example: a folder of generated
-documentation can be in `plan.exempt` and in `check.historical`.
-
-### 10.2 Exempt paths
-
-`plan.exempt` is a path set. A hunk under an **exempt** path needs no
-plan step: `unplanned-change` does not report it
-([algebra.md](algebra.md) section 9). Use the key for files that tools
-write, such as lock files and generated code. Also use it for files
-that every step of every plan can change, such as the dependency and
-license files at the repository root. An exempt path does not widen
-the place where a promise can be met ([vocabulary.md](vocabulary.md)
-section 10.4).
-
-The path set has these built-in members:
-
-- each plan file ([vocabulary.md](vocabulary.md) section 10.1) of the
-  working tree or of the base tree, so that a plan file that a branch
-  moves or deletes is exempt;
-- the manifest, when it is inside the repository;
-- the lock file `sinter.lock`.
-
-The members of the manifest add to them. A `!` glob of the manifest
-leaves out paths of the manifest's own members only. It never removes
-a built-in member.
-
-### 10.3 Default locations
-
-`plan.locations.<kind>` is a path set. `<kind>` is `req`, `design`, or
-`decision`. The path set is the **default location** of the kind. A
-promised declaration of the kind is met when a declaration with its
-slug exists in one of two places ([vocabulary.md](vocabulary.md)
-section 10.5): inside the effective scope of its step, or inside the
-default location of the kind. A kind with no entry has no default
-location.
-
-`plan.locations.plan` is an error. Plan files always live under
-`.plans/` ([vocabulary.md](vocabulary.md) section 10.1).
-
-## 11. `[ledger]`: approval and the ledger
-
-### 11.1 Approval
-
-`ledger.approval-required` is an array of kinds. Each member is
-`"req"`, `"design"`, `"decision"`, or `"plan"`, and no member occurs
-twice. The default is empty: no kind needs approval.
-
-An **approval** is a ledger entry that records that a person approved
-an item ([ledger.md](ledger.md) section 5). An item of a kind in the
-list is approved only when the ledger holds an approval for it:
-
-- a declaration of the kind `req`, `design`, or `decision` needs an
-  approval for its current slug, revision, and extent hash;
-- a plan needs an approval against which its current commitment set is
-  approved ([ledger.md](ledger.md) section 11).
-
-An item of a kind that is not in the list counts as approved. The
-predicate `approved()` ([algebra.md](algebra.md) section 6.5), each
-finding class that uses it, and the liveness of a `@supersedes` edge
-([vocabulary.md](vocabulary.md) section 8.1) follow this rule.
-
-### 11.2 Agent markers
-
-An **agent marker** is an environment variable that shows that an
-agent runs the command. The commands `sinter approve`,
-`sinter decline`, and `sinter ledger abandon` refuse with exit code 4
-when the environment holds an agent marker, whatever its value.
-
-The tool holds a built-in list of agent markers.
-`ledger.agent-markers` is an array of names that add to that list.
-Each name matches `[A-Za-z_][A-Za-z0-9_]*`, and no name occurs twice.
-The default is empty. The manifest can only add names. It cannot
-remove a name from the built-in list of the tool. A name that is
-already in that list is valid, and it changes nothing.
-
-## 12. `[evidence]`: test evidence
-
-`evidence.test-coverage` is `"optional"` or `"required"`. The default
-is `"optional"`. The value decides which rungs of a `@verifies` edge
-meet a promise. [algebra.md](algebra.md) section 6.7 defines the
-rungs. **The coverage of each test** is the coverage that Sinter
-measures for one test on its own. **The coverage of the whole run** is
-the coverage of all the tests of a run together. An edge is at rung
-`unmeasured` when its tests pass and the run covered its sites, but
-the evidence holds no coverage of each test for its tests.
-
-| value | rungs that meet a promise |
-|---|---|
-| `"required"` | `passing` |
-| `"optional"` | `passing` and `unmeasured` |
-
-The rule applies in three places:
-
-- when a promised `@verifies` is met ([vocabulary.md](vocabulary.md)
-  section 10.5);
-- when a step or a plan is done (`done()`,
-  [algebra.md](algebra.md) section 6.4);
-- when a plan passes the completion condition ([ledger.md](ledger.md)
-  section 8).
-
-The tier of the class `unmeasured` is a separate setting. It decides
-how hard an edge at rung `unmeasured` bites as a finding.
-
-## 13. Built-ins
+## 12. Built-ins
 
 This specification fixes these values. The manifest cannot change
 them, except as the last column says.
@@ -790,19 +811,21 @@ them, except as the last column says.
 | the id pattern language | section 8.4 | nothing |
 | the folder of plans | `.plans/` | nothing |
 | the pack `markdown` | built into the tool | name it, and give its files |
-| historical paths | `.plans/**/*.log.md` | add paths |
 | exempt paths | each plan file, the manifest, `sinter.lock` | add paths |
+| historical paths | `.plans/**/*.log.md` | add paths |
+| the default of `proof.<kind>` | `"declaration"` | write `"approval"` |
+| the default of `proof.verifies` | `"whole-run"` | write `"each-test"` |
+| the default of `proof.step` | `"change"` | write `"approval"` or `"promises"` |
 | the tier of each pair of a gate and a built-in class | algebra.md section 9 | write another tier |
 | the default of `default-branch` | `"main"` | write another branch |
 | the default of `check.warn-only` | `false` | write `true` |
-| the default of `evidence.test-coverage` | `"optional"` | write `"required"` |
 
 The list of agent markers is built into the tool, not into this
-specification. The manifest can add names to it (section 11.2).
+specification. The manifest can add names to it (section 10.2).
 
-## 14. Facts from the manifest
+## 13. Facts from the manifest
 
-### 14.1 Setting facts
+### 13.1 Setting facts
 
 The manifest yields facts of the kind `setting`, in the category
 `config` ([algebra.md](algebra.md) section 3):
@@ -815,15 +838,17 @@ The manifest yields facts of the kind `setting`, in the category
   `scan.packs.<name>.runners`: its value is the name of the runner,
   and it is located at the key of the runner. Each runner setting in
   the table yields its own setting fact by the rules above.
-- Each of `default-branch`, `check.warn-only`, and
-  `evidence.test-coverage` yields one setting fact with its
-  default value when the manifest does not write it.
-- Each built-in member of `check.historical` and of `plan.exempt`
+- Each of `default-branch` and `check.warn-only`, and each key of
+  `[proof]` that takes one value, yields one setting fact with its
+  default value when the manifest does not write it. The keys of
+  `[proof]` that take one value are `proof.<kind>` for each of the
+  four kinds, `proof.verifies`, and `proof.step`.
+- Each built-in member of `paths.exempt` and of `paths.historical`
   yields one setting fact. The value of the member for a plan file is
   the path of the plan file. The value of the member for the manifest
   is the path of the manifest.
 - `sinter-spec` yields no fact.
-- `check.tiers` yields gate facts (section 14.2), and no setting
+- `check.tiers` yields gate facts (section 13.2), and no setting
   facts.
 - The built-in list of agent markers of the tool yields no facts.
 
@@ -839,7 +864,7 @@ The `setting` record has these fields, in addition to the envelope of
 | `builtin` | bool | `true` when the fact is a built-in member |
 
 A setting fact that the manifest writes is located: it carries the
-path of the manifest and a position (section 14.3). A default fact and
+path of the manifest and a position (section 13.3). A default fact and
 a built-in fact are unlocated. When the manifest writes a member that
 is also built in, Sinter yields one fact. That fact is located at the
 written member, and its `builtin` field is `true`. A setting fact has
@@ -856,7 +881,7 @@ A key path holds no `=`, so an id parses from the left: the key path
 ends at the first `=`. An id does not change when a line moves, or
 when the TOML form of a key changes.
 
-### 14.2 Gate facts
+### 13.2 Gate facts
 
 The manifest and [algebra.md](algebra.md) section 9 yield one fact of
 the kind `gate` for each pair of a gate and a class that takes a tier
@@ -867,7 +892,7 @@ these fields:
 |---|---|---|
 | `gate` | string | `turn`, `review`, or `merged` |
 | `class` | string | the finding class |
-| `tier` | string | the tier that applies (section 9.3) |
+| `tier` | string | the tier that applies (section 11.3) |
 | `default` | bool | `true` when `check.tiers` does not write the pair |
 | `capped` | bool | `true` when `check.warn-only` lowered the tier |
 
@@ -875,7 +900,7 @@ A gate fact whose pair `check.tiers` writes is located at that entry.
 A gate fact whose pair the manifest does not write is unlocated. The id
 of a gate fact is `gate:<gate>/<class>`.
 
-### 14.3 Positions
+### 13.3 Positions
 
 | fact | position |
 |---|---|
@@ -892,7 +917,7 @@ the path of the manifest, relative to the repository root.
 A manifest outside the repository has no path relative to the
 repository root. Its facts are all unlocated.
 
-### 14.4 `config-changed`
+### 13.4 `config-changed`
 
 `config-changed` is the finding class that reports a change to the
 configuration between the base tree and the working tree. It is
@@ -900,7 +925,7 @@ reported in both modes ([algebra.md](algebra.md) section 8.2). It is
 an *engine* class: the adjudicator emits it ([algebra.md](algebra.md)
 section 9). Its tier is `warn` at every gate. `check.tiers` cannot
 set it, and nothing turns it off: a manifest under a historical path
-(section 9.4) still gives the finding.
+(section 9.2) still gives the finding.
 
 **The two sides.** The adjudicator compares the working manifest with
 the **base manifest**: the file at the same path, relative to the
@@ -911,17 +936,18 @@ such file, or the file is not valid TOML 1.1.0, the base side is the
 side of an empty manifest.
 
 From each side, the adjudicator makes a **comparison set**. Each entry
-of the set has an id and a value, by the rules of sections 14.1 and
-14.2:
+of the set has an id and a value, by the rules of sections 13.1 and
+13.2:
 
-1. one entry for each of `default-branch`, `check.warn-only`, and
-   `evidence.test-coverage`: the written value, or the default;
+1. one entry for each of `default-branch` and `check.warn-only`, and
+   for each key of `[proof]` that takes one value: the written value,
+   or the default;
 2. one entry for each other key that the side writes with one value;
    for a pair that `check.tiers` writes, the id is `gate:<gate>/<class>`
    and the value is the written tier;
 3. one entry for each member of an array that the side writes, except
    a member that is also built in, and one entry for each runner table
-   that the side writes, as section 14.1 says. On both sides, the
+   that the side writes, as section 13.1 says. On both sides, the
    built-in members are those of the working tree (section 2.5). A
    member that a side writes twice gives one entry.
 
@@ -932,9 +958,9 @@ takes:
 - A key path that names a gate, a class, or a kind counts only when
   Sinter knows that name.
 - A value counts when its TOML type is the type that the key takes.
-  For a key that takes fixed words, such as a tier,
-  `evidence.test-coverage`, or a member of `ledger.approval-required`,
-  the value must also be one of those words. The base side does not
+  For a key that takes fixed words, such as a tier or a key of
+  `[proof]` that takes one value, the value must also be one of those
+  words. The base side does not
   check a glob, a branch name, or a pattern.
 
 The type of a key `scan.packs.<name>.runners.<runner>.<key>` is the
@@ -970,7 +996,7 @@ finding sits at line 1, column 1 of the working manifest.
   value. A side that does not write a key of rule 1 has the default
   value. A pair of `check.tiers` always takes this form, also when
   only one side writes it: `<old>` and `<new>` are the tiers that
-  apply on the two sides (section 9.3), each with the
+  apply on the two sides (section 11.3), each with the
   `check.warn-only` of its own side.
 - `<key path>: added <new> (<direction>)`, or
   `<key path>: removed <old> (<direction>)`, in every other case.
@@ -992,12 +1018,13 @@ does not mean "reports more findings".
 | `scan.packs.<name>.runners` | | | each change |
 | `scan.packs.<name>.runners.<runner>.<key>` | | | each change |
 | `scan.namespaces.<ns>` | a namespace removed | a namespace added | a pattern changed |
+| `paths.exempt`, `paths.historical`, `paths.<kind>` | a plain glob removed; a `!` glob added | a plain glob added; a `!` glob removed | |
+| `proof.<kind>` | `"declaration"` to `"approval"` | `"approval"` to `"declaration"` | |
+| `proof.agent-markers` | a name added | a name removed | |
+| `proof.verifies` | `"whole-run"` to `"each-test"` | `"each-test"` to `"whole-run"` | |
+| `proof.step` | to `"promises"` | from `"promises"` | between `"change"` and `"approval"` |
 | `check.warn-only` | `true` to `false` | `false` to `true` | |
 | `check.tiers.<gate>.<class>` | the tier that applies rises | the tier that applies falls | the tier that applies stays the same |
-| `check.historical`, `plan.exempt`, `plan.locations.<kind>` | a plain glob removed; a `!` glob added | a plain glob added; a `!` glob removed | |
-| `ledger.approval-required` | a kind added | a kind removed | |
-| `ledger.agent-markers` | a name added | a name removed | |
-| `evidence.test-coverage` | `"optional"` to `"required"` | `"required"` to `"optional"` | |
 
 A tier rises in the order `off`, `warn`, `block`.
 
@@ -1005,10 +1032,10 @@ Examples of details:
 
 ```
 check.warn-only: false -> true (weakens)
-check.historical: added "docs/devlog/" (weakens)
+paths.historical: added "docs/devlog/" (weakens)
 check.tiers.review.dangling: "block" -> "warn" (weakens)
 scan.namespaces.jira: added "[A-Z]+-[1-9][0-9]*" (weakens)
-ledger.approval-required: added "req" (strengthens)
+proof.req: "declaration" -> "approval" (strengthens)
 ```
 
 **A manifest outside the repository.** A manifest that `--manifest`
@@ -1018,7 +1045,7 @@ with, so diff mode reports no `config-changed` finding for it. The
 section 10), so a reader of the output sees where the configuration
 came from.
 
-## 15. Rule files
+## 14. Rule files
 
 A **rule file** holds configuration that a repository writes outside
 the manifest: a rule, or a finding class that the repository defines.
@@ -1047,11 +1074,11 @@ These parts of a rule file are fixed:
    column in the rule file, and a suggestion of the nearest key. An
    error stops the command with exit code 3.
 
-## 16. Examples
+## 15. Examples
 
 This section is informative.
 
-### 16.1 The smallest useful manifest
+### 15.1 The smallest useful manifest
 
 ```toml
 [scan]
@@ -1061,7 +1088,7 @@ packs.markdown.files = ["**/*.md"]
 Sinter reads every markdown file of the file set: plans, decision
 records, and other documents. Every other setting has its default.
 
-### 16.2 Sinter
+### 15.2 Sinter
 
 ```toml
 sinter-spec = "1.0"
@@ -1074,10 +1101,7 @@ packs.rust.files = ["**/*.rs"]
 packs.rust.version = "1.0"
 namespaces.gh = "[1-9][0-9]*"
 
-[check]
-warn-only = true
-
-[plan]
+[paths]
 exempt = [
   ".gitignore",
   "LICENSES/",
@@ -1089,10 +1113,13 @@ exempt = [
   "sinter.opam",
   "sinter.opam.locked",
 ]
-locations.decision = ["docs/decisions/"]
+decision = ["docs/decisions/"]
+
+[check]
+warn-only = true
 ```
 
-### 16.3 A TypeScript project
+### 15.3 A TypeScript project
 
 ```toml
 sinter-spec = "1.0"
@@ -1105,13 +1132,7 @@ packs.typescript.runners.vitest = {}
 namespaces.gh = "[1-9][0-9]*"
 namespaces.jira = "[A-Z]+-[1-9][0-9]*"
 
-[check]
-warn-only = true
-historical = ["docs/devlog/"]
-tiers.review.dangling = "block"
-tiers.merged.dangling = "block"
-
-[plan]
+[paths]
 exempt = [
   ".gitignore",
   "LICENSE",
@@ -1119,15 +1140,21 @@ exempt = [
   "package.json",
   "tsconfig.json",
 ]
-locations.decision = ["docs/decisions/"]
+historical = ["docs/devlog/"]
+decision = ["docs/decisions/"]
 
-[ledger]
-approval-required = ["req"]
+[proof]
+req = "approval"
+verifies = "each-test"
 
-[evidence]
-test-coverage = "required"
+[check]
+warn-only = true
+tiers.review.dangling = "block"
+tiers.merged.dangling = "block"
 ```
 
 The markdown files under `test/fixtures/` are test data, so the pack
-`markdown` leaves them out. At the gates `review` and `merged`, the
-class `dangling` blocks while `warn-only` is `true`.
+`markdown` leaves them out. A requirement is approved only when a
+person approves it in the ledger. A promised `@verifies` is met only
+with the coverage of each test. At the gates `review` and `merged`,
+the class `dangling` blocks while `warn-only` is `true`.

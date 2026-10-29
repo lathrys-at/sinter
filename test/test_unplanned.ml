@@ -19,9 +19,8 @@ let manifest =
     Manifest.of_string
       "[scan]\n\
        packs.markdown.files = [\"**/*.md\"]\n\
-       [check]\n\
+       [paths]\n\
        historical = [\"old/**\"]\n\
-       [plan]\n\
        exempt = [\"vendor/\", \"!vendor/own.c\"]\n"
   with
   | Ok manifest -> manifest

@@ -1,6 +1,6 @@
 [scan]
 packs.markdown.files = ["**/*.md"]
 
-[plan]
+[paths]
 exempt = ["vendor/", "!vendor/own.c"]
 # notes

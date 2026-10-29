@@ -1,11 +1,11 @@
-config-changed: check.historical: removed "a/" (strengthens)
+config-changed: paths.historical: removed "a/" (strengthens)
  --> sinter.toml:1:1
   |
 1 | [scan]
   | ^
   |
 
-config-changed: plan.exempt: added "a/" (weakens)
+config-changed: paths.exempt: added "a/" (weakens)
  --> sinter.toml:6:3
   |
 6 |   "a/",

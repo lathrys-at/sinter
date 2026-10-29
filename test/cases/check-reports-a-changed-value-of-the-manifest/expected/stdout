@@ -1,13 +1,13 @@
-config-changed: check.historical: added "sinter.toml" (weakens)
+config-changed: paths.historical: added "sinter.toml" (weakens)
  --> sinter.toml:5:15
   |
 5 | historical = ["sinter.toml"]
   |               ^^^^^^^^^^^^^
   |
 
-config-changed: evidence.test-coverage: "required" -> "optional" (weakens)
+config-changed: proof.verifies: "each-test" -> "whole-run" (weakens)
  --> sinter.toml:8:1
   |
-8 | test-coverage = "optional"
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 | verifies = "whole-run"
+  | ^^^^^^^^^^^^^^^^^^^^^^
   |

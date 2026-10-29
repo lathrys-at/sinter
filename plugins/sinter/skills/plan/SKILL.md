@@ -116,9 +116,18 @@ A promised `@satisfies` or `@verifies` needs a target. The target
 exists in the repository, or another step of the same plan promises
 to declare it. If neither is true, ask the user what the target is.
 
-A step with a scope and no promises is a refactor step. A refactor
-step is allowed. Tell the user when you write one, because the tool
-only checks whether the step touched its scope.
+A step with a scope and no promises is a refactor step. The manifest
+key `proof.step` in `sinter.toml` says when a refactor step is done.
+Read it before you write one:
+
+- `"change"`, or no key: the step is done when the change touches its
+  scope. Tell the user when you write a refactor step, because the
+  tool then checks only whether the step touched its scope.
+- `"approval"`: the step is done when a person approves it in the
+  ledger. Tell the user that the step needs that approval.
+- `"promises"`: every step needs a promise, and the tool reports each
+  refactor step. Do not write a refactor step. Ask the user which item
+  the step will produce, and promise it.
 
 ### 4. Set the scopes
 
@@ -138,7 +147,7 @@ commas. They use gitignore style:
 Derive scopes from the files the plan names. Where the plan is not
 explicit, confirm the globs with the user. An item meets a
 promise of a step only when the item sits inside the step's scope, or
-inside the default location that the manifest key `plan.locations`
+inside the default location that the manifest key `paths.<kind>`
 gives for the item's kind. When the manifest has no default location
 for a kind, a step that promises an item of that kind must include
 the item's path in its scope: for example `docs/decisions/**` for a
@@ -224,4 +233,5 @@ follow them too.
 - No promise carries a revision.
 - Every step scope sits inside the plan scope.
 - Every promised item's kind can exist inside its step's scope.
+- Every step has a promise when `proof.step` is `"promises"`.
 - The journal file exists.

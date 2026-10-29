@@ -1,0 +1,16 @@
+[scan]
+packs.markdown.files = ["**/*.md"]
+
+[check]
+historical = ["docs/log/"]
+
+[plan]
+exempt = ["LICENSE"]
+locations.decision = ["docs/decisions/"]
+
+[ledger]
+approval-required = ["req"]
+agent-markers = ["MY_AGENT"]
+
+[evidence]
+test-coverage = "required"

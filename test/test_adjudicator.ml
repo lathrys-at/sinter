@@ -28,7 +28,7 @@ let manifest =
       "[scan]\n\
        packs.markdown.files = [\"**/*.md\"]\n\
        namespaces.gh = \"[1-9][0-9]*\"\n\
-       [check]\n\
+       [paths]\n\
        historical = [\"old/**\"]\n"
   with
   | Ok manifest -> manifest

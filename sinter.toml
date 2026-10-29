@@ -4,10 +4,7 @@ sinter-spec = "1.0"
 packs.markdown.files = ["**/*.md", "!test/**"]
 namespaces.gh = "[1-9][0-9]*"
 
-[check]
-warn-only = false
-
-[plan]
+[paths]
 exempt = [
   ".gitignore",
   ".ocamlformat",
@@ -24,4 +21,7 @@ exempt = [
   "sinter.opam",
   "sinter.opam.locked",
 ]
-locations.decision = ["docs/decisions/"]
+decision = ["docs/decisions/"]
+
+[check]
+warn-only = false

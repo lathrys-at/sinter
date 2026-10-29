@@ -21,8 +21,7 @@ val since : string list -> Major_minor.t option
     table: [["scan"; "packs"; "ocaml"; "files"; "x"]] names no setting. It is
     [None] when [path] names no setting. *)
 
-(** A kind of declaration, as [ledger.approval-required] and [plan.locations]
-    name it. *)
+(** A kind of item, as the keys [paths.<kind>] and [proof.<kind>] name it. *)
 type kind = Req | Design | Decision | Plan
 
 val kind_name : kind -> string
@@ -32,10 +31,44 @@ val is_name : string -> bool
 (** [is_name name] is [true] when [name] matches [[a-z][a-z0-9]*(-[a-z0-9]+)*],
     the pattern of the name of a pack, a namespace, and a runner. *)
 
-(** Which rungs of an edge of the kind [verifies] complete a promise. *)
-type test_coverage =
-  | Optional  (** the rungs [passing] and [unmeasured] *)
-  | Required  (** the rung [passing] alone *)
+(** What settles that an item of a kind is approved: the value of
+    [proof.<kind>]. *)
+type approval =
+  | Declaration  (** the item counts as approved *)
+  | Approval
+      (** the item is approved only when the ledger holds an approval of it *)
+
+val approval_name : approval -> string
+(** [approval_name approval] is the word that [proof.<kind>] writes for
+    [approval]: ["declaration"] or ["approval"]. *)
+
+(** Which rungs of an edge of the kind [verifies] meet a promise: the value of
+    [proof.verifies]. *)
+type verifies =
+  | Whole_run
+      (** the rungs [passing] and [unmeasured]: the coverage of the whole run is
+          enough *)
+  | Each_test  (** the rung [passing] alone: the coverage of each test *)
+
+val verifies_name : verifies -> string
+(** [verifies_name verifies] is the word that [proof.verifies] writes for
+    [verifies]: ["whole-run"] or ["each-test"]. *)
+
+(** When a step without promises is done: the value of [proof.step]. *)
+type step =
+  | Change
+      (** when a hunk of the diff changes a file inside the scope of the step:
+          ["change"] *)
+  | Step_approval
+      (** when the ledger holds an approval of the step that matches its step
+          hash: ["approval"] *)
+  | Promises
+      (** never; each step needs promises, and a step without promises is a
+          finding: ["promises"] *)
+
+val step_name : step -> string
+(** [step_name step] is the word that [proof.step] writes for [step]:
+    ["change"], ["approval"], or ["promises"]. *)
 
 (** {1 Errors} *)
 
@@ -75,8 +108,8 @@ type problem =
           valid name within two edits *)
   | Misplaced_key of { name : string; place : string list }
       (** a key that belongs in another table: [place] is the key path of that
-          table, with a name that varies written as ["<name>"], ["<ns>"],
-          ["<gate>"], or ["<kind>"]; [[]] is the top level *)
+          table, with a name that varies written in angle brackets, such as
+          ["<name>"]; [[]] is the top level *)
   | Bad_pack_name of string
   | Bad_namespace of string
   | Unknown_gate of { name : string; nearest : string option }
@@ -93,9 +126,7 @@ type problem =
     }  (** the class takes no tier at the gate *)
   | Never_blocks  (** a tier for [config-changed] *)
   | No_tier_at_any_gate  (** a tier for [pack-mismatch] *)
-  | Unknown_kind of { name : string; nearest : string option }
-      (** a name under [plan.locations] that is not a kind *)
-  | Plan_location  (** [plan.locations.plan] *)
+  | Plan_location  (** [paths.plan] *)
   | Markdown_version  (** a version for the built-in pack [markdown] *)
   | Markdown_runners  (** runners for the built-in pack [markdown] *)
   | Bad_runner_name of string
@@ -129,7 +160,7 @@ type problem =
       nearest : string option;
     }  (** a string that is not one of the words that the key takes *)
   | Bad_marker of string
-      (** a agent marker that is not a name of an environment variable *)
+      (** an agent marker that is not a name of an environment variable *)
 
 (** One error of a manifest. *)
 type error =
@@ -245,7 +276,7 @@ val tier :
     built-in tier. It is [None] when the class takes no tier at the gate. *)
 
 val historical : t -> Path_set.t
-(** [historical manifest] is the path set that [check.historical] writes. *)
+(** [historical manifest] is the path set that [paths.historical] writes. *)
 
 val builtin_historical : string
 (** The built-in member of the historical paths: [.plans/**/*.log.md]. *)
@@ -255,7 +286,7 @@ val is_historical : t -> string -> bool
     [path], or when [path] is in {!historical}. *)
 
 val exempt : t -> Path_set.t
-(** [exempt manifest] is the path set that [plan.exempt] writes. *)
+(** [exempt manifest] is the path set that [paths.exempt] writes. *)
 
 val lock_file : string
 (** The path of the lock file, [sinter.lock], a built-in exempt path. *)
@@ -269,17 +300,20 @@ val is_exempt :
     to the repository root, and [None] for a manifest outside the repository. *)
 
 val location : t -> kind -> Path_set.t option
-(** [location manifest kind] is the default location of [kind], or [None] when
-    the kind has none. It is [None] for [Plan]. *)
+(** [location manifest kind] is the default location of [kind], the path set
+    that [paths.<kind>] writes, or [None] when the kind has none. It is [None]
+    for [Plan]. *)
 
-val approval_required : t -> kind list
-(** [approval_required manifest] is the kinds that need approval, in the order
-    the manifest writes them. *)
+val approval : t -> kind -> approval
+(** [approval manifest kind] is the value of [proof.<kind>], or [Declaration].
+    The kind needs approval when it is [Approval]. *)
 
 val agent_markers : t -> string list
-(** [agent_markers manifest] is the names that the manifest adds to the built-in
-    list of agent markers, in the order it writes them. *)
+(** [agent_markers manifest] is the names that [proof.agent-markers] adds to the
+    built-in list of agent markers, in the order it writes them. *)
 
-val test_coverage : t -> test_coverage
-(** [test_coverage manifest] is the value of [evidence.test-coverage], or
-    [Optional]. *)
+val verifies : t -> verifies
+(** [verifies manifest] is the value of [proof.verifies], or [Whole_run]. *)
+
+val step : t -> step
+(** [step manifest] is the value of [proof.step], or [Change]. *)

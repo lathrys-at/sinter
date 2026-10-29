@@ -32,8 +32,9 @@ let the_smallest_manifest_takes_every_default () =
     (Manifest.default_branch manifest);
   Alcotest.(check bool) "warn-only" false (Manifest.warn_only manifest);
   Alcotest.(check bool)
-    "test-coverage" true
-    (Manifest.test_coverage manifest = Manifest.Optional);
+    "verifies" true
+    (Manifest.verifies manifest = Manifest.Whole_run);
+  Alcotest.(check bool) "step" true (Manifest.step manifest = Manifest.Change);
   Alcotest.(check int)
     "no namespace" 0
     (List.length (Manifest.namespaces manifest));
@@ -51,9 +52,11 @@ let the_smallest_manifest_takes_every_default () =
     (List.for_all
        (fun kind -> Manifest.location manifest kind = None)
        Manifest.[ Req; Design; Decision; Plan ]);
-  Alcotest.(check int)
-    "no kind needs approval" 0
-    (List.length (Manifest.approval_required manifest));
+  Alcotest.(check bool)
+    "no kind needs approval" true
+    (List.for_all
+       (fun kind -> Manifest.approval manifest kind = Manifest.Declaration)
+       Manifest.[ Req; Design; Decision; Plan ]);
   Alcotest.(check (list string))
     "no agent marker" []
     (Manifest.agent_markers manifest)
@@ -78,10 +81,7 @@ packs.rust.files = ["**/*.rs"]
 packs.rust.version = "1.0"
 namespaces.gh = "[1-9][0-9]*"
 
-[check]
-warn-only = true
-
-[plan]
+[paths]
 exempt = [
   ".gitignore",
   "LICENSES/",
@@ -93,7 +93,10 @@ exempt = [
   "sinter.opam",
   "sinter.opam.locked",
 ]
-locations.decision = ["docs/decisions/"]
+decision = ["docs/decisions/"]
+
+[check]
+warn-only = true
 |}
 
 let the_example_of_sinter_reads () =
@@ -144,13 +147,7 @@ packs.typescript.runners.vitest = {}
 namespaces.gh = "[1-9][0-9]*"
 namespaces.jira = "[A-Z]+-[1-9][0-9]*"
 
-[check]
-warn-only = true
-historical = ["docs/devlog/"]
-tiers.review.dangling = "block"
-tiers.merged.dangling = "block"
-
-[plan]
+[paths]
 exempt = [
   ".gitignore",
   "LICENSE",
@@ -158,13 +155,17 @@ exempt = [
   "package.json",
   "tsconfig.json",
 ]
-locations.decision = ["docs/decisions/"]
+historical = ["docs/devlog/"]
+decision = ["docs/decisions/"]
 
-[ledger]
-approval-required = ["req"]
+[proof]
+req = "approval"
+verifies = "each-test"
 
-[evidence]
-test-coverage = "required"
+[check]
+warn-only = true
+tiers.review.dangling = "block"
+tiers.merged.dangling = "block"
 |}
 
 let the_example_of_a_typescript_project_reads () =
@@ -190,12 +191,15 @@ let the_example_of_a_typescript_project_reads () =
   Alcotest.(check int)
     "two written tiers" 2
     (List.length (Manifest.written_tiers manifest));
-  Alcotest.(check bool)
-    "approval" true
-    (Manifest.approval_required manifest = [ Manifest.Req ]);
-  Alcotest.(check bool)
-    "test-coverage" true
-    (Manifest.test_coverage manifest = Manifest.Required)
+  Alcotest.(check (list string))
+    "approval"
+    [ "approval"; "declaration"; "declaration"; "declaration" ]
+    (List.map
+       (fun kind -> Manifest.approval_name (Manifest.approval manifest kind))
+       Manifest.[ Req; Design; Decision; Plan ]);
+  Alcotest.(check string)
+    "verifies" "each-test"
+    (Manifest.verifies_name (Manifest.verifies manifest))
 
 let tier =
   Alcotest.testable
@@ -259,9 +263,8 @@ let built_in_paths_join_the_written_ones () =
   let manifest =
     read
       (markdown
-     ^ "[check]\n\
+     ^ "[paths]\n\
         historical = [\"docs/devlog/\", \"!docs/devlog/keep.md\"]\n\
-        [plan]\n\
         exempt = [\"gen/\", \"!.plans/**\"]\n")
   in
   let historical = Manifest.is_historical manifest in
@@ -299,7 +302,7 @@ let agent_markers_keep_their_order () =
   let manifest =
     read
       (markdown
-     ^ "[ledger]\n\
+     ^ "[proof]\n\
         agent-markers = [\"B_1\", \"_a\", \"CLAUDECODE\", \"z\", \"Zz_09\", \
         \"A9\"]\n")
   in
@@ -308,23 +311,59 @@ let agent_markers_keep_their_order () =
     [ "B_1"; "_a"; "CLAUDECODE"; "z"; "Zz_09"; "A9" ]
     (Manifest.agent_markers manifest)
 
-let approval_kinds_keep_their_order () =
+let each_kind_takes_its_own_approval () =
   let manifest =
     read
       (markdown
-     ^ "[ledger]\n\
-        approval-required = [\"plan\", \"req\", \"design\", \"decision\"]\n")
+     ^ "[proof]\n\
+        plan = \"approval\"\n\
+        req = \"approval\"\n\
+        design = \"declaration\"\n")
   in
   Alcotest.(check (list string))
-    "the kinds"
-    [ "plan"; "req"; "design"; "decision" ]
-    (List.map Manifest.kind_name (Manifest.approval_required manifest))
+    "the values of req, design, decision, and plan"
+    [ "approval"; "declaration"; "declaration"; "approval" ]
+    (List.map
+       (fun kind -> Manifest.approval_name (Manifest.approval manifest kind))
+       Manifest.[ Req; Design; Decision; Plan ])
+
+let each_word_of_proof_has_its_name () =
+  Alcotest.(check (list string))
+    "the words"
+    [
+      "declaration";
+      "approval";
+      "whole-run";
+      "each-test";
+      "change";
+      "approval";
+      "promises";
+    ]
+    [
+      Manifest.approval_name Manifest.Declaration;
+      Manifest.approval_name Manifest.Approval;
+      Manifest.verifies_name Manifest.Whole_run;
+      Manifest.verifies_name Manifest.Each_test;
+      Manifest.step_name Manifest.Change;
+      Manifest.step_name Manifest.Step_approval;
+      Manifest.step_name Manifest.Promises;
+    ]
+
+let each_value_of_step_reads () =
+  List.iter
+    (fun word ->
+      Alcotest.(check string)
+        word word
+        (Manifest.step_name
+           (Manifest.step
+              (read (markdown ^ Printf.sprintf "[proof]\nstep = %S\n" word)))))
+    [ "change"; "approval"; "promises" ]
 
 let every_location_kind_reads () =
   let manifest =
     read
       (markdown
-     ^ "[plan.locations]\n\
+     ^ "[paths]\n\
         req = [\"docs/req/\"]\n\
         design = [\"docs/design/\"]\n\
         decision = [\"docs/decisions/\"]\n")
@@ -351,19 +390,14 @@ let an_empty_array_is_an_absent_key () =
   let manifest =
     read
       (markdown
-     ^ "[check]\n\
-        historical = []\n\
-        [ledger]\n\
-        approval-required = []\n\
-        [plan.locations]\n\
-        req = []\n")
+     ^ "[paths]\nhistorical = []\nreq = []\n[proof]\nagent-markers = []\n")
   in
   Alcotest.(check bool)
     "historical" true
     (Path_set.is_empty (Manifest.historical manifest));
   Alcotest.(check int)
-    "approval" 0
-    (List.length (Manifest.approval_required manifest));
+    "agent markers" 0
+    (List.length (Manifest.agent_markers manifest));
   Alcotest.(check bool)
     "no location" true
     (Option.is_none (Manifest.location manifest Manifest.Req))
@@ -448,10 +482,28 @@ let the_version_comes_before_the_names () =
     ]
 
 let unknown_keys () =
-  reports "a near name" "[check]\nhistoric = []\n"
+  reports "a near name" "[paths]\nhistoric = []\n"
     [
-      "sinter.toml:2:1: unknown key 'historic' in [check]; did you mean \
+      "sinter.toml:2:1: unknown key 'historic' in [paths]; did you mean \
        'historical'?";
+    ];
+  reports "a near kind in [paths]" "[paths]\ndecisions = []\n"
+    [
+      "sinter.toml:2:1: unknown key 'decisions' in [paths]; did you mean \
+       'decision'?";
+    ];
+  reports "a near kind in [proof]" "[proof]\nreqs = \"approval\"\n"
+    [ "sinter.toml:2:1: unknown key 'reqs' in [proof]; did you mean 'req'?" ];
+  reports "a near key in [proof]" "[proof]\nverifis = \"each-test\"\n"
+    [
+      "sinter.toml:2:1: unknown key 'verifis' in [proof]; did you mean \
+       'verifies'?";
+    ];
+  reports "no near name in [paths] or [proof]"
+    "[paths]\nfoo = []\n[proof]\nbar = 1\n"
+    [
+      "sinter.toml:2:1: unknown key 'foo' in [paths]";
+      "sinter.toml:4:1: unknown key 'bar' in [proof]";
     ];
   reports "no near name" "[check]\nfoo = 1\n"
     [ "sinter.toml:2:1: unknown key 'foo' in [check]" ];
@@ -474,10 +526,10 @@ let unknown_keys () =
       "sinter.toml:2:1: unknown key 'file' in [scan.packs.ocaml]; did you mean \
        'files'?";
     ];
-  reports "a tie goes to the first name in byte order" "[chan]\n"
+  reports "a tie goes to the first name in byte order" "[prohs]\n"
     [
-      "sinter.toml:1:2: unknown key 'chan' at the top level; did you mean \
-       'plan'?";
+      "sinter.toml:1:2: unknown key 'prohs' at the top level; did you mean \
+       'paths'?";
     ]
 
 let an_old_name_is_an_unknown_name () =
@@ -495,20 +547,32 @@ let an_old_name_is_an_unknown_name () =
     ];
   reports "scan.refs" "[scan]\nrefs.gh = \"[1-9][0-9]*\"\n"
     [ "sinter.toml:2:1: unknown key 'refs' in [scan]" ];
-  reports "plan.ambient and plan.shared" "[plan]\nambient = []\nshared = []\n"
+  reports "the table plan" "[plan]\nexempt = []\n"
     [
-      "sinter.toml:2:1: unknown key 'ambient' in [plan]";
-      "sinter.toml:3:1: unknown key 'shared' in [plan]";
+      "sinter.toml:1:2: unknown key 'plan' at the top level; did you mean \
+       'scan'?";
+    ];
+  reports "plan.locations" "plan.locations.decision = [\"d/\"]\n"
+    [
+      "sinter.toml:1:1: unknown key 'plan' at the top level; did you mean \
+       'scan'?";
     ];
   reports "spec" "spec = \"1.0\"\n"
     [ "sinter.toml:1:1: unknown key 'spec' at the top level" ];
   reports "check.rollout-cap" "[check]\nrollout-cap = true\n"
     [ "sinter.toml:2:1: unknown key 'rollout-cap' in [check]" ];
-  reports "ledger.harness-markers" "[ledger]\nharness-markers = [\"A\"]\n"
-    [ "sinter.toml:2:1: unknown key 'harness-markers' in [ledger]" ];
-  reports "evidence.coverage-attribution"
-    "[evidence]\ncoverage-attribution = \"required\"\n"
-    [ "sinter.toml:2:1: unknown key 'coverage-attribution' in [evidence]" ]
+  reports "the table ledger" "[ledger]\napproval-required = [\"req\"]\n"
+    [ "sinter.toml:1:2: unknown key 'ledger' at the top level" ];
+  reports "the table evidence" "[evidence]\ntest-coverage = \"required\"\n"
+    [ "sinter.toml:1:2: unknown key 'evidence' at the top level" ];
+  reports "check.historical" "[check]\nhistorical = [\"docs/\"]\n"
+    [ "sinter.toml:2:1: 'historical' belongs in [paths]" ];
+  reports "approval-required and test-coverage under [proof]"
+    "[proof]\napproval-required = [\"req\"]\ntest-coverage = \"required\"\n"
+    [
+      "sinter.toml:2:1: unknown key 'approval-required' in [proof]";
+      "sinter.toml:3:1: unknown key 'test-coverage' in [proof]";
+    ]
 
 let a_name_with_a_control_character_is_escaped () =
   reports "an unknown key" "\"a\\nb\" = 1\n"
@@ -530,12 +594,12 @@ let a_name_with_a_control_character_is_escaped () =
 
 let keys_at_the_wrong_place () =
   reports "a top-level key under a table"
-    "[evidence]\ndefault-branch = \"trunk\"\n"
+    "[check]\ndefault-branch = \"trunk\"\n"
     [
       "sinter.toml:2:1: 'default-branch' belongs at the top level, above the \
        first table header";
     ];
-  reports "a table under another table" "[plan]\ncheck = 1\n"
+  reports "a table under another table" "[paths]\ncheck = 1\n"
     [
       "sinter.toml:2:1: 'check' is a table of the top level; write its keys \
        under the header [check]";
@@ -548,14 +612,21 @@ let keys_at_the_wrong_place () =
     [ "sinter.toml:2:1: 'warn-only' belongs in [check]" ];
   reports "a fixed name where a class goes"
     "[check.tiers.review]\nhistorical = []\n"
-    [ "sinter.toml:2:1: 'historical' belongs in [check]" ];
-  reports "a fixed name where a kind goes" "[plan.locations]\nexempt = []\n"
-    [ "sinter.toml:2:1: 'exempt' belongs in [plan]" ]
+    [ "sinter.toml:2:1: 'historical' belongs in [paths]" ];
+  reports "a key of [proof] under [paths]" "[paths]\nverifies = \"x\"\n"
+    [ "sinter.toml:2:1: 'verifies' belongs in [proof]" ];
+  reports "a key of [paths] under [proof]" "[proof]\nexempt = []\n"
+    [ "sinter.toml:2:1: 'exempt' belongs in [paths]" ];
+  reports "a table where a kind goes" "[paths]\nproof = 1\n"
+    [
+      "sinter.toml:2:1: 'proof' is a table of the top level; write its keys \
+       under the header [proof]";
+    ]
 
 let wrong_types () =
   reports "a string for a boolean" "[check]\nwarn-only = \"yes\"\n"
     [ "sinter.toml:2:13: 'warn-only' takes true or false, not a string" ];
-  reports "a member that is not a string" "[check]\nhistorical = [\"a\", 1]\n"
+  reports "a member that is not a string" "[paths]\nhistorical = [\"a\", 1]\n"
     [
       "sinter.toml:2:20: 'historical' takes an array of strings, and this \
        member is an integer";
@@ -566,18 +637,29 @@ let wrong_types () =
     [ "sinter.toml:1:3: 'check' takes a table, not an array of tables" ];
   reports "a table for a string" "[default-branch]\n"
     [ "sinter.toml:1:2: 'default-branch' takes a string, not a table" ];
-  reports "a string for an array" "[check]\nhistorical = \"docs/\"\n"
+  reports "a string for an array" "[paths]\nhistorical = \"docs/\"\n"
     [ "sinter.toml:2:14: 'historical' takes an array of strings, not a string" ];
+  reports "an array for a word of [proof]"
+    "[proof]\nreq = [\"approval\"]\nverifies = true\nagent-markers = \"A\"\n"
+    [
+      "sinter.toml:2:7: 'req' takes a string, not an array";
+      "sinter.toml:3:12: 'verifies' takes a string, not a boolean";
+      "sinter.toml:4:17: 'agent-markers' takes an array of strings, not a \
+       string";
+    ];
+  reports "a string for the table of a kind" "[paths]\ndecision = \"d/\"\n"
+    [ "sinter.toml:2:12: 'decision' takes an array of strings, not a string" ];
   reports "a float, a date, and a boolean"
     "default-branch = 1.5\n\
+     [paths]\n\
+     historical = [true]\n\
      [check]\n\
-     warn-only = 1979-05-27\n\
-     historical = [true]\n"
+     warn-only = 1979-05-27\n"
     [
       "sinter.toml:1:18: 'default-branch' takes a string, not a float";
-      "sinter.toml:3:13: 'warn-only' takes true or false, not a date or a time";
-      "sinter.toml:4:15: 'historical' takes an array of strings, and this \
+      "sinter.toml:3:15: 'historical' takes an array of strings, and this \
        member is a boolean";
+      "sinter.toml:5:13: 'warn-only' takes true or false, not a date or a time";
     ]
 
 let names_that_vary () =
@@ -622,14 +704,18 @@ let names_that_vary () =
        [check.tiers.merged]; 'tiers' names built-in finding classes only";
     ];
   reports "kinds of locations"
-    "[plan.locations]\ndecisions = [\"docs/\"]\nplan = [\"x\"]\nfoo = []\n"
+    "[paths]\ndecisions = [\"docs/\"]\nplan = [\"x\"]\nfoo = []\n"
     [
-      "sinter.toml:2:1: unknown kind 'decisions' in [plan.locations]; did you \
-       mean 'decision'?";
+      "sinter.toml:2:1: unknown key 'decisions' in [paths]; did you mean \
+       'decision'?";
       "sinter.toml:3:1: 'plan' takes no location; plan files always live under \
        .plans/";
-      "sinter.toml:4:1: unknown kind 'foo' in [plan.locations]; the kinds are \
-       'req', 'design', or 'decision'";
+      "sinter.toml:4:1: unknown key 'foo' in [paths]";
+    ];
+  reports "the location of plans as a dotted key" "paths.plan = [\"x\"]\n"
+    [
+      "sinter.toml:1:7: 'plan' takes no location; plan files always live under \
+       .plans/";
     ];
   reports "pack names and namespaces"
     "[scan.packs.Markdown]\n\
@@ -740,7 +826,7 @@ let values () =
        matches any characters inside one name";
     ];
   reports "a ! glob that is not a glob"
-    (markdown ^ "[check]\nhistorical = [\"a\", \"!/b\"]\n")
+    (markdown ^ "[paths]\nhistorical = [\"a\", \"!/b\"]\n")
     [
       "sinter.toml:4:22: \"!/b\" is not a glob: a glob cannot start with '/'; \
        a glob always matches from the repository root";
@@ -749,17 +835,17 @@ let values () =
     (markdown
    ^ "[check]\n\
       tiers.review.dangling = \"blok\"\n\
-      [ledger]\n\
-      approval-required = [\"reqs\", \"req\", \"req\"]\n\
+      [proof]\n\
+      req = \"aproval\"\n\
       agent-markers = [\"MY-VAR\", \"A\", \"A\", \"1A\", \"\"]\n\
-      [evidence]\n\
-      test-coverage = \"requird\"\n")
+      verifies = \"each-tests\"\n\
+      plan = \"declared\"\n\
+      step = \"promise\"\n")
     [
       "sinter.toml:4:25: 'dangling' takes \"off\", \"warn\", or \"block\", not \
        \"blok\"; did you mean \"block\"?";
-      "sinter.toml:6:22: 'approval-required' takes \"req\", \"design\", \
-       \"decision\", or \"plan\", not \"reqs\"; did you mean \"req\"?";
-      "sinter.toml:6:37: \"req\" occurs twice in 'approval-required'";
+      "sinter.toml:6:7: 'req' takes \"declaration\" or \"approval\", not \
+       \"aproval\"; did you mean \"approval\"?";
       "sinter.toml:7:18: \"MY-VAR\" is not a name of an environment variable; \
        a name holds letters, digits, and '_', and does not start with a digit";
       "sinter.toml:7:33: \"A\" occurs twice in 'agent-markers'";
@@ -767,14 +853,18 @@ let values () =
        name holds letters, digits, and '_', and does not start with a digit";
       "sinter.toml:7:44: \"\" is not a name of an environment variable; a name \
        holds letters, digits, and '_', and does not start with a digit";
-      "sinter.toml:9:17: 'test-coverage' takes \"optional\" or \"required\", \
-       not \"requird\"; did you mean \"required\"?";
+      "sinter.toml:8:12: 'verifies' takes \"whole-run\" or \"each-test\", not \
+       \"each-tests\"; did you mean \"each-test\"?";
+      "sinter.toml:9:8: 'plan' takes \"declaration\" or \"approval\", not \
+       \"declared\"";
+      "sinter.toml:10:8: 'step' takes \"change\", \"approval\", or \
+       \"promises\", not \"promise\"; did you mean \"promises\"?";
     ];
   reports "a word far from every word"
-    (markdown ^ "[evidence]\ntest-coverage = \"x\"\n")
+    (markdown ^ "[proof]\nverifies = \"x\"\n")
     [
-      "sinter.toml:4:17: 'test-coverage' takes \"optional\" or \"required\", \
-       not \"x\"";
+      "sinter.toml:4:12: 'verifies' takes \"whole-run\" or \"each-test\", not \
+       \"x\"";
     ]
 
 let a_manifest_with_no_pack () =
@@ -809,16 +899,16 @@ let a_large_manifest_reads_quickly () =
   in
   let manifest =
     read
-      (markdown ^ packs ^ "[check]\nhistorical = " ^ strings "\"d%d/\"" 2_000
-     ^ "\n[ledger]\nagent-markers = " ^ strings "\"M%d\"" 2_000 ^ "\n")
+      (markdown ^ packs ^ "[paths]\nhistorical = " ^ strings "\"d%d/\"" 2_000
+     ^ "\n[proof]\nagent-markers = " ^ strings "\"M%d\"" 2_000 ^ "\n")
   in
   Alcotest.(check int) "packs" 1_001 (List.length (Manifest.packs manifest));
   Alcotest.(check int)
     "markers" 2_000
     (List.length (Manifest.agent_markers manifest));
   let repeated =
-    markdown ^ "[ledger]\nagent-markers = " ^ strings "\"M%d\"" 2_000
-    ^ "\n[check]\nhistorical = " ^ strings "\"d%d/\"" 1_999
+    markdown ^ "[proof]\nagent-markers = " ^ strings "\"M%d\"" 2_000
+    ^ "\n[paths]\nhistorical = " ^ strings "\"d%d/\"" 1_999
     |> fun text -> String.sub text 0 (String.length text - 1) ^ ", \"d0/\"]\n"
   in
   match Manifest.of_string repeated with
@@ -830,14 +920,14 @@ let a_large_manifest_reads_quickly () =
 
 let errors_come_in_the_order_of_their_places () =
   reports "keys written out of order"
-    "[check]\nzz = 1\naa = 2\n[ledger]\nbb = 3\n"
+    "[check]\nzz = 1\naa = 2\n[proof]\nbb = 3\n"
     [
       "sinter.toml:2:1: unknown key 'zz' in [check]";
       "sinter.toml:3:1: unknown key 'aa' in [check]";
-      "sinter.toml:5:1: unknown key 'bb' in [ledger]";
+      "sinter.toml:5:1: unknown key 'bb' in [proof]";
     ];
   reports "two errors in one line"
-    (markdown ^ "[check]\nhistorical = [1, 2]\n")
+    (markdown ^ "[paths]\nhistorical = [1, 2]\n")
     [
       "sinter.toml:4:15: 'historical' takes an array of strings, and this \
        member is an integer";
@@ -857,9 +947,9 @@ let the_example_messages_of_the_specification () =
   let check text expected =
     Alcotest.(check string) text expected (message text)
   in
-  check "[check]\nhistoric = 1\n"
-    "unknown key 'historic' in [check]; did you mean 'historical'?";
-  check "[evidence]\ndefault-branch = \"trunk\"\n"
+  check "[paths]\nhistoric = 1\n"
+    "unknown key 'historic' in [paths]; did you mean 'historical'?";
+  check "[check]\ndefault-branch = \"trunk\"\n"
     "'default-branch' belongs at the top level, above the first table header";
   check "[check]\nwarn-only = \"x\"\n"
     "'warn-only' takes true or false, not a string";
@@ -1273,7 +1363,7 @@ let rows () =
 
 let since_is_that_of_the_specification () =
   let rows = rows () in
-  Alcotest.(check int) "the number of keys" 15 (List.length rows);
+  Alcotest.(check int) "the number of keys" 16 (List.length rows);
   List.iter
     (fun (key, since) ->
       let path =
@@ -1395,6 +1485,8 @@ let line =
       "[scan]";
       "[check]";
       "[plan]";
+      "[paths]";
+      "[proof]";
       "[ledger]";
       "[evidence]";
       "[scan.packs.markdown]";
@@ -1427,6 +1519,14 @@ let line =
       "config-changed = \"warn\"";
       "exempt = [\"a\", 2]";
       "locations.decision = [\"d/\"]";
+      "decision = [\"d/\"]";
+      "plan = [\"x\"]";
+      "req = \"approval\"";
+      "plan = \"declaration\"";
+      "verifies = \"each-test\"";
+      "verifies = \"all\"";
+      "step = \"promises\"";
+      "step = 1";
       "approval-required = [\"req\"]";
       "agent-markers = [\"A\"]";
       "test-coverage = \"required\"";
@@ -1517,10 +1617,6 @@ let settings =
               pair @ [ ([ "scan"; "packs"; "ocaml"; "version" ], "\"1.2\"") ] );
         optional [ "scan"; "namespaces"; "gh" ] "\"[1-9][0-9]*\"";
         map (fun b -> [ ([ "check"; "warn-only" ], string_of_bool b) ]) bool;
-        map
-          (fun g ->
-            if g = [] then [] else [ ([ "check"; "historical" ], strings g) ])
-          globs;
         some_of
           [
             ("review", "dangling", "warn");
@@ -1531,19 +1627,33 @@ let settings =
             ([ "check"; "tiers"; gate; cls ], Printf.sprintf "%S" tier));
         map
           (fun g ->
-            if g = [] then [] else [ ([ "plan"; "exempt" ], strings g) ])
+            if g = [] then [] else [ ([ "paths"; "exempt" ], strings g) ])
           globs;
         map
           (fun g ->
-            if g = [] then []
-            else [ ([ "plan"; "locations"; "decision" ], strings g) ])
+            if g = [] then [] else [ ([ "paths"; "historical" ], strings g) ])
           globs;
         map
-          (fun k ->
-            if k = [] then []
-            else [ ([ "ledger"; "approval-required" ], strings k) ])
-          (some_of [ "req"; "plan" ]);
-        optional [ "evidence"; "test-coverage" ] "\"required\"";
+          (fun g ->
+            if g = [] then [] else [ ([ "paths"; "decision" ], strings g) ])
+          globs;
+        some_of
+          [
+            ("req", "approval"); ("plan", "approval"); ("design", "declaration");
+          ]
+        >|= List.map (fun (kind, value) ->
+            ([ "proof"; kind ], Printf.sprintf "%S" value));
+        map
+          (fun m ->
+            if m = [] then [] else [ ([ "proof"; "agent-markers" ], strings m) ])
+          (some_of [ "A"; "B_2"; "CLAUDECODE" ]);
+        optional [ "proof"; "verifies" ] "\"each-test\"";
+        oneof_list
+          [
+            [];
+            [ ([ "proof"; "step" ], "\"approval\"") ];
+            [ ([ "proof"; "step" ], "\"promises\"") ];
+          ];
       ]
     in
     flatten_list pairs >|= List.concat)
@@ -1626,10 +1736,13 @@ let summary manifest =
        | None -> "-"
        | Some set -> String.concat "," (members set));
        String.concat ","
-         (List.map Manifest.kind_name (Manifest.approval_required manifest));
-       (match Manifest.test_coverage manifest with
-       | Manifest.Optional -> "optional"
-       | Required -> "required");
+         (List.map
+            (fun kind ->
+              Manifest.approval_name (Manifest.approval manifest kind))
+            Manifest.[ Req; Design; Decision; Plan ]);
+       String.concat "," (Manifest.agent_markers manifest);
+       Manifest.verifies_name (Manifest.verifies manifest);
+       Manifest.step_name (Manifest.step manifest);
      ]
     @ List.map pack_summary (Manifest.packs manifest)
     @ List.map
@@ -1665,6 +1778,169 @@ let every_form_and_order_reads_the_same =
           render_by ~reverse:true ~depth:4 (shuffle 3 settings);
           render_inline (shuffle 4 settings);
         ])
+
+type canonical = {
+  branch : string option;
+  ocaml : bool;
+  gh : bool;
+  exempt : string list;
+  historical : string list;
+  decision : string list;
+  approvals : (Manifest.kind * Manifest.approval) list;
+  markers : string list;
+  each_test : bool option;
+  step : Manifest.step option;
+  warn_only : bool option;
+  tiers : (string * string * string) list;
+}
+
+let canonical =
+  let some_of choices =
+    Gen.(map (List.sort_uniq compare) (list_size (0 -- 3) (oneof_list choices)))
+  in
+  let globs = some_of [ "docs/"; "a/**/b"; "*.md"; "!x/"; "x" ] in
+  let globs =
+    Gen.map
+      (fun g -> if List.for_all (fun x -> x.[0] = '!') g then [] else g)
+      globs
+  in
+  Gen.(
+    let* branch = option (oneof_list [ "trunk"; "release/1.0" ]) in
+    let* ocaml = bool in
+    let* gh = bool in
+    let* exempt = globs in
+    let* historical = globs in
+    let* decision = globs in
+    let* approvals =
+      list_size (0 -- 4)
+        (pair
+           (oneof_list Manifest.[ Req; Design; Decision; Plan ])
+           (oneof_list Manifest.[ Declaration; Approval ]))
+      >|= List.sort_uniq (fun (a, _) (b, _) -> compare a b)
+    in
+    let* markers = some_of [ "A"; "B_2"; "CLAUDECODE" ] in
+    let* each_test = option bool in
+    let* step =
+      option (oneof_list Manifest.[ Change; Step_approval; Promises ])
+    in
+    let* warn_only = option bool in
+    let* tiers =
+      some_of
+        [
+          ("review", "dangling", "warn");
+          ("turn", "suspect", "off");
+          ("merged", "cycle", "block");
+        ]
+    in
+    return
+      {
+        branch;
+        ocaml;
+        gh;
+        exempt;
+        historical;
+        decision;
+        approvals;
+        markers;
+        each_test;
+        step;
+        warn_only;
+        tiers;
+      })
+
+let render_canonical c =
+  let strings items =
+    "[" ^ String.concat ", " (List.map (Printf.sprintf "%S") items) ^ "]"
+  in
+  let table name lines =
+    if lines = [] then "" else "\n[" ^ name ^ "]\n" ^ String.concat "" lines
+  in
+  let line key value = key ^ " = " ^ value ^ "\n" in
+  let array key items =
+    if items = [] then [] else [ line key (strings items) ]
+  in
+  String.concat ""
+    [
+      (match c.branch with
+      | Some branch -> line "default-branch" (Printf.sprintf "%S" branch)
+      | None -> "");
+      table "scan"
+        ([ line "packs.markdown.files" "[\"**/*.md\"]" ]
+        @ (if c.ocaml then
+             [
+               line "packs.ocaml.files" "[\"**/*.ml\"]";
+               line "packs.ocaml.version" "\"1.0\"";
+             ]
+           else [])
+        @ if c.gh then [ line "namespaces.gh" "\"[1-9][0-9]*\"" ] else []);
+      table "paths"
+        (array "exempt" c.exempt
+        @ array "historical" c.historical
+        @ array "decision" c.decision);
+      table "proof"
+        (List.map
+           (fun (kind, approval) ->
+             line (Manifest.kind_name kind)
+               (Printf.sprintf "%S" (Manifest.approval_name approval)))
+           c.approvals
+        @ array "agent-markers" c.markers
+        @ (match c.each_test with
+          | Some true -> [ line "verifies" "\"each-test\"" ]
+          | Some false -> [ line "verifies" "\"whole-run\"" ]
+          | None -> [])
+        @ Option.to_list
+            (Option.map
+               (fun step ->
+                 line "step" (Printf.sprintf "%S" (Manifest.step_name step)))
+               c.step));
+      table "check"
+        ((match c.warn_only with
+           | Some flag -> [ line "warn-only" (string_of_bool flag) ]
+           | None -> [])
+        @ List.map
+            (fun (gate, cls, tier) ->
+              line
+                (String.concat "." [ "tiers"; gate; cls ])
+                (Printf.sprintf "%S" tier))
+            c.tiers);
+    ]
+
+let a_manifest_in_the_canonical_form_reads_back_its_values =
+  property ~name:"a manifest in the canonical form reads back its values"
+    ~print:render_canonical canonical (fun c ->
+      let manifest = read (render_canonical c) in
+      let kinds = Manifest.[ Req; Design; Decision; Plan ] in
+      Manifest.default_branch manifest = Option.value c.branch ~default:"main"
+      && (List.map (fun (p : Manifest.pack) -> p.name) (Manifest.packs manifest)
+         = if c.ocaml then [ "markdown"; "ocaml" ] else [ "markdown" ])
+      && (List.map fst (Manifest.namespaces manifest)
+         = if c.gh then [ "gh" ] else [])
+      && members (Manifest.exempt manifest) = c.exempt
+      && members (Manifest.historical manifest) = c.historical
+      && (Option.map members (Manifest.location manifest Manifest.Decision)
+         = if c.decision = [] then None else Some c.decision)
+      && List.for_all
+           (fun kind ->
+             Manifest.approval manifest kind
+             = Option.value
+                 (List.assoc_opt kind c.approvals)
+                 ~default:Manifest.Declaration)
+           kinds
+      && Manifest.agent_markers manifest = c.markers
+      && (Manifest.verifies manifest
+         =
+         if c.each_test = Some true then Manifest.Each_test
+         else Manifest.Whole_run)
+      && Manifest.step manifest = Option.value c.step ~default:Manifest.Change
+      && Manifest.warn_only manifest = (c.warn_only = Some true)
+      && List.sort compare
+           (List.map
+              (fun (g, cls, t) ->
+                ( Finding_class.gate_name g,
+                  Finding_class.name cls,
+                  Finding_class.tier_name t ))
+              (Manifest.written_tiers manifest))
+         = List.sort compare c.tiers)
 
 let runner_pool =
   [
@@ -2115,7 +2391,9 @@ let tests =
     case "built-in paths join the written ones"
       built_in_paths_join_the_written_ones;
     case "agent markers keep their order" agent_markers_keep_their_order;
-    case "approval kinds keep their order" approval_kinds_keep_their_order;
+    case "each kind takes its own approval" each_kind_takes_its_own_approval;
+    case "each word of proof has its name" each_word_of_proof_has_its_name;
+    case "each value of step reads" each_value_of_step_reads;
     case "every location kind reads" every_location_kind_reads;
     case "a default branch reads" a_default_branch_reads;
     case "an empty array is an absent key" an_empty_array_is_an_absent_key;
@@ -2173,6 +2451,7 @@ let tests =
       newer_keys_names_each_key_newer_than_sinter_spec;
     of_string_answers_any_text;
     every_form_and_order_reads_the_same;
+    a_manifest_in_the_canonical_form_reads_back_its_values;
     runners_read_as_written;
     one_fault_gives_its_one_error;
   ]

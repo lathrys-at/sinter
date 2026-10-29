@@ -15,14 +15,15 @@ let settings =
       ("scan.packs.<name>.runners.<runner>", 1, 0);
       ("scan.packs.<name>.runners.<runner>.<key>", 1, 0);
       ("scan.namespaces.<ns>", 1, 0);
+      ("paths.exempt", 1, 0);
+      ("paths.historical", 1, 0);
+      ("paths.<kind>", 1, 0);
+      ("proof.<kind>", 1, 0);
+      ("proof.agent-markers", 1, 0);
+      ("proof.verifies", 1, 0);
+      ("proof.step", 1, 0);
       ("check.warn-only", 1, 0);
-      ("check.historical", 1, 0);
       ("check.tiers.<gate>.<class>", 1, 0);
-      ("plan.exempt", 1, 0);
-      ("plan.locations.<kind>", 1, 0);
-      ("ledger.approval-required", 1, 0);
-      ("ledger.agent-markers", 1, 0);
-      ("evidence.test-coverage", 1, 0);
     ]
 
 let varies name = String.starts_with ~prefix:"<" name
@@ -69,7 +70,25 @@ let kind_name = function
 let kinds = [ Req; Design; Decision; Plan ]
 let location_kinds = [ Req; Design; Decision ]
 
-type test_coverage = Optional | Required
+type approval = Declaration | Approval
+
+let approval_name = function
+  | Declaration -> "declaration"
+  | Approval -> "approval"
+
+type verifies = Whole_run | Each_test
+
+let verifies_name = function
+  | Whole_run -> "whole-run"
+  | Each_test -> "each-test"
+
+type step = Change | Step_approval | Promises
+
+let step_name = function
+  | Change -> "change"
+  | Step_approval -> "approval"
+  | Promises -> "promises"
+
 type expected = A_string | A_version | True_or_false | Strings | A_table
 
 type problem =
@@ -102,7 +121,6 @@ type problem =
     }
   | Never_blocks
   | No_tier_at_any_gate
-  | Unknown_kind of { name : string; nearest : string option }
   | Plan_location
   | Markdown_version
   | Markdown_runners
@@ -239,14 +257,6 @@ let problem_message = function
   | Never_blocks ->
       "'config-changed' takes no tier; it always reports and never blocks"
   | No_tier_at_any_gate -> "'pack-mismatch' takes no tier at any gate"
-  | Unknown_kind { name; nearest } ->
-      Printf.sprintf "unknown kind %s in [plan.locations]%s" (Toml.quote name)
-        (match nearest with
-        | Some _ -> did_you_mean ~quote:Toml.quote nearest
-        | None ->
-            "; the kinds are "
-            ^ choice
-                (List.map (fun k -> Toml.quote (kind_name k)) location_kinds))
   | Plan_location ->
       "'plan' takes no location; plan files always live under .plans/"
   | Markdown_version ->
@@ -344,9 +354,10 @@ type t = {
   historical : Path_set.t;
   exempt : Path_set.t;
   locations : (kind * Path_set.t) list;
-  approval_required : kind list;
+  approvals : (kind * approval) list;
   agent_markers : string list;
-  test_coverage : test_coverage;
+  verifies : verifies;
+  step : step;
 }
 
 type reading = {
@@ -364,9 +375,10 @@ type reading = {
   mutable historical : Path_set.t;
   mutable exempt : Path_set.t;
   mutable locations : (kind * Path_set.t) list;
-  mutable approval_required : kind list;
+  mutable approvals : (kind * approval) list;
   mutable agent_markers : string list;
-  mutable test_coverage : test_coverage;
+  mutable verifies : verifies;
+  mutable step : step;
 }
 
 type place =
@@ -410,6 +422,12 @@ let is_variable_name name =
 let misplaced name =
   List.assoc_opt name fixed_places
   |> Option.map (fun place -> Misplaced_key { name; place })
+
+let unknown_key ~table ~valid name =
+  match misplaced name with
+  | Some problem -> problem
+  | None ->
+      Unknown_key { name; table; nearest = Edit_distance.nearest name valid }
 
 module Names = Set.Make (String)
 module By_name = Map.Make (String)
@@ -462,33 +480,6 @@ let word reading ~key choices name_of found =
                  choices = names;
                  nearest = Edit_distance.nearest value names;
                }))
-
-let words reading ~key choices name_of found =
-  Texts
-    (fun _ members ->
-      let names = List.map name_of choices in
-      let read =
-        List.filter_map
-          (fun (node, value) ->
-            match List.find_opt (fun c -> name_of c = value) choices with
-            | Some choice -> Some choice
-            | None ->
-                value_error reading (start node)
-                  (Unknown_value
-                     {
-                       key;
-                       value;
-                       choices = names;
-                       nearest = Edit_distance.nearest value names;
-                     });
-                None)
-          members
-      in
-      List.iter
-        (fun (node, member) ->
-          value_error reading (start node) (Repeated_member { key; member }))
-        (first_repeated members);
-      found read)
 
 let pack_place reading (key : Toml.key) =
   let name = key.name in
@@ -577,6 +568,73 @@ let tier_place reading gate =
                      nearest = Edit_distance.nearest key.name valid;
                    })))
 
+let kind_of_name choices name =
+  List.find_opt (fun kind -> String.equal (kind_name kind) name) choices
+
+let paths_place reading =
+  let valid = [ "exempt"; "historical" ] @ List.map kind_name location_kinds in
+  Varying
+    (fun (key : Toml.key) ->
+      match key.name with
+      | "exempt" ->
+          Ok
+            (path_set reading [ "paths"; "exempt" ] (fun set ->
+                 reading.exempt <- set))
+      | "historical" ->
+          Ok
+            (path_set reading [ "paths"; "historical" ] (fun set ->
+                 reading.historical <- set))
+      | "plan" -> Error Plan_location
+      | name -> (
+          match kind_of_name location_kinds name with
+          | Some kind ->
+              Ok
+                (path_set reading [ "paths"; name ] (fun set ->
+                     if not (Path_set.is_empty set) then
+                       reading.locations <- (kind, set) :: reading.locations))
+          | None -> Error (unknown_key ~table:[ "paths" ] ~valid name)))
+
+let proof_place reading =
+  let valid =
+    [ "agent-markers"; "step"; "verifies" ] @ List.map kind_name kinds
+  in
+  Varying
+    (fun (key : Toml.key) ->
+      match key.name with
+      | "verifies" ->
+          Ok
+            (word reading ~key:[ "proof"; "verifies" ] [ Whole_run; Each_test ]
+               verifies_name (fun value -> reading.verifies <- value))
+      | "step" ->
+          Ok
+            (word reading ~key:[ "proof"; "step" ]
+               [ Change; Step_approval; Promises ] step_name (fun value ->
+                 reading.step <- value))
+      | "agent-markers" ->
+          Ok
+            (Texts
+               (fun _ members ->
+                 List.iter
+                   (fun (node, name) ->
+                     if not (is_variable_name name) then
+                       value_error reading (start node) (Bad_marker name))
+                   members;
+                 List.iter
+                   (fun (node, member) ->
+                     value_error reading (start node)
+                       (Repeated_member
+                          { key = [ "proof"; "agent-markers" ]; member }))
+                   (first_repeated members);
+                 reading.agent_markers <- List.map snd members))
+      | name -> (
+          match kind_of_name kinds name with
+          | Some kind ->
+              Ok
+                (word reading ~key:[ "proof"; name ] [ Declaration; Approval ]
+                   approval_name (fun value ->
+                     reading.approvals <- (kind, value) :: reading.approvals))
+          | None -> Error (unknown_key ~table:[ "proof" ] ~valid name)))
+
 let layout reading =
   [
     ("sinter-spec", Text (fun _ _ -> ()));
@@ -618,13 +676,12 @@ let layout reading =
                                (Bad_id_pattern { namespace = key.name; error })))
                 else Error (Bad_namespace key.name)) );
         ] );
+    ("paths", paths_place reading);
+    ("proof", proof_place reading);
     ( "check",
       Fixed
         [
           ("warn-only", Flag (fun value -> reading.warn_only <- value));
-          ( "historical",
-            path_set reading [ "check"; "historical" ] (fun set ->
-                reading.historical <- set) );
           ( "tiers",
             Varying
               (fun key ->
@@ -643,71 +700,6 @@ let layout reading =
                                    (List.map Finding_class.gate_name
                                       Finding_class.gates);
                              }))) );
-        ] );
-    ( "plan",
-      Fixed
-        [
-          ( "exempt",
-            path_set reading [ "plan"; "exempt" ] (fun set ->
-                reading.exempt <- set) );
-          ( "locations",
-            Varying
-              (fun key ->
-                match
-                  List.find_opt (fun k -> kind_name k = key.name) location_kinds
-                with
-                | Some kind ->
-                    Ok
-                      (path_set reading [ "plan"; "locations"; key.name ]
-                         (fun set ->
-                           if not (Path_set.is_empty set) then
-                             reading.locations <-
-                               (kind, set) :: reading.locations))
-                | None when key.name = "plan" -> Error Plan_location
-                | None -> (
-                    match misplaced key.name with
-                    | Some problem -> Error problem
-                    | None ->
-                        Error
-                          (Unknown_kind
-                             {
-                               name = key.name;
-                               nearest =
-                                 Edit_distance.nearest key.name
-                                   (List.map kind_name location_kinds);
-                             }))) );
-        ] );
-    ( "ledger",
-      Fixed
-        [
-          ( "approval-required",
-            words reading ~key:[ "ledger"; "approval-required" ] kinds kind_name
-              (fun found -> reading.approval_required <- found) );
-          ( "agent-markers",
-            Texts
-              (fun _ members ->
-                List.iter
-                  (fun (node, name) ->
-                    if not (is_variable_name name) then
-                      value_error reading (start node) (Bad_marker name))
-                  members;
-                List.iter
-                  (fun (node, member) ->
-                    value_error reading (start node)
-                      (Repeated_member
-                         { key = [ "ledger"; "agent-markers" ]; member }))
-                  (first_repeated members);
-                reading.agent_markers <- List.map snd members) );
-        ] );
-    ( "evidence",
-      Fixed
-        [
-          ( "test-coverage",
-            word reading
-              ~key:[ "evidence"; "test-coverage" ]
-              [ Optional; Required ]
-              (function Optional -> "optional" | Required -> "required")
-              (fun value -> reading.test_coverage <- value) );
         ] );
   ]
 
@@ -749,19 +741,8 @@ and walk_fixed reading ~path fields table =
       match List.assoc_opt key.name fields with
       | Some place -> walk reading ~path:(path @ [ key.name ]) ~key place child
       | None ->
-          let problem =
-            match misplaced key.name with
-            | Some problem -> problem
-            | None ->
-                Unknown_key
-                  {
-                    name = key.name;
-                    table = path;
-                    nearest =
-                      Edit_distance.nearest key.name (List.map fst fields);
-                  }
-          in
-          names_error reading key.at.start problem)
+          names_error reading key.at.start
+            (unknown_key ~table:path ~valid:(List.map fst fields) key.name))
     table
 
 and walk_varying reading ~path check table =
@@ -845,9 +826,10 @@ let new_reading () =
     historical = Path_set.empty;
     exempt = Path_set.empty;
     locations = [];
-    approval_required = [];
+    approvals = [];
     agent_markers = [];
-    test_coverage = Optional;
+    verifies = Whole_run;
+    step = Change;
   }
 
 let check_runners_of_packs reading =
@@ -932,9 +914,10 @@ let of_string text =
                     historical = reading.historical;
                     exempt = reading.exempt;
                     locations = reading.locations;
-                    approval_required = reading.approval_required;
+                    approvals = reading.approvals;
                     agent_markers = reading.agent_markers;
-                    test_coverage = reading.test_coverage;
+                    verifies = reading.verifies;
+                    step = reading.step;
                   })
 
 type load_error = Missing | Unreadable of string | Invalid of error list
@@ -992,6 +975,10 @@ let is_exempt (manifest : t) ~plan_file ~manifest:location path =
   || Path_set.mem manifest.exempt path
 
 let location (manifest : t) kind = List.assoc_opt kind manifest.locations
-let approval_required (manifest : t) = manifest.approval_required
+
+let approval (manifest : t) kind =
+  Option.value (List.assoc_opt kind manifest.approvals) ~default:Declaration
+
 let agent_markers (manifest : t) = manifest.agent_markers
-let test_coverage (manifest : t) = manifest.test_coverage
+let verifies (manifest : t) = manifest.verifies
+let step (manifest : t) = manifest.step

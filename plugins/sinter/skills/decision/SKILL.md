@@ -63,7 +63,7 @@ after you write the new record in step 3:
 1. Search the whole repository, code included, for the citations
    `@cites <old-slug>`. Include the citations that give a revision
    after the slug. Leave the citations in the files under a
-   historical path: a path of the manifest key `check.historical`,
+   historical path: a path of the manifest key `paths.historical`,
    or a plan journal, `.plans/**/*.log.md`. Those files record what
    held at their time.
 2. Change each citation to `@cites <new-slug>`. When the citation

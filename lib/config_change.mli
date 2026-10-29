@@ -17,22 +17,23 @@ val side : plan_file:(string -> bool) -> location:string -> Toml.table -> side
 (** [side ~plan_file ~location document] is the comparison set of the manifest
     whose TOML document is [document]. It holds:
 
-    - one entry for each of [default-branch], [check.warn-only], and
-      [evidence.test-coverage]: the value that [document] writes, else the
-      default ["main"], [false], or ["optional"];
+    - one entry for each of [default-branch], [proof.req], [proof.design],
+      [proof.decision], [proof.plan], [proof.verifies], [proof.step], and
+      [check.warn-only]: the value that [document] writes, else the default
+      ["main"], ["declaration"] for each kind, ["whole-run"], ["change"], or
+      [false];
     - one entry for each other key of one value: [scan.packs.<name>.version],
       [scan.namespaces.<ns>], and [check.tiers.<gate>.<class>], whose id is
       [gate:<gate>/<class>] and whose value is the written tier;
-    - one entry for each member of [scan.packs.<name>.files],
-      [check.historical], [plan.exempt], [plan.locations.<kind>],
-      [ledger.approval-required], and [ledger.agent-markers], and one entry for
-      each table under [scan.packs.<name>.runners], whose value is the name of
-      the runner. A member that occurs twice gives one entry, from its first
-      place.
+    - one entry for each member of [scan.packs.<name>.files], [paths.exempt],
+      [paths.historical], [paths.<kind>], and [proof.agent-markers], and one
+      entry for each table under [scan.packs.<name>.runners], whose value is the
+      name of the runner. A member that occurs twice gives one entry, from its
+      first place.
 
     A member that is also built in gives no entry. The built-in member of
-    [check.historical] is {!Manifest.builtin_historical}. The built-in members
-    of [plan.exempt] are each path for which [plan_file] is [true], [location],
+    [paths.historical] is {!Manifest.builtin_historical}. The built-in members
+    of [paths.exempt] are each path for which [plan_file] is [true], [location],
     and {!Manifest.lock_file}.
 
     The function reads any document, and checks no glob, branch name, or id
@@ -47,9 +48,10 @@ val side : plan_file:(string -> bool) -> location:string -> Toml.table -> side
     - a pair of [check.tiers] whose gate is not a gate, whose class is not a
       built-in class, whose class takes no tier at the gate, or whose class is
       [config-changed];
-    - a kind under [plan.locations] other than [req], [design], and [decision];
-    - a value that is not one of the words of its key: a tier, a member of
-      [ledger.approval-required], and the value of [evidence.test-coverage];
+    - a kind under [paths] other than [req], [design], and [decision], and a
+      kind under [proof] other than these three and [plan];
+    - a value that is not one of the words of its key: a tier, and the value of
+      [proof.<kind>], [proof.verifies], and [proof.step];
     - [sinter-spec], and each key under [scan.packs.<name>.runners.<runner>]. *)
 
 val entries : side -> (string * value) list
@@ -110,18 +112,22 @@ val changes : base:side -> side -> change list
 
     - a member of [scan.packs.<name>.files]: a plain glob added, or a [!] glob
       removed, strengthens; a plain glob removed, or a [!] glob added, weakens;
-    - a member of [check.historical], [plan.exempt], or [plan.locations.<kind>]:
-      the reverse;
+    - a member of [paths.exempt], [paths.historical], or [paths.<kind>]: the
+      reverse;
     - [scan.namespaces.<ns>]: removed strengthens, added weakens, and a changed
       pattern changes;
     - [check.warn-only]: [false] in the working tree strengthens, [true]
       weakens;
     - a pair of [check.tiers]: a tier that rises in the order [off], [warn],
       [block] strengthens, one that falls weakens, and one that stays changes;
-    - a member of [ledger.approval-required] or [ledger.agent-markers]: added
-      strengthens, removed weakens;
-    - [evidence.test-coverage]: ["required"] in the working tree strengthens,
-      ["optional"] weakens. *)
+    - [proof.<kind>]: ["approval"] in the working tree strengthens,
+      ["declaration"] weakens;
+    - a member of [proof.agent-markers]: added strengthens, removed weakens;
+    - [proof.verifies]: ["each-test"] in the working tree strengthens,
+      ["whole-run"] weakens;
+    - [proof.step]: ["promises"] in the working tree strengthens, ["promises"]
+      in the base weakens, and a change between ["change"] and ["approval"]
+      changes. *)
 
 val detail : change -> string
 (** [detail change] is the detail of the finding of [change]:

@@ -161,7 +161,7 @@ let a_status_tag_applies_to_the_declaration_whose_extent_holds_it () =
 
 let a_kind_that_needs_approval_is_not_approved () =
   let records =
-    records ~extra:"[ledger]\napproval-required = [\"req\", \"plan\"]\n"
+    records ~extra:"[proof]\nreq = \"approval\"\nplan = \"approval\"\n"
       [ ("docs/a.md", lockout) ]
   in
   check_field records "req:auth-lockout" "approved" (bool false);
@@ -184,8 +184,7 @@ let each_kind_needs_approval_alone () =
        (fun kind ->
          let records =
            records
-             ~extra:
-               (Printf.sprintf "[ledger]\napproval-required = [\"%s\"]\n" kind)
+             ~extra:(Printf.sprintf "[proof]\n%s = \"approval\"\n" kind)
              [ file ]
          in
          List.filter
@@ -359,8 +358,7 @@ let an_effective_supersedes_edge_retires_its_target () =
 
 let a_source_that_is_not_approved_retires_nothing () =
   let records =
-    records ~extra:"[ledger]\napproval-required = [\"decision\"]\n"
-      [ ("a.md", supersedes) ]
+    records ~extra:"[proof]\ndecision = \"approval\"\n" [ ("a.md", supersedes) ]
   in
   check_field records "supersedes:decision:new->old" "effective" (bool false);
   check_field records "decision:old" "inforce" (bool true)
@@ -389,8 +387,7 @@ let a_status_tag_on_the_middle_of_a_chain_brings_back_the_first () =
 
 let a_middle_that_is_not_approved_retires_nothing () =
   let records =
-    records ~extra:"[ledger]\napproval-required = [\"design\"]\n"
-      (chain ~kind:"design" ())
+    records ~extra:"[proof]\ndesign = \"approval\"\n" (chain ~kind:"design" ())
   in
   check_field records "supersedes:decision:c->b" "effective" (bool true);
   check_field records "supersedes:design:b->a" "effective" (bool false);
@@ -541,6 +538,12 @@ let auth_plan =
    ## Record the policy\n\n\
    @decision lockout-policy\n"
 
+let step_hash scope =
+  Sha256.hex
+    ("{\"scope\":["
+    ^ String.concat "," (List.map (Printf.sprintf "%S") scope)
+    ^ "]}")
+
 let a_plan_file_gives_its_plan_steps_and_promises () =
   let csh =
     Sha256.hex
@@ -556,10 +559,14 @@ let a_plan_file_gives_its_plan_steps_and_promises () =
       "{\"col\":1,\"ecol\":18,\"eline\":9,\"id\":\"promise:step:auth-lockout/lock-the-account:req:auth-lockout\",\"kind\":\"promise\",\"line\":9,\"met\":false,\"out_of_scope\":false,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"step\":\"lock-the-account\",\"target\":\"auth-lockout\",\"v\":1,\"word\":\"req\"}";
       "{\"col\":1,\"ecol\":23,\"eline\":10,\"id\":\"promise:step:auth-lockout/lock-the-account:verifies:auth-lockout\",\"kind\":\"promise\",\"line\":10,\"met\":false,\"out_of_scope\":false,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"step\":\"lock-the-account\",\"target\":\"auth-lockout\",\"v\":1,\"word\":\"verifies\"}";
       "{\"col\":1,\"ecol\":25,\"eline\":14,\"id\":\"promise:step:auth-lockout/record-the-policy:decision:lockout-policy\",\"kind\":\"promise\",\"line\":14,\"met\":false,\"out_of_scope\":false,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"step\":\"record-the-policy\",\"target\":\"lockout-policy\",\"v\":1,\"word\":\"decision\"}";
-      "{\"active\":false,\"col\":1,\"done\":false,\"ecol\":20,\"eline\":6,\"id\":\"step:auth-lockout/lock-the-account\",\"kind\":\"step\",\"line\":6,\"met\":0,\"own_scope\":true,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"refactor\":false,\"scope\":[\"src/auth/**\"],\"slug\":\"lock-the-account\",\"title\":\"Lock \
-       the account\",\"total\":2,\"v\":1}";
-      "{\"active\":false,\"col\":1,\"done\":false,\"ecol\":21,\"eline\":12,\"id\":\"step:auth-lockout/record-the-policy\",\"kind\":\"step\",\"line\":12,\"met\":0,\"own_scope\":false,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"refactor\":false,\"scope\":[\"src/**\"],\"slug\":\"record-the-policy\",\"title\":\"Record \
-       the policy\",\"total\":1,\"v\":1}";
+      Printf.sprintf
+        "{\"active\":false,\"approved\":true,\"col\":1,\"csh\":\"%s\",\"done\":false,\"ecol\":20,\"eline\":6,\"id\":\"step:auth-lockout/lock-the-account\",\"kind\":\"step\",\"line\":6,\"met\":0,\"own_scope\":true,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"refactor\":false,\"scope\":[\"src/auth/**\"],\"slug\":\"lock-the-account\",\"title\":\"Lock \
+         the account\",\"total\":2,\"v\":1}"
+        (step_hash [ "src/auth/**" ]);
+      Printf.sprintf
+        "{\"active\":false,\"approved\":true,\"col\":1,\"csh\":\"%s\",\"done\":false,\"ecol\":21,\"eline\":12,\"id\":\"step:auth-lockout/record-the-policy\",\"kind\":\"step\",\"line\":12,\"met\":0,\"own_scope\":false,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"refactor\":false,\"scope\":[\"src/**\"],\"slug\":\"record-the-policy\",\"title\":\"Record \
+         the policy\",\"total\":1,\"v\":1}"
+        (step_hash [ "src/**" ]);
     ]
     (lines [ (".plans/auth.md", auth_plan) ])
 
@@ -605,7 +612,7 @@ let a_declaration_of_another_kind_meets_no_promise () =
 
 let the_default_location_of_the_kind_meets_a_promise () =
   let records =
-    records ~extra:"[plan]\nlocations.req = [\"docs/\"]\n"
+    records ~extra:"[paths]\nreq = [\"docs/\"]\n"
       [
         (".plans/auth.md", auth_plan);
         ("docs/a.md", "# A\n\n@req auth-lockout\n");
@@ -698,7 +705,88 @@ let only_a_step_with_no_promise_needs_the_changes () =
     "a plan with a refactor step, and one without" [ true; false ]
     (List.map
        (fun text -> Facts.needs_changes (facts [ (".plans/p.md", text) ]))
-       [ refactor; auth_plan ])
+       [ refactor; auth_plan ]);
+  Alcotest.(check (list bool))
+    "a refactor step under each value of proof.step" [ true; false; false ]
+    (List.map
+       (fun word ->
+         Facts.needs_changes
+           (facts
+              ~extra:(Printf.sprintf "[proof]\nstep = %S\n" word)
+              [ (".plans/p.md", refactor) ]))
+       [ "change"; "approval"; "promises" ])
+
+let proof_step word = Printf.sprintf "[proof]\nstep = %S\n" word
+
+let a_step_with_no_promise_follows_proof_step () =
+  let step word changed =
+    let records =
+      records ~extra:(proof_step word) ~changed [ (".plans/p.md", refactor) ]
+    in
+    match
+      ( field "done" (find "step:p/clean" records),
+        field "approved" (find "step:p/clean" records) )
+    with
+    | Some done_, Some approved -> (show (Some done_), show (Some approved))
+    | _ -> Alcotest.fail "the step has no done or no approved"
+  in
+  let pair = Alcotest.(pair string string) in
+  let yes = show (bool true) and no = show (bool false) in
+  Alcotest.check pair "change, with a change in the scope" (yes, yes)
+    (step "change" [ "lib/y.ml" ]);
+  Alcotest.check pair "change, with no change in the scope" (no, yes)
+    (step "change" [ "bin/x.ml" ]);
+  Alcotest.check pair "approval: no ledger, so not approved and not done"
+    (no, no)
+    (step "approval" [ "lib/y.ml" ]);
+  Alcotest.check pair "promises: never done" (no, yes)
+    (step "promises" [ "lib/y.ml" ])
+
+let proof_step_leaves_a_step_with_promises () =
+  let files =
+    [
+      (".plans/auth.md", auth_plan);
+      ("src/auth/a.md", "# A\n\n@req auth-lockout\n");
+      ("src/d.md", "# D\n\n@decision lockout-policy\n");
+    ]
+  in
+  List.iter
+    (fun word ->
+      let records = records ~extra:(proof_step word) files in
+      check_field ~message:word records "step:auth-lockout/record-the-policy"
+        "done" (bool true);
+      check_field ~message:word records "step:auth-lockout/record-the-policy"
+        "approved" (bool true))
+    [ "change"; "approval"; "promises" ]
+
+let a_step_is_approved_when_its_plan_is () =
+  let records =
+    records ~extra:"[proof]\nplan = \"approval\"\n"
+      [ (".plans/auth.md", auth_plan); (".plans/p.md", refactor) ]
+  in
+  check_field records "plan:auth-lockout" "approved" (bool false);
+  check_field records "step:auth-lockout/record-the-policy" "approved"
+    (bool false);
+  check_field records "step:p/clean" "approved" (bool false)
+
+let the_step_hash_holds_each_glob_of_the_scope_once_in_byte_order () =
+  let records =
+    records
+      [
+        ( ".plans/p.md",
+          "# P\n\n\
+           @plan p\n\
+           @scope **\n\n\
+           ## One\n\n\
+           @scope src/**, !src/b.md, lib/**, src/**\n\n\
+           ## Two\n\n\
+           @scope lib/**, !src/b.md, src/**\n" );
+      ]
+  in
+  let expected = str (step_hash [ "!src/b.md"; "lib/**"; "src/**" ]) in
+  check_field records "step:p/one" "csh" expected;
+  check_field records "step:p/two" "csh" expected;
+  check_field records "step:p/one" "approval" None
 
 let a_section_number_leaves_titles_and_slugs () =
   let lines_of files = records files in
@@ -783,7 +871,7 @@ let a_glob_with_a_bang_narrows_the_scope_of_a_step () =
 
 let a_plan_that_needs_approval_is_not_approved () =
   check_field
-    (records ~extra:"[ledger]\napproval-required = [\"plan\"]\n"
+    (records ~extra:"[proof]\nplan = \"approval\"\n"
        [ (".plans/p.md", refactor) ])
     "plan:p" "approved" (bool false)
 
@@ -1215,7 +1303,7 @@ let successors_end_in_force_and_only_effective_edges_retire =
           force; only a status tag or an effective edge retires a declaration"
        ~print:graph_text graph (fun graph ->
          let facts =
-           facts ~extra:"[ledger]\napproval-required = [\"design\"]\n"
+           facts ~extra:"[proof]\ndesign = \"approval\"\n"
              [ ("a.md", graph_text graph) ]
          in
          let declarations = Array.of_list (Facts.declarations facts) in
@@ -1379,7 +1467,7 @@ let plans_give_their_steps_and_promises () =
 
 let standing_names_the_facts_that_meet_and_the_one_in_scope () =
   let facts =
-    facts ~extra:"[plan]\nlocations.decision = [\"docs/decisions/\"]\n"
+    facts ~extra:"[paths]\ndecision = [\"docs/decisions/\"]\n"
       [
         ( ".plans/p.md",
           "# P\n\n\
@@ -1506,7 +1594,7 @@ let lookup_tree =
     (Gen.list_size (Gen.int_range 1 4) ordinary)
     plan
 
-let lookup_extra = "[plan]\nlocations.decision = [\"docs/decisions/\"]\n"
+let lookup_extra = "[paths]\ndecision = [\"docs/decisions/\"]\n"
 
 let lookup_property name check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
@@ -1618,10 +1706,14 @@ let a_step_is_done_by_the_list_scan_of_the_verifies_edges =
     (QCheck2.Test.make ~count:200
        ~name:
          "a step is done when no verifies edge is in its scope, by the list \
-          scan, and its promises are met or the diff changes its scope"
-       ~print:print_lookup_case (Gen.pair lookup_tree changed_paths)
-       (fun (files, changed) ->
-         let facts = facts ~extra:lookup_extra files in
+          scan, and its promises are met or proof.step lets it be done"
+       ~print:(fun ((files, changed), word) ->
+         print_lookup_case (files, changed) ^ "\nproof.step = " ^ word)
+       (Gen.pair
+          (Gen.pair lookup_tree changed_paths)
+          (Gen.oneof_list [ "change"; "approval"; "promises" ]))
+       (fun ((files, changed), word) ->
+         let facts = facts ~extra:(lookup_extra ^ proof_step word) files in
          let records = Facts.records facts ~changed in
          List.for_all
            (fun (plan : Facts.plan) ->
@@ -1650,11 +1742,19 @@ let a_step_is_done_by_the_list_scan_of_the_verifies_edges =
                  let expected =
                    verified
                    &&
-                   if total = 0 then List.exists in_scope changed
+                   if total = 0 then
+                     String.equal word "change" && List.exists in_scope changed
                    else met = total
                  in
-                 check_field records (Facts.step_id plan step) "done"
-                   (bool expected);
+                 let id = Facts.step_id plan step in
+                 check_field records id "done" (bool expected);
+                 check_field records id "approved"
+                   (bool (not (total = 0 && String.equal word "approval")));
+                 check_field records id "csh"
+                   (str
+                      (step_hash
+                         (List.sort_uniq String.compare
+                            (Facts.effective_scope plan step))));
                  true)
                plan.steps)
            (Facts.plans facts)))
@@ -1945,6 +2045,14 @@ let tests =
       a_verifies_edge_in_the_scope_keeps_a_step_from_done;
     case "only a step with no promise needs the changes"
       only_a_step_with_no_promise_needs_the_changes;
+    case "a step with no promise follows proof.step"
+      a_step_with_no_promise_follows_proof_step;
+    case "proof.step leaves a step with promises"
+      proof_step_leaves_a_step_with_promises;
+    case "a step is approved when its plan is"
+      a_step_is_approved_when_its_plan_is;
+    case "the step hash holds each glob of the scope once in byte order"
+      the_step_hash_holds_each_glob_of_the_scope_once_in_byte_order;
     case "repeated promises of a step collapse"
       repeated_promises_of_a_step_collapse;
     case "a step holds the promises of its items and subsections"

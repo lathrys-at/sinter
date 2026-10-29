@@ -1,11 +1,11 @@
-config-changed: check.historical: removed "old/" (strengthens)
+config-changed: paths.historical: removed "old/" (strengthens)
  --> sinter.toml:5:1
   |
 5 | historical = ["new/"]
   | ^^^^^^^^^^^^^^^^^^^^^
   |
 
-config-changed: check.historical: added "new/" (weakens)
+config-changed: paths.historical: added "new/" (weakens)
  --> sinter.toml:5:15
   |
 5 | historical = ["new/"]

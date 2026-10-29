@@ -103,27 +103,30 @@ Every entry carries:
 
 ### 4.2 The writers
 
-@req ledger-writers v3
+@req ledger-writers v4
 
-Four writers exist. The approval command writes `approval` entries, with
-their `approved-scope` and `approved-promise` lines. The decline command
-writes `decline`. The abandon command writes `abandoned`. A person
-runs these three commands. The fourth writer is the CI job on the
-default branch, which writes `completed` (section 8).
+Four writers exist. The approval command writes `approval` entries:
+of a declaration, of a plan, and of a step. The approval of a plan
+comes with its `approved-scope` and `approved-promise` lines. The
+decline command writes `decline`. The abandon command writes
+`abandoned`. A person runs these three commands. The fourth writer is
+the CI job on the default branch, which writes `completed` (section
+8).
 
 ## 5. `approval`
 
 ### 5.1 The fields of an approval entry
 
-@req ledger-approval-entry v2
+@req ledger-approval-entry v3
 
-An `approval` entry records that a person approved a subject.
+An `approval` entry records that a person approved a subject. The
+subject is a declaration, a plan, or a step.
 
 | field | meaning |
 |---|---|
-| `subject` | for example `req:auth-lockout` or `plan:auth-lockout@3f2a9c` |
+| `subject` | for example `req:auth-lockout`, `plan:auth-lockout@3f2a9c`, or `step:auth-lockout@3f2a9c/tidy` |
 | `rev` `xh` | declarations only: the revision and extent hash approved |
-| `csh` | plans only: the commitment-set hash ([jsonl.md](jsonl.md) section 4) |
+| `csh` | plans and steps only: the commitment-set hash of a plan, or the step hash of a step ([jsonl.md](jsonl.md) section 4) |
 | `note` | omitted when none |
 
 The subject of a plan is the fact id of the plan, which holds the full
@@ -132,13 +135,23 @@ approval command refuses to approve a plan that has no plan id. So the
 full form of every approved plan holds a plan id, and the id of a
 claim can be read ([jsonl.md](jsonl.md) section 9).
 
+The subject of a step is the fact id of the step,
+`step:<plan>/<step>`, which holds the full form of its plan. The
+approval command refuses to approve a step that has promises, and a
+step of a plan that has no plan id. An approval of a step matches the
+step while its `csh` equals the current step hash of the step. While
+`proof.step` is `"approval"` ([manifest.md](manifest.md) section
+10.4), a matching approval approves a step without promises, and so
+meets the first condition of `done()` ([algebra.md](algebra.md)
+section 6.4).
+
 ### 5.2 Approval
 
-@req ledger-approval v2
+@req ledger-approval v3
 
 Approval attaches to the `(slug, rev, xh)` triple, never to a
 document. A declaration of a kind that needs approval
-([manifest.md](manifest.md) section 11.1) is **approved** if and only
+([manifest.md](manifest.md) section 10.1) is **approved** if and only
 if the ledger holds an approval for its current `(slug, rev, xh)`. A
 revision bump therefore removes approval until the item is approved
 again. A declaration of a kind that does not need approval counts as
@@ -211,7 +224,7 @@ when the person overrides their own earlier refusal.
 
 ### 8.1 The entry and its writer
 
-@req ledger-completed v3
+@req ledger-completed v4
 
 A `completed` entry closes a plan whose promises are all met
 ([vocabulary.md](vocabulary.md) section 10.5).
@@ -225,13 +238,13 @@ condition.
 | field | meaning |
 |---|---|
 | `subject` | `plan:<slug>@<id>`: the fact id of the plan, with its full form |
-| `approval` | the plan's latest approval at the time it closed; omitted when the plan has no approval |
+| `approval` | the id of the latest `approval` entry whose subject is the plan, at the time the plan closed; omitted when the plan has no approval |
 | `merge` | the merge commit |
 | `report` | SHA-256 of the report compiled when the plan closed |
 
 ### 8.2 The completion condition
 
-@req ledger-completion-condition v2
+@req ledger-completion-condition v3
 
 A plan passes the condition when all of these statements are true:
 
@@ -240,8 +253,8 @@ A plan passes the condition when all of these statements are true:
   suspect.
 - When the job imports evidence: every promised `verifies` edge is at
   rung `passing`, or at rung `unmeasured` when
-  `evidence.test-coverage` is `"optional"`
-  ([manifest.md](manifest.md) section 12).
+  `proof.verifies` is `"whole-run"`
+  ([manifest.md](manifest.md) section 10.3).
 - When the job imports no evidence: a promised `verifies` edge can be
   at any rung. Rung enforcement happened earlier, at the gate `review`.
 
@@ -312,12 +325,12 @@ must say how to fetch the ledger.
 
 ### 11.1 The comparison of commitment sets
 
-@req ledger-plan-approval v2
+@req ledger-plan-approval v3
 
 A plan's **commitment set** is the set of canonical facts about the
 plan: the promises of each step, the scope of each step, and the plan
 scope. When the kind `plan` does not need approval
-([manifest.md](manifest.md) section 11.1), every plan counts as
+([manifest.md](manifest.md) section 10.1), every plan counts as
 approved, and this section does not apply. Otherwise the tool compares
 the current set `C` against the approved set `C₀`. The plan is
 approved if and only if all three clauses hold:

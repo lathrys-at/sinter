@@ -729,6 +729,30 @@ let scopes_outside_plans facts =
         plan.steps)
     (Facts.plans facts)
 
+let steps_without_promises facts =
+  if Manifest.step (Facts.manifest facts) <> Manifest.Promises then []
+  else
+    List.concat_map
+      (fun (plan : Facts.plan) ->
+        if not (is_open plan) then []
+        else
+          List.filter_map
+            (fun (step : Facts.step) ->
+              if step.promises <> [] then None
+              else
+                Some
+                  (Finding.make Finding_class.Step_without_promises
+                     (Finding.Fact
+                        { id = Facts.step_id plan step; ack_name = step.slug })
+                     ~place:(place plan.path step.span)
+                     ~detail:
+                       (Printf.sprintf
+                          "%s has no promise, and proof.step is \"promises\""
+                          (Facts.step_id plan step))
+                     ()))
+            plan.steps)
+      (Facts.plans facts)
+
 let intersect a b =
   List.exists
     (fun glob_a ->
@@ -921,6 +945,7 @@ let of_facts facts ~base ~not_text =
             wrong_sources facts;
             untraced facts;
             scopes_outside_plans facts;
+            steps_without_promises facts;
             scope_overlaps facts;
             unverified_promises facts;
             promises_out_of_scope facts;
