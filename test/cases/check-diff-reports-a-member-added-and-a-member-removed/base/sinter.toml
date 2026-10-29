@@ -1,5 +1,5 @@
 [scan]
 packs.markdown.files = ["**/*.md"]
 
-[check]
+[paths]
 historical = ["old/"]

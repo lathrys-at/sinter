@@ -1,4 +1,4 @@
-{"base":"54b32b83e3dd7a94a1e8aa3b5cfe7abd56e749f3","default_branch":"main","evidence":false,"kind":"index","manifest":"sinter.toml","mode":"tree","packs":[],"tool":"<tool>","tree":"36f0905c8e4854f7a5efb8205585d21b724cdc47","v":1}
+{"base":"6966d46206ca70090ab36483bad93d5ebed02be1","default_branch":"main","evidence":false,"kind":"index","manifest":"sinter.toml","mode":"tree","packs":[],"tool":"<tool>","tree":"96d6e083ebfa81c21030398193837e775bf31a32","v":1}
 {"block":"design:store","col":1,"ecol":32,"eline":7,"hash":"0123abcd","id":"ack:design:store:retired cache-ttl","kind":"ack","line":7,"pack":"markdown","path":"docs/design.md","target":"retired cache-ttl","v":1}
 {"col":1,"dangling":false,"dst":"external:gh/12","ecol":13,"eline":4,"id":"cites:decision:cache-ttl->gh/12","kind":"cites","line":4,"pack":"markdown","path":"docs/decisions/cache.md","src":"decision:cache-ttl","suspect":false,"target":"gh/12","v":1}
 {"col":1,"dangling":false,"dst":"decision:cache-ttl","ecol":20,"eline":6,"id":"cites:design:store->cache-ttl","kind":"cites","line":6,"pack":"markdown","path":"docs/design.md","rev":1,"src":"design:store","suspect":true,"target":"cache-ttl","v":1}

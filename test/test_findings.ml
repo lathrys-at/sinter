@@ -251,7 +251,7 @@ let missing_plan_id_pastes_an_id_from_the_base_and_the_path () =
       plan ".plans/x.md" "x@3F2A9C";
       ("old/.plans/o.md", "# O\n\n@plan o\n");
     ]
-    ~extra:"[check]\nhistorical = [\"old/**\"]\n"
+    ~extra:"[paths]\nhistorical = [\"old/**\"]\n"
     [
       ".plans/p.md:3:1-3:8 | finding:missing-plan-id:plan:p | the plan p has \
        no plan id | fix: @plan p@a153a1";
@@ -573,7 +573,7 @@ let unverified_promise_sits_at_a_promise_with_no_verifies () =
     ]
 
 let promise_out_of_scope_names_the_facts_outside () =
-  check ~extra:"[plan]\nlocations.decision = [\"docs/decisions/\"]\n"
+  check ~extra:"[paths]\ndecision = [\"docs/decisions/\"]\n"
     Finding_class.Promise_out_of_scope
     [
       ( ".plans/p.md",
@@ -872,7 +872,7 @@ let cycle_takes_its_subject_by_id_not_by_place () =
     ]
 
 let a_historical_path_gives_no_finding () =
-  check ~extra:"[check]\nhistorical = [\"notes/**\"]\n" Finding_class.Typo_tag
+  check ~extra:"[paths]\nhistorical = [\"notes/**\"]\n" Finding_class.Typo_tag
     [
       ("notes/a.md", "# A\n\n@reqq a\n");
       (".plans/p.log.md", "# P\n\n@reqq a\n");

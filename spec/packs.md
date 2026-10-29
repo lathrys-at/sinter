@@ -419,7 +419,7 @@ node gives no finding of its own, and one place of error gives one
 finding. When the flag of the root shows a failure
 and the tree shows no such node, Sinter reports one finding at the
 first lowest error node in the order of the text. At a gate where the tier that applies to the class
-`parse-error` is `block` ([manifest.md](manifest.md) section 9.3), the
+`parse-error` is `block` ([manifest.md](manifest.md) section 11.3), the
 tier of such a finding is `warn`. At every other gate, the tier is the
 tier that applies.
 
@@ -606,7 +606,7 @@ characters on the first and on the last line of the front matter.
 
 Only front matter that starts with `+++` holds TOML. A rule file starts
 with front matter of this form ([manifest.md](manifest.md) section
-15). Front matter that starts with `---` has no meaning for Sinter.
+14). Front matter that starts with `---` has no meaning for Sinter.
 
 The front matter is one node. It holds no tag line, and it is not a
 block for the rules of section 7.2.
@@ -1206,7 +1206,7 @@ These rules apply:
   `sinter pack add`.
 - A line for a pack that the manifest does not name has no effect.
 - The lock file is an exempt path ([manifest.md](manifest.md) section
-  10.2).
+  9.1).
 - The `index` record of a scan names each pack of the lock file
   ([jsonl.md](jsonl.md) section 10).
 

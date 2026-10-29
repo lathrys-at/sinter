@@ -1,6 +1,8 @@
 [scan]
 packs.markdown.files = ["**/*.md"]
 
-[check]
+[paths]
 historic = ["x/"]
+
+[check]
 warn-only = "yes"

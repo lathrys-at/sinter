@@ -18,11 +18,11 @@ let a_setting_id_joins_the_key_path_with_dots () =
 
 let a_member_id_adds_the_member_after_an_equals_sign () =
   Alcotest.(check string)
-    "a glob" "setting:check.historical=docs/devlog/"
-    (Fact_id.member [ "check"; "historical" ] "docs/devlog/");
+    "a glob" "setting:paths.historical=docs/devlog/"
+    (Fact_id.member [ "paths"; "historical" ] "docs/devlog/");
   Alcotest.(check string)
-    "a member that holds = and ." "setting:plan.exempt=a=b.c"
-    (Fact_id.member [ "plan"; "exempt" ] "a=b.c")
+    "a member that holds = and ." "setting:paths.exempt=a=b.c"
+    (Fact_id.member [ "paths"; "exempt" ] "a=b.c")
 
 let a_gate_id_names_the_gate_and_the_class () =
   Alcotest.(check string)

@@ -2,5 +2,5 @@
 packs.markdown.files = ["**/*.md", "!vendor/"]
 namespaces.gh = "[1-9][0-9]*"
 
-[plan]
-locations.decision = ["docs/decisions/"]
+[paths]
+decision = ["docs/decisions/"]

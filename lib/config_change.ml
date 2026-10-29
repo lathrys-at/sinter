@@ -2,16 +2,7 @@
 (* Copyright 2026 The Sinter Authors *)
 
 type value = String of string | Boolean of bool
-
-type rule =
-  | Neutral
-  | Reads
-  | Spares
-  | Namespace
-  | Demands
-  | Warn_only
-  | Test_coverage
-
+type rule = Neutral | Reads | Spares | Namespace | Demands | Toward of value
 type tier = { builtin : Finding_class.tier; written : Finding_class.tier }
 type kind = Plain of rule | Tier of tier
 
@@ -160,6 +151,11 @@ let tiers document =
     (under [ "check"; "tiers" ] document)
 
 let kinds kinds = List.map Manifest.kind_name kinds
+let all_kinds = Manifest.[ Req; Design; Decision; Plan ]
+let declaration = Manifest.approval_name Manifest.Declaration
+let approval = Manifest.approval_name Manifest.Approval
+let whole_run = Manifest.verifies_name Manifest.Whole_run
+let each_test = Manifest.verifies_name Manifest.Each_test
 
 let read_entries ~plan_file ~location document =
   let exempt member =
@@ -177,40 +173,47 @@ let read_entries ~plan_file ~location document =
         (under [ "scan"; "namespaces" ] document)
         (fun key node ->
           text [ "scan"; "namespaces"; key.name ] Namespace ~valid:any node);
-      at [ "check" ] "warn-only" document
-        (flag [ "check"; "warn-only" ] Warn_only);
-      at [ "check" ] "historical" document
-        (members [ "check"; "historical" ] Spares ~keep:(fun member ->
+      at [ "paths" ] "exempt" document
+        (members [ "paths"; "exempt" ] Spares ~keep:exempt);
+      at [ "paths" ] "historical" document
+        (members [ "paths"; "historical" ] Spares ~keep:(fun member ->
              not (String.equal member Manifest.builtin_historical)));
-      tiers document;
-      at [ "plan" ] "exempt" document
-        (members [ "plan"; "exempt" ] Spares ~keep:exempt);
       List.concat_map
         (fun ((key : Toml.key), node) ->
           if List.mem key.name (kinds Manifest.[ Req; Design; Decision ]) then
-            members [ "plan"; "locations"; key.name ] Spares ~keep:any node
+            members [ "paths"; key.name ] Spares ~keep:any node
           else [])
-        (under [ "plan"; "locations" ] document);
-      at [ "ledger" ] "approval-required" document
-        (members
-           [ "ledger"; "approval-required" ]
-           Demands
-           ~keep:(one_of (kinds Manifest.[ Req; Design; Decision; Plan ])));
-      at [ "ledger" ] "agent-markers" document
-        (members [ "ledger"; "agent-markers" ] Demands ~keep:any);
-      at [ "evidence" ] "test-coverage" document
-        (text
-           [ "evidence"; "test-coverage" ]
-           Test_coverage
-           ~valid:(one_of [ "optional"; "required" ]));
+        (under [ "paths" ] document);
+      List.concat_map
+        (fun ((key : Toml.key), node) ->
+          if List.mem key.name (kinds all_kinds) then
+            text [ "proof"; key.name ] (Toward (String approval))
+              ~valid:(one_of [ declaration; approval ])
+              node
+          else [])
+        (under [ "proof" ] document);
+      at [ "proof" ] "agent-markers" document
+        (members [ "proof"; "agent-markers" ] Demands ~keep:any);
+      at [ "proof" ] "verifies" document
+        (text [ "proof"; "verifies" ] (Toward (String each_test))
+           ~valid:(one_of [ whole_run; each_test ]));
+      at [ "check" ] "warn-only" document
+        (flag [ "check"; "warn-only" ] (Toward (Boolean false)));
+      tiers document;
     ]
 
 let defaults =
   [
     ([ "default-branch" ], String "main", Neutral);
-    ([ "check"; "warn-only" ], Boolean false, Warn_only);
-    ([ "evidence"; "test-coverage" ], String "optional", Test_coverage);
+    ([ "check"; "warn-only" ], Boolean false, Toward (Boolean false));
+    ([ "proof"; "verifies" ], String whole_run, Toward (String each_test));
   ]
+  @ List.map
+      (fun kind ->
+        ( [ "proof"; Manifest.kind_name kind ],
+          String declaration,
+          Toward (String approval) ))
+      all_kinds
 
 let warn_only_id = Fact_id.setting [ "check"; "warn-only" ]
 
@@ -298,9 +301,7 @@ let direction rule form =
       | Removed _ -> Strengthens
       | Changed _ -> Changes)
   | Demands -> if grows form then Strengthens else Weakens
-  | Warn_only -> if now form = Boolean false then Strengthens else Weakens
-  | Test_coverage ->
-      if now form = String "required" then Strengthens else Weakens
+  | Toward stricter -> if now form = stricter then Strengthens else Weakens
 
 type pair = Gone of entry | Kept of entry option * entry
 

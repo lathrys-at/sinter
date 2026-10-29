@@ -493,7 +493,7 @@ let resolver manifest (declarations : declaration array) =
 
 let approved manifest (declarations : declaration array) index =
   match manifest_kind declarations.(index).kind with
-  | Some kind -> not (List.mem kind (Manifest.approval_required manifest))
+  | Some kind -> Manifest.approval manifest kind = Manifest.Declaration
   | None -> true
 
 let effective_source manifest (declarations : declaration array) index =
@@ -732,8 +732,10 @@ let commitment_hash plan =
     ^ json_strings (canonical plan.scope)
     ^ "}")
 
+let needs_approval manifest kind =
+  Manifest.approval manifest kind = Manifest.Approval
+
 let declaration_records facts ~inforce ~approved =
-  let required = Manifest.approval_required facts.manifest in
   List.filter_map Fun.id
     (List.mapi
        (fun index (d : declaration) ->
@@ -749,7 +751,8 @@ let declaration_records facts ~inforce ~approved =
                   ("xeline", Jsonl.int d.extent.last);
                   ("inforce", Jsonl.bool inforce.(index));
                   ("approved", Jsonl.bool (approved index));
-                  ("approval_required", Jsonl.bool (List.mem kind required));
+                  ( "approval_required",
+                    Jsonl.bool (needs_approval facts.manifest kind) );
                   ("declined", Jsonl.bool false);
                 ]
                @ optional "title" (Option.map Jsonl.string d.title)
@@ -899,13 +902,13 @@ let promise_id plan step (promise : promise) =
     [ "promise"; step_id plan step; promise.word; promise.target ]
 
 let plan_records facts ~changed plan =
-  let required = Manifest.approval_required facts.manifest in
   let plan_record =
     located ~kind:"plan" ~id:(plan_fact_id plan) ~path:plan.path ~span:plan.span
       ([
          ("slug", Jsonl.string plan.slug);
          ("scope", Jsonl.strings plan.scope);
-         ("approved", Jsonl.bool (not (List.mem Manifest.Plan required)));
+         ( "approved",
+           Jsonl.bool (not (needs_approval facts.manifest Manifest.Plan)) );
          ("active", Jsonl.bool false);
          ("open", Jsonl.bool true);
          ("csh", Jsonl.string (commitment_hash plan));

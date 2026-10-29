@@ -161,7 +161,7 @@ let a_status_tag_applies_to_the_declaration_whose_extent_holds_it () =
 
 let a_kind_that_needs_approval_is_not_approved () =
   let records =
-    records ~extra:"[ledger]\napproval-required = [\"req\", \"plan\"]\n"
+    records ~extra:"[proof]\nreq = \"approval\"\nplan = \"approval\"\n"
       [ ("docs/a.md", lockout) ]
   in
   check_field records "req:auth-lockout" "approved" (bool false);
@@ -184,8 +184,7 @@ let each_kind_needs_approval_alone () =
        (fun kind ->
          let records =
            records
-             ~extra:
-               (Printf.sprintf "[ledger]\napproval-required = [\"%s\"]\n" kind)
+             ~extra:(Printf.sprintf "[proof]\n%s = \"approval\"\n" kind)
              [ file ]
          in
          List.filter
@@ -359,8 +358,7 @@ let an_effective_supersedes_edge_retires_its_target () =
 
 let a_source_that_is_not_approved_retires_nothing () =
   let records =
-    records ~extra:"[ledger]\napproval-required = [\"decision\"]\n"
-      [ ("a.md", supersedes) ]
+    records ~extra:"[proof]\ndecision = \"approval\"\n" [ ("a.md", supersedes) ]
   in
   check_field records "supersedes:decision:new->old" "effective" (bool false);
   check_field records "decision:old" "inforce" (bool true)
@@ -389,8 +387,7 @@ let a_status_tag_on_the_middle_of_a_chain_brings_back_the_first () =
 
 let a_middle_that_is_not_approved_retires_nothing () =
   let records =
-    records ~extra:"[ledger]\napproval-required = [\"design\"]\n"
-      (chain ~kind:"design" ())
+    records ~extra:"[proof]\ndesign = \"approval\"\n" (chain ~kind:"design" ())
   in
   check_field records "supersedes:decision:c->b" "effective" (bool true);
   check_field records "supersedes:design:b->a" "effective" (bool false);
@@ -605,7 +602,7 @@ let a_declaration_of_another_kind_meets_no_promise () =
 
 let the_default_location_of_the_kind_meets_a_promise () =
   let records =
-    records ~extra:"[plan]\nlocations.req = [\"docs/\"]\n"
+    records ~extra:"[paths]\nreq = [\"docs/\"]\n"
       [
         (".plans/auth.md", auth_plan);
         ("docs/a.md", "# A\n\n@req auth-lockout\n");
@@ -783,7 +780,7 @@ let a_glob_with_a_bang_narrows_the_scope_of_a_step () =
 
 let a_plan_that_needs_approval_is_not_approved () =
   check_field
-    (records ~extra:"[ledger]\napproval-required = [\"plan\"]\n"
+    (records ~extra:"[proof]\nplan = \"approval\"\n"
        [ (".plans/p.md", refactor) ])
     "plan:p" "approved" (bool false)
 
@@ -1215,7 +1212,7 @@ let successors_end_in_force_and_only_effective_edges_retire =
           force; only a status tag or an effective edge retires a declaration"
        ~print:graph_text graph (fun graph ->
          let facts =
-           facts ~extra:"[ledger]\napproval-required = [\"design\"]\n"
+           facts ~extra:"[proof]\ndesign = \"approval\"\n"
              [ ("a.md", graph_text graph) ]
          in
          let declarations = Array.of_list (Facts.declarations facts) in
@@ -1379,7 +1376,7 @@ let plans_give_their_steps_and_promises () =
 
 let standing_names_the_facts_that_meet_and_the_one_in_scope () =
   let facts =
-    facts ~extra:"[plan]\nlocations.decision = [\"docs/decisions/\"]\n"
+    facts ~extra:"[paths]\ndecision = [\"docs/decisions/\"]\n"
       [
         ( ".plans/p.md",
           "# P\n\n\
@@ -1506,7 +1503,7 @@ let lookup_tree =
     (Gen.list_size (Gen.int_range 1 4) ordinary)
     plan
 
-let lookup_extra = "[plan]\nlocations.decision = [\"docs/decisions/\"]\n"
+let lookup_extra = "[paths]\ndecision = [\"docs/decisions/\"]\n"
 
 let lookup_property name check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick

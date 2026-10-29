@@ -13,7 +13,7 @@
 - **`sinter check`**
   - The built-in finding classes, `spec/algebra.md` section 9.
 - **Rule files** — the rules and the finding classes that a
-  repository writes, `spec/manifest.md` section 15.
+  repository writes, `spec/manifest.md` section 14.
   - Decide, when rule files are built, whether an edit of a rule file
     needs a revision bump (`unbumped`), and whether `config-changed`
     covers rule files.

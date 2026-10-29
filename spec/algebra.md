@@ -74,10 +74,10 @@ Notes on individual kinds:
 - A `test` is a test or a group of tests that a language pack finds
   ([packs.md](packs.md) section 8).
 - A `rule` is located in its rule file ([manifest.md](manifest.md)
-  section 15).
+  section 14).
 - A `setting` is one value of the manifest, and a `gate` is the tier
   that applies to one pair of a gate and a finding class
-  ([manifest.md](manifest.md) section 14). A setting fact or a gate
+  ([manifest.md](manifest.md) section 13). A setting fact or a gate
   fact that the manifest writes is located in the manifest. A default,
   a built-in member, and every fact of a manifest outside the
   repository are unlocated.
@@ -196,8 +196,8 @@ declaration. "Declaration" means a `req`, `design`, or `decision`.
 | `path(g)` | located facts whose `path` matches `g` |
 | `changed(b)` | see section 8; `b` is `base` or a revision |
 | `active` | the active plan and, when the session declares one, the active step; only open plans are candidates; `∅` when no plan is active |
-| `historical` | located facts under a historical path: a path of `check.historical`, its built-in member included ([manifest.md](manifest.md) section 9.4) |
-| `exempt` | located facts under an exempt path: a path of `plan.exempt`, its built-in members included (each plan file, the manifest, and the lock file `sinter.lock`; [manifest.md](manifest.md) section 10.2) |
+| `historical` | located facts under a historical path: a path of `paths.historical`, its built-in member included ([manifest.md](manifest.md) section 9.2) |
+| `exempt` | located facts under an exempt path: a path of `paths.exempt`, its built-in members included (each plan file, the manifest, and the lock file `sinter.lock`; [manifest.md](manifest.md) section 9.1) |
 | `acked(t)` | the located facts `f` whose tag-bearing block carries a live `@ack` with the tag target `t`, where `t` applies to `f`. The tag target `t` applies to `f` when both of these conditions hold: the class name or rule name in `t` matches, and the ack's subject, when the ack gives one, equals `f` in the form that [vocabulary.md](vocabulary.md) section 7.4 gives |
 | `findings(C)` | finding facts whose class is in `C` |
 
@@ -230,7 +230,7 @@ citation is still a citation.
 | `scope(S)` | plan, step, rule, claim | located facts and hunks whose `path` matches the effective scope of some member of `S`. A step's effective scope is the step's own `@scope` when the step declares one; otherwise it is the plan's scope. A plan's effective scope is the union of the effective scopes of its steps. A rule's scope is its `scope` field. `∅` when `S` holds no scope-bearing fact |
 | `promises(S)` | plan, step | promise facts whose step or plan is in `S` |
 | `met(P)` | promise | the promises in `P` that are met, as defined in [vocabulary.md](vocabulary.md) section 10.5 |
-| `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met; for a step with no promises, the first condition is instead that the step's scope intersects `changed(base)`. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unmeasured` when `evidence.test-coverage` is `"optional"` ([manifest.md](manifest.md) section 12). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
+| `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met; for a step with no promises, the first condition is instead that the step's scope intersects `changed(base)`. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unmeasured` when `proof.verifies` is `"whole-run"` ([manifest.md](manifest.md) section 10.3). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
 
 ### 6.5 Status predicates
 
@@ -239,7 +239,7 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 | function | accepts | keeps `f ∈ S` iff |
 |---|---|---|
 | `inforce(S)` | any | For a declaration: `f` carries no status tag and no effective `@supersedes` edge points at `f` ([vocabulary.md](vocabulary.md) section 8.1). A member of a cycle of `@supersedes` edges that carries no status tag is in force, and the tool reports the `cycle` finding. For a plan, for its steps, and for its promises: the plan is open — the ledger holds no `completed` entry and no `abandoned` entry for its full form. The predicate keeps every fact of every other kind |
-| `approved(S)` | any | A kind needs approval when `ledger.approval-required` lists it ([manifest.md](manifest.md) section 11.1). The predicate keeps `f` when any one of these conditions holds: `f` is a declaration of a kind that needs approval, and the ledger holds an approval for `f`'s `(slug, rev, xh)`; `f` is a declaration of a kind that does not need approval; `f` is a plan, the kind `plan` needs approval, and `f`'s current commitment set is approved against the plan's latest approved set ([ledger.md](ledger.md) section 11); `f` is a plan, and the kind `plan` does not need approval; `f` is a step of an approved plan; `f` is a fact of any other kind |
+| `approved(S)` | any | A kind needs approval when its key `proof.<kind>` is `"approval"` ([manifest.md](manifest.md) section 10.1). The predicate keeps `f` when any one of these conditions holds: `f` is a declaration of a kind that needs approval, and the ledger holds an approval for `f`'s `(slug, rev, xh)`; `f` is a declaration of a kind that does not need approval; `f` is a plan, the kind `plan` needs approval, and `f`'s current commitment set is approved against the plan's latest approved set ([ledger.md](ledger.md) section 11); `f` is a plan, and the kind `plan` does not need approval; `f` is a step of an approved plan; `f` is a fact of any other kind |
 | `bumped(S)` | node | `f` is a declaration, and the fact set of `B` holds no declaration with the slug of `f`, or holds one with a smaller revision. The compare is by slug, across the kinds that share the namespace ([vocabulary.md](vocabulary.md) section 9) |
 | `declined(S)` | node | `f` is a declaration or a plan with a live decline: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
 | `waiting(P)` | promise | The tag target of the promise is a slug that no declaration in `T` declares, and that some claim promises to declare. This case means that the current branch and the claim's branch are ordered, not that the promise is broken. The tool reports `waiting-on` for it, and not `dangling` |
@@ -295,7 +295,7 @@ run for `s`.
 
 | function | accepts | denotes |
 |---|---|---|
-| `obligations(R)` | config | `⋃` over `r ∈ R` of `eval(trigger(r)) - eval(expect(r))`: the obligation subjects of each rule. Rule expressions are evaluated in the same universe. A rule whose trigger or `expect` mentions `obligations` is an error in its rule file ([manifest.md](manifest.md) section 15); no rule depends on another rule through `obligations` |
+| `obligations(R)` | config | `⋃` over `r ∈ R` of `eval(trigger(r)) - eval(expect(r))`: the obligation subjects of each rule. Rule expressions are evaluated in the same universe. A rule whose trigger or `expect` mentions `obligations` is an error in its rule file ([manifest.md](manifest.md) section 14); no rule depends on another rule through `obligations` |
 | `triggered(R)` | config | the rules in `R` whose trigger evaluates to a non-empty set |
 | `judged(n)` | — | subjects with a `judgment` evidence fact for rule `n` whose verdict is `pass` and whose recorded hash matches the subject's current extent hash (or commitment-set hash) |
 
@@ -327,7 +327,7 @@ uses both:
   `p` that are not met.
 
 A finding class that a repository defines is also a saved definition.
-It lives in a rule file ([manifest.md](manifest.md) section 15), and
+It lives in a rule file ([manifest.md](manifest.md) section 14), and
 the front matter of the rule file holds its expression.
 
 A call looks like `untraced(verifies)`, or a bare name for a
@@ -449,7 +449,7 @@ Four global rules apply after evaluation. They are never written into
 definitions:
 
 1. Historical facts generate no findings of any class, except
-   `config-changed` ([manifest.md](manifest.md) section 14.4).
+   `config-changed` ([manifest.md](manifest.md) section 13.4).
 2. A live `@ack` accepts the ackable findings that it names: the
    findings of a class that column `A` marks, and the findings of a
    class that column `A*` marks when the condition of its row holds.
@@ -486,14 +486,14 @@ Column `F` marks classes with a mechanical fix. A class that column
 `F` does not mark can still give a fix, such as the `@ack` line for a
 finding. The `tiers` column gives each class's built-in tier at the
 gates `(turn, review, merged)` ([manifest.md](manifest.md) section
-9.1). A `—` means that the class takes no tier at that gate. The `mode`
+11.1). A `—` means that the class takes no tier at that gate. The `mode`
 column gives `diff` for the classes that compare the working tree with
 the base (section 8.2), and `tree` for every other class.
 While `check.warn-only` is `true`, Sinter lowers each `block` of the
 column to `warn`, at every gate. `sinter init` writes
 `warn-only = true`, so a new repository starts with it. A tier that
 `check.tiers` writes still applies ([manifest.md](manifest.md) section
-9.3).
+11.3).
 
 | class | subject | definition | mode | A | F | tiers |
 |---|---|---|---|---|---|---|
@@ -513,7 +513,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `cycle` | node | *engine*: a cycle of `supersedes` and `refines` edges. Two facts belong to one cycle when each reaches the other along these edges. A fact with such an edge to itself is a cycle by itself. Each cycle gives one finding. Its subject is the member of the cycle with the smallest id in byte order, and its `detail` names the other members, in the byte order of their ids | tree | · | · | block, block, block |
 | `code-drift` | site | *engine*: the `ch` of a code site changed since the base while the site's comment hash did not. This class is not ackable: it is diff-relative, so an ack for it would become void when the branch merges | diff | · | · | warn, warn, — |
 | `declined` | node | `declined(kind(req\|design\|decision\|plan))`; the detail is the reason | tree | · | · | warn, block, — |
-| `unapproved-req` | edge | `in(satisfies\|verifies, kind(req) - approved(all))`. A kind that does not need approval counts as approved, so in a repository where `ledger.approval-required` does not list `req` this class reports nothing | tree | · | · | block, block, block |
+| `unapproved-req` | edge | `in(satisfies\|verifies, kind(req) - approved(all))`. A kind that does not need approval counts as approved, so in a repository where `proof.req` is not `"approval"` this class reports nothing | tree | · | · | block, block, block |
 | `unapproved-design` | edge | `in(satisfies\|verifies, kind(design) - approved(all))` | tree | · | · | warn, warn, warn |
 | `awaiting-approval` | node | `kind(req\|design\|decision) ^ inforce(all) - approved(all)` | tree | · | · | off, warn, warn |
 | `unapproved-plan` | plan | `kind(plan) ^ inforce(all) - approved(all)`. The engine writes the difference between the current commitment set and the approved commitment set into the finding's `detail` field | tree | · | · | warn, block, — |
@@ -535,7 +535,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `branch-overlap` | step | *engine*: a step's scope intersects the scope of another branch's claim | tree | · | · | warn, warn, — |
 | `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - exempt`. The engine also exempts each hunk that is a mechanical repair (section 9.1). The detail is `no step of an open plan, no rule, and no exempt path covers <path>`. The finding has no fix | diff | · | · | block, block, — |
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's `expect` is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
-| `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 14.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
+| `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 13.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
 | `merged-incomplete` | plan | *engine*: an open plan on the default branch that fails the completion condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |
 | `ledger-broken` | ledger | *engine*: ledger verification fails | tree | · | · | —, —, block |
 | `pack-mismatch` | pack | *engine*: the hash of a fetched pack in the cache does not match the hash that the lock file `sinter.lock` fixes for it. The built-in pack `markdown` is not in the lock file. The class takes no tier at any gate: the tool stops with exit code 3 | tree | · | · | — |

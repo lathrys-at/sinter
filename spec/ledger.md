@@ -134,11 +134,11 @@ claim can be read ([jsonl.md](jsonl.md) section 9).
 
 ### 5.2 Approval
 
-@req ledger-approval v2
+@req ledger-approval v3
 
 Approval attaches to the `(slug, rev, xh)` triple, never to a
 document. A declaration of a kind that needs approval
-([manifest.md](manifest.md) section 11.1) is **approved** if and only
+([manifest.md](manifest.md) section 10.1) is **approved** if and only
 if the ledger holds an approval for its current `(slug, rev, xh)`. A
 revision bump therefore removes approval until the item is approved
 again. A declaration of a kind that does not need approval counts as
@@ -231,7 +231,7 @@ condition.
 
 ### 8.2 The completion condition
 
-@req ledger-completion-condition v2
+@req ledger-completion-condition v3
 
 A plan passes the condition when all of these statements are true:
 
@@ -240,8 +240,8 @@ A plan passes the condition when all of these statements are true:
   suspect.
 - When the job imports evidence: every promised `verifies` edge is at
   rung `passing`, or at rung `unmeasured` when
-  `evidence.test-coverage` is `"optional"`
-  ([manifest.md](manifest.md) section 12).
+  `proof.verifies` is `"whole-run"`
+  ([manifest.md](manifest.md) section 10.3).
 - When the job imports no evidence: a promised `verifies` edge can be
   at any rung. Rung enforcement happened earlier, at the gate `review`.
 
@@ -312,12 +312,12 @@ must say how to fetch the ledger.
 
 ### 11.1 The comparison of commitment sets
 
-@req ledger-plan-approval v2
+@req ledger-plan-approval v3
 
 A plan's **commitment set** is the set of canonical facts about the
 plan: the promises of each step, the scope of each step, and the plan
 scope. When the kind `plan` does not need approval
-([manifest.md](manifest.md) section 11.1), every plan counts as
+([manifest.md](manifest.md) section 10.1), every plan counts as
 approved, and this section does not apply. Otherwise the tool compares
 the current set `C` against the approved set `C₀`. The plan is
 approved if and only if all three clauses hold:

@@ -491,8 +491,8 @@ the requirement, the test ran none either, so the test is
 **unexercised**. `unmeasured` is off or a warning by default, so it does
 not block unless a repository raises its tier. A repository that wants
 rung 4 to bite pays for the coverage of each test in its test setup, and
-sets `evidence.test-coverage = "required"` (`spec/manifest.md` section
-12). `sinter evidence import` says so when it sees only the coverage of
+sets `proof.verifies = "each-test"` (`spec/manifest.md` section
+10.3). `sinter evidence import` says so when it sees only the coverage of
 the whole run.
 
 **The evidence ladder**, in order of how much each rung catches:
@@ -740,7 +740,7 @@ to a plan is an amendment (section 6.2), and each change of a setting
 is reported (section 5.1). Exempt paths are outside it too. A hunk in
 `Cargo.lock` maps to no step and never will, and without exempt paths
 the first dependency that a step adds would flag its own lock file
-(`spec/manifest.md` section 10.2).
+(`spec/manifest.md` section 9.1).
 
 ### 6.2 Amendment: the monotone rule
 
@@ -816,8 +816,8 @@ only ever added (`spec/ledger.md`). CI can fetch the ref and every
 worktree shares it, but it is outside every path that an editor or a
 file tool touches. Only the low-level commands of git, its plumbing,
 reach it, so to write it is a deliberate act. A kind needs approval
-only when the manifest lists it in `ledger.approval-required`
-(`spec/manifest.md` section 11.1).
+only when the manifest sets its key `proof.<kind>` to `"approval"`
+(`spec/manifest.md` section 10.1).
 
 Because the ledger is a shared record with timestamps, it gives five
 more uses, each one a kind of entry or a query, and none a new
@@ -883,7 +883,7 @@ give this:
 2. An **agent marker** is an environment variable, such as
    `CLAUDECODE`, that shows that an agent runs the command. When one is
    set, the command refuses. This closes the gap of a terminal pane
-   that an agent drives (`spec/manifest.md` section 11.2).
+   that an agent drives (`spec/manifest.md` section 10.2).
 
 Under these layers lies the structure: the ledger is outside every
 checkout, and no path to an approval starts from an agent's shell.
@@ -1015,7 +1015,7 @@ text below it holds the reason for the rule. `@rule <slug> vN` declares
 the rule, and the extent of the rule is the whole file. So a change to
 the expressions or to the reason needs a bump. A rule file keeps a rule
 beside its argument, so the reviewer of a change sees both (record
-`rule-files`, `spec/manifest.md` section 15). Where rule files live, how
+`rule-files`, `spec/manifest.md` section 14). Where rule files live, how
 a rule is approved, and what its scope means are settled with the work
 on rules.
 
@@ -1120,7 +1120,7 @@ miss a citation that nobody touched whose target the diff deleted.
 A **gate** is a point where Sinter checks the work. Each finding class
 has a **tier** at each gate: `off`, `warn`, or `block`. A finding at
 `block` makes the check exit with code 1 (`spec/manifest.md` section
-9.1). The layers:
+11.1). The layers:
 
 - **After each edit.** A hook of the harness reports parse errors and
   other findings in the file that the agent just edited, seconds after
@@ -1177,7 +1177,7 @@ writing its tier under `check.tiers`, and lifts `warn-only` for all
 classes by deleting its line. Both changes are `config-changed`
 findings, so a change of a tier is always visible. The gate `turn`
 follows `warn-only` too: under it, `sinter check --gate turn` exits 0,
-so a lead agent's gate opens too. `spec/manifest.md` section 9.3 gives
+so a lead agent's gate opens too. `spec/manifest.md` section 11.3 gives
 the rule, and record `exit-codes-by-gate` gives the exit codes.
 
 **The report counts everything.** The compiled report is a complete
@@ -1465,7 +1465,7 @@ and the check before a commit: each is `sinter check --gate <gate>`,
 with `--diff` where only the change counts, and with its own base. So
 every gate sees what the others see (section 8). The classes and
 their tiers are in `spec/algebra.md` section 9, diff mode in section
-8.2, and the gates in `spec/manifest.md` section 9.
+8.2, and the gates in `spec/manifest.md` section 11.
 
 The other options narrow or change the output: `--path` and `--plan`
 narrow it; `--strict` makes every finding block; `--acked` also shows
@@ -1888,9 +1888,14 @@ manifest names the files of the markdown pack, and nothing more.
 
 **One meaning for each name.** Each setting has a name with one
 meaning, and two settings with one effect became one (record
-`manifest-names`). The keys sit in tables by the part of Sinter that
-they act on: `[scan]`, `[check]`, `[plan]`, `[ledger]`, and
-`[evidence]`.
+`manifest-names`).
+
+**One question for each table.** Each table answers one question about
+the project (record `manifest-questions`): `[scan]`, what Sinter
+reads; `[paths]`, what each path means; `[proof]`, what settles each
+item; `[check]`, how hard each gap bites. A part of Sinter can read
+keys from more than one table. What counts as settled and how hard a
+gap bites stay apart, so a project can change one without the other.
 
 **The agent can edit it, and every change shows.** The manifest is
 inside what the agent can change (section 5.1). The finding
@@ -1930,6 +1935,6 @@ acknowledged obligations that the judge samples. There is no table of
 tags for the classification of items, which nobody has asked for. A
 check that declarations of a kind live under one path needs no table
 either: it is one finding class, such as
-`kind(req) - path(docs/requirements/**)`. `plan.locations` is a
+`kind(req) - path(docs/requirements/**)`. `paths.<kind>` is a
 different setting: it says where a promised declaration can be met
 (section 6.1).

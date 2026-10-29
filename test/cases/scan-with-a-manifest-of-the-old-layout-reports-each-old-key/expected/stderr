@@ -1,0 +1,4 @@
+sinter: sinter.toml:5:1: 'historical' belongs in [paths]
+sinter: sinter.toml:7:2: unknown key 'plan' at the top level; did you mean 'scan'?
+sinter: sinter.toml:11:2: unknown key 'ledger' at the top level
+sinter: sinter.toml:15:2: unknown key 'evidence' at the top level

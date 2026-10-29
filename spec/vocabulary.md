@@ -263,7 +263,7 @@ An item's **extent** is the text that its revision covers.
 - In markdown, a declaration in the first paragraph of a list item
   claims the list item, with its sub-items, as its extent.
 - In a rule file, the extent of the `@rule` declaration is the whole
-  file ([manifest.md](manifest.md) section 15).
+  file ([manifest.md](manifest.md) section 14).
 
 Three boundary rules apply in markdown:
 
@@ -359,7 +359,7 @@ A declaration says: this text defines a thing.
 | `@design <slug> [vN]` | design documents |
 | `@decision <slug> [vN]` | decision records |
 | `@plan <slug>@<id>` | plan files (section 10) |
-| `@rule <slug> [vN]` | rule files ([manifest.md](manifest.md) section 15) |
+| `@rule <slug> [vN]` | rule files ([manifest.md](manifest.md) section 14) |
 
 `@rule` declares a rule. Its extent is the whole rule file (section
 6).
@@ -520,9 +520,9 @@ it, or it sits on a cycle of `@supersedes` edges (below).
 A `@supersedes` edge is **effective** if and only if both conditions
 hold. First: the edge's source is a declaration, and that declaration
 carries no status tag. Second: when the source's kind needs approval,
-the source is approved at its current revision. The manifest key
-`ledger.approval-required` lists the kinds that need approval
-([manifest.md](manifest.md) section 11.1). The ledger specification,
+the source is approved at its current revision. A kind needs approval
+when the manifest key `proof.<kind>` is `"approval"`
+([manifest.md](manifest.md) section 10.1). The ledger specification,
 [ledger.md](ledger.md), defines approval. An edge whose source is not
 approved retires nothing yet.
 
@@ -586,7 +586,7 @@ revision bump (section 9).
 ### 8.4 Historical paths
 
 The manifest can declare paths as **historical**, for example a devlog
-(the key `check.historical`, [manifest.md](manifest.md) section 9.4).
+(the key `paths.historical`, [manifest.md](manifest.md) section 9.2).
 In a historical file, a citation still resolves to its tag target, and
 compiled documents still show it as a link. No fact in a historical
 file generates a finding of any class ([algebra.md](algebra.md)
@@ -715,8 +715,8 @@ must be contained in its plan's scope, by the rule that
 `scope-outside-plan`. A step's **effective scope** is its own scope
 when it has one, and otherwise the plan's scope.
 
-The manifest key `plan.exempt` ([manifest.md](manifest.md) section
-10.2) names paths that a change can touch with no plan step, for
+The manifest key `paths.exempt` ([manifest.md](manifest.md) section
+9.1) names paths that a change can touch with no plan step, for
 example the dependency and license files at the repository root. A
 change under an exempt path is never work outside the plan. An exempt
 path does not widen the place where a promise can be met: a promised
@@ -729,20 +729,20 @@ A promise is **met** as follows:
 
 - A promised declaration is met if and only if a declaration with that
   slug exists inside the step's effective scope, or inside the default
-  location of its kind. The manifest key `plan.locations.<kind>` gives
-  the default location of a kind as a path set
-  ([manifest.md](manifest.md) section 10.3), for example
-  `locations.decision = ["docs/decisions/"]` under `[plan]`. A kind
-  without an entry has no default location.
+  location of its kind. The manifest key `paths.<kind>` gives the
+  default location of a kind as a path set
+  ([manifest.md](manifest.md) section 9.3), for example
+  `decision = ["docs/decisions/"]` under `[paths]`. A kind without
+  such a key has no default location.
 - A promised `@satisfies`, `@refines`, `@cites`, or `@supersedes` is
   met if and only if at least one such edge exists inside the step's
   effective scope, the tag target of that edge resolves, and that
   edge is not suspect.
 - A promised `@verifies` is met if and only if such an edge exists
   inside the step's effective scope at evidence rung `passing`. When
-  `evidence.test-coverage` is `"optional"`, the default, an
-  edge at rung `unmeasured` also meets the promise
-  ([manifest.md](manifest.md) section 12). Rungs are defined in
+  `proof.verifies` is `"whole-run"`, the default, an edge at rung
+  `unmeasured` also meets the promise
+  ([manifest.md](manifest.md) section 10.3). Rungs are defined in
   [algebra.md](algebra.md) section 6.7.
 
 A fact that would meet a promise, but that sits outside both the

@@ -47,7 +47,7 @@ The schema restricts values so that JCS stays trivial to implement:
 - **Strings:** Sinter writes a string that comes from the text of a
   file as the file holds it. It does not normalize Unicode in a string
   of a governed file, of the manifest, or of the front matter of a
-  rule file ([manifest.md](manifest.md) sections 2.2 and 15). Tools
+  rule file ([manifest.md](manifest.md) sections 2.2 and 14). Tools
   compare strings by their bytes: two strings are equal only when
   their bytes are equal.
 - **Paths** are repository-relative, with forward slashes and no
@@ -136,7 +136,7 @@ conformance fixtures ship their own ledger and evidence.
 | `inforce` | bool | *derived* |
 | `approved` | bool | *derived* |
 | `approval` | string | *derived*: the id of the `approval` entry of the ledger that approves the declaration; omitted when none |
-| `approval_required` | bool | whether the kind needs approval: `ledger.approval-required` lists it ([manifest.md](manifest.md) section 11.1) |
+| `approval_required` | bool | whether the kind needs approval: its key `proof.<kind>` is `"approval"` ([manifest.md](manifest.md) section 10.1) |
 | `declined` | bool | *derived*: a live decline exists for `(slug, xh)` |
 
 Sinter makes the field `desc` in three steps:
@@ -369,7 +369,7 @@ ledger. It emits live entries only.
 | `entry` | string | ledger entry id |
 
 **`rule`** — located in its rule file ([manifest.md](manifest.md)
-section 15).
+section 14).
 
 | field | type | meaning |
 |---|---|---|
@@ -381,7 +381,7 @@ section 15).
 
 **`gate`** — Sinter emits one record for each pair of a gate and a
 finding class that takes a tier at that gate ([manifest.md](manifest.md)
-section 14.2). A record whose pair `check.tiers` writes is located at
+section 13.2). A record whose pair `check.tiers` writes is located at
 that entry of the manifest. A record whose pair the manifest does not
 write is unlocated. Every fact of a manifest outside the repository
 is unlocated.
@@ -390,13 +390,13 @@ is unlocated.
 |---|---|---|
 | `gate` | string | `turn`, `review`, or `merged` |
 | `class` | string | finding class |
-| `tier` | string | the tier that applies ([manifest.md](manifest.md) section 9.3): `off`, `warn`, or `block` |
+| `tier` | string | the tier that applies ([manifest.md](manifest.md) section 11.3): `off`, `warn`, or `block` |
 | `default` | bool | `true` when `check.tiers` does not write this pair |
 | `capped` | bool | `true` when `check.warn-only` lowered the tier |
 
 **`setting`** — one value of the manifest ([manifest.md](manifest.md)
-section 14.1). A setting fact that the manifest writes is located in
-the manifest ([manifest.md](manifest.md) section 14.3). A default fact
+section 13.1). A setting fact that the manifest writes is located in
+the manifest ([manifest.md](manifest.md) section 13.3). A default fact
 and a built-in fact are unlocated. Every fact of a manifest outside
 the repository is unlocated.
 
@@ -409,7 +409,7 @@ the repository is unlocated.
 | `builtin` | bool | `true` when the fact is a built-in member |
 
 `config-changed` uses the ids of gate facts and of setting facts as
-the subjects of its findings ([manifest.md](manifest.md) section 14.4).
+the subjects of its findings ([manifest.md](manifest.md) section 13.4).
 `sinter scan` does not print `gate` records and `setting` records yet.
 
 **`ack`**
@@ -444,7 +444,7 @@ Each of these files gives one hunk:
 | field | type | meaning |
 |---|---|---|
 | `added` `removed` | int | |
-| `exempt` | bool | *derived*: the hunk is under an exempt path (`plan.exempt`, [manifest.md](manifest.md) section 10.2) |
+| `exempt` | bool | *derived*: the hunk is under an exempt path (`paths.exempt`, [manifest.md](manifest.md) section 9.1) |
 | `planned` | array of string | *derived*: ids of the steps or rules whose scope covers the hunk; empty when no step and no rule covers the hunk |
 
 **`tombstone`** — base coordinates.
@@ -462,7 +462,7 @@ Hunk facts and tombstone facts exist in every run that reads the base
 ## 8. Finding records
 
 **`finding`** — located at its subject. A `config-changed` finding takes
-the position that [manifest.md](manifest.md) section 14.4 gives.
+the position that [manifest.md](manifest.md) section 13.4 gives.
 
 | field | type | meaning |
 |---|---|---|
@@ -473,7 +473,7 @@ the position that [manifest.md](manifest.md) section 14.4 gives.
 | `detail` | string | one line, human-facing, deterministic |
 | `ackable` | bool | whether a live `@ack` can accept this finding ([algebra.md](algebra.md) section 9, column `A`). For a class that the column marks `A*`, the value depends on the finding |
 | `acked` | bool | present only when acked findings are requested |
-| `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 9.3); present only when the command runs with `--gate` |
+| `tier` `gate` | string | the gate that the check ran with, and the tier that applies to the class at that gate ([manifest.md](manifest.md) section 11.3); present only when the command runs with `--gate` |
 | `mode` | string | the mode of the run, as in the `index` record (section 10). A finding of a class that compares with the base ([algebra.md](algebra.md) section 8.2) has `tree` in a run of tree mode |
 | `mcol` `mecol` | int | the **mark**: the start column and the exclusive end column of the part of the tag line at fault (section 3), on the first line of the finding; present only with `label` |
 | `label` | string | one line, human-facing: what is wrong at the mark; present only with the mark |
@@ -496,7 +496,7 @@ such as a claim on another branch. The objects are sorted by
 `(path, line, col, eline, ecol, label)`, each string in byte order.
 The objects with no `path` come after the others, sorted by `label`.
 No two objects are equal. A related place under a historical path
-([manifest.md](manifest.md) section 9.4) stays.
+([manifest.md](manifest.md) section 9.2) stays.
 
 The **fix** of a finding is its help message, `help`, and its edits,
 `edits`. A fix has one **alternative** or more. An alternative is a
@@ -639,7 +639,7 @@ use the tiers of the `turn` gate.
 | `declines` | int (live, in scope) |
 | `claims` `waiting` | int |
 | `code_drift` | int |
-| `config_changed` | bool (`true` when the diff changes the configuration: the check reports at least one `config-changed` finding, [manifest.md](manifest.md) section 14.4) |
+| `config_changed` | bool (`true` when the diff changes the configuration: the check reports at least one `config-changed` finding, [manifest.md](manifest.md) section 13.4) |
 
 ## 11. Conformance
 
