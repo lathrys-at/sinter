@@ -434,3 +434,28 @@ let brief ppf ~tier (finding : Finding.t) =
         Fmt.string ppf text);
       newline ppf)
     finding.fix
+
+let folded_count count = Printf.sprintf "%d findings" count
+
+let folded_full ppf ~tier (finding : Finding.t) count =
+  tier_and_class ppf ~tier finding.finding_class;
+  Fmt.string ppf ": ";
+  Fmt.string ppf (folded_count count);
+  Option.iter
+    (fun ({ path; _ } : Finding.place) ->
+      Fmt.string ppf " in ";
+      Fmt.string ppf (shown path))
+    finding.place;
+  newline ppf
+
+let folded_brief ppf ~tier (finding : Finding.t) count =
+  (match finding.place with
+  | Some { path; span } ->
+      Fmt.pf ppf "%s:%d:%d: " (Display.clean path) span.start.line
+        span.start.column
+  | None -> Fmt.string ppf "-:-:-: ");
+  tier_and_class ppf ~tier finding.finding_class;
+  Fmt.string ppf " ";
+  Fmt.string ppf (folded_count count);
+  Fmt.string ppf " in this file";
+  newline ppf

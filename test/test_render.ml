@@ -625,6 +625,42 @@ let the_brief_form_is_one_line_and_a_fix_line () =
            ());
     ]
 
+let a_folded_line_counts_the_findings_of_a_file () =
+  let finding ?(path = "spec/ledger.md") () =
+    Finding.make Finding_class.Untraced subject ~detail:"d"
+      ~place:(place ~path (24, 1) (24, 20))
+      ()
+  in
+  Alcotest.(check (list string))
+    "the full form at a gate and without one, the brief form, and both with no \
+     place"
+    [
+      "warn[untraced]: 24 findings in spec/ledger.md\n";
+      "untraced: 3 findings in a\xef\xbf\xbdb.md\n";
+      "spec/ledger.md:24:1: warn[untraced] 24 findings in this file\n";
+      "spec/ledger.md:24:1: untraced 2 findings in this file\n";
+      "untraced: 2 findings\n";
+      "-:-:-: untraced 2 findings in this file\n";
+    ]
+    [
+      print (fun ppf ->
+          Render.folded_full ppf ~tier:(Some Finding_class.Warn) (finding ()) 24);
+      print (fun ppf ->
+          Render.folded_full ppf ~tier:None (finding ~path:"a\x1bb.md" ()) 3);
+      print (fun ppf ->
+          Render.folded_brief ppf ~tier:(Some Finding_class.Warn) (finding ())
+            24);
+      print (fun ppf -> Render.folded_brief ppf ~tier:None (finding ()) 2);
+      print (fun ppf ->
+          Render.folded_full ppf ~tier:None
+            (Finding.make Finding_class.Untraced subject ())
+            2);
+      print (fun ppf ->
+          Render.folded_brief ppf ~tier:None
+            (Finding.make Finding_class.Untraced subject ())
+            2);
+    ]
+
 let parse_location line =
   match String.index_opt line ' ' with
   | None -> None
@@ -810,6 +846,8 @@ let tests =
     case "the brief form is one line and a fix line"
       the_brief_form_is_one_line_and_a_fix_line;
     the_brief_form_parses_back;
+    case "a folded line counts the findings of a file"
+      a_folded_line_counts_the_findings_of_a_file;
     the_brief_form_with_styles_is_the_plain_form;
     case "related places in the file share its snippet"
       related_places_in_the_file_share_its_snippet;

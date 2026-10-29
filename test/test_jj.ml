@@ -365,7 +365,7 @@ let checks =
     (both (fun repo ->
          List.map (output repo)
            [
-             [ "check"; "-o"; "brief" ];
+             [ "check"; "-v"; "-o"; "brief" ];
              [ "check"; "-o"; "json"; "--gate"; "review" ];
            ]))
 

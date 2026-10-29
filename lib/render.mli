@@ -85,3 +85,20 @@ val brief :
     [  fix: ] and {!Fix.text} of the fix. Each line ends with a line feed. Each
     text that comes from the repository prints as {!Display.clean} gives it, and
     no line ends in a space. *)
+
+val folded_full :
+  Format.formatter -> tier:Finding_class.tier option -> Finding.t -> int -> unit
+(** [folded_full ppf ~tier finding count] prints the full form of [count]
+    findings of the class of [finding] in its file, folded into one line:
+    [<tier>[<class>]: <count> findings in <path>] with a tier, and
+    [<class>: <count> findings in <path>] without one, where [<path>] is the
+    path of the place of [finding], as {!Display.clean} gives it. With no place,
+    the line ends after [findings]. *)
+
+val folded_brief :
+  Format.formatter -> tier:Finding_class.tier option -> Finding.t -> int -> unit
+(** [folded_brief ppf ~tier finding count] prints the brief form of [count]
+    findings of the class of [finding] in its file, folded into one line at the
+    place of [finding]:
+    [<path>:<line>:<column>: <tier>[<class>] <count> findings in this file], or
+    without the tier as {!brief} does. *)

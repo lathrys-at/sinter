@@ -66,6 +66,27 @@ val summary : documents:int -> entry list -> string
     [<w> warn], joined by [", "], and a tier with no entry left out. When [<x>]
     entries have a fix, [; <x> have a fix] follows, or [; 1 has a fix]. *)
 
+(** One item of the full or the brief form. *)
+type item =
+  | Single of entry  (** one finding *)
+  | Folded of { first : entry; count : int }
+      (** [count] findings of one class in one file, folded into one line at the
+          place of the first, [first] *)
+
+val fold : strict:bool -> verbose:bool -> entry list -> item list
+(** [fold ~strict ~verbose entries] is [entries] in their order, with each group
+    of 2 entries or more folded into one item at the place of its first entry. A
+    group is the entries of one class and one path whose class is [untraced],
+    [unmet-promise], or [awaiting-approval] and whose tier is not [Block]; an
+    entry with no place is in no group. With [strict] or [verbose], every entry
+    is its own [Single] item. *)
+
+val fold_note : item list -> string option
+(** [fold_note items] is the text of the note that says how many findings
+    [items] fold:
+    [<n> findings are folded into <l> lines; use -v to list each one], with
+    [1 line] for one folded item; [None] when no item is folded. *)
+
 (** {1 The check} *)
 
 (** The form of the output. *)
@@ -84,9 +105,10 @@ val messages : report -> string list
     line feeds. In the forms [Full] and [Brief]: the {!summary} of the entries,
     with the number of documents of the tree, unless the check is quiet; then
     the warnings: those of the tree, and then {!Scan.ledger_warning} of the
-    facts of the working tree when there is one; then, when the check is verbose
-    and not quiet, [note: ] and {!Scan.base_note} of the base. In the form
-    [Json]: the warnings. *)
+    facts of the working tree when there is one; then, unless the check is
+    quiet, [note: ] and {!fold_note} of the items of {!fold} when there is one;
+    then, when the check is verbose and not quiet, [note: ] and
+    {!Scan.base_note} of the base. In the form [Json]: the warnings. *)
 
 val notices : Format.formatter -> report -> unit
 (** [notices ppf report] writes {!messages} of [report] to [ppf], each with a

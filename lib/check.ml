@@ -202,14 +202,75 @@ let summary ~documents entries =
               (plural fixes "has a fix" "have a fix");
           ])
 
+type item = Single of entry | Folded of { first : entry; count : int }
+
+let folds = function
+  | Finding_class.Untraced | Finding_class.Unmet_promise
+  | Finding_class.Awaiting_approval ->
+      true
+  | _ -> false
+
+let group entry =
+  match entry.finding.place with
+  | Some { path; _ }
+    when folds entry.finding.finding_class && not (blocks entry) ->
+      Some (Finding_class.name entry.finding.finding_class, path)
+  | Some _ | None -> None
+
+let fold ~strict ~verbose entries =
+  if strict || verbose then List.map (fun entry -> Single entry) entries
+  else
+    let sizes = Hashtbl.create 16 in
+    List.iter
+      (fun entry ->
+        Option.iter
+          (fun key ->
+            Hashtbl.replace sizes key
+              (1 + Option.value (Hashtbl.find_opt sizes key) ~default:0))
+          (group entry))
+      entries;
+    let seen = Hashtbl.create 16 in
+    List.filter_map
+      (fun entry ->
+        match group entry with
+        | Some key -> (
+            match Hashtbl.find_opt sizes key with
+            | Some count when count >= 2 ->
+                if Hashtbl.mem seen key then None
+                else (
+                  Hashtbl.add seen key ();
+                  Some (Folded { first = entry; count }))
+            | Some _ | None -> Some (Single entry))
+        | None -> Some (Single entry))
+      entries
+
+let fold_note items =
+  let lines, findings =
+    List.fold_left
+      (fun (lines, findings) -> function
+        | Single _ -> (lines, findings)
+        | Folded { count; _ } -> (lines + 1, findings + count))
+      (0, 0) items
+  in
+  if lines = 0 then None
+  else
+    Some
+      (Printf.sprintf
+         "%d findings are folded into %d %s; use -v to list each one" findings
+         lines
+         (plural lines "line" "lines"))
+
+type output =
+  | Blocks of item list
+  | Lines of item list
+  | Records of Jsonl.record * entry list
+
 type report = {
   notices : notice list;
   code : int;
-  form : form;
-  entries : entry list;
+  output : output;
   root : string;
   mode : Mode.t;
-  index : Jsonl.record option;
 }
 
 let messages report =
@@ -235,27 +296,35 @@ let tier_of entry = Option.map snd entry.tier
 
 let write ?phases ppf report =
   Allocation.measure phases "output" (fun () ->
-      (match report.form with
-      | Full ->
+      (match report.output with
+      | Blocks items ->
           let source = Source.create ~root:report.root in
           List.iteri
-            (fun index entry ->
+            (fun index item ->
               if index > 0 then Format.pp_force_newline ppf ();
-              Render.full ppf source ~tier:(tier_of entry) entry.finding)
-            report.entries
-      | Brief ->
+              match item with
+              | Single entry ->
+                  Render.full ppf source ~tier:(tier_of entry) entry.finding
+              | Folded { first; count } ->
+                  Render.folded_full ppf ~tier:(tier_of first) first.finding
+                    count)
+            items
+      | Lines items ->
           List.iter
-            (fun entry -> Render.brief ppf ~tier:(tier_of entry) entry.finding)
-            report.entries
-      | Json ->
+            (function
+              | Single entry ->
+                  Render.brief ppf ~tier:(tier_of entry) entry.finding
+              | Folded { first; count } ->
+                  Render.folded_brief ppf ~tier:(tier_of first) first.finding
+                    count)
+            items
+      | Records (index, entries) ->
           let line record =
             Format.pp_print_string ppf (Jsonl.to_string record);
             Format.pp_force_newline ppf ()
           in
-          Option.iter line report.index;
-          List.iter
-            (fun entry -> line (record ~mode:report.mode entry))
-            report.entries);
+          line index;
+          List.iter (fun entry -> line (record ~mode:report.mode entry)) entries);
       Format.pp_print_flush ppf ())
 
 module Paths = Map.Make (String)
@@ -346,31 +415,37 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
         select tree.manifest gate findings)
   in
   let code = exit_code ~strict entries in
-  let report notices index =
-    { notices; code; form; entries; root = Git.root tree.repo; mode; index }
+  let report notices output =
+    { notices; code; output; root = Git.root tree.repo; mode }
   in
   let warnings =
     List.map
       (fun warning -> Line warning)
       (tree.warnings @ Option.to_list (Scan.ledger_warning tree facts))
   in
+  let text output =
+    let items = fold ~strict ~verbose entries in
+    Ok
+      (report
+         ((if quiet then []
+           else
+             [ Line (summary ~documents:(List.length tree.documents) entries) ])
+         @ warnings
+         @ (if quiet then []
+            else
+              Option.to_list
+                (Option.map (fun note -> Note note) (fold_note items)))
+         @
+         if verbose && not quiet then [ Note (Scan.base_note tree.base) ]
+         else [])
+         (output items))
+  in
   match form with
-  | Full | Brief ->
-      Ok
-        (report
-           ((if quiet then []
-             else
-               [
-                 Line (summary ~documents:(List.length tree.documents) entries);
-               ])
-           @ warnings
-           @
-           if verbose && not quiet then [ Note (Scan.base_note tree.base) ]
-           else [])
-           None)
+  | Full -> text (fun items -> Blocks items)
+  | Brief -> text (fun items -> Lines items)
   | Json ->
       let* index =
         Allocation.measure phases "repository" (fun () ->
             Scan.index ~mode tree ~tool)
       in
-      Ok (report warnings (Some index))
+      Ok (report warnings (Records (index, entries)))

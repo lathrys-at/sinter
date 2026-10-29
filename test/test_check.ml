@@ -396,6 +396,171 @@ let the_summary_counts_equal_the_entries =
                     entries))
            [ (Finding_class.Block, "block"); (Finding_class.Warn, "warn") ])
 
+let fold_entry_gen =
+  Gen.(
+    map
+      (fun (finding_class, path, line, tier) ->
+        {
+          Check.finding =
+            Finding.make finding_class
+              (Finding.Line { path; line })
+              ~place:(place ~path ~line ()) ();
+          tier;
+        })
+      (quad
+         (oneof_list
+            Finding_class.
+              [ Untraced; Unmet_promise; Awaiting_approval; Dangling ])
+         (oneof_list [ "a.md"; "b.md" ])
+         (int_range 1 9)
+         (oneof_list
+            [
+              None;
+              Some (Finding_class.Review, Finding_class.Warn);
+              Some (Finding_class.Review, Finding_class.Block);
+            ])))
+
+let fold_entries_gen =
+  Gen.map
+    (fun entries ->
+      List.sort
+        (fun (a : Check.entry) (b : Check.entry) ->
+          Finding.compare a.finding b.finding)
+        entries)
+    (Gen.list_size (Gen.int_range 0 12) fold_entry_gen)
+
+let print_entries entries =
+  String.concat "; "
+    (List.map
+       (fun (entry : Check.entry) ->
+         print_finding entry.finding
+         ^ Option.fold ~none:""
+             ~some:(fun (_, tier) -> " " ^ Finding_class.tier_name tier)
+             entry.tier)
+       entries)
+
+let key (entry : Check.entry) =
+  ( entry.finding.finding_class,
+    Option.map (fun ({ path; _ } : Finding.place) -> path) entry.finding.place
+  )
+
+let foldable (entry : Check.entry) =
+  List.mem entry.finding.finding_class
+    Finding_class.[ Untraced; Unmet_promise; Awaiting_approval ]
+  && match entry.tier with Some (_, Finding_class.Block) -> false | _ -> true
+
+let folding_keeps_every_entry =
+  property "the folded counts and the single entries make up the entries"
+    fold_entries_gen print_entries (fun entries ->
+      let items = Check.fold ~strict:false ~verbose:false entries in
+      let group entry =
+        List.filter
+          (fun other -> foldable other && key other = key entry)
+          entries
+      in
+      List.fold_left
+        (fun total -> function
+          | Check.Single _ -> total + 1
+          | Check.Folded { count; _ } -> total + count)
+        0 items
+      = List.length entries
+      && List.for_all
+           (function
+             | Check.Single entry ->
+                 not (foldable entry && List.length (group entry) >= 2)
+             | Check.Folded { first; count } ->
+                 foldable first && count >= 2
+                 && count = List.length (group first)
+                 && List.hd (group first) == first)
+           items)
+
+let verbose_and_strict_fold_nothing =
+  property "-v and --strict fold nothing" fold_entries_gen print_entries
+    (fun entries ->
+      let single = List.map (fun entry -> Check.Single entry) entries in
+      Check.fold ~strict:false ~verbose:true entries = single
+      && Check.fold ~strict:true ~verbose:false entries = single)
+
+let a_group_folds_only_when_it_may () =
+  let at ?tier finding_class path line =
+    {
+      Check.finding =
+        Finding.make finding_class
+          (Finding.Line { path; line })
+          ~place:(place ~path ~line ()) ();
+      tier = Option.map (fun tier -> (Finding_class.Review, tier)) tier;
+    }
+  in
+  let shape items =
+    List.map
+      (function
+        | Check.Single _ -> "single"
+        | Check.Folded { count; _ } -> Printf.sprintf "folded %d" count)
+      items
+  in
+  Alcotest.(check (list (list string)))
+    "two that fold, a group of 1, a class that blocks, a class that does not \
+     fold, and two files"
+    [
+      [ "folded 2" ];
+      [ "single" ];
+      [ "single"; "single" ];
+      [ "single"; "single" ];
+      [ "single"; "single" ];
+    ]
+    (List.map
+       (fun entries -> shape (Check.fold ~strict:false ~verbose:false entries))
+       [
+         [
+           at Finding_class.Untraced "a.md" 1;
+           at Finding_class.Untraced "a.md" 2;
+         ];
+         [ at Finding_class.Untraced "a.md" 1 ];
+         [
+           at ~tier:Finding_class.Block Finding_class.Untraced "a.md" 1;
+           at ~tier:Finding_class.Block Finding_class.Untraced "a.md" 2;
+         ];
+         [
+           at Finding_class.Dangling "a.md" 1;
+           at Finding_class.Dangling "a.md" 2;
+         ];
+         [
+           at Finding_class.Untraced "a.md" 1;
+           at Finding_class.Untraced "b.md" 2;
+         ];
+       ])
+
+let the_fold_note_counts_findings_and_lines () =
+  let at path line =
+    {
+      Check.finding =
+        Finding.make Finding_class.Untraced
+          (Finding.Line { path; line })
+          ~place:(place ~path ~line ()) ();
+      tier = None;
+    }
+  in
+  Alcotest.(check (list (option string)))
+    "no fold, one folded line, and two"
+    [
+      None;
+      Some "2 findings are folded into 1 line; use -v to list each one";
+      Some "5 findings are folded into 2 lines; use -v to list each one";
+    ]
+    [
+      Check.fold_note [ Check.Single (at "a.md" 1) ];
+      Check.fold_note
+        [
+          Check.Folded { first = at "a.md" 1; count = 2 };
+          Check.Single (at "c.md" 1);
+        ];
+      Check.fold_note
+        [
+          Check.Folded { first = at "a.md" 1; count = 2 };
+          Check.Folded { first = at "b.md" 1; count = 3 };
+        ];
+    ]
+
 let a_record_holds_every_field_of_a_finding () =
   Alcotest.(check string)
     "the record"
@@ -616,6 +781,38 @@ let the_options_choose_the_lines_of_standard_error () =
       messages Check.Json true false;
     ]
 
+let folding_leaves_the_json_as_it_is () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "sinter.toml" packs;
+  Git_fixture.write repo "docs/a.md" "# A\n\n@req x\n\n## B\n\n@req y\n";
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  let run form verbose =
+    match
+      Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+        ~manifest:None ~base:(Some "HEAD") ~mode:Mode.Tree ~gate:None
+        ~strict:false ~form ~verbose ~quiet:false ~tool:"v1" ()
+    with
+    | Ok report -> report
+    | Error _ -> Alcotest.fail "the check fails"
+  in
+  let brief = run Check.Brief false in
+  Alcotest.(check (list string))
+    "the folded brief form and its messages"
+    [
+      "docs/a.md:3:1: untraced 2 findings in this file";
+      "2 findings in 1 file";
+      "note: 2 findings are folded into 1 line; use -v to list each one";
+    ]
+    (written brief @ Check.messages brief);
+  Alcotest.(check (list string))
+    "the JSON with and without -v"
+    (written (run Check.Json true))
+    (written (run Check.Json false));
+  Alcotest.(check int)
+    "the records of the JSON" 3
+    (List.length (written (run Check.Json false)))
+
 let notices_write_the_note_in_its_style () =
   let repo = Git_fixture.init () in
   Git_fixture.write repo "sinter.toml" packs;
@@ -744,6 +941,11 @@ let tests =
     case "the summary counts findings, files, tiers, and fixes"
       the_summary_counts_findings_files_tiers_and_fixes;
     the_summary_counts_equal_the_entries;
+    folding_keeps_every_entry;
+    verbose_and_strict_fold_nothing;
+    case "a group folds only when it may" a_group_folds_only_when_it_may;
+    case "the fold note counts findings and lines"
+      the_fold_note_counts_findings_and_lines;
     case "a record holds every field of a finding"
       a_record_holds_every_field_of_a_finding;
     case "a record leaves out what a finding does not have"
@@ -754,6 +956,7 @@ let tests =
     a_record_writes_the_mark_and_the_related_places_it_has;
     case "the options choose the lines of standard error"
       the_options_choose_the_lines_of_standard_error;
+    case "folding leaves the JSON as it is" folding_leaves_the_json_as_it_is;
     case "notices write the note in its style"
       notices_write_the_note_in_its_style;
     case "a check reads the repository and reports at its gate"

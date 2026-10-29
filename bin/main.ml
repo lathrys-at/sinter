@@ -303,6 +303,14 @@ let check_cmd =
          $(b,-v), the full and brief forms name the base on standard error. \
          The JSON form names it in the first record.";
       `P
+        "In the full and brief forms, the findings of the classes \
+         $(b,untraced), $(b,unmet-promise), and $(b,awaiting-approval) fold \
+         into one line for each class and file, with a count, when a file has \
+         two or more of them. A class that blocks at the gate does not fold, \
+         and nothing folds with $(b,--strict) or $(b,-v). A note on standard \
+         error says how many findings are folded. The JSON form gives every \
+         finding.";
+      `P
         "Sinter keeps the approvals and the completed plans in a ledger, on \
          the git ref $(b,refs/sinter/ledger). When the repository has no such \
          ref and the tree holds a plan, a warning says that every plan counts \
@@ -417,7 +425,10 @@ let check_cmd =
   in
   let report lines = List.iter (Printf.eprintf "sinter: %s\n") lines in
   let verbose =
-    let doc = "In the full and brief forms, name the base on standard error." in
+    let doc =
+      "List each finding, and fold none. In the full and brief forms, also \
+       name the base on standard error."
+    in
     Arg.(value & flag & info [ "v"; "verbose" ] ~doc)
   in
   let quiet =
