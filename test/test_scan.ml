@@ -243,8 +243,8 @@ let a_check_runs_no_git_command_twice () =
     Git_fixture.git_commands repo (fun env ->
         match
           Check.run ~env ~dir:(Git_fixture.root repo) ~manifest:None ~base:None
-            ~mode:Mode.Tree ~gate:None ~strict:false ~format:Check.Json
-            ~tool:"v1" ()
+            ~mode:Mode.Tree ~gate:None ~strict:false ~form:Check.Json ~tool:"v1"
+            ()
         with
         | Ok _ -> ()
         | Error error ->

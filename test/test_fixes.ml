@@ -361,108 +361,95 @@ let probe =
 
 let fix_lines_of_170c04b =
   [
-    ( "docs/bom.md:1:1: retired cites:site:docs/bom.md->dep decision:dep is \
-       deprecated",
+    ( "docs/bom.md:1:1: retired decision:dep is deprecated",
       "  fix: @ack retired dep 8d5cd79d" );
-    ( "docs/bom.md:2:1: dangling cites:site:docs/bom.md->Login no declaration \
-       has the slug Login",
+    ( "docs/bom.md:2:1: dangling no declaration has the slug Login",
       "  fix: @cites login" );
-    ( "docs/crlf.md:3:3: retired cites:site:docs/crlf.md#crlf->dep \
-       decision:dep is deprecated",
+    ( "docs/crlf.md:3:3: retired decision:dep is deprecated",
       "  fix: @ack retired dep a7b16d5b" );
-    ( "docs/crlf.md:4:3: retired cites:site:docs/crlf.md#crlf->old \
-       decision:old is superseded by decision:new, decision:other",
+    ( "docs/crlf.md:4:3: retired decision:old is superseded by decision:new, \
+       decision:other",
       "  fix: @cites new v3 or @cites other v1" );
-    ( "docs/crlf.md:8:1: retired cites:site:docs/crlf.md#last->dep \
-       decision:dep is deprecated",
+    ( "docs/crlf.md:8:1: retired decision:dep is deprecated",
       "  fix: @ack retired dep 485ef95f" );
-    ( "docs/edited.md:3:1: unbumped req:edited the extent differs from the \
-       base, and the revision is not above v2",
+    ( "docs/edited.md:3:1: unbumped the extent differs from the base, and the \
+       revision is not above v2",
       "  fix: @req edited v3" );
-    ( "docs/edited.md:8:1: unbumped design:plain the extent differs from the \
-       base, and the revision is not above v1",
+    ( "docs/edited.md:8:1: unbumped the extent differs from the base, and the \
+       revision is not above v1",
       "  fix: @design plain v2" );
-    ( "docs/end.md:4:1: retired cites:site:docs/end.md#end->dep decision:dep \
-       is deprecated",
+    ( "docs/end.md:4:1: retired decision:dep is deprecated",
       "  fix: @ack retired dep 02a3ba13" );
-    ( "docs/guide.md:5:1: typo-tag line:docs/guide.md@L5 @reqq is not a tag \
-       word of sinter",
+    ( "docs/guide.md:5:1: typo-tag @reqq is not a tag word of sinter",
       "  fix: @req" );
-    ( "docs/guide.md:6:1: typo-tag line:docs/guide.md@L6 @satisfie is not a \
-       tag word of sinter",
+    ( "docs/guide.md:6:1: typo-tag @satisfie is not a tag word of sinter",
       "  fix: @satisfies" );
-    ( "docs/guide.md:11:3: typo-tag line:docs/guide.md@L11 @cite is not a tag \
-       word of sinter",
+    ( "docs/guide.md:11:3: typo-tag @cite is not a tag word of sinter",
       "  fix: @cites" );
-    ( "docs/guide.md:15:1: unpinned satisfies:site:docs/guide.md#pins->login \
-       the @satisfies names no revision",
+    ( "docs/guide.md:15:1: unpinned the @satisfies names no revision",
       "  fix: @satisfies login v2" );
-    ( "docs/guide.md:16:1: unpinned refines:site:docs/guide.md#pins->login the \
-       @refines names no revision",
+    ( "docs/guide.md:16:1: unpinned the @refines names no revision",
       "  fix: @refines login v2" );
-    ( "docs/guide.md:17:1: suspect cites:site:docs/guide.md#pins->login the \
-       @cites names v1, and req:login is at v2",
+    ( "docs/guide.md:17:1: suspect the @cites names v1, and req:login is at v2",
       "  fix: @cites login v2" );
-    ( "docs/guide.md:18:1: suspect verifies:site:docs/guide.md#pins->login the \
-       @verifies names v9, and req:login is at v2",
+    ( "docs/guide.md:18:1: suspect the @verifies names v9, and req:login is at \
+       v2",
       "  fix: @verifies login v2" );
-    ( "docs/guide.md:22:1: dangling cites:site:docs/guide.md#spell->Login no \
-       declaration has the slug Login",
+    ( "docs/guide.md:22:1: dangling no declaration has the slug Login",
       "  fix: @cites login v2" );
-    ( "docs/guide.md:23:1: dangling satisfies:site:docs/guide.md#spell->Login \
-       no declaration has the slug Login",
+    ( "docs/guide.md:23:1: dangling no declaration has the slug Login",
       "  fix: @satisfies login" );
-    ( "docs/guide.md:27:1: retired cites:site:docs/guide.md#retired->old \
-       decision:old is superseded by decision:new, decision:other",
+    ( "docs/guide.md:27:1: retired decision:old is superseded by decision:new, \
+       decision:other",
       "  fix: @cites new v3 or @cites other v1" );
-    ( "docs/guide.md:29:1: retired cites:site:docs/guide.md#retired->gone \
-       decision:gone is superseded by decision:next",
+    ( "docs/guide.md:29:1: retired decision:gone is superseded by decision:next",
       "  fix: @cites next v2" );
-    ( "docs/guide.md:29:1: suspect cites:site:docs/guide.md#retired->gone the \
-       @cites names v1, and decision:gone is at v2",
+    ( "docs/guide.md:29:1: suspect the @cites names v1, and decision:gone is \
+       at v2",
       "  fix: @cites gone v2" );
-    ( "docs/guide.md:33:1: retired cites:site:docs/guide.md#retired-bare->old \
-       decision:old is superseded by decision:new, decision:other",
+    ( "docs/guide.md:33:1: retired decision:old is superseded by decision:new, \
+       decision:other",
       "  fix: @cites new or @cites other" );
-    ( "docs/guide.md:34:1: retired cites:site:docs/guide.md#retired-bare->gone \
-       decision:gone is superseded by decision:next",
+    ( "docs/guide.md:34:1: retired decision:gone is superseded by decision:next",
       "  fix: @cites next" );
-    ( "docs/guide.md:38:1: retired cites:site:docs/guide.md#ack-paragraph->dep \
-       decision:dep is deprecated",
+    ( "docs/guide.md:38:1: retired decision:dep is deprecated",
       "  fix: @ack retired dep 3be6fe65" );
-    ( "docs/guide.md:43:3: retired cites:site:docs/guide.md#ack-item->dep \
-       decision:dep is deprecated",
+    ( "docs/guide.md:43:3: retired decision:dep is deprecated",
       "  fix: @ack retired dep 9b26ac71" );
-    ( "docs/guide.md:47:7: retired cites:site:docs/guide.md#ack-task->dep \
-       decision:dep is deprecated",
+    ( "docs/guide.md:47:7: retired decision:dep is deprecated",
       "  fix: @ack retired dep 29872d68" );
-    ( "docs/guide.md:47:7: suspect cites:site:docs/guide.md#ack-task->dep the \
-       @cites names v1, and decision:dep is at v2",
+    ( "docs/guide.md:47:7: suspect the @cites names v1, and decision:dep is at \
+       v2",
       "  fix: @cites dep v2" );
-    ( "docs/guide.md:52:5: retired cites:site:docs/guide.md#ack-number->dep \
-       decision:dep is deprecated",
+    ( "docs/guide.md:52:5: retired decision:dep is deprecated",
       "  fix: @ack retired dep 035bdeb6" );
-    ( "docs/guide.md:58:4: retired cites:site:docs/guide.md#ack-tab->dep \
-       decision:dep is deprecated",
+    ( "docs/guide.md:58:4: retired decision:dep is deprecated",
       "  fix: @ack retired dep 5cd8cefe" );
-    ( "docs/guide.md:63:3: retired cites:site:docs/guide.md#ack-later->dep \
-       decision:dep is deprecated",
+    ( "docs/guide.md:63:3: retired decision:dep is deprecated",
       "  fix: @ack retired dep 3188e4cb" );
-    ( "docs/guide.md:67:1: renamed cites:site:docs/guide.md#moved->moved the \
-       base declares req:moved, and req:moved-new has its extent now",
+    ( "docs/guide.md:67:1: renamed the base declares req:moved, and \
+       req:moved-new has its extent now",
       "  fix: @cites moved-new v1" );
-    ( "docs/guide.md:68:1: renamed satisfies:site:docs/guide.md#moved->moved \
-       the base declares req:moved, and req:moved-new has its extent now",
+    ( "docs/guide.md:68:1: renamed the base declares req:moved, and \
+       req:moved-new has its extent now",
       "  fix: @satisfies moved-new" );
-    ( "docs/guide.md:69:1: renamed refines:site:docs/guide.md#moved->moved the \
-       base declares req:moved, and req:moved-new has its extent now",
+    ( "docs/guide.md:69:1: renamed the base declares req:moved, and \
+       req:moved-new has its extent now",
       "  fix: @refines moved-new v1" );
   ]
 
 let the_fix_line_is_the_line_of_170c04b () =
   let entries =
     List.map
-      (fun finding -> Check.text { Check.finding; tier = None })
+      (fun finding ->
+        let buffer = Buffer.create 128 in
+        let ppf = Format.formatter_of_buffer buffer in
+        Style.prepare ppf `None;
+        Render.brief ppf ~tier:None finding;
+        Format.pp_print_flush ppf ();
+        List.filter
+          (fun line -> line <> "")
+          (String.split_on_char '\n' (Buffer.contents buffer)))
       (List.filter
          (fun (finding : Finding.t) ->
            finding.finding_class <> Finding_class.Missing_plan_id)

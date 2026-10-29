@@ -1,4 +1,5 @@
 check
---json
+-o
+json
 --gate
 review

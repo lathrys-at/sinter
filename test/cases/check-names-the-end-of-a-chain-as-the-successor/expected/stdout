@@ -1,4 +1,39 @@
-docs/guide.md:3:1: retired cites:site:docs/guide.md#guide->memory-store decision:memory-store is superseded by decision:database-store
-  fix: @cites database-store v3
-docs/guide.md:4:1: retired cites:site:docs/guide.md#guide->file-store decision:file-store is superseded by decision:database-store
-  fix: @cites database-store
+retired: decision:memory-store is superseded by decision:database-store
+  --> docs/guide.md:3:1
+   |
+ 3 | @cites memory-store v1
+   |        ^^^^^^^^^^^^ cites a retired item
+   |
+  ::: docs/decisions/store.md:3:1
+   |
+ 3 | @decision memory-store
+   | ---------------------- the cited item is superseded
+...
+14 | @decision database-store v3
+   | --------------------------- a successor
+   |
+help: cite the successor in place of the retired item
+   |
+ 3 - @cites memory-store v1
+ 3 + @cites database-store v3
+   |
+
+retired: decision:file-store is superseded by decision:database-store
+  --> docs/guide.md:4:1
+   |
+ 4 | @cites file-store
+   |        ^^^^^^^^^^ cites a retired item
+   |
+  ::: docs/decisions/store.md:8:1
+   |
+ 8 | @decision file-store v2
+   | ----------------------- the cited item is superseded
+...
+14 | @decision database-store v3
+   | --------------------------- a successor
+   |
+help: cite the successor in place of the retired item
+   |
+ 4 - @cites file-store
+ 4 + @cites database-store
+   |

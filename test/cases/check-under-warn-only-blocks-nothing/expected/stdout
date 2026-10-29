@@ -1,1 +1,6 @@
-docs/guide.md:7:1: warn dangling cites:decision:login->nothing no declaration has the slug nothing
+warn[dangling]: no declaration has the slug nothing
+ --> docs/guide.md:7:1
+  |
+7 | @cites nothing
+  |        ^^^^^^^ no declaration has this slug
+  |

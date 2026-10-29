@@ -40,41 +40,6 @@ let exit_code ~strict entries =
   then Exit_code.findings
   else Exit_code.clean
 
-let quoted text =
-  if String.exists (fun c -> c = ' ' || c = '\t') text then
-    let escape = function
-      | ('"' | '\\') as c -> "\\" ^ String.make 1 c
-      | c -> String.make 1 c
-    in
-    "\""
-    ^ String.concat "" (List.map escape (List.of_seq (String.to_seq text)))
-    ^ "\""
-  else text
-
-let text { finding; tier } =
-  let place =
-    match finding.place with
-    | Some { path; span } ->
-        Printf.sprintf "%s:%d:%d:" (Finding.escape path) span.start.line
-          span.start.column
-    | None -> "-:-:-:"
-  in
-  let words =
-    [ place ]
-    @ Option.to_list
-        (Option.map (fun (_, tier) -> Finding_class.tier_name tier) tier)
-    @ [
-        Finding_class.name finding.finding_class;
-        Finding.escape (quoted (Finding.subject_id finding.subject));
-      ]
-    @ Option.to_list finding.detail
-  in
-  String.concat " " words
-  :: Option.to_list
-       (Option.map
-          (fun fix -> "  fix: " ^ Finding.escape (Fix.text fix))
-          finding.fix)
-
 let record ~mode { finding; tier } =
   let optional name = function
     | None -> []
@@ -174,8 +139,46 @@ let record ~mode { finding; tier } =
   @ optional "detail" finding.detail
   @ fix @ place @ mark @ related @ gate
 
-type format = Text | Json
-type report = { messages : string list; lines : string list; code : int }
+type form = Full | Brief | Json
+
+type report = {
+  messages : string list;
+  code : int;
+  form : form;
+  entries : entry list;
+  root : string;
+  mode : Mode.t;
+  index : Jsonl.record option;
+}
+
+let messages report = report.messages
+let code report = report.code
+let tier_of entry = Option.map snd entry.tier
+
+let write ?phases ppf report =
+  Allocation.measure phases "output" (fun () ->
+      (match report.form with
+      | Full ->
+          let source = Source.create ~root:report.root in
+          List.iteri
+            (fun index entry ->
+              if index > 0 then Format.pp_force_newline ppf ();
+              Render.full ppf source ~tier:(tier_of entry) entry.finding)
+            report.entries
+      | Brief ->
+          List.iter
+            (fun entry -> Render.brief ppf ~tier:(tier_of entry) entry.finding)
+            report.entries
+      | Json ->
+          let line record =
+            Format.pp_print_string ppf (Jsonl.to_string record);
+            Format.pp_force_newline ppf ()
+          in
+          Option.iter line report.index;
+          List.iter
+            (fun entry -> line (record ~mode:report.mode entry))
+            report.entries);
+      Format.pp_print_flush ppf ())
 
 module Paths = Map.Make (String)
 
@@ -244,7 +247,7 @@ let compare_with_base ?phases ~mode (tree : Scan.tree)
                facts compared.diff))
         (List.sort Finding.compare (configuration tree compared facts)))
 
-let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool () =
+let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~tool () =
   let* tree, compared =
     Scan.load_with_base ?phases ~env ~dir ~manifest ~base ()
   in
@@ -264,27 +267,15 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool () =
         select tree.manifest gate findings)
   in
   let code = exit_code ~strict entries in
-  match format with
-  | Text ->
-      Ok
-        {
-          messages = Scan.base_message tree.base :: tree.warnings;
-          lines =
-            Allocation.measure phases "output" (fun () ->
-                List.concat_map text entries);
-          code;
-        }
+  let report messages index =
+    { messages; code; form; entries; root = Git.root tree.repo; mode; index }
+  in
+  match form with
+  | Full | Brief ->
+      Ok (report (Scan.base_message tree.base :: tree.warnings) None)
   | Json ->
       let* index =
         Allocation.measure phases "repository" (fun () ->
             Scan.index ~mode tree ~tool)
       in
-      Ok
-        {
-          messages = tree.warnings;
-          lines =
-            Allocation.measure phases "output" (fun () ->
-                List.map Jsonl.to_string
-                  (index :: List.map (record ~mode) entries));
-          code;
-        }
+      Ok (report tree.warnings (Some index))

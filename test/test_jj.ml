@@ -364,7 +364,10 @@ let checks =
   lazy
     (both (fun repo ->
          List.map (output repo)
-           [ [ "check" ]; [ "check"; "--json"; "--gate"; "review" ] ]))
+           [
+             [ "check"; "-o"; "brief" ];
+             [ "check"; "-o"; "json"; "--gate"; "review" ];
+           ]))
 
 let a_jj_state_gives_the_same_check_findings () =
   let plain, jj = Lazy.force checks in
@@ -381,18 +384,17 @@ let the_check_of_a_jj_state_reports_the_findings_of_new_files () =
         ( 0,
           1,
           [
-            "docs/late.md:3:1: untraced req:late nothing satisfies it, and \
-             nothing verifies it";
-            "docs/new.md:1:1: unplanned-change hunk:docs/new.md:1-3 no step of \
-             an open plan, no rule, and no exempt path covers docs/new.md";
-            "docs/new.md:3:1: dangling cites:site:docs/new.md#new->missing no \
-             declaration has the slug missing";
-            "docs/reqs.md:3:1: untraced req:login nothing satisfies it, and \
-             nothing verifies it";
-            "docs/reqs.md:5:1: unplanned-change hunk:docs/reqs.md:5-8 no step \
-             of an open plan, no rule, and no exempt path covers docs/reqs.md";
-            "docs/reqs.md:8:1: untraced req:out nothing satisfies it, and \
-             nothing verifies it";
+            "docs/late.md:3:1: untraced nothing satisfies it, and nothing \
+             verifies it";
+            "docs/new.md:1:1: unplanned-change no step of an open plan, no \
+             rule, and no exempt path covers docs/new.md";
+            "docs/new.md:3:1: dangling no declaration has the slug missing";
+            "docs/reqs.md:3:1: untraced nothing satisfies it, and nothing \
+             verifies it";
+            "docs/reqs.md:5:1: unplanned-change no step of an open plan, no \
+             rule, and no exempt path covers docs/reqs.md";
+            "docs/reqs.md:8:1: untraced nothing satisfies it, and nothing \
+             verifies it";
           ] )
         (status, json_status, lines text)
   | _ -> Alcotest.fail "the check runs twice"

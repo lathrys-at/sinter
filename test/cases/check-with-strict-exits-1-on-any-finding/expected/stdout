@@ -1,2 +1,11 @@
-docs/guide.md:3:1: typo-tag line:docs/guide.md@L3 @decisoin is not a tag word of sinter
-  fix: @decision
+typo-tag: @decisoin is not a tag word of sinter
+ --> docs/guide.md:3:1
+  |
+3 | @decisoin x
+  | ^^^^^^^^^ not a tag word
+  |
+help: replace the tag word with the nearest tag word that Sinter knows
+  |
+3 - @decisoin x
+3 + @decision x
+  |

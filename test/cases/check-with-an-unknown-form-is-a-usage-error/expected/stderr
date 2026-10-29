@@ -1,0 +1,3 @@
+Usage: sinter check [--help] [OPTION]…
+sinter: option '-o': invalid value 'short', expected one of 'full', 'brief'
+        or 'json'

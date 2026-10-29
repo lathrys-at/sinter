@@ -1,12 +1,92 @@
-docs/guide.md:3:1: suspect cites:site:docs/guide.md#guide->login the @cites names v1, and decision:login is at v2
-  fix: @cites login v2
-docs/guide.md:4:1: unpinned satisfies:site:docs/guide.md#guide->store the @satisfies names no revision
-  fix: @satisfies store v1
-docs/guide.md:5:1: dangling cites:site:docs/guide.md#guide->Login no declaration has the slug Login
-  fix: @cites login v2
-docs/guide.md:6:1: dangling cites:site:docs/guide.md#guide->nothing no declaration has the slug nothing
-docs/guide.md:7:1: retired cites:site:docs/guide.md#guide->logout decision:logout is deprecated
-  fix: @ack retired logout 34f77c51
-docs/guide.md:8:1: wrong-source verifies:site:docs/guide.md#guide->store a @verifies needs a test as its source
-docs/guide.md:9:1: wrong-source refines:site:docs/guide.md#guide->store a @refines needs a declaration that holds it
-docs/records.md:19:1: cycle decision:new-store with decision:old-store
+suspect: the @cites names v1, and decision:login is at v2
+ --> docs/guide.md:3:1
+  |
+3 | @cites login v1
+  |              ^^ names v1
+  |
+ ::: docs/records.md:3:1
+  |
+3 | @decision login v2
+  | ------------------ now at v2
+  |
+help: check that the citation still holds, then pin it to the current revision
+  |
+3 - @cites login v1
+3 + @cites login v2
+  |
+
+unpinned: the @satisfies names no revision
+  --> docs/guide.md:4:1
+   |
+ 4 | @satisfies store
+   |            ^^^^^ no revision
+   |
+  ::: docs/records.md:24:1
+   |
+24 | @design store v1
+   | ---------------- declared here at v1
+   |
+help: pin the citation to the revision of the declaration
+   |
+ 4 | @satisfies store v1
+   |                 +++
+   |
+
+dangling: no declaration has the slug Login
+ --> docs/guide.md:5:1
+  |
+5 | @cites Login v2
+  |        ^^^^^ no declaration has this slug
+  |
+help: write the slug as the declaration spells it
+  |
+5 - @cites Login v2
+5 + @cites login v2
+  |
+
+dangling: no declaration has the slug nothing
+ --> docs/guide.md:6:1
+  |
+6 | @cites nothing
+  |        ^^^^^^^ no declaration has this slug
+  |
+
+retired: decision:logout is deprecated
+  --> docs/guide.md:7:1
+   |
+ 7 | @cites logout
+   |        ^^^^^^ cites a retired item
+   |
+  ::: docs/records.md:8:1
+   |
+ 8 | @decision logout v1
+   | ------------------- the cited item is deprecated
+   |
+help: if the citation still holds, accept the finding with an @ack line
+   |
+11 + @ack retired logout 34f77c51
+   |
+
+wrong-source: a @verifies needs a test as its source
+ --> docs/guide.md:8:1
+  |
+8 | @verifies store v1
+  | ^^^^^^^^^ needs a test as its source
+  |
+
+wrong-source: a @refines needs a declaration that holds it
+ --> docs/guide.md:9:1
+  |
+9 | @refines store v1
+  | ^^^^^^^^ needs a declaration that holds it
+  |
+
+cycle: with decision:old-store
+  --> docs/records.md:19:1
+   |
+14 | @decision old-store v1
+   | ---------------------- part of the cycle
+...
+19 | @decision new-store v1
+   | ^^^^^^^^^^^^^^^^^^^^^^
+   |

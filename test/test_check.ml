@@ -80,7 +80,9 @@ let finding_gen =
          (pair (option word) (option word))))
 
 let print_finding (finding : Finding.t) =
-  String.concat "\n" (Check.text { Check.finding; tier = None })
+  Printf.sprintf "%s %S"
+    (Finding_class.name finding.finding_class)
+    (Finding.subject_id finding.subject)
 
 let gate_gen = Gen.oneof_list Finding_class.gates
 let manifest_gen = Gen.oneof_list [ plain; warn_only ]
@@ -274,121 +276,6 @@ let a_finding_blocks_at_its_tier_or_under_strict =
       then Exit_code.findings
       else Exit_code.clean)
 
-let a_finding_prints_its_place_tier_class_subject_and_detail () =
-  Alcotest.(check (list string))
-    "the lines"
-    [
-      "docs/a.md:3:2: block suspect cites:site:docs/a.md->x pinned to v1; the \
-       declaration is at v2";
-      "  fix: @cites x v2";
-    ]
-    (Check.text
-       {
-         finding =
-           finding ~place:(place ())
-             ~detail:"pinned to v1; the declaration is at v2"
-             ~fix:(Fix.pin (Edits.tag "@cites x v1\n") 2)
-             Finding_class.Suspect edge;
-         tier = Some (Finding_class.Review, Finding_class.Block);
-       });
-  Alcotest.(check (list string))
-    "with no tier, no detail, and no fix"
-    [ "docs/a.md:3:2: wrong-source cites:site:docs/a.md->x" ]
-    (Check.text
-       {
-         finding = finding ~place:(place ()) Finding_class.Wrong_source edge;
-         tier = None;
-       })
-
-let a_finding_with_no_place_prints_dashes () =
-  Alcotest.(check (list string))
-    "the line"
-    [ "-:-:-: warn wrong-source cites:site:docs/a.md->x" ]
-    (Check.text
-       { finding = finding Finding_class.Wrong_source edge; tier = Some warn })
-
-let a_subject_with_a_space_stands_in_quotes () =
-  Alcotest.(check (list string))
-    "the lines"
-    [
-      "my docs/a.md:1:1: typo-tag \"line:my docs/a\\\"b\\\\.md@L1\"";
-      "-:-:-: typo-tag \"line:a\tb@L1\"";
-    ]
-    (List.concat_map Check.text
-       [
-         {
-           Check.finding =
-             finding
-               ~place:(place ~path:"my docs/a.md" ~line:1 ~column:1 ())
-               Finding_class.Typo_tag
-               (Finding.Line { path = "my docs/a\"b\\.md"; line = 1 });
-           tier = None;
-         };
-         {
-           finding =
-             finding Finding_class.Typo_tag
-               (Finding.Line { path = "a\tb"; line = 1 });
-           tier = None;
-         };
-       ])
-
-let a_control_character_in_a_path_or_a_subject_is_escaped () =
-  Alcotest.(check (list string))
-    "the lines"
-    [
-      "docs/a\\nb.md:1:1: ignored-tag line:docs/a\\nb.md@L1";
-      "-:-:-: ignored-tag line:my\\rdocs/\\x.md@L2";
-      "-:-:-: ignored-tag \"line:my docs\\r/\\\\x.md@L3\"";
-    ]
-    (List.concat_map Check.text
-       [
-         {
-           Check.finding =
-             finding
-               ~place:(place ~path:"docs/a\nb.md" ~line:1 ~column:1 ())
-               Finding_class.Ignored_tag
-               (Finding.Line { path = "docs/a\nb.md"; line = 1 });
-           tier = None;
-         };
-         {
-           finding =
-             finding Finding_class.Ignored_tag
-               (Finding.Line { path = "my\rdocs/\\x.md"; line = 2 });
-           tier = None;
-         };
-         {
-           finding =
-             finding Finding_class.Ignored_tag
-               (Finding.Line { path = "my docs\r/\\x.md"; line = 3 });
-           tier = None;
-         };
-       ])
-
-let a_finding_gives_one_line_and_one_more_for_a_fix =
-  property "a finding gives one line, and one more for a fix"
-    Gen.(pair finding_gen (option (oneof_list [ warn; block ])))
-    (fun (finding, _) -> print_finding finding)
-    (fun (finding, tier) ->
-      let lines = Check.text { finding; tier } in
-      let place =
-        match finding.place with
-        | Some { path; span } ->
-            Printf.sprintf "%s:%d:%d: " (Finding.escape path) span.start.line
-              span.start.column
-        | None -> "-:-:-: "
-      in
-      List.length lines = 1 + Option.fold ~none:0 ~some:(fun _ -> 1) finding.fix
-      && List.for_all
-           (fun line ->
-             not (String.contains line '\n' || String.contains line '\r'))
-           lines
-      &&
-      match lines with
-      | first :: rest ->
-          String.starts_with ~prefix:place first
-          && List.for_all (String.starts_with ~prefix:"  fix: ") rest
-      | [] -> false)
-
 let a_record_holds_every_field_of_a_finding () =
   Alcotest.(check string)
     "the record"
@@ -504,16 +391,6 @@ let a_record_writes_the_mark_and_the_related_places_it_has =
                objects related
       | _ -> false)
 
-let the_text_reads_no_mark_and_no_related_place =
-  property "the text form reads no mark and no related place" marked_finding_gen
-    print_finding (fun finding ->
-      let plain =
-        Finding.make finding.finding_class finding.subject ?place:finding.place
-          ?detail:finding.detail ?fix:finding.fix ()
-      in
-      Check.text { finding; tier = None }
-      = Check.text { finding = plain; tier = None })
-
 let a_record_is_canonical_and_names_a_gate_only_with_a_tier =
   property "a record is canonical, and names a gate only with a tier"
     Gen.(pair finding_gen (option (oneof_list [ warn; block ])))
@@ -524,6 +401,15 @@ let a_record_is_canonical_and_names_a_gate_only_with_a_tier =
       List.mem_assoc "gate" record = Option.is_some tier
       && List.mem_assoc "tier" record = Option.is_some tier
       && List.mem_assoc "path" record = Option.is_some finding.place)
+
+let written report =
+  let buffer = Buffer.create 256 in
+  let ppf = Format.formatter_of_buffer buffer in
+  Style.prepare ppf `None;
+  Check.write ppf report;
+  List.filter
+    (fun line -> line <> "")
+    (String.split_on_char '\n' (Buffer.contents buffer))
 
 let a_check_reads_the_repository_and_reports_at_its_gate () =
   let repo = Git_fixture.init () in
@@ -539,10 +425,10 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
   ignore (Git_fixture.git repo [ "add"; "-A" ]);
   ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
   let head = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]) in
-  let run format gate =
+  let run form gate =
     match
       Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
-        ~manifest:None ~base:None ~mode:Mode.Tree ~gate ~strict:false ~format
+        ~manifest:None ~base:None ~mode:Mode.Tree ~gate ~strict:false ~form
         ~tool:"v1" ()
     with
     | Ok report -> report
@@ -550,7 +436,7 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
         Alcotest.failf "the check fails: %s"
           (String.concat "; " (Scan.messages error))
   in
-  let text = run Check.Text None in
+  let text = run Check.Brief None in
   Alcotest.(check (list string))
     "the messages of the text"
     [
@@ -559,25 +445,26 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
        counts as open; fetch it with git fetch origin \
        refs/sinter/ledger:refs/sinter/ledger";
     ]
-    text.messages;
+    (Check.messages text);
   Alcotest.(check (pair int (list string)))
     "the code and the places of the text"
     ( 0,
       [ "docs/b.md:1:1:" ]
-      @ (if line_feed then [ "docs/line\\nfeed.md:3:1:" ] else [])
+      @ (if line_feed then [ "docs/line\xef\xbf\xbdfeed.md:3:1:" ] else [])
       @ [ "docs/table.md:5:1:" ] )
-    ( text.code,
-      List.map (fun line -> List.hd (String.split_on_char ' ' line)) text.lines
-    );
+    ( Check.code text,
+      List.map
+        (fun line -> List.hd (String.split_on_char ' ' line))
+        (written text) );
   let json = run Check.Json (Some Finding_class.Review) in
   Alcotest.(check (pair int int))
     "the code and the number of lines of the JSON"
     (1, if line_feed then 4 else 3)
-    (json.code, List.length json.lines);
+    (Check.code json, List.length (written json));
   Alcotest.(check bool)
     "the index first, and no line that names the base" true
-    (String.starts_with ~prefix:"{\"base\":\"" (List.hd json.lines)
-    && List.length json.messages = 1)
+    (String.starts_with ~prefix:"{\"base\":\"" (List.hd (written json))
+    && List.length (Check.messages json) = 1)
 
 let case name f = Alcotest.test_case name `Quick f
 
@@ -585,9 +472,9 @@ let diff_lines ?base repo =
   match
     Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
       ~manifest:None ~base ~mode:Mode.Diff ~gate:None ~strict:false
-      ~format:Check.Text ~tool:"v1" ()
+      ~form:Check.Brief ~tool:"v1" ()
   with
-  | Ok report -> report.lines
+  | Ok report -> written report
   | Error error ->
       Alcotest.failf "the check fails: %s"
         (String.concat "; " (Scan.messages error))
@@ -612,10 +499,9 @@ let a_diff_against_the_merge_base_reports_what_the_branch_adds () =
   Alcotest.(check (list string))
     "the finding of the branch"
     [
-      "docs/a.md:5:1: unplanned-change hunk:docs/a.md:5-8 no step of an open \
-       plan, no rule, and no exempt path covers docs/a.md";
-      "docs/a.md:8:1: dangling cites:site:docs/a.md#b->new no declaration has \
-       the slug new";
+      "docs/a.md:5:1: unplanned-change no step of an open plan, no rule, and \
+       no exempt path covers docs/a.md";
+      "docs/a.md:8:1: dangling no declaration has the slug new";
     ]
     (diff_lines repo)
 
@@ -652,14 +538,12 @@ let a_diff_compares_each_file_as_git_stores_it () =
   Alcotest.(check (list string))
     "the findings that the changes add"
     [
-      "docs/assumed.md:3:1: unplanned-change hunk:docs/assumed.md:3-6 no step \
-       of an open plan, no rule, and no exempt path covers docs/assumed.md";
-      "docs/assumed.md:7:1: dangling cites:site:docs/assumed.md#s->old-assumed \
-       no declaration has the slug old-assumed";
-      "docs/skipped.md:3:1: unplanned-change hunk:docs/skipped.md:3-6 no step \
-       of an open plan, no rule, and no exempt path covers docs/skipped.md";
-      "docs/skipped.md:7:1: dangling cites:site:docs/skipped.md#s->old-skipped \
-       no declaration has the slug old-skipped";
+      "docs/assumed.md:3:1: unplanned-change no step of an open plan, no rule, \
+       and no exempt path covers docs/assumed.md";
+      "docs/assumed.md:7:1: dangling no declaration has the slug old-assumed";
+      "docs/skipped.md:3:1: unplanned-change no step of an open plan, no rule, \
+       and no exempt path covers docs/skipped.md";
+      "docs/skipped.md:7:1: dangling no declaration has the slug old-skipped";
     ]
     (diff_lines ~base:"HEAD" repo)
 
@@ -682,15 +566,6 @@ let tests =
     case "the exit code follows the blocking findings"
       the_exit_code_follows_the_blocking_findings;
     a_finding_blocks_at_its_tier_or_under_strict;
-    case "a finding prints its place, tier, class, subject, and detail"
-      a_finding_prints_its_place_tier_class_subject_and_detail;
-    case "a finding with no place prints dashes"
-      a_finding_with_no_place_prints_dashes;
-    case "a subject with a space stands in quotes"
-      a_subject_with_a_space_stands_in_quotes;
-    case "a control character in a path or a subject is escaped"
-      a_control_character_in_a_path_or_a_subject_is_escaped;
-    a_finding_gives_one_line_and_one_more_for_a_fix;
     case "a record holds every field of a finding"
       a_record_holds_every_field_of_a_finding;
     case "a record leaves out what a finding does not have"
@@ -699,7 +574,6 @@ let tests =
     case "a record holds the mark and the related places"
       a_record_holds_the_mark_and_the_related_places;
     a_record_writes_the_mark_and_the_related_places_it_has;
-    the_text_reads_no_mark_and_no_related_place;
     case "a check reads the repository and reports at its gate"
       a_check_reads_the_repository_and_reports_at_its_gate;
   ]

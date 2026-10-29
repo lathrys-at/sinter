@@ -1,13 +1,86 @@
-docs/spec.md:1:1: block unplanned-change hunk:docs/spec.md:1-1 no step of an open plan, no rule, and no exempt path covers docs/spec.md
-docs/spec.md:3:1: block unplanned-change hunk:docs/spec.md:3-3 no step of an open plan, no rule, and no exempt path covers docs/spec.md
-docs/spec.md:5:1: block unbumped req:a the extent differs from the base, and the revision is not above v1
-  fix: @req a v2
-docs/spec.md:5:1: block unplanned-change hunk:docs/spec.md:5-5 no step of an open plan, no rule, and no exempt path covers docs/spec.md
-docs/spec.md:7:1: block unplanned-change hunk:docs/spec.md:7-7 no step of an open plan, no rule, and no exempt path covers docs/spec.md
-docs/spec.md:9:1: block unplanned-change hunk:docs/spec.md:9-9 no step of an open plan, no rule, and no exempt path covers docs/spec.md
-docs/spec.md:11:1: block unplanned-change hunk:docs/spec.md:11-11 no step of an open plan, no rule, and no exempt path covers docs/spec.md
-docs/spec.md:13:1: block unbumped design:c the base declares req:c v1, and a change of kind needs a higher revision
-  fix: @design c v2
-docs/spec.md:13:1: block unplanned-change hunk:docs/spec.md:13-13 no step of an open plan, no rule, and no exempt path covers docs/spec.md
-docs/spec.md:13:1: warn untraced design:c nothing satisfies it, and nothing verifies it
-docs/spec.md:15:1: block unplanned-change hunk:docs/spec.md:15-15 no step of an open plan, no rule, and no exempt path covers docs/spec.md
+block[unplanned-change]: no step of an open plan, no rule, and no exempt path covers docs/spec.md
+ --> docs/spec.md:1:1
+  |
+1 | # 2. Spec
+  | ^^^^^^^^^
+  |
+
+block[unplanned-change]: no step of an open plan, no rule, and no exempt path covers docs/spec.md
+ --> docs/spec.md:3:1
+  |
+3 | ## 2.1 Edited
+  | ^^^^^^^^^^^^^
+  |
+
+block[unbumped]: the extent differs from the base, and the revision is not above v1
+ --> docs/spec.md:5:1
+  |
+5 | @req a v1 Lock the account after five tries.
+  |        ^^ changed since the base, still v1
+  |
+help: raise the revision above every revision in the base
+  |
+5 - @req a v1 Lock the account after five tries.
+5 + @req a v2 Lock the account after five tries.
+  |
+
+block[unplanned-change]: no step of an open plan, no rule, and no exempt path covers docs/spec.md
+ --> docs/spec.md:5:1
+  |
+5 | @req a v1 Lock the account after five tries.
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+
+block[unplanned-change]: no step of an open plan, no rule, and no exempt path covers docs/spec.md
+ --> docs/spec.md:7:1
+  |
+7 | ## 2.2 Bumped
+  | ^^^^^^^^^^^^^
+  |
+
+block[unplanned-change]: no step of an open plan, no rule, and no exempt path covers docs/spec.md
+ --> docs/spec.md:9:1
+  |
+9 | @design b v3 Store it twice.
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+
+block[unplanned-change]: no step of an open plan, no rule, and no exempt path covers docs/spec.md
+  --> docs/spec.md:11:1
+   |
+11 | ## 2.3 Kind
+   | ^^^^^^^^^^^
+   |
+
+block[unbumped]: the base declares req:c v1, and a change of kind needs a higher revision
+  --> docs/spec.md:13:1
+   |
+13 | @design c v1 Log it.
+   |           ^^ changed since the base, still v1
+   |
+help: raise the revision above every revision in the base
+   |
+13 - @design c v1 Log it.
+13 + @design c v2 Log it.
+   |
+
+block[unplanned-change]: no step of an open plan, no rule, and no exempt path covers docs/spec.md
+  --> docs/spec.md:13:1
+   |
+13 | @design c v1 Log it.
+   | ^^^^^^^^^^^^^^^^^^^^
+   |
+
+warn[untraced]: nothing satisfies it, and nothing verifies it
+  --> docs/spec.md:13:1
+   |
+13 | @design c v1 Log it.
+   |         ^ nothing satisfies it, and nothing verifies it
+   |
+
+block[unplanned-change]: no step of an open plan, no rule, and no exempt path covers docs/spec.md
+  --> docs/spec.md:15:1
+   |
+15 | ## 2.4 Renumbered
+   | ^^^^^^^^^^^^^^^^^
+   |
