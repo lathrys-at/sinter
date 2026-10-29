@@ -218,6 +218,13 @@ slugs that a closed plan frees, and the ids of claims; read the form
 in the scanner, with a finding whose fix supplies a missing id; and
 let the plan skill write the id.
 
+## Cut the manifest by question
+@scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**, sinter.toml
+Carry out the record `manifest-questions`: cut the tables of the
+manifest by the question that each answers, add the table `[proof]`
+with a value for steps without promises, and move Sinter's own
+manifest and the skills to the new keys.
+
 ## Let a plan span branches
 @scope spec/**, docs/**, lib/**, test/**, plugins/**, .claude-plugin/**
 Carry out the record `plans-span-branches`: specify that a plan
