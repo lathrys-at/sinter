@@ -1430,6 +1430,33 @@ These conventions apply to every command:
   `-v` lists each finding and names the base, and `-q` prints no
   summary and no note. The text forms are for people and can change
   between versions; programs read `-o json`.
+- **Errors.** Every failure prints on standard error a headline
+  `error: <fault>` and a line `  = help: <action>` (record
+  `error-layout`). An error at a place in the manifest shows its source
+  line in the layout of the full form, with a mark under the key or
+  the value at fault, and each error is a block in the order of the
+  places. A usage error from the command line library takes the same
+  layout, with the usage line as the help:
+
+  ```
+  error: unknown key 'historic' in [paths]
+   --> sinter.toml:9:1
+    |
+  9 | historic = ["docs/log/"]
+    | ^^^^^^^^
+    |
+    = help: did you mean 'historical'?
+  ```
+- **Color.** The full and brief forms and the messages on standard
+  error use the 16 base colors of the terminal and bold (record
+  `color-settings`). JSON never has color. The option
+  `--color=auto|always|never` is on every command, and `auto` is the
+  default. The first rule that matches decides, for standard output
+  and for standard error apart: `--color=always` or `--color=never`;
+  `NO_COLOR` set and not empty gives no color; `CLICOLOR_FORCE` set
+  and not `0`, or `FORCE_COLOR` set and not empty, gives color; `TERM`
+  set to `dumb`, or `CLICOLOR` set to `0`, gives no color; otherwise a
+  stream gets color when it is a terminal.
 
 ### 11.1 `sinter`
 

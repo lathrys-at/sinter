@@ -471,8 +471,58 @@ let a_usage_error_takes_its_color_from_the_environment () =
           "env %s CLICOLOR_FORCE=1 TERM=xterm %s check --color=never --foo"
           "-u NO_COLOR -u FORCE_COLOR -u CLICOLOR" (Filename.quote sinter)))
 
+let each_help_names_the_color_variables () =
+  List.iter
+    (fun command ->
+      let status, text = run (command ^ " --help=plain") in
+      code (command ^ ": the exit code is 0") 0 status;
+      List.iter
+        (fun name ->
+          Alcotest.(check bool)
+            (Printf.sprintf "the help of %S holds %S" command name)
+            true (contains name text))
+        [
+          "ENVIRONMENT";
+          "       NO_COLOR\n";
+          "       CLICOLOR_FORCE\n";
+          "       FORCE_COLOR\n";
+          "       CLICOLOR\n";
+          "       TERM\n";
+        ])
+    [ ""; "check"; "scan"; "parse"; "serve" ]
+
+let each_command_states_the_order_of_the_color_settings () =
+  List.iter
+    (fun command ->
+      let status, text = run (command ^ " --help=plain") in
+      code (command ^ ": the exit code is 0") 0 status;
+      Alcotest.(check bool)
+        (Printf.sprintf "the help of %s states the order" command)
+        true
+        (contains
+           "the first of these rules that matches decides, for standard output \
+            and for standard error apart: NO_COLOR set and not empty gives no \
+            color; CLICOLOR_FORCE set and not 0, or FORCE_COLOR set and not \
+            empty, gives color; TERM set to dumb, or CLICOLOR set to 0, gives \
+            no color; otherwise a stream gets color when it is a terminal."
+           (unwrapped text)))
+    [ "check"; "scan"; "parse"; "serve" ]
+
+let the_help_of_check_says_how_to_fetch_the_ledger () =
+  let status, text = run "check --help=plain" in
+  code "the exit code is 0" 0 status;
+  Alcotest.(check bool)
+    "the help holds the command" true
+    (contains "git fetch origin refs/sinter/ledger:refs/sinter/ledger" text)
+
 let tests =
   [
+    Alcotest.test_case "each help names the color variables" `Quick
+      each_help_names_the_color_variables;
+    Alcotest.test_case "each command states the order of the color settings"
+      `Quick each_command_states_the_order_of_the_color_settings;
+    Alcotest.test_case "the help of check says how to fetch the ledger" `Quick
+      the_help_of_check_says_how_to_fetch_the_ledger;
     Alcotest.test_case "a usage error is an error and a help line" `Quick
       a_usage_error_is_an_error_and_a_help_line;
     Alcotest.test_case "a usage error is the same with TERM set" `Quick

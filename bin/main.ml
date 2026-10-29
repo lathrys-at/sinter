@@ -71,11 +71,39 @@ let with_phases setting run =
 
 let plumbing = "PLUMBING COMMANDS"
 
+let envs =
+  let rule condition result =
+    Printf.sprintf "When it is %s, the output gets %s." condition result
+  in
+  [
+    Cmd.Env.info "NO_COLOR" ~doc:(rule "set and not empty" "no color");
+    Cmd.Env.info "CLICOLOR_FORCE" ~doc:(rule "set and not $(b,0)" "color");
+    Cmd.Env.info "FORCE_COLOR" ~doc:(rule "set and not empty" "color");
+    Cmd.Env.info "CLICOLOR" ~doc:(rule "$(b,0)" "no color");
+    Cmd.Env.info "TERM" ~doc:(rule "$(b,dumb)" "no color");
+  ]
+
+let environment =
+  [
+    `S Manpage.s_environment;
+    `P
+      "The value $(b,always) or $(b,never) of the option $(b,--color) wins \
+       over each of these variables. The option $(b,--color) of each command \
+       gives the order of the rules.";
+  ]
+
 let color =
   let doc =
     "When to color the output: $(b,auto), $(b,always), or $(b,never). Color \
      applies to the full and brief forms and to the messages on standard \
-     error, and never to JSON."
+     error, and never to JSON. With $(b,auto), the first of these rules that \
+     matches decides, for standard output and for standard error apart: \
+     $(b,NO_COLOR) set and not empty gives no color; $(b,CLICOLOR_FORCE) set \
+     and not $(b,0), or $(b,FORCE_COLOR) set and not empty, gives color; \
+     $(b,TERM) set to $(b,dumb), or $(b,CLICOLOR) set to $(b,0), gives no \
+     color; otherwise a stream gets color when it is a terminal. An error on \
+     the command line comes before this option is read, so it takes its color \
+     from these rules alone."
   in
   Arg.(
     value
@@ -123,7 +151,10 @@ let parse_cmd =
          S-expression instead, one tree per line, and read no query.";
     ]
   in
-  let info = Cmd.info "parse" ~docs:plumbing ~doc ~man ~exits:parse_exits in
+  let info =
+    Cmd.info "parse" ~docs:plumbing ~doc ~man:(man @ environment) ~envs
+      ~exits:parse_exits
+  in
   let grammar =
     let doc =
       "The grammar to parse with: a tree-sitter grammar as $(i,.wasm)."
@@ -209,7 +240,10 @@ let serve_cmd =
          once. It reads a grammar file again when the file changes.";
     ]
   in
-  let info = Cmd.info "serve" ~docs:plumbing ~doc ~man ~exits:serve_exits in
+  let info =
+    Cmd.info "serve" ~docs:plumbing ~doc ~man:(man @ environment) ~envs
+      ~exits:serve_exits
+  in
   let rec answer color state =
     match In_channel.input_line stdin with
     | exception Sys_error message ->
@@ -271,7 +305,10 @@ let scan_cmd =
          $(b,sinter check --help) says how to fetch the ledger.";
     ]
   in
-  let info = Cmd.info "scan" ~docs:plumbing ~doc ~man ~exits:scan_exits in
+  let info =
+    Cmd.info "scan" ~docs:plumbing ~doc ~man:(man @ environment) ~envs
+      ~exits:scan_exits
+  in
   let manifest =
     let doc =
       "The manifest to read, instead of $(i,sinter.toml) at the root of the \
@@ -413,7 +450,9 @@ let check_cmd =
     ]
   in
   let info =
-    Cmd.info "check" ~doc ~man:(man @ exits_doc @ examples) ~exits:check_exits
+    Cmd.info "check" ~doc
+      ~man:(man @ exits_doc @ environment @ examples)
+      ~envs ~exits:check_exits
   in
   let manifest =
     let doc =
@@ -557,7 +596,9 @@ let cmd =
          when one of them blocks.";
     ]
   in
-  let info = Cmd.info "sinter" ~version ~doc ~man ~exits in
+  let info =
+    Cmd.info "sinter" ~version ~doc ~man:(man @ environment) ~envs ~exits
+  in
   Cmd.group info
     ~default:Term.(ret (const (`Help (`Pager, None))))
     [ check_cmd; parse_cmd; scan_cmd; serve_cmd ]
