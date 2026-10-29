@@ -40,10 +40,7 @@ let ids records =
       | _ -> "(no id)")
     records
 
-let ledger =
-  "warning: the ledger ref refs/sinter/ledger is absent, so every plan counts \
-   as open; fetch it with git fetch origin \
-   refs/sinter/ledger:refs/sinter/ledger"
+let ledger = "warning: no ledger found, so every plan counts as open"
 
 let shared =
   lazy
@@ -685,6 +682,26 @@ let a_conversion_alone_reuses_the_document () =
     | [ (_, a) ], [ (_, b) ] -> a == b
     | _ -> false)
 
+let a_path_warning_holds_no_control_character () =
+  let repo = Git_fixture.init () in
+  Git_fixture.import repo
+    [
+      Git_fixture.commit ~ref:"refs/heads/main" ~mark:1 ~message:"base"
+        [
+          Git_fixture.File ("sinter.toml", manifest);
+          Git_fixture.File ("a\x1b[31m\xc2\x9b\xe2\x80\xae\xff.md", "# G\n");
+        ];
+    ];
+  Git_fixture.write repo "sinter.toml" manifest;
+  let tree, _ = load_with_base repo in
+  Alcotest.(check (list string))
+    "the warnings"
+    [
+      "warning: the path a\xef\xbf\xbd[31m\xef\xbf\xbd\xef\xbf\xbd\\xff.md is \
+       not UTF-8, so sinter does not read the file";
+    ]
+    tree.warnings
+
 let a_base_path_that_is_not_utf_8_gives_one_warning () =
   let repo = Git_fixture.init () in
   Git_fixture.import repo
@@ -702,9 +719,27 @@ let a_base_path_that_is_not_utf_8_gives_one_warning () =
     [
       "warning: the path gone\\xff.md is not UTF-8, so sinter does not read \
        the file";
-      ledger;
     ]
     tree.warnings
+
+let the_ledger_warning_needs_a_plan_and_no_ledger () =
+  let warning files ~ledger =
+    let repo = repository (("sinter.toml", manifest) :: files) in
+    if ledger then
+      ignore
+        (Git_fixture.git repo [ "update-ref"; "refs/sinter/ledger"; "HEAD" ]);
+    let tree = load repo in
+    Scan.ledger_warning tree (Facts.make tree.manifest tree.documents)
+  in
+  let plan = (".plans/p.md", "# P\n\n@plan p\n") in
+  Alcotest.(check (list (option string)))
+    "no ledger and a plan, no ledger and no plan, a ledger and a plan"
+    [ Some ledger; None; None ]
+    [
+      warning [ plan ] ~ledger:false;
+      warning [ ("docs/a.md", "# A\n\n@req a\n") ] ~ledger:false;
+      warning [ plan ] ~ledger:true;
+    ]
 
 let base_manifest (compared : Scan.compared) =
   match compared.base_manifest with
@@ -789,6 +824,8 @@ let tests =
       a_conversion_alone_reuses_the_document;
     case "a base path that is not UTF-8 gives one warning"
       a_base_path_that_is_not_utf_8_gives_one_warning;
+    case "a path warning holds no control character"
+      a_path_warning_holds_no_control_character;
     case "a base note names the short ref and the short commit"
       a_base_note_names_the_short_ref_and_the_short_commit;
     case "a scan starts with the index of the tree and the base"
@@ -832,6 +869,8 @@ let tests =
       a_plan_file_needs_the_pack_markdown_when_it_names_none;
     case "a scan that cannot write its output says so"
       a_scan_that_cannot_write_its_output_says_so;
+    Alcotest.test_case "the ledger warning needs a plan and no ledger" `Quick
+      the_ledger_warning_needs_a_plan_and_no_ledger;
     case "a check that cannot write its output says so"
       a_check_that_cannot_write_its_output_says_so;
     case "each error says what is wrong" each_error_says_what_is_wrong;

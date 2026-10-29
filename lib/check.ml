@@ -349,7 +349,11 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
   let report notices index =
     { notices; code; form; entries; root = Git.root tree.repo; mode; index }
   in
-  let warnings = List.map (fun warning -> Line warning) tree.warnings in
+  let warnings =
+    List.map
+      (fun warning -> Line warning)
+      (tree.warnings @ Option.to_list (Scan.ledger_warning tree facts))
+  in
   match form with
   | Full | Brief ->
       Ok

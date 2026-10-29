@@ -138,3 +138,6 @@
   margin guards only text inside a box.
 - The full and brief output name the base only with `-v`, so
   `spec/manifest.md` section 6 now says so (ruling of the lead).
+- The ledger warning shows only when a plan exists, and the help, not
+  the warning, says how to fetch the ledger. `ledger-absent-ref` moves
+  to v3 with the same rule (ruling of the lead).

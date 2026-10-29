@@ -561,9 +561,6 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
     "the messages of the text"
     [
       (if line_feed then "3 findings in 3 files" else "2 findings in 2 files");
-      "warning: the ledger ref refs/sinter/ledger is absent, so every plan \
-       counts as open; fetch it with git fetch origin \
-       refs/sinter/ledger:refs/sinter/ledger";
       "note: base " ^ String.sub head 0 7 ^ ", the merge base of HEAD and main";
     ]
     (Check.messages text);
@@ -585,7 +582,7 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
   Alcotest.(check bool)
     "the index first, and no line that names the base" true
     (String.starts_with ~prefix:"{\"base\":\"" (List.hd (written json))
-    && List.length (Check.messages json) = 1)
+    && Check.messages json = [])
 
 let case name f = Alcotest.test_case name `Quick f
 
@@ -608,20 +605,9 @@ let the_options_choose_the_lines_of_standard_error () =
           (String.concat "; " (Scan.messages error))
   in
   let note = "note: base " ^ String.sub head 0 7 ^ ", from --base HEAD" in
-  let warning =
-    "warning: the ledger ref refs/sinter/ledger is absent, so every plan \
-     counts as open; fetch it with git fetch origin \
-     refs/sinter/ledger:refs/sinter/ledger"
-  in
   Alcotest.(check (list (list string)))
     "full, brief with -v, full with -q, full with -v and -q, and JSON with -v"
-    [
-      [ "1 finding in 1 file"; warning ];
-      [ "1 finding in 1 file"; warning; note ];
-      [ warning ];
-      [ warning ];
-      [ warning ];
-    ]
+    [ [ "1 finding in 1 file" ]; [ "1 finding in 1 file"; note ]; []; []; [] ]
     [
       messages Check.Full false false;
       messages Check.Brief true false;
@@ -651,16 +637,10 @@ let notices_write_the_note_in_its_style () =
       in
       let head = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]) in
       let base = "base " ^ String.sub head 0 7 ^ ", from --base HEAD\n" in
-      let warning =
-        "warning: the ledger ref refs/sinter/ledger is absent, so every plan \
-         counts as open; fetch it with git fetch origin \
-         refs/sinter/ledger:refs/sinter/ledger\n"
-      in
       Alcotest.(check (pair string string))
         "the lines with no style and with styles"
-        ( "no findings in 0 files\n" ^ warning ^ "note: " ^ base,
-          "no findings in 0 files\n" ^ warning ^ "\x1b[1mnote:\x1b[0m " ^ base
-        )
+        ( "no findings in 0 files\nnote: " ^ base,
+          "no findings in 0 files\n\x1b[1mnote:\x1b[0m " ^ base )
         (written `None, written `Ansi_tty)
 
 let diff_lines ?base repo =

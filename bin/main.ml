@@ -303,6 +303,12 @@ let check_cmd =
          $(b,-v), the full and brief forms name the base on standard error. \
          The JSON form names it in the first record.";
       `P
+        "Sinter keeps the approvals and the completed plans in a ledger, on \
+         the git ref $(b,refs/sinter/ledger). When the repository has no such \
+         ref and the tree holds a plan, a warning says that every plan counts \
+         as open. To fetch the ledger from the remote $(b,origin), run:";
+      `Pre "  git fetch origin refs/sinter/ledger:refs/sinter/ledger";
+      `P
         "With $(b,--diff), the command reports only the findings that the \
          changes since the base add. It checks the base with the same \
          manifest, and leaves out each finding that the base already has. A \

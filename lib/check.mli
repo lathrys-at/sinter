@@ -83,9 +83,10 @@ val messages : report -> string list
 (** [messages report] is the lines for the person who runs the tool, without
     line feeds. In the forms [Full] and [Brief]: the {!summary} of the entries,
     with the number of documents of the tree, unless the check is quiet; then
-    the warnings of the tree; then, when the check is verbose and not quiet,
-    [note: ] and {!Scan.base_note} of the base. In the form [Json]: the warnings
-    of the tree. *)
+    the warnings: those of the tree, and then {!Scan.ledger_warning} of the
+    facts of the working tree when there is one; then, when the check is verbose
+    and not quiet, [note: ] and {!Scan.base_note} of the base. In the form
+    [Json]: the warnings. *)
 
 val notices : Format.formatter -> report -> unit
 (** [notices ppf report] writes {!messages} of [report] to [ppf], each with a

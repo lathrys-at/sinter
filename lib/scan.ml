@@ -135,11 +135,6 @@ let escape_path path =
   in
   String.concat "" (pieces path)
 
-let ledger_warning =
-  "warning: the ledger ref refs/sinter/ledger is absent, so every plan counts \
-   as open; fetch it with git fetch origin \
-   refs/sinter/ledger:refs/sinter/ledger"
-
 let is_plan_path path =
   String.starts_with ~prefix:".plans/" path
   && String.ends_with ~suffix:".md" path
@@ -361,7 +356,7 @@ let prepare ~env ~dir ~manifest ~base =
 let not_utf_8_warning path =
   Printf.sprintf
     "warning: the path %s is not UTF-8, so sinter does not read the file"
-    (escape_path path)
+    (Display.clean (escape_path path))
 
 type base_manifest = Outside | Absent | Unchanged | Changed of string
 
@@ -490,8 +485,7 @@ let assemble ~repo ~file_set ~manifest ~location ~base ~documents ~not_text
     documents;
     not_text;
     warnings =
-      List.map not_utf_8_warning (List.sort_uniq String.compare not_utf_8)
-      @ [ ledger_warning ];
+      List.map not_utf_8_warning (List.sort_uniq String.compare not_utf_8);
   }
 
 let load ?phases ~env ~dir ~manifest ~base () =
@@ -539,6 +533,17 @@ let load_with_base ?phases ~env ~dir ~manifest ~base () =
         ~not_utf_8:(not_utf_8 @ base_not_utf_8),
       compared )
 
+let ledger_ref = "refs/sinter/ledger"
+
+let ledger_warning tree facts =
+  match Facts.plans facts with
+  | [] -> None
+  | _ :: _ -> (
+      match Git.commit_of tree.repo ledger_ref with
+      | Error (Git.Bad_revision _) ->
+          Some "warning: no ledger found, so every plan counts as open"
+      | Ok _ | Error _ -> None)
+
 let index ?(mode = Mode.Tree) tree ~tool =
   let* key = repository (Git.tree_key tree.repo) in
   Ok
@@ -564,4 +569,8 @@ let run ?phases ~env ~dir ~manifest ~base ~tool () =
   let records =
     Allocation.measure phases "records" (fun () -> Facts.records facts ~changed)
   in
-  Ok { warnings = tree.warnings; records = index :: records }
+  Ok
+    {
+      warnings = tree.warnings @ Option.to_list (ledger_warning tree facts);
+      records = index :: records;
+    }

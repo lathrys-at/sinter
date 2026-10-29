@@ -1,2 +1,1 @@
 11 findings in 1 file: 10 block, 1 warn; 2 have a fix
-warning: the ledger ref refs/sinter/ledger is absent, so every plan counts as open; fetch it with git fetch origin refs/sinter/ledger:refs/sinter/ledger

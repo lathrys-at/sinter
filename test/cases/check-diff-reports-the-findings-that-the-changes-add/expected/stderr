@@ -1,2 +1,1 @@
 16 findings in 8 files; 4 have a fix
-warning: the ledger ref refs/sinter/ledger is absent, so every plan counts as open; fetch it with git fetch origin refs/sinter/ledger:refs/sinter/ledger

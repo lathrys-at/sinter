@@ -300,12 +300,13 @@ journal of a closed plan can leave `.plans/`.
 
 ### 10.2 An absent ledger ref
 
-@req ledger-absent-ref v2
+@req ledger-absent-ref v3
 
 When the ledger ref is absent, a tool sees no `completed` and no
 `abandoned` entries, so it treats every plan as open. A tool in this
-state must warn the user that the ledger ref is absent, and must tell
-the user to fetch it.
+state, on a tree that holds at least one plan, must warn the user that
+it found no ledger, so every plan counts as open. The help of the tool
+must say how to fetch the ledger.
 
 ## 11. Plan approval: commitment-set comparison
 
