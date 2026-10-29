@@ -1,0 +1,29 @@
+[1m[91mblock[parse-error][0;1m[0m: the file is not UTF-8 text at byte 15
+ [1m[94m-->[0;1m[0m docs/binary.md:1:1
+
+[1m[91mblock[dangling][0;1m[0m: no declaration has the slug nothing
+ [1m[94m-->[0;1m[0m docs/guide.md:3:1
+  [1m[94m|[0;1m[0m
+[1m[94m3 |[0;1m[0m @cites nothing
+  [1m[94m|[0;1m[0m        [1m[91m^^^^^^^[0;1m[0m [1m[91mno declaration has this slug[0;1m[0m
+  [1m[94m|[0;1m[0m
+
+[1m[33mwarn[typo-tag][0;1m[0m: @decisoin is not a tag word of sinter
+ [1m[94m-->[0;1m[0m docs/guide.md:4:1
+  [1m[94m|[0;1m[0m
+[1m[94m4 |[0;1m[0m @decisoin x
+  [1m[94m|[0;1m[0m [1m[33m^^^^^^^^^[0;1m[0m [1m[33mnot a tag word[0;1m[0m
+  [1m[94m|[0;1m[0m
+[1m[36mhelp:[0;1m[0m replace the tag word with the nearest tag word that Sinter knows
+  [1m[94m|[0;1m[0m
+[1m[94m4 [0;1m[0m[31m-[0m [31m@decisoin x[0m
+[1m[94m4 [0;1m[0m[32m+[0m [32m@decision x[0m
+  [1m[94m|[0;1m[0m
+
+[1m[33mwarn[parse-error][0;1m[0m: the markdown parser cannot read the text here
+ [1m[94m-->[0;1m[0m docs/table.md:5:1
+  [1m[94m|[0;1m[0m
+[1m[94m5 |[0;1m[0m | `x`  | y |
+  [1m[94m|[0;1m[0m [1m[33m^^^^^^^^^^^^[0;1m[0m
+...
+  [1m[94m|[0;1m[0m

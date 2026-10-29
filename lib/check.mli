@@ -104,16 +104,17 @@ val messages : report -> string list
 (** [messages report] is the lines for the person who runs the tool, without
     line feeds. In the forms [Full] and [Brief]: the {!summary} of the entries,
     with the number of documents of the tree, unless the check is quiet; then
-    the warnings: those of the tree, and then {!Scan.ledger_warning} of the
-    facts of the working tree when there is one; then, unless the check is
-    quiet, [note: ] and {!fold_note} of the items of {!fold} when there is one;
-    then, when the check is verbose and not quiet, [note: ] and
-    {!Scan.base_note} of the base. In the form [Json]: the warnings. *)
+    [warning: ] and the text of each warning: those of the tree, and then
+    {!Scan.ledger_warning} of the facts of the working tree when there is one;
+    then, unless the check is quiet, [note: ] and {!fold_note} of the items of
+    {!fold} when there is one; then, when the check is verbose and not quiet,
+    [note: ] and {!Scan.base_note} of the base. In the form [Json]: the
+    warnings, each with [warning: ]. *)
 
 val notices : Format.formatter -> report -> unit
 (** [notices ppf report] writes {!messages} of [report] to [ppf], each with a
-    line feed, with the word [note:] in the style {!Style.Note}, and flushes
-    [ppf].
+    line feed, and flushes [ppf]. A warning prints as {!Render.warning} prints
+    it, and a note as {!Render.note} prints it.
 
     @raise Sys_error if [ppf] cannot write. *)
 

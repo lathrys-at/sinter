@@ -147,3 +147,13 @@
   a detail too. The details of `parse-error` and `ignored-tag` stay:
   their location is their item. The labels of the marks do not
   change.
+
+## Print errors in one layout and in color
+
+- The fixture runner no longer passes the caller's `TERM`, `NO_COLOR`,
+  `CLICOLOR_FORCE`, `FORCE_COLOR`, and `CLICOLOR` to a run, and no
+  longer sets `NO_COLOR=1`. A case sets a variable in a new entry,
+  `env`, one `NAME=value` on each line (ruling of the lead).
+- The warnings of `Scan` and `Check` hold their text without the word
+  `warning:`, so that the printer can give the word its style (ruling
+  of the lead).

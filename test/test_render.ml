@@ -817,8 +817,37 @@ let the_output_is_the_same_on_each_run =
   property "the full form is the same on each run" Generators.rendered_finding
     Generators.print_rendered (fun input -> render input = render input)
 
+let a_warning_and_a_note_are_one_line_each () =
+  Alcotest.(check (list string))
+    "a warning, a cleaned warning, an empty warning, and a note"
+    [
+      "warning: no ledger\n";
+      "warning: a\xef\xbf\xbdb    c\n";
+      "warning:\n";
+      "note: base abc\n";
+    ]
+    [
+      print (fun ppf -> Render.warning ppf "no ledger");
+      print (fun ppf -> Render.warning ppf "a\027b\tc ");
+      print (fun ppf -> Render.warning ppf "");
+      print (fun ppf -> Render.note ppf "base abc");
+    ]
+
+let a_warning_and_a_note_take_their_styles () =
+  Alcotest.(check (list string))
+    "the word in its style, and the text plain"
+    [ "\x1b[1m\x1b[33mwarning:\x1b[0;1m\x1b[0m x\n"; "\x1b[1mnote:\x1b[0m x\n" ]
+    [
+      print ~renderer:`Ansi_tty (fun ppf -> Render.warning ppf "x");
+      print ~renderer:`Ansi_tty (fun ppf -> Render.note ppf "x");
+    ]
+
 let tests =
   [
+    case "a warning and a note are one line each"
+      a_warning_and_a_note_are_one_line_each;
+    case "a warning and a note take their styles"
+      a_warning_and_a_note_take_their_styles;
     case "a block shows the headline, the location, and the mark"
       a_block_shows_the_headline_the_location_and_the_mark;
     case "the headline names the tier and the class"

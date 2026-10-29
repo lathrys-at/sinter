@@ -140,7 +140,7 @@ let record ~mode { finding; tier } =
   @ fix @ place @ mark @ related @ gate
 
 type form = Full | Brief | Json
-type notice = Line of string | Note of string
+type notice = Line of string | Warning of string | Note of string
 
 module Names = Set.Make (String)
 
@@ -275,19 +275,21 @@ type report = {
 
 let messages report =
   List.map
-    (function Line line -> line | Note note -> "note: " ^ note)
+    (function
+      | Line line -> line
+      | Warning warning -> "warning: " ^ warning
+      | Note note -> "note: " ^ note)
     report.notices
 
 let notices ppf report =
   List.iter
     (fun notice ->
-      (match notice with
-      | Line line -> Fmt.string ppf line
-      | Note note ->
-          Style.string Style.Note ppf "note:";
-          Fmt.string ppf " ";
-          Fmt.string ppf note);
-      Format.pp_force_newline ppf ())
+      match notice with
+      | Line line ->
+          Fmt.string ppf line;
+          Format.pp_force_newline ppf ()
+      | Warning warning -> Render.warning ppf warning
+      | Note note -> Render.note ppf note)
     report.notices;
   Format.pp_print_flush ppf ()
 
@@ -420,7 +422,7 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
   in
   let warnings =
     List.map
-      (fun warning -> Line warning)
+      (fun warning -> Warning warning)
       (tree.warnings @ Option.to_list (Scan.ledger_warning tree facts))
   in
   let text output =

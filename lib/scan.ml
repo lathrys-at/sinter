@@ -354,8 +354,7 @@ let prepare ~env ~dir ~manifest ~base =
       not_utf_8 )
 
 let not_utf_8_warning path =
-  Printf.sprintf
-    "warning: the path %s is not UTF-8, so sinter does not read the file"
+  Printf.sprintf "the path %s is not UTF-8, so sinter does not read the file"
     (Display.clean (escape_path path))
 
 type base_manifest = Outside | Absent | Unchanged | Changed of string
@@ -541,7 +540,7 @@ let ledger_warning tree facts =
   | _ :: _ -> (
       match Git.commit_of tree.repo ledger_ref with
       | Error (Git.Bad_revision _) ->
-          Some "warning: no ledger found, so every plan counts as open"
+          Some "no ledger found, so every plan counts as open"
       | Ok _ | Error _ -> None)
 
 let index ?(mode = Mode.Tree) tree ~tool =

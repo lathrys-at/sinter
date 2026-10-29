@@ -52,16 +52,37 @@ let string = function
   | Note -> note
   | Plain -> Fmt.string
 
-type stream = Output | Errors
+type setting = Auto | Always | Never
 
-let renderer = function Output | Errors -> `None
+let given getenv name =
+  match getenv name with Some "" | None -> None | Some value -> Some value
+
+let color setting ~getenv ~terminal =
+  match setting with
+  | Always -> true
+  | Never -> false
+  | Auto -> (
+      match
+        ( given getenv "NO_COLOR",
+          getenv "CLICOLOR_FORCE",
+          given getenv "FORCE_COLOR" )
+      with
+      | Some _, _, _ -> false
+      | None, Some force, _ when force <> "0" -> true
+      | None, _, Some _ -> true
+      | None, _, None ->
+          getenv "TERM" <> Some "dumb"
+          && getenv "CLICOLOR" <> Some "0"
+          && terminal)
+
+let renderer color = if color then `Ansi_tty else `None
 
 let prepare ppf renderer =
   Format.pp_set_geometry ppf ~max_indent:(Format.pp_infinity - 2)
     ~margin:(Format.pp_infinity - 1);
   Fmt.set_style_renderer ppf renderer
 
-let formatter channel stream =
+let formatter channel ~color =
   let ppf = Format.formatter_of_out_channel channel in
-  prepare ppf (renderer stream);
+  prepare ppf (renderer color);
   ppf

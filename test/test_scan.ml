@@ -40,7 +40,7 @@ let ids records =
       | _ -> "(no id)")
     records
 
-let ledger = "warning: no ledger found, so every plan counts as open"
+let ledger = "no ledger found, so every plan counts as open"
 
 let shared =
   lazy
@@ -99,8 +99,7 @@ let a_path_that_is_not_utf_8_gives_a_warning_and_no_fact () =
   Alcotest.(check (list string))
     "the warnings"
     [
-      "warning: the path caf\\xe9.md is not UTF-8, so sinter does not read the \
-       file";
+      "the path caf\\xe9.md is not UTF-8, so sinter does not read the file";
       ledger;
     ]
     warnings;
@@ -462,7 +461,9 @@ let a_scan_that_cannot_write_its_output_says_so () =
   let status, errors = into_a_closed_pipe "scan" in
   Alcotest.(check (pair int (list string)))
     "the exit code and the lines of standard error"
-    (3, warnings @ [ "sinter: cannot write the output: Broken pipe" ])
+    ( 3,
+      List.map (fun warning -> "warning: " ^ warning) warnings
+      @ [ "sinter: cannot write the output: Broken pipe" ] )
     ( status,
       List.filter (fun line -> line <> "") (String.split_on_char '\n' errors) )
 
@@ -697,8 +698,8 @@ let a_path_warning_holds_no_control_character () =
   Alcotest.(check (list string))
     "the warnings"
     [
-      "warning: the path a\xef\xbf\xbd[31m\xef\xbf\xbd\xef\xbf\xbd\\xff.md is \
-       not UTF-8, so sinter does not read the file";
+      "the path a\xef\xbf\xbd[31m\xef\xbf\xbd\xef\xbf\xbd\\xff.md is not \
+       UTF-8, so sinter does not read the file";
     ]
     tree.warnings
 
@@ -716,10 +717,7 @@ let a_base_path_that_is_not_utf_8_gives_one_warning () =
   let tree, _ = load_with_base repo in
   Alcotest.(check (list string))
     "the warnings"
-    [
-      "warning: the path gone\\xff.md is not UTF-8, so sinter does not read \
-       the file";
-    ]
+    [ "the path gone\\xff.md is not UTF-8, so sinter does not read the file" ]
     tree.warnings
 
 let the_ledger_warning_needs_a_plan_and_no_ledger () =

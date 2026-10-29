@@ -4,7 +4,8 @@
 (** The full form and the brief form of a finding. The full form shows a
     headline, the location, the source lines of the place with a mark under the
     part at fault, the related places with their labels, and the fix as a diff.
-    The brief form shows one line, and one more for a fix. *)
+    The brief form shows one line, and one more for a fix. A warning and a note
+    show one line each. *)
 
 val full :
   Format.formatter ->
@@ -85,6 +86,15 @@ val brief :
     [  fix: ] and {!Fix.text} of the fix. Each line ends with a line feed. Each
     text that comes from the repository prints as {!Display.clean} gives it, and
     no line ends in a space. *)
+
+val warning : Format.formatter -> string -> unit
+(** [warning ppf text] prints the line [warning: <text>] to [ppf], with the word
+    [warning:] in the style {!Style.Warn}, and [text] as {!Display.clean} gives
+    it. With an empty [text], the line is [warning:]. *)
+
+val note : Format.formatter -> string -> unit
+(** [note ppf text] prints the line [note: <text>] to [ppf], as {!warning} does,
+    with the word [note:] in the style {!Style.Note}. *)
 
 val folded_full :
   Format.formatter -> tier:Finding_class.tier option -> Finding.t -> int -> unit

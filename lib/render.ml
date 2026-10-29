@@ -435,6 +435,16 @@ let brief ppf ~tier (finding : Finding.t) =
       newline ppf)
     finding.fix
 
+let message ppf element word text =
+  Style.string element ppf word;
+  let text = shown text in
+  if text <> "" then (
+    Fmt.string ppf " ";
+    Fmt.string ppf text);
+  newline ppf
+
+let warning ppf text = message ppf Style.Warn "warning:" text
+let note ppf text = message ppf Style.Note "note:" text
 let folded_count count = Printf.sprintf "%d findings" count
 
 let folded_full ppf ~tier (finding : Finding.t) count =

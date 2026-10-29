@@ -1,0 +1,5 @@
+check
+--gate
+review
+-v
+--color=always

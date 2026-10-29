@@ -92,10 +92,11 @@ type tree = private {
           not UTF-8 text, in the order of the paths, with the byte offset of its
           first sequence that is not well-formed *)
   warnings : string list;
-      (** one line for each file of the file set whose path is not UTF-8, in the
-          order of the paths, with the path as {!Display.clean} gives
-          {!escape_path} of it. After {!load_with_base}, the file set of the
-          base counts too, and a path of both file sets has one line. *)
+      (** the text of one warning, without the word [warning:], for each file of
+          the file set whose path is not UTF-8, in the order of the paths, with
+          the path as {!Display.clean} gives {!escape_path} of it. After
+          {!load_with_base}, the file set of the base counts too, and a path of
+          both file sets has one warning. *)
 }
 (** The working tree of a repository as a scan reads it. *)
 
@@ -178,11 +179,11 @@ val load_with_base :
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
 
 val ledger_warning : tree -> Facts.t -> string option
-(** [ledger_warning tree facts] is the warning
-    [warning: no ledger found, so every plan counts as open] when [facts] hold
-    at least one plan and the ref [refs/sinter/ledger] of the repository of
-    [tree] names no commit ({!Git.commit_of} gives [Bad_revision]); [None]
-    otherwise. It runs git only when [facts] hold a plan. *)
+(** [ledger_warning tree facts] is the text of the warning
+    [no ledger found, so every plan counts as open] when [facts] hold at least
+    one plan and the ref [refs/sinter/ledger] of the repository of [tree] names
+    no commit ({!Git.commit_of} gives [Bad_revision]); [None] otherwise. It runs
+    git only when [facts] hold a plan. *)
 
 val index : ?mode:Mode.t -> tree -> tool:string -> (Jsonl.record, error) result
 (** [index tree ~tool] is the index record of [tree]. [tool] is the version of

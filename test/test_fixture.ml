@@ -177,7 +177,6 @@ let the_working_folder_shows_as_root () =
 let the_run_gets_the_fixed_variables () =
   let names =
     [
-      "NO_COLOR";
       "GIT_CONFIG_GLOBAL";
       "GIT_CONFIG_NOSYSTEM";
       "PWD";
@@ -196,8 +195,7 @@ let the_run_gets_the_fixed_variables () =
     (("args", program ^ "\n")
     :: List.remove_assoc "args"
          (case_files
-            ~stdout:"1\n/dev/null\n1\n<root>\n1\nmaintenance.auto\nfalse\n" "")
-    )
+            ~stdout:"/dev/null\n1\n<root>\n1\nmaintenance.auto\nfalse\n" ""))
     (fun case ->
       Alcotest.check outcome "awk prints the fixed values" (Ok [])
         (Fixture.run ~binary:"/usr/bin/awk" Fixture.Compare case))
@@ -347,6 +345,45 @@ let base_and_repository_together_say_to_remove_repository () =
     "case scan: the case holds both base and repository. A case with base \
      already runs in a repository; remove repository."
     (Fixture.message ~case:"scan" Fixture.Repository_with_base)
+
+let color_variables =
+  [ "TERM"; "NO_COLOR"; "CLICOLOR_FORCE"; "FORCE_COLOR"; "CLICOLOR" ]
+
+let print_color_variables =
+  "for v in TERM NO_COLOR CLICOLOR_FORCE FORCE_COLOR CLICOLOR; do env | grep \
+   \"^$v=\"; done; true"
+
+let a_run_gets_no_color_variable_of_the_caller () =
+  with_case (case_files print_color_variables) (fun case ->
+      Alcotest.check outcome "the run sees none of the five variables" (Ok [])
+        (Fixture.run ~binary:sh
+           ~caller:
+             (Array.append (Unix.environment ())
+                (Array.of_list
+                   (List.map (fun name -> name ^ "=1") color_variables)))
+           Fixture.Compare case))
+
+let a_run_gets_the_variables_of_env () =
+  check_run "the run sees the variables of env" (Ok [])
+    (("env", "TERM=xterm\nNO_COLOR=\nCLICOLOR=a=b\n")
+    :: case_files ~stdout:"TERM=xterm\nNO_COLOR=\nCLICOLOR=a=b\n"
+         print_color_variables)
+
+let a_line_of_env_without_a_name_fails_the_case () =
+  List.iter
+    (fun line ->
+      check_run
+        (Printf.sprintf "the line %S" line)
+        (Error (Fixture.Bad_variable line))
+        (("env", "TERM=xterm\n" ^ line ^ "\n") :: case_files "true"))
+    [ "NO_COLOR"; "=1"; "" ]
+
+let a_bad_variable_names_its_line () =
+  Alcotest.(check string)
+    "the message"
+    "case scan: the line \"=1\" of env is not NAME=value, with a name that is \
+     not empty."
+    (Fixture.message ~case:"scan" (Fixture.Bad_variable "=1"))
 
 let an_unknown_entry_fails_the_case () =
   check_run "argz is unknown" (Error (Fixture.Unknown_entry "argz"))
@@ -680,6 +717,14 @@ let tests =
       a_case_with_base_and_repository_fails;
     Alcotest.test_case "base and repository together say to remove repository"
       `Quick base_and_repository_together_say_to_remove_repository;
+    Alcotest.test_case "a run gets no color variable of the caller" `Quick
+      a_run_gets_no_color_variable_of_the_caller;
+    Alcotest.test_case "a run gets the variables of env" `Quick
+      a_run_gets_the_variables_of_env;
+    Alcotest.test_case "a line of env without a name fails the case" `Quick
+      a_line_of_env_without_a_name_fails_the_case;
+    Alcotest.test_case "a bad variable names its line" `Quick
+      a_bad_variable_names_its_line;
     Alcotest.test_case "an unknown entry fails the case" `Quick
       an_unknown_entry_fails_the_case;
     Alcotest.test_case "an unknown entry in expected fails the case" `Quick
