@@ -54,6 +54,22 @@ val verifies_name : verifies -> string
 (** [verifies_name verifies] is the word that [proof.verifies] writes for
     [verifies]: ["whole-run"] or ["each-test"]. *)
 
+(** When a step without promises is done: the value of [proof.step]. *)
+type step =
+  | Change
+      (** when a hunk of the diff changes a file inside the scope of the step:
+          ["change"] *)
+  | Step_approval
+      (** when the ledger holds an approval of the step that matches its step
+          hash: ["approval"] *)
+  | Promises
+      (** never; each step needs promises, and a step without promises is a
+          finding: ["promises"] *)
+
+val step_name : step -> string
+(** [step_name step] is the word that [proof.step] writes for [step]:
+    ["change"], ["approval"], or ["promises"]. *)
+
 (** {1 Errors} *)
 
 (** The type of value that a key takes. *)
@@ -298,3 +314,6 @@ val agent_markers : t -> string list
 
 val verifies : t -> verifies
 (** [verifies manifest] is the value of [proof.verifies], or [Whole_run]. *)
+
+val step : t -> step
+(** [step manifest] is the value of [proof.step], or [Change]. *)

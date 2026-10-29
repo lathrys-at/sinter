@@ -1,0 +1,6 @@
+block[step-without-promises]: step:tidy@3c41d0/tidy-the-parser has no promise, and proof.step is "promises"
+ --> .plans/tidy.md:6:1
+  |
+6 | ## Tidy the parser
+  | ^^^^^^^^^^^^^^^^^^
+  |

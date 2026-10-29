@@ -753,9 +753,20 @@ promise. The scanner reports this case as a finding
 A step is **done** if and only if all its promises are met and all
 `@verifies` edges in its scope are at an allowed rung. A step with a
 scope and no promises is a **refactor** step. A refactor step is done
-when both conditions hold: a hunk of the diff changes a file inside
-its scope, and every `@verifies` edge in its scope is at an allowed
-rung. A plan is **done** if and only if all its steps are done.
+when both conditions hold: the first condition that the manifest key
+`proof.step` ([manifest.md](manifest.md) section 10.4) gives holds,
+and every `@verifies` edge in its scope is at an allowed rung. The
+first condition is one of these:
+
+- `"change"`, the default: a hunk of the diff changes a file inside
+  the scope of the step.
+- `"approval"`: the ledger holds an approval of the step that matches
+  its current step hash ([ledger.md](ledger.md) section 5.1).
+- `"promises"`: the condition never holds. A refactor step is never
+  done, and each refactor step of an open plan is the finding
+  `step-without-promises` ([algebra.md](algebra.md) section 9).
+
+A plan is **done** if and only if all its steps are done.
 
 ### 10.6 Amendment
 

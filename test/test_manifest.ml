@@ -34,6 +34,7 @@ let the_smallest_manifest_takes_every_default () =
   Alcotest.(check bool)
     "verifies" true
     (Manifest.verifies manifest = Manifest.Whole_run);
+  Alcotest.(check bool) "step" true (Manifest.step manifest = Manifest.Change);
   Alcotest.(check int)
     "no namespace" 0
     (List.length (Manifest.namespaces manifest));
@@ -329,13 +330,34 @@ let each_kind_takes_its_own_approval () =
 let each_word_of_proof_has_its_name () =
   Alcotest.(check (list string))
     "the words"
-    [ "declaration"; "approval"; "whole-run"; "each-test" ]
+    [
+      "declaration";
+      "approval";
+      "whole-run";
+      "each-test";
+      "change";
+      "approval";
+      "promises";
+    ]
     [
       Manifest.approval_name Manifest.Declaration;
       Manifest.approval_name Manifest.Approval;
       Manifest.verifies_name Manifest.Whole_run;
       Manifest.verifies_name Manifest.Each_test;
+      Manifest.step_name Manifest.Change;
+      Manifest.step_name Manifest.Step_approval;
+      Manifest.step_name Manifest.Promises;
     ]
+
+let each_value_of_step_reads () =
+  List.iter
+    (fun word ->
+      Alcotest.(check string)
+        word word
+        (Manifest.step_name
+           (Manifest.step
+              (read (markdown ^ Printf.sprintf "[proof]\nstep = %S\n" word)))))
+    [ "change"; "approval"; "promises" ]
 
 let every_location_kind_reads () =
   let manifest =
@@ -817,7 +839,8 @@ let values () =
       req = \"aproval\"\n\
       agent-markers = [\"MY-VAR\", \"A\", \"A\", \"1A\", \"\"]\n\
       verifies = \"each-tests\"\n\
-      plan = \"declared\"\n")
+      plan = \"declared\"\n\
+      step = \"promise\"\n")
     [
       "sinter.toml:4:25: 'dangling' takes \"off\", \"warn\", or \"block\", not \
        \"blok\"; did you mean \"block\"?";
@@ -834,6 +857,8 @@ let values () =
        \"each-tests\"; did you mean \"each-test\"?";
       "sinter.toml:9:8: 'plan' takes \"declaration\" or \"approval\", not \
        \"declared\"";
+      "sinter.toml:10:8: 'step' takes \"change\", \"approval\", or \
+       \"promises\", not \"promise\"; did you mean \"promises\"?";
     ];
   reports "a word far from every word"
     (markdown ^ "[proof]\nverifies = \"x\"\n")
@@ -1338,7 +1363,7 @@ let rows () =
 
 let since_is_that_of_the_specification () =
   let rows = rows () in
-  Alcotest.(check int) "the number of keys" 15 (List.length rows);
+  Alcotest.(check int) "the number of keys" 16 (List.length rows);
   List.iter
     (fun (key, since) ->
       let path =
@@ -1500,6 +1525,8 @@ let line =
       "plan = \"declaration\"";
       "verifies = \"each-test\"";
       "verifies = \"all\"";
+      "step = \"promises\"";
+      "step = 1";
       "approval-required = [\"req\"]";
       "agent-markers = [\"A\"]";
       "test-coverage = \"required\"";
@@ -1621,6 +1648,12 @@ let settings =
             if m = [] then [] else [ ([ "proof"; "agent-markers" ], strings m) ])
           (some_of [ "A"; "B_2"; "CLAUDECODE" ]);
         optional [ "proof"; "verifies" ] "\"each-test\"";
+        oneof_list
+          [
+            [];
+            [ ([ "proof"; "step" ], "\"approval\"") ];
+            [ ([ "proof"; "step" ], "\"promises\"") ];
+          ];
       ]
     in
     flatten_list pairs >|= List.concat)
@@ -1709,6 +1742,7 @@ let summary manifest =
             Manifest.[ Req; Design; Decision; Plan ]);
        String.concat "," (Manifest.agent_markers manifest);
        Manifest.verifies_name (Manifest.verifies manifest);
+       Manifest.step_name (Manifest.step manifest);
      ]
     @ List.map pack_summary (Manifest.packs manifest)
     @ List.map
@@ -1755,6 +1789,7 @@ type canonical = {
   approvals : (Manifest.kind * Manifest.approval) list;
   markers : string list;
   each_test : bool option;
+  step : Manifest.step option;
   warn_only : bool option;
   tiers : (string * string * string) list;
 }
@@ -1785,6 +1820,9 @@ let canonical =
     in
     let* markers = some_of [ "A"; "B_2"; "CLAUDECODE" ] in
     let* each_test = option bool in
+    let* step =
+      option (oneof_list Manifest.[ Change; Step_approval; Promises ])
+    in
     let* warn_only = option bool in
     let* tiers =
       some_of
@@ -1805,6 +1843,7 @@ let canonical =
         approvals;
         markers;
         each_test;
+        step;
         warn_only;
         tiers;
       })
@@ -1845,11 +1884,15 @@ let render_canonical c =
                (Printf.sprintf "%S" (Manifest.approval_name approval)))
            c.approvals
         @ array "agent-markers" c.markers
-        @
-        match c.each_test with
-        | Some true -> [ line "verifies" "\"each-test\"" ]
-        | Some false -> [ line "verifies" "\"whole-run\"" ]
-        | None -> []);
+        @ (match c.each_test with
+          | Some true -> [ line "verifies" "\"each-test\"" ]
+          | Some false -> [ line "verifies" "\"whole-run\"" ]
+          | None -> [])
+        @ Option.to_list
+            (Option.map
+               (fun step ->
+                 line "step" (Printf.sprintf "%S" (Manifest.step_name step)))
+               c.step));
       table "check"
         ((match c.warn_only with
            | Some flag -> [ line "warn-only" (string_of_bool flag) ]
@@ -1888,6 +1931,7 @@ let a_manifest_in_the_canonical_form_reads_back_its_values =
          =
          if c.each_test = Some true then Manifest.Each_test
          else Manifest.Whole_run)
+      && Manifest.step manifest = Option.value c.step ~default:Manifest.Change
       && Manifest.warn_only manifest = (c.warn_only = Some true)
       && List.sort compare
            (List.map
@@ -2349,6 +2393,7 @@ let tests =
     case "agent markers keep their order" agent_markers_keep_their_order;
     case "each kind takes its own approval" each_kind_takes_its_own_approval;
     case "each word of proof has its name" each_word_of_proof_has_its_name;
+    case "each value of step reads" each_value_of_step_reads;
     case "every location kind reads" every_location_kind_reads;
     case "a default branch reads" a_default_branch_reads;
     case "an empty array is an absent key" an_empty_array_is_an_absent_key;

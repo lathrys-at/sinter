@@ -175,6 +175,7 @@ the key (section 5).
 | `proof.<kind>` | string: `"declaration"` or `"approval"` | `"declaration"` | approval | 10.1 | 1.0 |
 | `proof.agent-markers` | array of strings | empty: the tool's built-in list only | the commands that write the ledger | 10.2 | 1.0 |
 | `proof.verifies` | string: `"whole-run"` or `"each-test"` | `"whole-run"` | promises | 10.3 | 1.0 |
+| `proof.step` | string: `"change"`, `"approval"`, or `"promises"` | `"change"` | steps without promises | 10.4 | 1.0 |
 | `check.warn-only` | boolean | `false` | findings: tiers | 11.3 | 1.0 |
 | `check.tiers.<gate>.<class>` | string: a tier | the tier in algebra.md section 9 | findings: tiers | 11.2 | 1.0 |
 
@@ -655,6 +656,7 @@ questions:
 |---|---|---|
 | Is an item approved? | its declaration, or the approval of a person in the ledger | `proof.<kind>` (section 10.1) |
 | Is a promised `@verifies` met? | a passing test, with the coverage of the whole run or the coverage of each test | `proof.verifies` (section 10.3) |
+| Is a step without promises done? | a change in its scope, or the approval of a person in the ledger; or nothing, so that each step needs promises | `proof.step` (section 10.4) |
 
 ### 10.1 Approval
 
@@ -718,6 +720,24 @@ The rule applies in three places:
 
 The tier of the class `unmeasured` is a separate setting. It decides
 how hard an edge at rung `unmeasured` bites as a finding.
+
+### 10.4 Steps without promises
+
+`proof.step` is `"change"`, `"approval"`, or `"promises"`. The default
+is `"change"`. The value decides when a step without promises is done
+([vocabulary.md](vocabulary.md) section 10.5). It does not change when
+a step with promises is done.
+
+| value | a step without promises is done when |
+|---|---|
+| `"change"` | a hunk of the diff changes a file inside the effective scope of the step |
+| `"approval"` | the ledger holds an approval of the step that matches its current step hash ([ledger.md](ledger.md) section 5.1) |
+| `"promises"` | never: each step needs promises |
+
+Under each value, the step is done only when every `@verifies` edge in
+its scope is also at a rung that section 10.3 allows. Under
+`"promises"`, each step without promises of an open plan is the
+finding `step-without-promises` ([algebra.md](algebra.md) section 9).
 
 ## 11. `[check]`: findings and tiers
 
@@ -795,6 +815,7 @@ them, except as the last column says.
 | historical paths | `.plans/**/*.log.md` | add paths |
 | the default of `proof.<kind>` | `"declaration"` | write `"approval"` |
 | the default of `proof.verifies` | `"whole-run"` | write `"each-test"` |
+| the default of `proof.step` | `"change"` | write `"approval"` or `"promises"` |
 | the tier of each pair of a gate and a built-in class | algebra.md section 9 | write another tier |
 | the default of `default-branch` | `"main"` | write another branch |
 | the default of `check.warn-only` | `false` | write `true` |
@@ -821,7 +842,7 @@ The manifest yields facts of the kind `setting`, in the category
   `[proof]` that takes one value, yields one setting fact with its
   default value when the manifest does not write it. The keys of
   `[proof]` that take one value are `proof.<kind>` for each of the
-  four kinds and `proof.verifies`.
+  four kinds, `proof.verifies`, and `proof.step`.
 - Each built-in member of `paths.exempt` and of `paths.historical`
   yields one setting fact. The value of the member for a plan file is
   the path of the plan file. The value of the member for the manifest
@@ -1001,6 +1022,7 @@ does not mean "reports more findings".
 | `proof.<kind>` | `"declaration"` to `"approval"` | `"approval"` to `"declaration"` | |
 | `proof.agent-markers` | a name added | a name removed | |
 | `proof.verifies` | `"whole-run"` to `"each-test"` | `"each-test"` to `"whole-run"` | |
+| `proof.step` | to `"promises"` | from `"promises"` | between `"change"` and `"approval"` |
 | `check.warn-only` | `true` to `false` | `false` to `true` | |
 | `check.tiers.<gate>.<class>` | the tier that applies rises | the tier that applies falls | the tier that applies stays the same |
 

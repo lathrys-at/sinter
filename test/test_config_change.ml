@@ -39,6 +39,7 @@ let defaults =
     "setting:proof.design \"declaration\"";
     "setting:proof.plan \"declaration\"";
     "setting:proof.req \"declaration\"";
+    "setting:proof.step \"change\"";
     "setting:proof.verifies \"whole-run\"";
   ]
 
@@ -71,6 +72,7 @@ let every_setting_gives_its_entries () =
       "setting:proof.design \"declaration\"";
       "setting:proof.plan \"approval\"";
       "setting:proof.req \"approval\"";
+      "setting:proof.step \"promises\"";
       "setting:proof.verifies \"each-test\"";
       "setting:scan.namespaces.gh \"[1-9][0-9]*\"";
       "setting:scan.packs.markdown.files=!old/ \"!old/\"";
@@ -98,6 +100,7 @@ let every_setting_gives_its_entries () =
         design = \"declaration\"\n\
         agent-markers = [\"MY_AGENT\"]\n\
         verifies = \"each-test\"\n\
+        step = \"promises\"\n\
         [check]\n\
         warn-only = true\n\
         tiers.review.dangling = \"warn\"\n\
@@ -190,6 +193,8 @@ let what_the_base_side_leaves_out =
     ("agent markers that are not strings", "[proof]\nagent-markers = [1]\n");
     ("a verifies that is not a word", "[proof]\nverifies = \"always\"\n");
     ("a verifies of the wrong type", "[proof]\nverifies = true\n");
+    ("a step that is not a word", "[proof]\nstep = \"approve\"\n");
+    ("a step of the wrong type", "[proof]\nstep = [\"promises\"]\n");
     ( "the tables and keys of an older layout",
       "[plan]\n\
        exempt = [\"a/\"]\n\
@@ -235,6 +240,7 @@ let a_written_default_is_no_change () =
         decision = \"declaration\"\n\
         plan = \"declaration\"\n\
         verifies = \"whole-run\"\n\
+        step = \"change\"\n\
         [check]\n\
         warn-only = false\n")
 
@@ -340,6 +346,18 @@ let rows =
       "[proof]\nverifies = \"each-test\"\n",
       "proof.verifies: \"whole-run\" -> \"each-test\" (strengthens)",
       "proof.verifies: \"each-test\" -> \"whole-run\" (weakens)" );
+    ( "",
+      "[proof]\nstep = \"promises\"\n",
+      "proof.step: \"change\" -> \"promises\" (strengthens)",
+      "proof.step: \"promises\" -> \"change\" (weakens)" );
+    ( "[proof]\nstep = \"approval\"\n",
+      "[proof]\nstep = \"promises\"\n",
+      "proof.step: \"approval\" -> \"promises\" (strengthens)",
+      "proof.step: \"promises\" -> \"approval\" (weakens)" );
+    ( "",
+      "[proof]\nstep = \"approval\"\n",
+      "proof.step: \"change\" -> \"approval\" (changes)",
+      "proof.step: \"approval\" -> \"change\" (changes)" );
   ]
 
 let each_row_of_the_direction_table_holds_both_ways () =
@@ -660,6 +678,10 @@ let config =
         members [ "proof"; "agent-markers" ] [ "CI_AGENT"; "MY_BOT" ];
         optional [ "proof"; "verifies" ]
           (map (fun c -> Text c) (oneof_list [ "whole-run"; "each-test" ]));
+        optional [ "proof"; "step" ]
+          (map
+             (fun c -> Text c)
+             (oneof_list [ "change"; "approval"; "promises" ]));
       ]
     >|= List.concat)
 
@@ -926,6 +948,7 @@ let names =
     "proof";
     "req";
     "verifies";
+    "step";
     "historical";
     "ledger";
     "agent-markers";
@@ -950,6 +973,7 @@ let wild_value =
       "\"warn\"";
       "\"approval\"";
       "\"each-test\"";
+      "\"promises\"";
       "[\"x\", \"x\"]";
     ]
 
@@ -986,6 +1010,7 @@ let proof_defaults =
     ([ "proof"; "decision" ], "declaration");
     ([ "proof"; "plan" ], "declaration");
     ([ "proof"; "verifies" ], "whole-run");
+    ([ "proof"; "step" ], "change");
   ]
 
 let each_key_of_proof_has_its_written_value_or_its_default =

@@ -14,8 +14,9 @@
 
     The records take the values that hold when the ledger, the evidence, and the
     session are absent: every plan is open, no plan and no step is active,
-    nothing is declined, and an item of a kind that needs approval is not
-    approved. *)
+    nothing is declined, an item of a kind that needs approval is not approved,
+    and a step without promises is not approved while [proof.step] is
+    ["approval"]. Every other step is approved when its plan is. *)
 
 type t
 (** The facts of one tree. *)
@@ -56,16 +57,19 @@ val iter_identities :
     names. [within] is [true] for every path when absent. *)
 
 val needs_changes : t -> bool
-(** [needs_changes facts] is [true] when a step of a plan has no promise. Only
-    then does {!records} read its argument [changed]. *)
+(** [needs_changes facts] is [true] when [proof.step] is ["change"] and a step
+    of a plan has no promise. Only then does {!records} read its argument
+    [changed]. *)
 
 val records : t -> changed:string list -> Jsonl.record list
 (** [records facts ~changed] is every record of [facts], in the order of
     [(kind, path, line, col, id)], with each record that has no path after the
     others, in the order of their ids. [changed] is the paths of the files that
     the diff between the base and the working tree changes, of every pack and of
-    no pack; a step with no promise is done only when a path of [changed] is in
-    its scope.
+    no pack. A step with no promise is done only when [proof.step] is ["change"]
+    and a path of [changed] is in its scope. The record of each step holds its
+    step hash, [csh]: the SHA-256 of the canonical JSON object [{"scope":[...]}]
+    with the globs of its effective scope, each once, sorted in byte order.
 
     Every string of the result is valid UTF-8 when every path of [make] is. *)
 

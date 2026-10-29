@@ -21,6 +21,7 @@ let settings =
       ("proof.<kind>", 1, 0);
       ("proof.agent-markers", 1, 0);
       ("proof.verifies", 1, 0);
+      ("proof.step", 1, 0);
       ("check.warn-only", 1, 0);
       ("check.tiers.<gate>.<class>", 1, 0);
     ]
@@ -80,6 +81,13 @@ type verifies = Whole_run | Each_test
 let verifies_name = function
   | Whole_run -> "whole-run"
   | Each_test -> "each-test"
+
+type step = Change | Step_approval | Promises
+
+let step_name = function
+  | Change -> "change"
+  | Step_approval -> "approval"
+  | Promises -> "promises"
 
 type expected = A_string | A_version | True_or_false | Strings | A_table
 
@@ -349,6 +357,7 @@ type t = {
   approvals : (kind * approval) list;
   agent_markers : string list;
   verifies : verifies;
+  step : step;
 }
 
 type reading = {
@@ -369,6 +378,7 @@ type reading = {
   mutable approvals : (kind * approval) list;
   mutable agent_markers : string list;
   mutable verifies : verifies;
+  mutable step : step;
 }
 
 type place =
@@ -585,7 +595,9 @@ let paths_place reading =
           | None -> Error (unknown_key ~table:[ "paths" ] ~valid name)))
 
 let proof_place reading =
-  let valid = [ "agent-markers"; "verifies" ] @ List.map kind_name kinds in
+  let valid =
+    [ "agent-markers"; "step"; "verifies" ] @ List.map kind_name kinds
+  in
   Varying
     (fun (key : Toml.key) ->
       match key.name with
@@ -593,6 +605,11 @@ let proof_place reading =
           Ok
             (word reading ~key:[ "proof"; "verifies" ] [ Whole_run; Each_test ]
                verifies_name (fun value -> reading.verifies <- value))
+      | "step" ->
+          Ok
+            (word reading ~key:[ "proof"; "step" ]
+               [ Change; Step_approval; Promises ] step_name (fun value ->
+                 reading.step <- value))
       | "agent-markers" ->
           Ok
             (Texts
@@ -812,6 +829,7 @@ let new_reading () =
     approvals = [];
     agent_markers = [];
     verifies = Whole_run;
+    step = Change;
   }
 
 let check_runners_of_packs reading =
@@ -899,6 +917,7 @@ let of_string text =
                     approvals = reading.approvals;
                     agent_markers = reading.agent_markers;
                     verifies = reading.verifies;
+                    step = reading.step;
                   })
 
 type load_error = Missing | Unreadable of string | Invalid of error list
@@ -962,3 +981,4 @@ let approval (manifest : t) kind =
 
 let agent_markers (manifest : t) = manifest.agent_markers
 let verifies (manifest : t) = manifest.verifies
+let step (manifest : t) = manifest.step

@@ -660,10 +660,11 @@ let make manifest files =
   }
 
 let needs_changes facts =
-  List.exists
-    (fun plan ->
-      List.exists (fun (step : step) -> step.promises = []) plan.steps)
-    facts.plans
+  Manifest.step facts.manifest = Manifest.Change
+  && List.exists
+       (fun plan ->
+         List.exists (fun (step : step) -> step.promises = []) plan.steps)
+       facts.plans
 
 type fact = {
   key : string * string * int * int * string;
@@ -901,14 +902,17 @@ let promise_id plan step (promise : promise) =
   String.concat ":"
     [ "promise"; step_id plan step; promise.word; promise.target ]
 
+let step_hash scope =
+  Sha256.hex (Jsonl.to_string [ ("scope", Jsonl.strings (canonical scope)) ])
+
 let plan_records facts ~changed plan =
+  let plan_approved = not (needs_approval facts.manifest Manifest.Plan) in
   let plan_record =
     located ~kind:"plan" ~id:(plan_fact_id plan) ~path:plan.path ~span:plan.span
       ([
          ("slug", Jsonl.string plan.slug);
          ("scope", Jsonl.strings plan.scope);
-         ( "approved",
-           Jsonl.bool (not (needs_approval facts.manifest Manifest.Plan)) );
+         ("approved", Jsonl.bool plan_approved);
          ("active", Jsonl.bool false);
          ("open", Jsonl.bool true);
          ("csh", Jsonl.string (commitment_hash plan));
@@ -938,10 +942,19 @@ let plan_records facts ~changed plan =
     let verified =
       not (List.exists in_scope (Lazy.force facts.lookups).verifies)
     in
-    let done_ =
-      verified
-      && if total = 0 then List.exists in_scope changed else met = total
+    let own_approval =
+      total = 0 && Manifest.step facts.manifest = Manifest.Step_approval
     in
+    let approved = plan_approved && not own_approval in
+    let settled =
+      if total > 0 then met = total
+      else
+        match Manifest.step facts.manifest with
+        | Manifest.Change -> List.exists in_scope changed
+        | Manifest.Step_approval -> approved
+        | Manifest.Promises -> false
+    in
+    let done_ = verified && settled in
     located ~kind:"step" ~id:step_id ~path:plan.path ~span:step.span
       [
         ("plan", Jsonl.string (full_form plan));
@@ -953,6 +966,8 @@ let plan_records facts ~changed plan =
         ("met", Jsonl.int met);
         ("total", Jsonl.int total);
         ("done", Jsonl.bool done_);
+        ("csh", Jsonl.string (step_hash scope));
+        ("approved", Jsonl.bool approved);
         ("active", Jsonl.bool false);
       ]
     :: List.map

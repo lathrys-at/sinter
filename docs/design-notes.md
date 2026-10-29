@@ -725,9 +725,13 @@ and `sinter status` says why.
   session, never truth. Where the **harness**, the program that runs the
   agent, gives a session id, Sinter keeps the step per session (section
   11.18), so parallel sessions in one worktree do not collide.
-- **A step with a scope and no promises is a refactor step.** It is
-  done when a change touched its scope and the evidence still passes.
-  That is a weaker condition, and visibly so.
+- **A step with a scope and no promises is a refactor step.** By
+  default, it is done when a change touched its scope and the evidence
+  still passes. That is a weaker condition, and visibly so. A project
+  that wants more sets `proof.step`: to `"approval"`, so that a person
+  approves each refactor step in the ledger, or to `"promises"`, so
+  that every step needs promises and a refactor step is a finding
+  (`spec/manifest.md` section 10.4).
 - **Plans are exempt from revision discipline.** Sinter judges a plan by
   its commitments, never by its text (section 6.2). The count of its
   approved amendments serves as its revision.

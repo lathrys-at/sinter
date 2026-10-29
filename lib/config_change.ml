@@ -2,7 +2,16 @@
 (* Copyright 2026 The Sinter Authors *)
 
 type value = String of string | Boolean of bool
-type rule = Neutral | Reads | Spares | Namespace | Demands | Toward of value
+
+type rule =
+  | Neutral
+  | Reads
+  | Spares
+  | Namespace
+  | Demands
+  | Toward of value
+  | Strictest of value
+
 type tier = { builtin : Finding_class.tier; written : Finding_class.tier }
 type kind = Plain of rule | Tier of tier
 
@@ -157,6 +166,12 @@ let approval = Manifest.approval_name Manifest.Approval
 let whole_run = Manifest.verifies_name Manifest.Whole_run
 let each_test = Manifest.verifies_name Manifest.Each_test
 
+let steps =
+  List.map Manifest.step_name Manifest.[ Change; Step_approval; Promises ]
+
+let change = Manifest.step_name Manifest.Change
+let promises = Manifest.step_name Manifest.Promises
+
 let read_entries ~plan_file ~location document =
   let exempt member =
     not
@@ -197,6 +212,9 @@ let read_entries ~plan_file ~location document =
       at [ "proof" ] "verifies" document
         (text [ "proof"; "verifies" ] (Toward (String each_test))
            ~valid:(one_of [ whole_run; each_test ]));
+      at [ "proof" ] "step" document
+        (text [ "proof"; "step" ] (Strictest (String promises))
+           ~valid:(one_of steps));
       at [ "check" ] "warn-only" document
         (flag [ "check"; "warn-only" ] (Toward (Boolean false)));
       tiers document;
@@ -207,6 +225,7 @@ let defaults =
     ([ "default-branch" ], String "main", Neutral);
     ([ "check"; "warn-only" ], Boolean false, Toward (Boolean false));
     ([ "proof"; "verifies" ], String whole_run, Toward (String each_test));
+    ([ "proof"; "step" ], String change, Strictest (String promises));
   ]
   @ List.map
       (fun kind ->
@@ -302,6 +321,11 @@ let direction rule form =
       | Changed _ -> Changes)
   | Demands -> if grows form then Strengthens else Weakens
   | Toward stricter -> if now form = stricter then Strengthens else Weakens
+  | Strictest strictest -> (
+      match form with
+      | Changed { now; _ } when now = strictest -> Strengthens
+      | Changed { old; _ } when old = strictest -> Weakens
+      | Changed _ | Added _ | Removed _ -> Changes)
 
 type pair = Gone of entry | Kept of entry option * entry
 

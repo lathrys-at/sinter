@@ -40,6 +40,7 @@ type t =
   | Invalid_target
   | Duplicate
   | Scope_outside_plan
+  | Step_without_promises
   | Misplaced_plan
   | Missing_plan_id
   | Unpinned

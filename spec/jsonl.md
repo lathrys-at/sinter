@@ -229,7 +229,21 @@ Example: this plan file gives the canonical bytes below it.
 | `refactor` | bool | the step has no promises |
 | `met` `total` | int | *derived* promise counts |
 | `done` | bool | *derived* |
+| `csh` | string | the step hash, as the text after this table gives it |
+| `approved` | bool | *derived*: the step is approved ([algebra.md](algebra.md) section 6.5) |
+| `approval` | string | *derived*: the id of the `approval` entry of the ledger that approves the step ([ledger.md](ledger.md) section 5.1); omitted when none |
 | `active` | bool | *derived* from the session; `false` when there is no session |
+
+The **step hash** (`csh` of a step) is SHA-256 over canonical bytes
+that hold the effective scope of the step. The canonical bytes are one
+JSON object in the canonical form of RFC 8785 (JCS) that section 2
+uses, with no LF at the end. The object has one key, `scope`: the
+globs of the effective scope of the step, each glob once, sorted in
+byte order, as the commitment-set hash writes the scope of a step. The
+rules of section 2 for the values of a record do not apply to this
+object. Example: a step without promises with the line
+`@scope src/auth/**, src/**, src/auth/**` has the canonical bytes
+`{"scope":["src/**","src/auth/**"]}`.
 
 **`test`** — a test, or a group of tests, that a language pack finds
 ([packs.md](packs.md) section 8). The span of the record is the node
@@ -352,7 +366,7 @@ conditions:
 |---|---|---|
 | `plan` | string | the full form of the plan ([vocabulary.md](vocabulary.md) section 4.3) |
 | `branch` | string | the branch the approval was written from |
-| `approval` | string | the id of the latest `approval` entry |
+| `approval` | string | the id of the latest `approval` entry whose subject is the plan |
 | `scope` | array of string | union of the approved step scopes |
 | `declares` | array of string | slugs the claim promises to declare |
 | `ts` | string | RFC 3339 timestamp of the approval |

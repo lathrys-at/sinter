@@ -519,6 +519,45 @@ let scope_outside_plan_names_the_globs_outside_the_plan () =
        has a/b, pkg/ in its scope, outside the scope of the plan";
     ]
 
+let step_without_promises_sits_at_each_step_without_promises () =
+  let files =
+    [
+      plan
+        "\n\
+         ## Tidy\n\n\
+         @scope lib/**\n\n\
+         ## Write\n\n\
+         @req a\n\n\
+         ## Bare ##\n\n\
+         @scope docs/\n";
+      ( ".plans/q.md",
+        "# Q\n\n@plan q@0a1b2c\n@scope **\n\n## Only\n\n@scope a/**\n" );
+    ]
+  in
+  check ~extra:"[proof]\nstep = \"promises\"\n"
+    Finding_class.Step_without_promises files
+    [
+      ".plans/p.md:6:1-6:8 | finding:step-without-promises:step:p/tidy | \
+       step:p/tidy has no promise, and proof.step is \"promises\"";
+      ".plans/p.md:14:1-14:11 | finding:step-without-promises:step:p/bare | \
+       step:p/bare has no promise, and proof.step is \"promises\"";
+      ".plans/q.md:6:1-6:8 | finding:step-without-promises:step:q@0a1b2c/only \
+       | step:q@0a1b2c/only has no promise, and proof.step is \"promises\"";
+    ];
+  List.iter
+    (fun extra -> check ~extra Finding_class.Step_without_promises files [])
+    [ ""; "[proof]\nstep = \"change\"\n"; "[proof]\nstep = \"approval\"\n" ]
+
+let step_without_promises_is_not_ackable_and_has_no_fix () =
+  List.iter
+    (fun (finding : Finding.t) ->
+      if finding.finding_class = Finding_class.Step_without_promises then begin
+        Alcotest.(check bool) "not ackable" false finding.ackable;
+        Alcotest.(check bool) "no fix" true (Option.is_none finding.fix)
+      end)
+    (findings ~extra:"[proof]\nstep = \"promises\"\n"
+       [ plan "\n## Tidy\n\n@scope lib/**\n" ])
+
 let scope_overlap_sits_at_the_later_step () =
   check Finding_class.Scope_overlap
     [
@@ -1547,5 +1586,9 @@ let tests =
     case "cycle takes its subject by id, not by place"
       cycle_takes_its_subject_by_id_not_by_place;
     case "a historical path gives no finding" a_historical_path_gives_no_finding;
+    case "step-without-promises sits at each step without promises"
+      step_without_promises_sits_at_each_step_without_promises;
+    case "step-without-promises is not ackable and has no fix"
+      step_without_promises_is_not_ackable_and_has_no_fix;
     case "the findings are sorted" the_findings_are_sorted;
   ]

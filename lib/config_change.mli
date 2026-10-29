@@ -18,9 +18,10 @@ val side : plan_file:(string -> bool) -> location:string -> Toml.table -> side
     whose TOML document is [document]. It holds:
 
     - one entry for each of [default-branch], [proof.req], [proof.design],
-      [proof.decision], [proof.plan], [proof.verifies], and [check.warn-only]:
-      the value that [document] writes, else the default ["main"],
-      ["declaration"] for each kind, ["whole-run"], or [false];
+      [proof.decision], [proof.plan], [proof.verifies], [proof.step], and
+      [check.warn-only]: the value that [document] writes, else the default
+      ["main"], ["declaration"] for each kind, ["whole-run"], ["change"], or
+      [false];
     - one entry for each other key of one value: [scan.packs.<name>.version],
       [scan.namespaces.<ns>], and [check.tiers.<gate>.<class>], whose id is
       [gate:<gate>/<class>] and whose value is the written tier;
@@ -50,7 +51,7 @@ val side : plan_file:(string -> bool) -> location:string -> Toml.table -> side
     - a kind under [paths] other than [req], [design], and [decision], and a
       kind under [proof] other than these three and [plan];
     - a value that is not one of the words of its key: a tier, and the value of
-      [proof.<kind>] and of [proof.verifies];
+      [proof.<kind>], [proof.verifies], and [proof.step];
     - [sinter-spec], and each key under [scan.packs.<name>.runners.<runner>]. *)
 
 val entries : side -> (string * value) list
@@ -123,7 +124,10 @@ val changes : base:side -> side -> change list
       ["declaration"] weakens;
     - a member of [proof.agent-markers]: added strengthens, removed weakens;
     - [proof.verifies]: ["each-test"] in the working tree strengthens,
-      ["whole-run"] weakens. *)
+      ["whole-run"] weakens;
+    - [proof.step]: ["promises"] in the working tree strengthens, ["promises"]
+      in the base weakens, and a change between ["change"] and ["approval"]
+      changes. *)
 
 val detail : change -> string
 (** [detail change] is the detail of the finding of [change]:
