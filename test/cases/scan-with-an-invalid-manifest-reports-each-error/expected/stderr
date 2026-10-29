@@ -1,7 +1,15 @@
 error: unknown key 'historic' in [paths]
  --> sinter.toml:5:1
+  |
+5 | historic = ["x/"]
+  | ^^^^^^^^
+  |
   = help: did you mean 'historical'?
 
 error: 'warn-only' takes true or false, not a string
  --> sinter.toml:8:13
+  |
+8 | warn-only = "yes"
+  |             ^^^^^
+  |
   = help: write true or false

@@ -356,13 +356,20 @@ let problem_text = function
         "write a name of letters, digits, and '_' that does not start with a \
          digit" )
 
-let explain ~path = function
+let line_of lines number =
+  Option.bind lines (fun lines ->
+      if number >= 1 && number <= Line_index.count lines then
+        Some (Line_index.content lines number)
+      else None)
+
+let explain ~path ?lines = function
   | At (span, problem) ->
       let fault, help = problem_text problem in
       {
         Error_text.fault;
         help;
-        place = Some { Error_text.path; span; line = None };
+        place =
+          Some { Error_text.path; span; line = line_of lines span.start.line };
       }
   | No_pack ->
       {
@@ -966,7 +973,10 @@ let of_string text =
                     step = reading.step;
                   })
 
-type load_error = Missing | Unreadable of string | Invalid of error list
+type load_error =
+  | Missing
+  | Unreadable of string
+  | Invalid of { text : string; errors : error list }
 
 let read_all path =
   if not (Sys.file_exists path) then Error Missing
@@ -981,7 +991,7 @@ let load path =
   | Ok text -> (
       match of_string text with
       | Ok manifest -> Ok manifest
-      | Error errors -> Error (Invalid errors))
+      | Error errors -> Error (Invalid { text; errors }))
 
 let document (manifest : t) = manifest.document
 let sinter_spec (manifest : t) = manifest.sinter_spec

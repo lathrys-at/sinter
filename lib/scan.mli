@@ -14,8 +14,11 @@ type error =
       (** nothing is at the path of the manifest that the caller named *)
   | Unreadable_manifest of { path : string; reason : string }
       (** the manifest does not open or read *)
-  | Invalid_manifest of { path : string; errors : Manifest.error list }
-      (** the manifest holds errors, in the order of their places *)
+  | Invalid_manifest of {
+      path : string;
+      text : string;  (** the text of the manifest *)
+      errors : Manifest.error list;
+    }  (** the manifest holds errors, in the order of their places *)
   | Two_packs of { file : string; pack : string; other : string }
       (** a file is in the files of two packs; [pack] comes before [other] in
           byte order *)
@@ -45,7 +48,8 @@ type error =
 val explain : error -> Error_text.t list
 (** [explain error] says what is wrong and what to do, for the person who runs
     the tool: one error for each error of an invalid manifest, as
-    {!Manifest.explain} gives it, and one error with no place otherwise. *)
+    {!Manifest.explain} gives it with the lines of the text of the manifest, and
+    one error with no place otherwise. *)
 
 val escape_path : string -> string
 (** [escape_path path] is [path] with each byte that is not part of a valid

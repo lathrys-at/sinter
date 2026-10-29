@@ -1785,18 +1785,22 @@ let load_reads_a_file () =
             (List.length (Manifest.packs manifest))
       | Error _ -> Alcotest.fail "the file did not read")
 
-let load_gives_the_errors_of_the_text () =
+let load_gives_the_errors_and_the_text () =
   with_file "[chek]\n" (fun path ->
       match Manifest.load path with
       | Error
           (Manifest.Invalid
-             [
-               Manifest.At
-                 ( { start = { line = 1; column = 2 }; _ },
-                   Manifest.Unknown_key _ );
-             ]) ->
+             {
+               text = "[chek]\n";
+               errors =
+                 [
+                   Manifest.At
+                     ( { start = { line = 1; column = 2 }; _ },
+                       Manifest.Unknown_key _ );
+                 ];
+             }) ->
           ()
-      | _ -> Alcotest.fail "no error of the unknown key")
+      | _ -> Alcotest.fail "no error of the unknown key with the text")
 
 let load_of_no_file_is_missing () =
   let path =
@@ -2817,7 +2821,7 @@ let tests =
       a_name_that_varies_is_any_name_but_a_fixed_one;
     case "the implemented version is 1.0" the_implemented_version_is_1_0;
     case "load reads a file" load_reads_a_file;
-    case "load gives the errors of the text" load_gives_the_errors_of_the_text;
+    case "load gives the errors and the text" load_gives_the_errors_and_the_text;
     case "load of no file is missing" load_of_no_file_is_missing;
     case "load of a folder is unreadable" load_of_a_folder_is_unreadable;
     case "load of a path under a file is missing"

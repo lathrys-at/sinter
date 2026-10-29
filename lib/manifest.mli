@@ -178,11 +178,13 @@ val newer_keys : sinter_spec:Major_minor.t -> Toml.table -> error list
     order of their places. {!of_string} gives these errors when the manifest
     states [sinter-spec]. *)
 
-val explain : path:string -> error -> Error_text.t
-(** [explain ~path error] says what is wrong and what to write instead, for the
-    person who runs the tool, in the manifest at [path]. For [At], the place is
-    [path] and the span of the error, with no line. For [No_pack], the fault
-    names [path], and there is no place. *)
+val explain : path:string -> ?lines:Line_index.t -> error -> Error_text.t
+(** [explain ~path ~lines error] says what is wrong and what to write instead,
+    for the person who runs the tool, in the manifest at [path]. [lines] are the
+    lines of the text of the manifest. For [At], the place is [path] and the
+    span of the error, with the line of the start of the span when [lines] holds
+    it, and no line otherwise. For [No_pack], the fault names [path], and there
+    is no place. *)
 
 (** {1 Reading} *)
 
@@ -227,7 +229,8 @@ type load_error =
   | Missing  (** nothing is at the path *)
   | Unreadable of string
       (** the file did not open or read, for example a folder; the reason *)
-  | Invalid of error list  (** the text holds errors, as {!of_string} gives *)
+  | Invalid of { text : string; errors : error list }
+      (** the text [text] holds errors, as {!of_string} gives them *)
 
 val load : string -> (t, load_error) result
 (** [load path] reads the file at [path] and then its text, as {!of_string}

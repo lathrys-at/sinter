@@ -6,7 +6,11 @@ type error =
   | No_manifest
   | Missing_manifest of string
   | Unreadable_manifest of { path : string; reason : string }
-  | Invalid_manifest of { path : string; errors : Manifest.error list }
+  | Invalid_manifest of {
+      path : string;
+      text : string;
+      errors : Manifest.error list;
+    }
   | Two_packs of { file : string; pack : string; other : string }
   | Plan_not_read of string
   | Pack_not_available of string
@@ -81,8 +85,9 @@ let explain = function
           ( Printf.sprintf "cannot read the manifest %s: %s" path reason,
             "name a manifest that is a file that you can read" );
       ]
-  | Invalid_manifest { path; errors } ->
-      List.map (Manifest.explain ~path) errors
+  | Invalid_manifest { path; text; errors } ->
+      let lines = Line_index.make text in
+      List.map (Manifest.explain ~path ~lines) errors
   | Two_packs { file; pack; other } ->
       [
         plain
@@ -204,8 +209,8 @@ let load_manifest ~path ~shown ~missing =
   | Error Manifest.Missing -> Error missing
   | Error (Manifest.Unreadable reason) ->
       Error (Unreadable_manifest { path = shown; reason })
-  | Error (Manifest.Invalid errors) ->
-      Error (Invalid_manifest { path = shown; errors })
+  | Error (Manifest.Invalid { text; errors }) ->
+      Error (Invalid_manifest { path = shown; text; errors })
 
 let manifest_location ~root path =
   match (Unix.realpath root, Unix.realpath path) with

@@ -169,3 +169,8 @@
   messages of those modules whose part after "; " stated a fact now
   state an action there, for example "write ']' here" in the place of
   "expected ']'".
+- The mark of a manifest error stops at the column after the last
+  character of its line when the span goes on past it. A syntax error
+  at the end of a line thus shows one caret after the last character.
+  A span that starts further right shows no source line (ruling of the
+  lead).

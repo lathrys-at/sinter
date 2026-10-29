@@ -1,15 +1,31 @@
 error: 'historical' belongs in [paths]
  --> sinter.toml:5:1
+  |
+5 | historical = ["docs/log/"]
+  | ^^^^^^^^^^
+  |
   = help: move it to [paths]
 
 error: unknown key 'plan' at the top level
  --> sinter.toml:7:2
+  |
+7 | [plan]
+  |  ^^^^
+  |
   = help: did you mean 'scan'?
 
 error: unknown key 'ledger' at the top level
- --> sinter.toml:11:2
-  = help: remove this key, or correct its name
+  --> sinter.toml:11:2
+   |
+11 | [ledger]
+   |  ^^^^^^
+   |
+   = help: remove this key, or correct its name
 
 error: unknown key 'evidence' at the top level
- --> sinter.toml:15:2
-  = help: remove this key, or correct its name
+  --> sinter.toml:15:2
+   |
+15 | [evidence]
+   |  ^^^^^^^^
+   |
+   = help: remove this key, or correct its name

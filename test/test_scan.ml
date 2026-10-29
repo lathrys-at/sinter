@@ -514,7 +514,8 @@ let every_error =
     Scan.No_manifest;
     Scan.Missing_manifest "m.toml";
     Scan.Unreadable_manifest { path = "m.toml"; reason = "Is a directory" };
-    Scan.Invalid_manifest { path = "m.toml"; errors = [ Manifest.No_pack ] };
+    Scan.Invalid_manifest
+      { path = "m.toml"; text = "[scan]\n"; errors = [ Manifest.No_pack ] };
     Scan.Two_packs { file = "a.md"; pack = "markdown"; other = "ocaml" };
     Scan.Plan_not_read ".plans/p.md";
     Scan.Pack_not_available "ocaml";
@@ -728,7 +729,8 @@ let each_error_says_what_is_wrong_and_what_to_do () =
          Scan.No_manifest;
          Scan.Missing_manifest "m.toml";
          Scan.Unreadable_manifest { path = "m.toml"; reason = "Is a directory" };
-         Scan.Invalid_manifest { path = "m.toml"; errors = manifest_error };
+         Scan.Invalid_manifest
+           { path = "m.toml"; text = "[scan]\n"; errors = manifest_error };
          Scan.Two_packs { file = "a.md"; pack = "markdown"; other = "ocaml" };
          Scan.Plan_not_read ".plans/p.md";
          Scan.Pack_not_available "ocaml";
@@ -749,6 +751,129 @@ let each_error_says_what_is_wrong_and_what_to_do () =
          Scan.Reader (Markdown.Grammar (Sinter_bridge.Language.Version 9));
          Scan.Reader (Markdown.Query (Sinter_bridge.Query.Not_utf_8 3));
        ])
+
+let blocks text =
+  match Manifest.of_string text with
+  | Ok _ -> [ "no error" ]
+  | Error errors ->
+      let buffer = Buffer.create 256 in
+      let ppf = Format.formatter_of_buffer buffer in
+      Style.prepare ppf `None;
+      Render.errors ppf
+        (Scan.explain
+           (Scan.Invalid_manifest { path = "sinter.toml"; text; errors }));
+      Format.pp_print_flush ppf ();
+      String.split_on_char '\n' (Buffer.contents buffer)
+
+let markdown_pack = "[scan]\npacks.markdown.files = [\"**/*.md\"]\n"
+
+let a_manifest_error_shows_its_source_line () =
+  List.iter
+    (fun (name, text, expected) ->
+      Alcotest.(check (list string)) name expected (blocks text))
+    [
+      ( "a key",
+        markdown_pack ^ "[paths]\nhistoric = []\n",
+        [
+          "error: unknown key 'historic' in [paths]";
+          " --> sinter.toml:4:1";
+          "  |";
+          "4 | historic = []";
+          "  | ^^^^^^^^";
+          "  |";
+          "  = help: did you mean 'historical'?";
+          "";
+        ] );
+      ( "a value",
+        markdown_pack ^ "[check]\nwarn-only = \"yes\"\n",
+        [
+          "error: 'warn-only' takes true or false, not a string";
+          " --> sinter.toml:4:13";
+          "  |";
+          "4 | warn-only = \"yes\"";
+          "  |             ^^^^^";
+          "  |";
+          "  = help: write true or false";
+          "";
+        ] );
+      ( "the part of a dotted key",
+        "paths.historic = []\n" ^ markdown_pack,
+        [
+          "error: unknown key 'historic' in [paths]";
+          " --> sinter.toml:1:7";
+          "  |";
+          "1 | paths.historic = []";
+          "  |       ^^^^^^^^";
+          "  |";
+          "  = help: did you mean 'historical'?";
+          "";
+        ] );
+      ( "a syntax error at the end of its line",
+        "[scan\n",
+        [
+          "error: the table header is not valid";
+          " --> sinter.toml:1:6";
+          "  |";
+          "1 | [scan";
+          "  |      ^";
+          "  |";
+          "  = help: write ']' here";
+          "";
+        ] );
+      ( "a wide character and a tab before the span",
+        "default-branch = \"\xe6\x97\xa5\t..b\"\n" ^ markdown_pack,
+        [
+          "error: \"\xe6\x97\xa5\\t..b\" is not a branch name; a branch name \
+           cannot hold a control character";
+          " --> sinter.toml:1:20";
+          "  |";
+          "1 | default-branch = \"\xe6\x97\xa5    ..b\"";
+          "  |                     ^^^^";
+          "  |";
+          "  = help: write the name of the default branch";
+          "";
+        ] );
+      ( "no pack",
+        "[scan]\n",
+        [
+          "error: sinter.toml names no pack";
+          "  = help: add a line such as packs.markdown.files = [\"**/*.md\"] \
+           under [scan]";
+          "";
+        ] );
+      ( "several errors, in the order of their places",
+        markdown_pack ^ "[check]\nzz = 1\nwarn-only = 1\n",
+        [
+          "error: unknown key 'zz' in [check]";
+          " --> sinter.toml:4:1";
+          "  |";
+          "4 | zz = 1";
+          "  | ^^";
+          "  |";
+          "  = help: remove this key, or correct its name";
+          "";
+          "error: 'warn-only' takes true or false, not an integer";
+          " --> sinter.toml:5:13";
+          "  |";
+          "5 | warn-only = 1";
+          "  |             ^";
+          "  |";
+          "  = help: write true or false";
+          "";
+        ] );
+    ]
+
+let a_manifest_error_with_no_text_shows_no_source_line () =
+  match Manifest.of_string (markdown_pack ^ "[paths]\nhistoric = []\n") with
+  | Ok _ -> Alcotest.fail "the manifest has no error"
+  | Error errors ->
+      Alcotest.(check (list (option string)))
+        "the line of each error, from an empty text" [ None ]
+        (List.map
+           (fun { Error_text.place; _ } ->
+             Option.bind place (fun { Error_text.line; _ } -> line))
+           (Scan.explain
+              (Scan.Invalid_manifest { path = "sinter.toml"; text = ""; errors })))
 
 let with_base ?(manifest = manifest) files =
   repository (("sinter.toml", manifest) :: files)
@@ -1035,6 +1160,10 @@ let tests =
     case "a check that cannot write its output says so"
       a_check_that_cannot_write_its_output_says_so;
     case "every error has a fault and a help" every_error_has_a_fault_and_a_help;
+    case "a manifest error shows its source line"
+      a_manifest_error_shows_its_source_line;
+    case "a manifest error with no text shows no source line"
+      a_manifest_error_with_no_text_shows_no_source_line;
     case "each error says what is wrong and what to do"
       each_error_says_what_is_wrong_and_what_to_do;
   ]
