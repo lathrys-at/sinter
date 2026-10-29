@@ -141,15 +141,21 @@ let invalid_targets manifest documents =
 let misplaced_plans documents =
   List.filter_map
     (fun (path, (tag : Markdown.tag)) ->
+      let written =
+        match tag.target with
+        | Some target -> "@plan " ^ target
+        | None -> "@plan"
+      in
       let detail =
         if not (String.equal tag.word "plan") then None
         else if not (String.starts_with ~prefix:".plans/" path) then
           Some
-            ( "a @plan tag stands only in a file under .plans/",
+            ( Printf.sprintf "%s is not in a file under .plans/" written,
               "not in a file under .plans/" )
         else if tag.block <> 0 then
           Some
-            ( "a @plan tag stands only in the first tag block of its file",
+            ( Printf.sprintf "%s is not in the first tag block of its file"
+                written,
               "not in the first tag block" )
         else None
       in
@@ -186,8 +192,8 @@ let later_of_groups ~key ~order items =
 let declared_again = "declared again here"
 let first_declared = "first declared here"
 
-let comes_first slug path line =
-  Printf.sprintf "the slug %s comes first at %s:%d" slug path line
+let declared_earlier slug item =
+  Printf.sprintf "the slug %s of %s is declared earlier" slug item
 
 let is_open (_ : Facts.plan) = true
 
@@ -201,8 +207,8 @@ let plan_duplicates facts =
     |> List.map (fun ((plan : Facts.plan), (first : Facts.plan)) ->
         ( plan,
           ( first,
-            Printf.sprintf "a plan with the full form %s comes first at %s:%d"
-              (Facts.full_form first) first.path first.span.start.line ) ))
+            Printf.sprintf "a plan with the full form %s is declared earlier"
+              (Facts.full_form first) ) ))
   in
   let reported (plan : Facts.plan) =
     List.exists (fun (p, _) -> p == plan) full
@@ -219,8 +225,8 @@ let plan_duplicates facts =
             ( plan,
               ( first,
                 Printf.sprintf
-                  "an open plan with the slug %s comes first at %s:%d"
-                  first.slug first.path first.span.start.line ) ))
+                  "an open plan with the slug %s is declared earlier" first.slug
+              ) ))
   in
   full @ slug
 
@@ -246,7 +252,7 @@ let duplicates facts =
     (fun ((d : Facts.declaration), (first : Facts.declaration)) ->
       Finding.make Finding_class.Duplicate (tag d.path d.span)
         ~place:(place d.path d.span)
-        ~detail:(comes_first first.slug first.path first.span.start.line)
+        ~detail:(declared_earlier d.slug (Facts.declaration_id d))
         ?mark:(Finding.part d.tag Tag_line.Target declared_again)
         ~related:[ related first_declared first.path first.span ]
         ())
@@ -267,7 +273,7 @@ let duplicates facts =
             Finding.make Finding_class.Duplicate
               (Finding.Line { path = plan.path; line = step.span.start.line })
               ~place:(place plan.path step.span)
-              ~detail:(comes_first first.slug plan.path first.span.start.line)
+              ~detail:(declared_earlier step.slug (Facts.step_id plan step))
               ~related:[ related first_declared plan.path first.span ]
               ())
           (later_of_groups
@@ -319,7 +325,9 @@ let unpinned facts =
         Some
           (Finding.make Finding_class.Unpinned (edge_subject edge)
              ~place:(place edge.path edge.span)
-             ~detail:(Printf.sprintf "the @%s names no revision" edge.word)
+             ~detail:
+               (Printf.sprintf "@%s %s names no revision" edge.word
+                  edge.target_text)
              ?fix
              ?mark:(Finding.part edge.tag Tag_line.Target "no revision")
              ~related:named ())
@@ -494,22 +502,21 @@ let cycles facts =
       | first :: others ->
           let declaration = declarations.(first) in
           let detail =
-            match others with
-            | [] -> None
-            | _ ->
-                Some
-                  ("with "
-                  ^ String.concat ", "
-                      (List.map
-                         (fun other ->
-                           Facts.declaration_id declarations.(other))
-                         others))
+            Printf.sprintf "%s is in a cycle with %s"
+              (Facts.declaration_id declaration)
+              (match others with
+              | [] -> "itself"
+              | _ ->
+                  String.concat ", "
+                    (List.map
+                       (fun other -> Facts.declaration_id declarations.(other))
+                       others))
           in
           Some
             (Finding.make Finding_class.Cycle
                (declaration_subject declaration)
                ~place:(place declaration.path declaration.span)
-               ?detail
+               ~detail
                ~related:
                  (List.map
                     (fun other ->
@@ -596,12 +603,13 @@ let wrong_sources facts =
         match (edge.word, edge.source) with
         | "verifies", _ ->
             Some
-              ( "a @verifies needs a test as its source",
+              ( Printf.sprintf "@verifies %s needs a test as its source"
+                  edge.target_text,
                 "needs a test as its source" )
         | ("refines" | "supersedes"), None ->
             Some
-              ( Printf.sprintf "a @%s needs a declaration that holds it"
-                  edge.word,
+              ( Printf.sprintf "@%s %s needs a declaration that holds it"
+                  edge.word edge.target_text,
                 "needs a declaration that holds it" )
         | _ -> None
       in
@@ -629,12 +637,22 @@ let untraced facts =
   List.filter_map Fun.id
     (List.mapi
        (fun index (declaration : Facts.declaration) ->
-         let detail =
+         let item = Facts.declaration_id declaration in
+         let found =
            match (satisfied.(index), verified.(index)) with
            | false, false ->
-               Some "nothing satisfies it, and nothing verifies it"
-           | false, true -> Some "nothing satisfies it"
-           | true, false -> Some "nothing verifies it"
+               Some
+                 ( Printf.sprintf
+                     "nothing satisfies %s, and nothing verifies it" item,
+                   "nothing satisfies it, and nothing verifies it" )
+           | false, true ->
+               Some
+                 ( Printf.sprintf "nothing satisfies %s" item,
+                   "nothing satisfies it" )
+           | true, false ->
+               Some
+                 ( Printf.sprintf "nothing verifies %s" item,
+                   "nothing verifies it" )
            | true, true -> None
          in
          if
@@ -642,14 +660,14 @@ let untraced facts =
            && Facts.is_in_force facts index
          then
            Option.map
-             (fun detail ->
+             (fun (detail, label) ->
                Finding.make Finding_class.Untraced
                  (declaration_subject declaration)
                  ~place:(place declaration.path declaration.span)
                  ~detail
-                 ?mark:(Finding.part declaration.tag Tag_line.Target detail)
+                 ?mark:(Finding.part declaration.tag Tag_line.Target label)
                  ())
-             detail
+             found
          else None)
        (Facts.declarations facts))
 
@@ -702,8 +720,11 @@ let scopes_outside_plans facts =
                           { id = Facts.step_id plan step; ack_name = step.slug })
                        ~place:(place plan.path step.span)
                        ~detail:
-                         ("the scope of the plan does not hold "
-                        ^ String.concat ", " outside)
+                         (Printf.sprintf
+                            "%s has %s in its scope, outside the scope of the \
+                             plan"
+                            (Facts.step_id plan step)
+                            (String.concat ", " outside))
                        ())))
         plan.steps)
     (Facts.plans facts)
@@ -743,9 +764,10 @@ let scope_overlaps facts =
                      { id = Facts.step_id plan step; ack_name = step.slug })
                   ~place:(place plan.path step.span)
                   ~detail:
-                    ("this step shares promises and scope with "
-                    ^ String.concat ", " (List.map (Facts.step_id plan) others)
-                    )
+                    (Printf.sprintf "%s shares promises and scope with %s"
+                       (Facts.step_id plan step)
+                       (String.concat ", "
+                          (List.map (Facts.step_id plan) others)))
                   ~related:
                     (List.map
                        (fun (other : Facts.step) ->
@@ -808,15 +830,17 @@ let promises_out_of_scope facts =
           List.filter_map
             (fun (promise : Facts.promise) ->
               match standing promise with
-              | { by = None; meeting_facts = first :: _ as meeting_facts } ->
+              | { by = None; meeting_facts = _ :: _ as meeting_facts } ->
                   Some
                     (Finding.make Finding_class.Promise_out_of_scope
                        (promise_subject plan step promise)
                        ~place:(place plan.path promise.span)
                        ~detail:
                          (Printf.sprintf
-                            "%s at %s:%d is outside the scope of the step"
-                            first.id first.path first.span.start.line)
+                            "the promise %s:%s is met only outside the scope \
+                             of %s"
+                            promise.word promise.target
+                            (Facts.step_id plan step))
                        ?mark:
                          (Finding.part promise.tag Tag_line.Target
                             "met only outside the scope of the step")

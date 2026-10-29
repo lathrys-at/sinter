@@ -15,7 +15,7 @@ help: check that the citation still holds, then pin it to the current revision
 3 + @cites login v2
   |
 
-unpinned: the @satisfies names no revision
+unpinned: @satisfies store names no revision
   --> docs/guide.md:4:1
    |
  4 | @satisfies store
@@ -67,21 +67,21 @@ help: if the citation still holds, accept the finding with an @ack line
 11 + @ack retired logout 34f77c51
    |
 
-wrong-source: a @verifies needs a test as its source
+wrong-source: @verifies store needs a test as its source
  --> docs/guide.md:8:1
   |
 8 | @verifies store v1
   | ^^^^^^^^^ needs a test as its source
   |
 
-wrong-source: a @refines needs a declaration that holds it
+wrong-source: @refines store needs a declaration that holds it
  --> docs/guide.md:9:1
   |
 9 | @refines store v1
   | ^^^^^^^^ needs a declaration that holds it
   |
 
-cycle: with decision:old-store
+cycle: decision:new-store is in a cycle with decision:old-store
   --> docs/records.md:19:1
    |
 14 | @decision old-store v1

@@ -10,7 +10,7 @@ help: replace the tag word with the nearest tag word that Sinter knows
 4 + @decision logout
   |
 
-duplicate: the slug login comes first at docs/a.md:3
+duplicate: the slug Login of decision:Login is declared earlier
  --> docs/a.md:8:1
   |
 3 | @decision login v1
@@ -58,7 +58,7 @@ invalid-target: foo\rbar is not a valid slug
   |        ^^^^^^^ not a valid slug
   |
 
-misplaced-plan: a @plan tag stands only in a file under .plans/
+misplaced-plan: @plan notes is not in a file under .plans/
  --> docs/notes.md:3:1
   |
 3 | @plan notes

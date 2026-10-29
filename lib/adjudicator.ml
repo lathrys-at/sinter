@@ -138,15 +138,17 @@ let unbumped ~base ~same facts =
             with
             | Some _ ->
                 Printf.sprintf
-                  "the extent differs from the base, and the revision is not \
-                   above v%d"
+                  "the extent of %s differs from the base, and its revision is \
+                   not above v%d"
+                  (Facts.declaration_id declaration)
                   highest.rev
             | None ->
                 Printf.sprintf
-                  "the base declares %s v%d, and a change of kind needs a \
-                   higher revision"
+                  "the base declares %s v%d, so %s needs a higher revision for \
+                   its change of kind"
                   (Facts.declaration_id highest)
                   highest.rev
+                  (Facts.declaration_id declaration)
           in
           Some
             (Finding.make Finding_class.Unbumped (subject declaration)

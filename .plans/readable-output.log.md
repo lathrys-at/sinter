@@ -141,3 +141,9 @@
 - The ledger warning shows only when a plan exists, and the help, not
   the warning, says how to fetch the ledger. `ledger-absent-ref` moves
   to v3 with the same rule (ruling of the lead).
+- Every detail names the item it is about, as `kind:slug`, a step id,
+  or the tag as written, because the text forms no longer show the
+  subject id (ruling of the lead). A cycle of one declaration now has
+  a detail too. The details of `parse-error` and `ignored-tag` stay:
+  their location is their item. The labels of the marks do not
+  change.

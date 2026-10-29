@@ -384,16 +384,16 @@ let the_check_of_a_jj_state_reports_the_findings_of_new_files () =
         ( 0,
           1,
           [
-            "docs/late.md:3:1: untraced nothing satisfies it, and nothing \
-             verifies it";
+            "docs/late.md:3:1: untraced nothing satisfies req:late, and \
+             nothing verifies it";
             "docs/new.md:1:1: unplanned-change no step of an open plan, no \
              rule, and no exempt path covers docs/new.md";
             "docs/new.md:3:1: dangling no declaration has the slug missing";
-            "docs/reqs.md:3:1: untraced nothing satisfies it, and nothing \
-             verifies it";
+            "docs/reqs.md:3:1: untraced nothing satisfies req:login, and \
+             nothing verifies it";
             "docs/reqs.md:5:1: unplanned-change no step of an open plan, no \
              rule, and no exempt path covers docs/reqs.md";
-            "docs/reqs.md:8:1: untraced nothing satisfies it, and nothing \
+            "docs/reqs.md:8:1: untraced nothing satisfies req:out, and nothing \
              verifies it";
           ] )
         (status, json_status, lines text)

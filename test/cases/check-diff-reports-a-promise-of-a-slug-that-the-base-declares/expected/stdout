@@ -1,4 +1,4 @@
-warn[scope-overlap]: this step shares promises and scope with step:work@4ffa2f/write-the-store
+warn[scope-overlap]: step:work@4ffa2f/write-it-again shares promises and scope with step:work@4ffa2f/write-the-store
   --> .plans/work.md:10:1
    |
  6 | ## Write the store

@@ -177,14 +177,20 @@ let misplaced_plan_sits_outside_the_first_block_of_a_plan_file () =
   check Finding_class.Misplaced_plan
     [
       ("docs/a.md", "# A\n\n@plan a\n");
+      ("docs/b.md", "# B\n\n@plan\n");
       (".plans/p.md", "# P\n\n@plan p\n\n## S\n\n@plan q\n");
       (".plans/q.md", "# Q\n\n@plan q\n");
+      (".plans/r.md", "# R\n\n@plan r\n\n## S\n\n@plan\n");
     ]
     [
-      ".plans/p.md:7:1-7:8 | finding:misplaced-plan:tag:.plans/p.md@L7C1 | a \
-       @plan tag stands only in the first tag block of its file";
-      "docs/a.md:3:1-3:8 | finding:misplaced-plan:tag:docs/a.md@L3C1 | a @plan \
-       tag stands only in a file under .plans/";
+      ".plans/p.md:7:1-7:8 | finding:misplaced-plan:tag:.plans/p.md@L7C1 | \
+       @plan q is not in the first tag block of its file";
+      ".plans/r.md:7:1-7:6 | finding:misplaced-plan:tag:.plans/r.md@L7C1 | \
+       @plan is not in the first tag block of its file";
+      "docs/a.md:3:1-3:8 | finding:misplaced-plan:tag:docs/a.md@L3C1 | @plan a \
+       is not in a file under .plans/";
+      "docs/b.md:3:1-3:6 | finding:misplaced-plan:tag:docs/b.md@L3C1 | @plan \
+       is not in a file under .plans/";
     ]
 
 let duplicate_sits_at_each_later_member_of_a_group () =
@@ -206,13 +212,13 @@ let duplicate_sits_at_each_later_member_of_a_group () =
     ]
     [
       ".plans/q.md:3:1-3:8 | finding:duplicate:tag:.plans/q.md@L3C1 | an open \
-       plan with the slug p comes first at .plans/p.md:3";
+       plan with the slug p is declared earlier";
       ".plans/q.md:9:1-9:8 | finding:duplicate:line:.plans/q.md@L9 | the slug \
-       one comes first at .plans/q.md:5";
+       one of step:P/one is declared earlier";
       "docs/b.md:3:1-3:13 | finding:duplicate:tag:docs/b.md@L3C1 | the slug \
-       auth comes first at docs/a.md:3";
+       Auth of req:Auth is declared earlier";
       "docs/b.md:7:1-7:13 | finding:duplicate:tag:docs/b.md@L7C1 | the slug \
-       auth comes first at docs/a.md:3";
+       auth of design:auth is declared earlier";
     ]
 
 let duplicate_of_plans_names_the_full_form_or_the_open_slug () =
@@ -228,11 +234,11 @@ let duplicate_of_plans_names_the_full_form_or_the_open_slug () =
     ]
     [
       ".plans/b.md:3:1-3:16 | finding:duplicate:tag:.plans/b.md@L3C1 | a plan \
-       with the full form up@3f2a9c comes first at .plans/a.md:3";
+       with the full form up@3f2a9c is declared earlier";
       ".plans/c.md:3:1-3:16 | finding:duplicate:tag:.plans/c.md@L3C1 | an open \
-       plan with the slug up comes first at .plans/a.md:3";
+       plan with the slug up is declared earlier";
       ".plans/e.md:3:1-3:11 | finding:duplicate:tag:.plans/e.md@L3C1 | a plan \
-       with the full form down comes first at .plans/d.md:3";
+       with the full form down is declared earlier";
     ]
 
 let missing_plan_id_pastes_an_id_from_the_base_and_the_path () =
@@ -267,12 +273,12 @@ let unpinned_pastes_the_revision_of_the_target () =
          @supersedes gh/1\n" );
     ]
     [
-      "docs/a.md:7:1-7:13 | finding:unpinned:satisfies:req:a->a | the \
-       @satisfies names no revision | fix: @satisfies a v3";
-      "docs/a.md:9:1-9:17 | finding:unpinned:refines:req:a->nothing | the \
-       @refines names no revision";
-      "docs/a.md:11:1-11:17 | finding:unpinned:supersedes:req:a->gh/1 | the \
-       @supersedes names no revision";
+      "docs/a.md:7:1-7:13 | finding:unpinned:satisfies:req:a->a | @satisfies a \
+       names no revision | fix: @satisfies a v3";
+      "docs/a.md:9:1-9:17 | finding:unpinned:refines:req:a->nothing | @refines \
+       nothing names no revision";
+      "docs/a.md:11:1-11:17 | finding:unpinned:supersedes:req:a->gh/1 | \
+       @supersedes gh/1 names no revision";
     ]
 
 let dangling_names_the_spelling_that_differs_in_case () =
@@ -342,8 +348,10 @@ let cycle_names_its_smallest_member_and_the_others () =
       ("docs/b.md", "# B\n\nText.\n\n- @req f\n  @cites f\n");
     ]
     [
-      "docs/a.md:13:1-13:7 | finding:cycle:req:a | with req:b, req:c";
-      "docs/a.md:18:1-18:12 | finding:cycle:decision:d";
+      "docs/a.md:13:1-13:7 | finding:cycle:req:a | req:a is in a cycle with \
+       req:b, req:c";
+      "docs/a.md:18:1-18:12 | finding:cycle:decision:d | decision:d is in a \
+       cycle with itself";
     ]
 
 let retired_of_a_status_pastes_the_ack_of_its_block () =
@@ -421,12 +429,12 @@ let wrong_source_sits_at_a_citation_without_its_source () =
         "# B\n\nText.\n\n- @refines a v1\n- @supersedes a v1\n- @cites a\n" );
     ]
     [
-      "docs/a.md:4:1-4:15 | finding:wrong-source:verifies:req:a->a | a \
-       @verifies needs a test as its source";
+      "docs/a.md:4:1-4:15 | finding:wrong-source:verifies:req:a->a | @verifies \
+       a needs a test as its source";
       "docs/b.md:5:3-5:16 | finding:wrong-source:refines:site:docs/b.md#b->a | \
-       a @refines needs a declaration that holds it";
+       @refines a needs a declaration that holds it";
       "docs/b.md:6:3-6:19 | \
-       finding:wrong-source:supersedes:site:docs/b.md#b->a | a @supersedes \
+       finding:wrong-source:supersedes:site:docs/b.md#b->a | @supersedes a \
        needs a declaration that holds it";
     ]
 
@@ -456,16 +464,17 @@ let untraced_names_what_is_missing () =
          - @verifies nothing v1\n" );
     ]
     [
-      "docs/a.md:3:1-3:7 | finding:untraced:req:a | nothing satisfies it, and \
-       nothing verifies it";
-      "docs/a.md:7:1-7:10 | finding:untraced:design:b | nothing verifies it";
+      "docs/a.md:3:1-3:7 | finding:untraced:req:a | nothing satisfies req:a, \
+       and nothing verifies it";
+      "docs/a.md:7:1-7:10 | finding:untraced:design:b | nothing verifies \
+       design:b";
     ];
   check Finding_class.Untraced
     [
       ("docs/a.md", "# A\n\n@req a\n");
       ("docs/b.md", "# B\n\nText.\n\n- @verifies a v1\n");
     ]
-    [ "docs/a.md:3:1-3:7 | finding:untraced:req:a | nothing satisfies it" ]
+    [ "docs/a.md:3:1-3:7 | finding:untraced:req:a | nothing satisfies req:a" ]
 
 let plan steps =
   ( ".plans/p.md",
@@ -488,9 +497,9 @@ let scope_outside_plan_names_the_globs_outside_the_plan () =
          @req c\n";
     ]
     [
-      ".plans/p.md:11:1-11:7 | finding:scope-outside-plan:step:p/out | the \
-       scope of the plan does not hold bin/**, bin/, lib, test/a.ml, \
-       src/a/*.ml, lib/?";
+      ".plans/p.md:11:1-11:7 | finding:scope-outside-plan:step:p/out | \
+       step:p/out has bin/**, bin/, lib, test/a.ml, src/a/*.ml, lib/? in its \
+       scope, outside the scope of the plan";
     ];
   check Finding_class.Scope_outside_plan
     [
@@ -502,12 +511,12 @@ let scope_outside_plan_names_the_globs_outside_the_plan () =
       );
     ]
     [
-      ".plans/p.md:5:1-5:5 | finding:scope-outside-plan:step:p/s | the scope \
-       of the plan does not hold a/**";
-      ".plans/q.md:6:1-6:5 | finding:scope-outside-plan:step:q/s | the scope \
-       of the plan does not hold x/?";
-      ".plans/r.md:6:1-6:5 | finding:scope-outside-plan:step:r/s | the scope \
-       of the plan does not hold a/b, pkg/";
+      ".plans/p.md:5:1-5:5 | finding:scope-outside-plan:step:p/s | step:p/s \
+       has a/** in its scope, outside the scope of the plan";
+      ".plans/q.md:6:1-6:5 | finding:scope-outside-plan:step:q/s | step:q/s \
+       has x/? in its scope, outside the scope of the plan";
+      ".plans/r.md:6:1-6:5 | finding:scope-outside-plan:step:r/s | step:r/s \
+       has a/b, pkg/ in its scope, outside the scope of the plan";
     ]
 
 let scope_overlap_sits_at_the_later_step () =
@@ -536,9 +545,9 @@ let scope_overlap_sits_at_the_later_step () =
          @design a\n" );
     ]
     [
-      ".plans/p.md:12:1-12:7 | finding:scope-overlap:step:p/two | this step \
+      ".plans/p.md:12:1-12:7 | finding:scope-overlap:step:p/two | step:p/two \
        shares promises and scope with step:p/one";
-      ".plans/p.md:22:1-22:8 | finding:scope-overlap:step:p/four | this step \
+      ".plans/p.md:22:1-22:8 | finding:scope-overlap:step:p/four | step:p/four \
        shares promises and scope with step:p/one, step:p/two, step:p/three";
     ]
 
@@ -586,14 +595,14 @@ let promise_out_of_scope_names_the_facts_outside () =
     ]
     [
       ".plans/p.md:8:1-8:7 | \
-       finding:promise-out-of-scope:promise:step:p/one:req:a | req:a at \
-       docs/a.md:3 is outside the scope of the step";
+       finding:promise-out-of-scope:promise:step:p/one:req:a | the promise \
+       req:a is met only outside the scope of step:p/one";
       ".plans/p.md:11:1-11:12 | \
-       finding:promise-out-of-scope:promise:step:p/one:decision:d | decision:d \
-       at docs/d.md:3 is outside the scope of the step";
+       finding:promise-out-of-scope:promise:step:p/one:decision:d | the \
+       promise decision:d is met only outside the scope of step:p/one";
       ".plans/p.md:12:1-12:9 | \
-       finding:promise-out-of-scope:promise:step:p/one:cites:a | \
-       cites:req:a->a at docs/a.md:4 is outside the scope of the step";
+       finding:promise-out-of-scope:promise:step:p/one:cites:a | the promise \
+       cites:a is met only outside the scope of step:p/one";
     ]
 
 let a_live_ack_accepts_its_finding () =
@@ -733,7 +742,7 @@ let a_lone_carriage_return_stays_in_one_line () =
     [
       "docs/a.md:1:6-1:32 | finding:invalid-target:tag:docs/a.md@L1C6 | \
        x.\\r\\r## is not a valid slug";
-      "docs/a.md:1:23-1:32 | finding:untraced:req:b | nothing satisfies it, \
+      "docs/a.md:1:23-1:32 | finding:untraced:req:b | nothing satisfies req:b, \
        and nothing verifies it";
     ]
     (all [ ("docs/a.md", "# A\r\r@cites x.\r\r## B\r\r@req b v1\r") ])
@@ -743,12 +752,12 @@ let a_line_feed_in_a_path_stays_in_one_line () =
     "the findings"
     [
       "docs/a\n\
-       b.md:3:1-3:10 | finding:untraced:req:x | nothing satisfies it, and \
+       b.md:3:1-3:10 | finding:untraced:req:x | nothing satisfies req:x, and \
        nothing verifies it";
       "docs/c.md:3:1-3:10 | finding:duplicate:tag:docs/c.md@L3C1 | the slug x \
-       comes first at docs/a\\nb.md:3";
-      "docs/c.md:3:1-3:10 | finding:untraced:req:x | nothing satisfies it, and \
-       nothing verifies it";
+       of req:x is declared earlier";
+      "docs/c.md:3:1-3:10 | finding:untraced:req:x | nothing satisfies req:x, \
+       and nothing verifies it";
     ]
     (all
        [
@@ -762,16 +771,16 @@ let a_control_character_of_a_plan_stays_in_one_line () =
     [
       ".plans/p.md:3:1-3:8 | finding:missing-plan-id:plan:p | the plan p has \
        no plan id | fix: @plan p@a153a1";
-      ".plans/p.md:6:1-6:5 | finding:scope-outside-plan:step:p/a | the scope \
-       of the plan does not hold src/**\\r";
+      ".plans/p.md:6:1-6:5 | finding:scope-outside-plan:step:p/a | step:p/a \
+       has src/**\\r in its scope, outside the scope of the plan";
       ".plans/p.md:12:1-12:9 | finding:invalid-target:tag:.plans/p.md@L12C1 | \
        x\\ry is not a valid slug";
       ".plans/p.md:12:1-12:9 | \
        finding:unverified-promise:promise:step:p/b:req:x\ry | the plan \
        promises no @verifies x\\ry";
       ".plans/p.md:13:1-13:7 | \
-       finding:promise-out-of-scope:promise:step:p/b:req:z | req:z at \
-       docs/z\\x01q.md:3 is outside the scope of the step";
+       finding:promise-out-of-scope:promise:step:p/b:req:z | the promise req:z \
+       is met only outside the scope of step:p/b";
       ".plans/p.md:13:1-13:7 | \
        finding:unverified-promise:promise:step:p/b:req:z | the plan promises \
        no @verifies z";
@@ -836,9 +845,11 @@ let cycle_finds_each_component_once () =
          @refines g v1\n" );
     ]
     [
-      "docs/a.md:3:1-3:7 | finding:cycle:req:a | with req:b";
-      "docs/a.md:13:1-13:7 | finding:cycle:req:c | with req:d";
-      "docs/a.md:24:1-24:7 | finding:cycle:req:e | with req:f, req:g";
+      "docs/a.md:3:1-3:7 | finding:cycle:req:a | req:a is in a cycle with req:b";
+      "docs/a.md:13:1-13:7 | finding:cycle:req:c | req:c is in a cycle with \
+       req:d";
+      "docs/a.md:24:1-24:7 | finding:cycle:req:e | req:e is in a cycle with \
+       req:f, req:g";
     ]
 
 let cycle_takes_its_subject_by_id_not_by_place () =
@@ -855,7 +866,10 @@ let cycle_takes_its_subject_by_id_not_by_place () =
          @req b\n\
          @refines z v1\n" );
     ]
-    [ "docs/a.md:13:1-13:7 | finding:cycle:req:b | with req:m, req:z" ]
+    [
+      "docs/a.md:13:1-13:7 | finding:cycle:req:b | req:b is in a cycle with \
+       req:m, req:z";
+    ]
 
 let a_historical_path_gives_no_finding () =
   check ~extra:"[check]\nhistorical = [\"notes/**\"]\n" Finding_class.Typo_tag

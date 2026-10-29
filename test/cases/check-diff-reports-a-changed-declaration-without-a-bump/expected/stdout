@@ -12,7 +12,7 @@ block[unplanned-change]: no step of an open plan, no rule, and no exempt path co
   | ^^^^^^^^^^^^^
   |
 
-block[unbumped]: the extent differs from the base, and the revision is not above v1
+block[unbumped]: the extent of req:a differs from the base, and its revision is not above v1
  --> docs/spec.md:5:1
   |
 5 | @req a v1 Lock the account after five tries.
@@ -52,7 +52,7 @@ block[unplanned-change]: no step of an open plan, no rule, and no exempt path co
    | ^^^^^^^^^^^
    |
 
-block[unbumped]: the base declares req:c v1, and a change of kind needs a higher revision
+block[unbumped]: the base declares req:c v1, so design:c needs a higher revision for its change of kind
   --> docs/spec.md:13:1
    |
 13 | @design c v1 Log it.
@@ -71,7 +71,7 @@ block[unplanned-change]: no step of an open plan, no rule, and no exempt path co
    | ^^^^^^^^^^^^^^^^^^^^
    |
 
-warn[untraced]: nothing satisfies it, and nothing verifies it
+warn[untraced]: nothing satisfies design:c, and nothing verifies it
   --> docs/spec.md:13:1
    |
 13 | @design c v1 Log it.

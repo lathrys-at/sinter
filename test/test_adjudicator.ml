@@ -137,11 +137,12 @@ let a_tree_like_its_base_has_no_tombstone () =
 let unbumped_needs_a_higher_revision_for_a_changed_extent () =
   Alcotest.check strings "the findings"
     [
-      "docs/a.md:3 | finding:unbumped:req:edited | the extent differs from the \
-       base, and the revision is not above v2 | fix: @req edited v3";
-      "docs/a.md:10 | finding:unbumped:design:lowered | the extent differs \
-       from the base, and the revision is not above v4 | fix: @design lowered \
-       v5";
+      "docs/a.md:3 | finding:unbumped:req:edited | the extent of req:edited \
+       differs from the base, and its revision is not above v2 | fix: @req \
+       edited v3";
+      "docs/a.md:10 | finding:unbumped:design:lowered | the extent of \
+       design:lowered differs from the base, and its revision is not above v4 \
+       | fix: @design lowered v5";
     ]
     (compared
        [
@@ -173,8 +174,8 @@ let unbumped_counts_a_change_of_kind () =
   Alcotest.check strings "the findings"
     [
       "docs/a.md:3 | finding:unbumped:design:moved | the base declares \
-       req:moved v1, and a change of kind needs a higher revision | fix: \
-       @design moved v2";
+       req:moved v1, so design:moved needs a higher revision for its change of \
+       kind | fix: @design moved v2";
     ]
     (compared
        [
@@ -202,8 +203,8 @@ let unbumped_holds_for_a_retired_declaration_and_not_under_a_historical_path ()
     =
   Alcotest.check strings "the findings"
     [
-      "docs/a.md:3 | finding:unbumped:req:old | the extent differs from the \
-       base, and the revision is not above v1 | fix: @req old v2";
+      "docs/a.md:3 | finding:unbumped:req:old | the extent of req:old differs \
+       from the base, and its revision is not above v1 | fix: @req old v2";
     ]
     (compared
        [
@@ -218,8 +219,8 @@ let unbumped_holds_for_a_retired_declaration_and_not_under_a_historical_path ()
 let unbumped_reads_every_declaration_of_the_slug_at_the_base () =
   Alcotest.check strings "the findings"
     [
-      "docs/c.md:3 | finding:unbumped:req:y | the extent differs from the \
-       base, and the revision is not above v4 | fix: @req y v5";
+      "docs/c.md:3 | finding:unbumped:req:y | the extent of req:y differs from \
+       the base, and its revision is not above v4 | fix: @req y v5";
     ]
     (compared
        [
@@ -246,8 +247,8 @@ let the_findings_keep_their_order_with_the_new_ones () =
   Alcotest.check strings "the order"
     [
       "docs/a.md:1 | finding:typo-tag:line:docs/a.md@L1";
-      "docs/a.md:3 | finding:unbumped:req:x | the extent differs from the \
-       base, and the revision is not above v1 | fix: @req x v2";
+      "docs/a.md:3 | finding:unbumped:req:x | the extent of req:x differs from \
+       the base, and its revision is not above v1 | fix: @req x v2";
       "docs/b.md:1 | finding:typo-tag:line:docs/b.md@L1";
     ]
     (compared

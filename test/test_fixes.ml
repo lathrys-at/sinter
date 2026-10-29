@@ -372,11 +372,11 @@ let fix_lines_of_170c04b =
       "  fix: @cites new v3 or @cites other v1" );
     ( "docs/crlf.md:8:1: retired decision:dep is deprecated",
       "  fix: @ack retired dep 485ef95f" );
-    ( "docs/edited.md:3:1: unbumped the extent differs from the base, and the \
-       revision is not above v2",
+    ( "docs/edited.md:3:1: unbumped the extent of req:edited differs from the \
+       base, and its revision is not above v2",
       "  fix: @req edited v3" );
-    ( "docs/edited.md:8:1: unbumped the extent differs from the base, and the \
-       revision is not above v1",
+    ( "docs/edited.md:8:1: unbumped the extent of design:plain differs from \
+       the base, and its revision is not above v1",
       "  fix: @design plain v2" );
     ( "docs/end.md:4:1: retired decision:dep is deprecated",
       "  fix: @ack retired dep 02a3ba13" );
@@ -386,9 +386,9 @@ let fix_lines_of_170c04b =
       "  fix: @satisfies" );
     ( "docs/guide.md:11:3: typo-tag @cite is not a tag word of sinter",
       "  fix: @cites" );
-    ( "docs/guide.md:15:1: unpinned the @satisfies names no revision",
+    ( "docs/guide.md:15:1: unpinned @satisfies login names no revision",
       "  fix: @satisfies login v2" );
-    ( "docs/guide.md:16:1: unpinned the @refines names no revision",
+    ( "docs/guide.md:16:1: unpinned @refines login names no revision",
       "  fix: @refines login v2" );
     ( "docs/guide.md:17:1: suspect the @cites names v1, and req:login is at v2",
       "  fix: @cites login v2" );
