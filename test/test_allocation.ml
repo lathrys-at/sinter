@@ -138,7 +138,7 @@ let without_warnings text =
           (fun line ->
             not
               (String.equal line ""
-              || String.starts_with ~prefix:"sinter: warning:" line))
+              || String.starts_with ~prefix:"warning:" line))
           (String.split_on_char '\n' text)))
 
 let names text =

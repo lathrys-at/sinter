@@ -45,6 +45,10 @@ let () =
       ("sha256", Test_sha256.tests);
       ("markdown pack", Test_markdown_pack.tests);
       ("line index", Test_line_index.tests);
+      ("source", Test_source.tests);
+      ("display", Test_display.tests);
+      ("style", Test_style.tests);
+      ("render", Test_render.tests);
       ("tag line", Test_tag_line.tests);
       ("slug", Test_slug.tests);
       ("plan target", Test_plan_target.tests);

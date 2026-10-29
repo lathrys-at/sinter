@@ -216,6 +216,10 @@ let scan_cmd =
          the markdown pack reads. A file that git ignores, a symbolic link, a \
          file inside a submodule, and a file whose path is not UTF-8 are not \
          read. Each warning goes to standard error.";
+      `P
+        "When the repository has no ledger ref, $(b,refs/sinter/ledger), and \
+         the tree holds a plan, a warning says that every plan counts as open. \
+         $(b,sinter check --help) says how to fetch the ledger.";
     ]
   in
   let info = Cmd.info "scan" ~docs:plumbing ~doc ~man ~exits:scan_exits in
@@ -244,7 +248,7 @@ let scan_cmd =
             report (Sinter_core.Scan.messages error);
             environment_error
         | Ok { warnings; records } -> (
-            report warnings;
+            List.iter prerr_endline warnings;
             try
               Sinter_core.Allocation.measure phases "output" (fun () ->
                   List.iter (Sinter_core.Jsonl.output stdout) records;
@@ -268,28 +272,54 @@ let check_cmd =
          finds in it. Sinter calls such a problem a finding: for example, a \
          tag that names a spec that does not exist, or a test that checks an \
          old version of a spec.";
-      `P "Each finding prints as one line:";
-      `Pre "  PATH:LINE:COLUMN: CLASS SUBJECT DETAIL";
+      `P
+        "By default, each finding prints as a block: a headline that names the \
+         class of the problem, for example $(b,dangling) or $(b,suspect), and \
+         explains it; the path, the line, and the column; the source line with \
+         a mark under the part at fault; the places that relate to the \
+         finding; and, when Sinter knows how to repair the finding, the repair \
+         as a change of the lines. An empty line stands between two blocks.";
+      `P "With $(b,-o brief), each finding prints as one line:";
+      `Pre "  PATH:LINE:COLUMN: CLASS DETAIL";
       `P
         "PATH, LINE, and COLUMN say where the problem is. CLASS names the kind \
-         of problem, for example $(b,dangling) or $(b,suspect). SUBJECT names \
-         the tag or the item that has the problem. DETAIL explains the \
-         problem, when there is more to say. When Sinter knows how to repair a \
-         finding, the next line starts with $(b,fix:) and gives the text to \
-         paste or the thing to do. A finding that belongs to no one file \
-         starts with $(b,-:-:-:) instead of a place. The findings are sorted \
-         by file, line, column, and class.";
+         of problem. DETAIL explains the problem, when there is more to say. \
+         When Sinter knows how to repair a finding, the next line starts with \
+         $(b,fix:) and gives the text to paste. A finding that belongs to no \
+         one file starts with $(b,-:-:-:) instead of a place.";
+      `P
+        "The findings are sorted by file, line, column, and class, in every \
+         form.";
       `P
         "Each class of finding has a tier at each gate: $(b,off), $(b,warn), \
          or $(b,block). Sinter gives every class a default tier, and the \
          manifest can change it. With $(b,--gate), the command reports only \
          the findings whose tier at that gate is $(b,warn) or $(b,block), and \
-         prints the tier after the place. Without $(b,--gate), the command \
-         reports every finding, and prints no tier.";
+         prints the tier before the class, as in $(b,warn[untraced]). Without \
+         $(b,--gate), the command reports every finding, and prints no tier.";
       `P
-        "Some checks compare the working tree with a base commit. The command \
-         prints the base on standard error, or, with $(b,--json), in the first \
-         record. Warnings also go to standard error.";
+        "After the findings, the full and brief forms print a summary on \
+         standard error, for example $(b,8 findings in 2 files: 7 block, 1 \
+         warn; 4 have a fix). Warnings also go to standard error. The JSON \
+         form prints no summary.";
+      `P
+        "Some checks compare the working tree with a base commit. With \
+         $(b,-v), the full and brief forms name the base on standard error. \
+         The JSON form names it in the first record.";
+      `P
+        "In the full and brief forms, the findings of the classes \
+         $(b,untraced), $(b,unmet-promise), and $(b,awaiting-approval) fold \
+         into one line for each class and file, with a count, when a file has \
+         two or more of them. A class that blocks at the gate does not fold, \
+         and nothing folds with $(b,--strict) or $(b,-v). A note on standard \
+         error says how many findings are folded. The JSON form gives every \
+         finding.";
+      `P
+        "Sinter keeps the approvals and the completed plans in a ledger, on \
+         the git ref $(b,refs/sinter/ledger). When the repository has no such \
+         ref and the tree holds a plan, a warning says that every plan counts \
+         as open. To fetch the ledger from the remote $(b,origin), run:";
+      `Pre "  git fetch origin refs/sinter/ledger:refs/sinter/ledger";
       `P
         "With $(b,--diff), the command reports only the findings that the \
          changes since the base add. It checks the base with the same \
@@ -321,7 +351,11 @@ let check_cmd =
       `P
         "Report only the findings that the changes since the base add, for \
          example on a pull request in a repository that has findings already.";
-      `Pre "  sinter check --json";
+      `Pre "  sinter check -o brief";
+      `P "Print one line for each finding.";
+      `Pre "  sinter check -q -o brief";
+      `P "Print one line for each finding, and no summary.";
+      `Pre "  sinter check -o json";
       `P "Print the findings as JSON, for a program to read.";
     ]
   in
@@ -364,13 +398,27 @@ let check_cmd =
     in
     Arg.(value & flag & info [ "strict" ] ~doc)
   in
-  let json =
+  let output =
     let doc =
-      "Print JSON instead of text, one object per line, in the form that \
-       $(b,sinter scan) uses. The first record describes the run, as the first \
-       line of $(b,sinter scan) does. Each record after it is one finding."
+      "The form of the output: $(b,full), $(b,brief), or $(b,json). The full \
+       form shows each finding with its source lines, the places that relate \
+       to it, and its fix. The brief form gives one line for each finding, and \
+       a second line for its fix. The JSON form gives one object per line, in \
+       the form that $(b,sinter scan) uses: the first record describes the \
+       run, as the first line of $(b,sinter scan) does, and each record after \
+       it is one finding."
     in
-    Arg.(value & flag & info [ "json" ] ~doc)
+    Arg.(
+      value
+      & opt
+          (enum
+             [
+               ("full", Sinter_core.Check.Full);
+               ("brief", Sinter_core.Check.Brief);
+               ("json", Sinter_core.Check.Json);
+             ])
+          Sinter_core.Check.Full
+      & info [ "o"; "output" ] ~docv:"FORM" ~doc)
   in
   let diff =
     let doc =
@@ -380,36 +428,51 @@ let check_cmd =
     Arg.(value & flag & info [ "diff" ] ~doc)
   in
   let report lines = List.iter (Printf.eprintf "sinter: %s\n") lines in
-  let run manifest base diff gate strict json =
+  let verbose =
+    let doc =
+      "List each finding, and fold none. In the full and brief forms, also \
+       name the base on standard error."
+    in
+    Arg.(value & flag & info [ "v"; "verbose" ] ~doc)
+  in
+  let quiet =
+    let doc =
+      "Print no summary and no note on standard error. Warnings still print."
+    in
+    Arg.(value & flag & info [ "q"; "quiet" ] ~doc)
+  in
+  let run manifest base diff gate strict form verbose quiet =
     with_phases @@ fun phases ->
     match
       Sinter_core.Check.run ?phases ~env:(Unix.environment ())
         ~dir:(Sys.getcwd ()) ~manifest ~base
         ~mode:(if diff then Sinter_core.Mode.Diff else Sinter_core.Mode.Tree)
-        ~gate ~strict
-        ~format:
-          (if json then Sinter_core.Check.Json else Sinter_core.Check.Text)
-        ~tool:version ()
+        ~gate ~strict ~form ~verbose ~quiet ~tool:version ()
     with
     | Error error ->
         report (Sinter_core.Scan.messages error);
         environment_error
-    | Ok { messages; lines; code } -> (
-        report messages;
-        try
-          Sinter_core.Allocation.measure phases "output" (fun () ->
-              List.iter
-                (fun line ->
-                  output_string stdout line;
-                  output_char stdout '\n')
-                lines;
-              flush stdout);
-          code
-        with Sys_error message ->
-          report [ Printf.sprintf "cannot write the output: %s" message ];
-          environment_error)
+    | Ok outcome -> (
+        match
+          Sinter_core.Check.write ?phases
+            (Sinter_core.Style.formatter stdout Sinter_core.Style.Output)
+            outcome
+        with
+        | () -> (
+            try
+              Sinter_core.Check.notices
+                (Sinter_core.Style.formatter stderr Sinter_core.Style.Errors)
+                outcome;
+              Sinter_core.Check.code outcome
+            with Sys_error _ -> environment_error)
+        | exception Sys_error message ->
+            report [ Printf.sprintf "cannot write the output: %s" message ];
+            environment_error)
   in
-  Cmd.v info Term.(const run $ manifest $ base $ diff $ gate $ strict $ json)
+  Cmd.v info
+    Term.(
+      const run $ manifest $ base $ diff $ gate $ strict $ output $ verbose
+      $ quiet)
 
 let cmd =
   let doc = "a linter for keeping your specs, plans, and code in sync" in

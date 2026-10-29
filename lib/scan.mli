@@ -66,10 +66,14 @@ type base =
 val base_commit : base -> string
 (** [base_commit base] is the object id of the base commit. *)
 
-val base_message : base -> string
-(** [base_message base] names the base for the person who runs the tool: the
-    revision or the ref that gave it, and its commit. The line ends with no full
-    stop. *)
+val base_note : base -> string
+(** [base_note base] names the base for the person who runs the tool, as the
+    text of a note: [base <commit>, the merge base of HEAD and <ref>] for a
+    merge base, where [<ref>] is the ref without a leading [refs/remotes/] or
+    [refs/heads/]; and [base <commit>, from --base <revision>] for a base that
+    the caller named. [<commit>] is the first 7 hexadecimal digits of the
+    commit. The ref and the revision print as {!Display.clean} gives them. The
+    text ends with no full stop. *)
 
 type tree = private {
   repo : Git.t;
@@ -89,9 +93,9 @@ type tree = private {
           first sequence that is not well-formed *)
   warnings : string list;
       (** one line for each file of the file set whose path is not UTF-8, in the
-          order of the paths, and then one line that says that the ledger ref is
-          absent. After {!load_with_base}, the file set of the base counts too,
-          and a path of both file sets has one line. *)
+          order of the paths, with the path as {!Display.clean} gives
+          {!escape_path} of it. After {!load_with_base}, the file set of the
+          base counts too, and a path of both file sets has one line. *)
 }
 (** The working tree of a repository as a scan reads it. *)
 
@@ -173,6 +177,13 @@ val load_with_base :
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
 
+val ledger_warning : tree -> Facts.t -> string option
+(** [ledger_warning tree facts] is the warning
+    [warning: no ledger found, so every plan counts as open] when [facts] hold
+    at least one plan and the ref [refs/sinter/ledger] of the repository of
+    [tree] names no commit ({!Git.commit_of} gives [Bad_revision]); [None]
+    otherwise. It runs git only when [facts] hold a plan. *)
+
 val index : ?mode:Mode.t -> tree -> tool:string -> (Jsonl.record, error) result
 (** [index tree ~tool] is the index record of [tree]. [tool] is the version of
     the tool. [mode] is the mode of the run; the default is [Tree]. *)
@@ -180,7 +191,9 @@ val index : ?mode:Mode.t -> tree -> tool:string -> (Jsonl.record, error) result
 (** {1 The scan} *)
 
 type outcome = {
-  warnings : string list;  (** the warnings of the {!tree} *)
+  warnings : string list;
+      (** the warnings of the {!tree}, and then the {!ledger_warning} of its
+          facts when there is one *)
   records : Jsonl.record list;
       (** the index record, and then the records of the facts in their order *)
 }

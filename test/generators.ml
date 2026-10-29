@@ -1087,3 +1087,209 @@ let damaged_refs_output =
        splice output at piece);
       string_size (int_range 0 40);
     ]
+
+let terminal_text =
+  let open Gen in
+  map (String.concat "")
+    (list_size (int_bound 24)
+       (oneof_weighted
+          [
+            (6, oneof_list [ "a"; "@"; " "; "x"; "1" ]);
+            ( 4,
+              oneof_list
+                [
+                  "\t";
+                  "\r";
+                  "\n";
+                  "\x00";
+                  "\x1b";
+                  "\x7f";
+                  "\xc2\x80";
+                  "\xc2\x9b";
+                  "\xe2\x80\xaa";
+                  "\xe2\x80\xae";
+                  "\xe2\x81\xa6";
+                  "\xe2\x81\xa9";
+                  "\xe6\x97\xa5";
+                  "\xf0\x9f\xa6\x80";
+                  "\xcc\x81";
+                  "\xc3\xa9";
+                  "\xff";
+                  "\xe2\x80";
+                  "\xef\xbf\xbd";
+                ] );
+            (1, utf_8_string);
+          ]))
+
+let source_line =
+  let open Gen in
+  map (String.concat "")
+    (list_size (int_bound 8)
+       (oneof_list
+          [
+            "a";
+            "@";
+            " ";
+            "\t";
+            "\x1b";
+            "\r";
+            "\xc2\x9b";
+            "\xe2\x80\xae";
+            "\xe6\x97\xa5";
+            "\xf0\x9f\xa6\x80";
+            "e\xcc\x81";
+          ]))
+
+let source_file =
+  let open Gen in
+  map3
+    (fun lines ending last ->
+      let text = String.concat ending lines in
+      match last with
+      | `Line_feed -> text ^ ending
+      | `None -> text
+      | `Not_utf_8 -> text ^ "\xff" ^ ending)
+    (list_size (int_range 0 6) source_line)
+    (oneof_list [ "\n"; "\r\n" ])
+    (oneof_list_weighted [ (4, `Line_feed); (2, `None); (1, `Not_utf_8) ])
+
+let label = Gen.map (fun text -> if text = "" then "x" else text) terminal_text
+
+let rendered_place_in paths =
+  let open Gen in
+  let* path = oneof_list_weighted paths in
+  let* line = int_range 1 7 in
+  let* column = int_range 1 8 in
+  let* lines = int_range 0 1 in
+  let* stop =
+    if lines = 0 then int_range column (column + 6) else int_range 1 8
+  in
+  return
+    {
+      Finding.path;
+      span =
+        {
+          Markdown.start = { line; column };
+          stop = { line = line + lines; column = stop };
+        };
+    }
+
+let rendered_place = rendered_place_in [ (6, "a.md"); (1, "missing.md") ]
+
+let rendered_related =
+  let open Gen in
+  let* places =
+    list_size (int_range 0 3)
+      (option
+         (rendered_place_in [ (3, "a.md"); (2, "b.md"); (1, "missing.md") ]))
+  in
+  let* label = label in
+  return
+    (List.mapi
+       (fun index place ->
+         { Finding.label = label ^ string_of_int index; place })
+       places)
+
+let rendered_mark (place : Finding.place) =
+  let open Gen in
+  let span = place.span in
+  let last =
+    if span.stop.line > span.start.line then span.start.column + 4
+    else span.stop.column
+  in
+  if last <= span.start.column then return None
+  else
+    let* start = int_range span.start.column (last - 1) in
+    let* stop = int_range (start + 1) last in
+    let* label = label in
+    oneof_list [ None; Some { Finding.start; stop; label } ]
+
+let rendered_finding =
+  let open Gen in
+  let* content = source_file in
+  let* finding_class = oneof_list Finding_class.all in
+  let* tier =
+    oneof_list [ None; Some Finding_class.Warn; Some Finding_class.Block ]
+  in
+  let* detail = option terminal_text in
+  let* place = option rendered_place in
+  let* mark =
+    match place with Some place -> rendered_mark place | None -> return None
+  in
+  let* related = rendered_related in
+  let* fix =
+    match place with
+    | None -> return None
+    | Some _ ->
+        oneof_list
+          [
+            None;
+            Some (fun () -> Edits.word_fix "req");
+            Some (fun () -> Fix.pin (Edits.tag "@cites a v1\n") 2);
+            Some (fun () -> Fix.pin (Edits.tag "@cites \xe6\x97\xa5\n") 2);
+            Some
+              (fun () ->
+                Fix.ack (Edits.document "@cites a\r\n") ~block:0 ~target:"a");
+          ]
+  in
+  return
+    ( content,
+      Finding.make finding_class
+        (Finding.Line { path = "a.md"; line = 1 })
+        ?place
+        ?detail:(Option.bind detail (fun d -> if d = "" then None else Some d))
+        ?mark ~related
+        ?fix:(Option.map (fun make -> make ()) fix)
+        (),
+      tier )
+
+let print_place ({ path; span } : Finding.place) =
+  Printf.sprintf "%s %d:%d-%d:%d" path span.start.line span.start.column
+    span.stop.line span.stop.column
+
+let print_rendered (content, (finding : Finding.t), tier) =
+  Printf.sprintf
+    "content %S, tier %s, place %s, mark %s, detail %s, related [%s], fix %s"
+    content
+    (Option.fold ~none:"none" ~some:Finding_class.tier_name tier)
+    (Option.fold ~none:"none" ~some:print_place finding.place)
+    (Option.fold ~none:"none"
+       ~some:(fun ({ start; stop; label } : Finding.mark) ->
+         Printf.sprintf "%d-%d %S" start stop label)
+       finding.mark)
+    (Option.fold ~none:"none" ~some:(Printf.sprintf "%S") finding.detail)
+    (String.concat "; "
+       (List.map
+          (fun ({ label; place } : Finding.related) ->
+            Printf.sprintf "%S %s" label
+              (Option.fold ~none:"none" ~some:print_place place))
+          finding.related))
+    (Option.fold ~none:"none" ~some:Fix.text finding.fix)
+
+let tag_block =
+  let open Gen in
+  let* prefix = oneof_list [ ""; "  "; "- " ] in
+  let* target = oneof_list [ "a"; "ab-c" ] in
+  let* rev = oneof_list [ ""; " v1" ] in
+  let* description =
+    oneof_list [ ""; " Why \xf0\x9f\xa6\x80."; "\t\xe6\x97\xa5" ]
+  in
+  let* ending = oneof_list [ "\n"; "\r\n" ] in
+  let* last = oneof_list [ true; false ] in
+  let next = if String.equal prefix "- " then "  " else prefix in
+  return
+    (String.concat ""
+       [
+         "# A";
+         ending;
+         ending;
+         prefix;
+         "@cites ";
+         target;
+         rev;
+         description;
+         ending;
+         next;
+         "@cites b v1";
+         (if last then ending else "");
+       ])

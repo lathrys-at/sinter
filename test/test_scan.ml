@@ -40,10 +40,7 @@ let ids records =
       | _ -> "(no id)")
     records
 
-let ledger =
-  "warning: the ledger ref refs/sinter/ledger is absent, so every plan counts \
-   as open; fetch it with git fetch origin \
-   refs/sinter/ledger:refs/sinter/ledger"
+let ledger = "warning: no ledger found, so every plan counts as open"
 
 let shared =
   lazy
@@ -146,16 +143,38 @@ let a_tree_with_no_base_takes_the_merge_base_with_the_default_branch () =
   Alcotest.(check (pair string string))
     "the commit and the message"
     ( head repo,
-      "the base is the merge base of HEAD and refs/heads/main, " ^ head repo )
-    (Scan.base_commit tree.base, Scan.base_message tree.base)
+      "base " ^ String.sub (head repo) 0 7 ^ ", the merge base of HEAD and main"
+    )
+    (Scan.base_commit tree.base, Scan.base_note tree.base)
 
 let a_tree_with_a_base_names_its_revision () =
   let repo, _ = Lazy.force shared_tree in
   let tree = load ~base:"HEAD" repo in
   Alcotest.(check (pair string string))
     "the commit and the message"
-    (head repo, "the base is HEAD, " ^ head repo)
-    (Scan.base_commit tree.base, Scan.base_message tree.base)
+    (head repo, "base " ^ String.sub (head repo) 0 7 ^ ", from --base HEAD")
+    (Scan.base_commit tree.base, Scan.base_note tree.base)
+
+let a_base_note_names_the_short_ref_and_the_short_commit () =
+  let commit = "0123456789abcdef0123456789abcdef01234567" in
+  Alcotest.(check (list string))
+    "a remote branch, a local branch, another ref, a ref with a bidirectional \
+     character, and a revision with a control character"
+    [
+      "base 0123456, the merge base of HEAD and origin/main";
+      "base 0123456, the merge base of HEAD and main";
+      "base 0123456, the merge base of HEAD and refs/other/main";
+      "base 0123456, the merge base of HEAD and ma\xef\xbf\xbdin";
+      "base 0123456, from --base x\xef\xbf\xbd[31m";
+    ]
+    (List.map Scan.base_note
+       [
+         Scan.Merge_base { refname = "refs/remotes/origin/main"; commit };
+         Scan.Merge_base { refname = "refs/heads/main"; commit };
+         Scan.Merge_base { refname = "refs/other/main"; commit };
+         Scan.Merge_base { refname = "refs/heads/ma\xe2\x80\xaein"; commit };
+         Scan.Given { revision = "x\x1b[31m"; commit };
+       ])
 
 let the_index_of_a_tree_is_the_first_record_of_its_scan () =
   let _, _, { Scan.records; _ } = Lazy.force shared in
@@ -243,8 +262,8 @@ let a_check_runs_no_git_command_twice () =
     Git_fixture.git_commands repo (fun env ->
         match
           Check.run ~env ~dir:(Git_fixture.root repo) ~manifest:None ~base:None
-            ~mode:Mode.Tree ~gate:None ~strict:false ~format:Check.Json
-            ~tool:"v1" ()
+            ~mode:Mode.Tree ~gate:None ~strict:false ~form:Check.Json
+            ~verbose:false ~quiet:false ~tool:"v1" ()
         with
         | Ok _ -> ()
         | Error error ->
@@ -443,22 +462,15 @@ let a_scan_that_cannot_write_its_output_says_so () =
   let status, errors = into_a_closed_pipe "scan" in
   Alcotest.(check (pair int (list string)))
     "the exit code and the lines of standard error"
-    ( 3,
-      List.map (fun warning -> "sinter: " ^ warning) warnings
-      @ [ "sinter: cannot write the output: Broken pipe" ] )
+    (3, warnings @ [ "sinter: cannot write the output: Broken pipe" ])
     ( status,
       List.filter (fun line -> line <> "") (String.split_on_char '\n' errors) )
 
 let a_check_that_cannot_write_its_output_says_so () =
-  let _, (tree : Scan.tree) = Lazy.force shared_tree in
   let status, errors = into_a_closed_pipe "check" in
   Alcotest.(check (pair int (list string)))
     "the exit code and the lines of standard error"
-    ( 3,
-      List.map
-        (fun line -> "sinter: " ^ line)
-        ((Scan.base_message tree.base :: tree.warnings)
-        @ [ "cannot write the output: Broken pipe" ]) )
+    (3, [ "sinter: cannot write the output: Broken pipe" ])
     ( status,
       List.filter (fun line -> line <> "") (String.split_on_char '\n' errors) )
 
@@ -670,6 +682,26 @@ let a_conversion_alone_reuses_the_document () =
     | [ (_, a) ], [ (_, b) ] -> a == b
     | _ -> false)
 
+let a_path_warning_holds_no_control_character () =
+  let repo = Git_fixture.init () in
+  Git_fixture.import repo
+    [
+      Git_fixture.commit ~ref:"refs/heads/main" ~mark:1 ~message:"base"
+        [
+          Git_fixture.File ("sinter.toml", manifest);
+          Git_fixture.File ("a\x1b[31m\xc2\x9b\xe2\x80\xae\xff.md", "# G\n");
+        ];
+    ];
+  Git_fixture.write repo "sinter.toml" manifest;
+  let tree, _ = load_with_base repo in
+  Alcotest.(check (list string))
+    "the warnings"
+    [
+      "warning: the path a\xef\xbf\xbd[31m\xef\xbf\xbd\xef\xbf\xbd\\xff.md is \
+       not UTF-8, so sinter does not read the file";
+    ]
+    tree.warnings
+
 let a_base_path_that_is_not_utf_8_gives_one_warning () =
   let repo = Git_fixture.init () in
   Git_fixture.import repo
@@ -687,9 +719,27 @@ let a_base_path_that_is_not_utf_8_gives_one_warning () =
     [
       "warning: the path gone\\xff.md is not UTF-8, so sinter does not read \
        the file";
-      ledger;
     ]
     tree.warnings
+
+let the_ledger_warning_needs_a_plan_and_no_ledger () =
+  let warning files ~ledger =
+    let repo = repository (("sinter.toml", manifest) :: files) in
+    if ledger then
+      ignore
+        (Git_fixture.git repo [ "update-ref"; "refs/sinter/ledger"; "HEAD" ]);
+    let tree = load repo in
+    Scan.ledger_warning tree (Facts.make tree.manifest tree.documents)
+  in
+  let plan = (".plans/p.md", "# P\n\n@plan p\n") in
+  Alcotest.(check (list (option string)))
+    "no ledger and a plan, no ledger and no plan, a ledger and a plan"
+    [ Some ledger; None; None ]
+    [
+      warning [ plan ] ~ledger:false;
+      warning [ ("docs/a.md", "# A\n\n@req a\n") ] ~ledger:false;
+      warning [ plan ] ~ledger:true;
+    ]
 
 let base_manifest (compared : Scan.compared) =
   match compared.base_manifest with
@@ -774,6 +824,10 @@ let tests =
       a_conversion_alone_reuses_the_document;
     case "a base path that is not UTF-8 gives one warning"
       a_base_path_that_is_not_utf_8_gives_one_warning;
+    case "a path warning holds no control character"
+      a_path_warning_holds_no_control_character;
+    case "a base note names the short ref and the short commit"
+      a_base_note_names_the_short_ref_and_the_short_commit;
     case "a scan starts with the index of the tree and the base"
       a_scan_starts_with_the_index_of_the_tree_and_the_base;
     case "a path that is not UTF-8 gives a warning and no fact"
@@ -815,6 +869,8 @@ let tests =
       a_plan_file_needs_the_pack_markdown_when_it_names_none;
     case "a scan that cannot write its output says so"
       a_scan_that_cannot_write_its_output_says_so;
+    Alcotest.test_case "the ledger warning needs a plan and no ledger" `Quick
+      the_ledger_warning_needs_a_plan_and_no_ledger;
     case "a check that cannot write its output says so"
       a_check_that_cannot_write_its_output_says_so;
     case "each error says what is wrong" each_error_says_what_is_wrong;

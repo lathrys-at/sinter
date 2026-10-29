@@ -122,3 +122,28 @@
   successor gets no fix; at 170c04b its fix was `""`, which
   `Finding.make` refuses. `Facts.successors` and the rule of in force
   rule the case out. Its detail stays as it was (ruling of the lead).
+
+## Render the full and brief forms
+
+- `opam lock` read `compiler-cloning` as `enabled` from the switch.
+  The lock keeps `disabled`, as it had, because the package is not a
+  dependency of Sinter. The lock also takes the synopsis and the
+  description of `dune-project` again; they were stale.
+- Without a gate, the primary mark and its label take the bold style of
+  the headline; the style table gives a color only to the marks of a
+  tier. The style renderer is `None` in this step, so no output shows
+  it.
+- `Format` breaks a line at a break hint when the queue is flushed,
+  whatever the margin. The renderer writes no break hint, and the large
+  margin guards only text inside a box.
+- The full and brief output name the base only with `-v`, so
+  `spec/manifest.md` section 6 now says so (ruling of the lead).
+- The ledger warning shows only when a plan exists, and the help, not
+  the warning, says how to fetch the ledger. `ledger-absent-ref` moves
+  to v3 with the same rule (ruling of the lead).
+- Every detail names the item it is about, as `kind:slug`, a step id,
+  or the tag as written, because the text forms no longer show the
+  subject id (ruling of the lead). A cycle of one declaration now has
+  a detail too. The details of `parse-error` and `ignored-tag` stay:
+  their location is their item. The labels of the marks do not
+  change.

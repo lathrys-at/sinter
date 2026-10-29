@@ -1,1 +1,6 @@
-sinter.toml:4:1: warn config-changed setting:check.warn-only check.warn-only: false -> true (weakens)
+warn[config-changed]: check.warn-only: false -> true (weakens)
+ --> sinter.toml:4:1
+  |
+4 | warn-only = true
+  | ^^^^^^^^^^^^^^^^
+  |

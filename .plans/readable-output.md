@@ -47,8 +47,9 @@ JSON carries the edits.
 @decision own-renderer
 Render findings with Sinter's own renderer on `fmt`: the full form by
 default, with source, labels, and fixes; `-o brief` with one line per
-finding; and `-o json`. Add the summary on standard error, the warning
-about a missing ledger, and the folding of the incompleteness classes.
+finding and an indented fix line; and `-o json`. Add the summary on
+standard error, the warning about a missing ledger, and the folding of
+the incompleteness classes.
 
 ## Print errors in one layout and in color
 @scope lib/**, bin/**, test/**, docs/**

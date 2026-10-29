@@ -1383,17 +1383,49 @@ These conventions apply to every command:
   reports every finding and exits 0. Code 2 means that the command line
   is wrong, code 3 that the command could not run here, and code 4 that
   it refused, as `approve` does for an agent.
-- **One line for each finding**, which `check`, `status`, `query`, and
-  the hooks print:
+- **Three forms of output** for findings, which `check`, `status`,
+  `query`, and the hooks print (record `output-forms`). `-o` selects
+  one. The **full form**, the default, gives each finding a block in
+  the layout of rustc: a headline, the location, the source line with
+  a mark under the part at fault, the related places with their
+  labels, and the fix as a diff:
 
   ```
-  <path>:<line>:<col>: <class> <subject> [<detail>]
-    fix: <one-line instruction or the exact line to paste>
+  suspect: the @cites names v1, and decision:login is at v2
+   --> docs/guide.md:3:1
+    |
+  3 | @cites login v1
+    |              ^^ names v1
+    |
+   ::: docs/records.md:3:1
+    |
+  3 | @decision login v2
+    | ------------------ now at v2
+    |
+  help: check that the citation still holds, then pin it to the current revision
+    |
+  3 - @cites login v1
+  3 + @cites login v2
+    |
   ```
 
-  A finding with no place in a file prints `-:-:-:` in the place of
-  the location, so that the number of columns stays the same for
-  `cut` and `awk`.
+  The **brief form**, `-o brief`, gives one line for each finding, and
+  a second line for its fix:
+
+  ```
+  <path>:<line>:<col>: <tier>[<class>] <detail>
+    fix: <the exact text to paste>
+  ```
+
+  Without a gate, the line has no tier. A finding with no place in a
+  file prints `-:-:-:` in the place of the location. The **JSON form**,
+  `-o json`, gives the records of `spec/jsonl.md` section 8. In the
+  full and brief forms, a summary goes to standard error, and the
+  findings of `untraced`, `unmet-promise`, and `awaiting-approval` in
+  one file fold into one line with a count, unless the class blocks.
+  `-v` lists each finding and names the base, and `-q` prints no
+  summary and no note. The text forms are for people and can change
+  between versions; programs read `-o json`.
 
 ### 11.1 `sinter`
 
@@ -1407,7 +1439,7 @@ The everyday commands serve the agent and the person during the work.
 The commands of judgment serve the person who approves, and only
 `approve`, `decline`, and `ledger abandon` change the ledger (section
 9.1). Every command accepts `-C <dir>`, `--manifest`, `--base`,
-`--json`, `--color`, `-q`, `-v`, and `--no-cache`, and the variables
+`-o`, `--color`, `-q`, `-v`, and `--no-cache`, and the variables
 `SINTER_BASE` and `SINTER_PACK_CACHE` give defaults for the base and the
 cache of packs. `parse` and `serve` exist: `parse` prints the tree of a
 file or the matches of a query, and `serve` is the serve loop of section
@@ -1439,9 +1471,9 @@ The other options narrow or change the output: `--path` and `--plan`
 narrow it; `--strict` makes every finding block; `--acked` also shows
 the findings that an ack accepted; `--strict-parse` turns a parse error
 into exit code 3; `--summary` prints one line for each class; and
-`--explain` prints the definition behind each finding. `--json` prints
-the records of `spec/jsonl.md` section 8, and `--sarif` prints SARIF as
-section 13 maps it.
+`--explain` prints the definition behind each finding. `-o json`
+prints the records of `spec/jsonl.md` section 8, and `--sarif` prints
+SARIF as section 13 maps it.
 
 ### 11.4 `sinter query`
 
@@ -1593,7 +1625,7 @@ pytest --junitxml .sinter/junit.xml --cov --cov-context test \
 ### 11.15 `sinter scan`
 
 `sinter scan` prints the facts of every governed file as JSONL, in the
-form of `spec/jsonl.md`. `sinter query --json` and `sinter check --json`
+form of `spec/jsonl.md`. `sinter query --json` and `sinter check -o json`
 print filtered scans, so every tool that reads Sinter reads one
 format.
 

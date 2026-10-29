@@ -1,7 +1,39 @@
-docs/spec.md:3:1: unplanned-change hunk:docs/spec.md:3-3 no step of an open plan, no rule, and no exempt path covers docs/spec.md
-docs/spec.md:3:1: untraced req:account-lockout nothing satisfies it, and nothing verifies it
-docs/spec.md:7:1: unplanned-change hunk:docs/spec.md:7-7 no step of an open plan, no rule, and no exempt path covers docs/spec.md
-docs/spec.md:7:1: untraced design:try-log nothing satisfies it, and nothing verifies it
-docs/use.md:3:1: renamed satisfies:site:docs/use.md#use->lockout the base declares req:lockout, and req:account-lockout has its extent now
-  fix: @satisfies account-lockout v3
-docs/use.md:4:1: dangling cites:site:docs/use.md#use->log no declaration has the slug log
+unplanned-change: no step of an open plan, no rule, and no exempt path covers docs/spec.md
+ --> docs/spec.md:3:1
+  |
+3 | @req account-lockout v3 Lock the account.
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+
+untraced: 2 findings in docs/spec.md
+
+unplanned-change: no step of an open plan, no rule, and no exempt path covers docs/spec.md
+ --> docs/spec.md:7:1
+  |
+7 | @design try-log v1 Log each try.
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+
+renamed: the base declares req:lockout, and req:account-lockout has its extent now
+ --> docs/use.md:3:1
+  |
+3 | @satisfies lockout v2
+  |            ^^^^^^^ renamed since the base
+  |
+ ::: docs/spec.md:3:1
+  |
+3 | @req account-lockout v3 Lock the account.
+  | ----------------------------------------- declared here now
+  |
+help: cite the declaration by its new slug
+  |
+3 - @satisfies lockout v2
+3 + @satisfies account-lockout v3
+  |
+
+dangling: no declaration has the slug log
+ --> docs/use.md:4:1
+  |
+4 | @cites log
+  |        ^^^ no declaration has this slug
+  |

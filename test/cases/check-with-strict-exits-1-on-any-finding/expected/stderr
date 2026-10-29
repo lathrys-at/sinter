@@ -1,2 +1,1 @@
-sinter: the base is HEAD, 6f1ba454dcf5255808e99be25aab878a5cb94c99
-sinter: warning: the ledger ref refs/sinter/ledger is absent, so every plan counts as open; fetch it with git fetch origin refs/sinter/ledger:refs/sinter/ledger
+1 finding in 1 file; 1 has a fix

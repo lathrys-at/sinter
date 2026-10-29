@@ -339,8 +339,26 @@ let apply_takes_the_edits_in_any_order =
     (fun ((text, edits), shuffled) ->
       String.equal (Edits.apply text edits) (Edits.apply text shuffled))
 
+let every_edit_lies_on_the_line_of_the_first_edit =
+  property
+    ~name:"every edit of an alternative lies on the line of its first edit"
+    ~print:String.escaped Generators.tag_block (fun text ->
+      List.for_all
+        (fun fix ->
+          List.for_all
+            (function
+              | [] -> false
+              | (first : Fix.edit) :: _ as edits ->
+                  List.for_all
+                    (fun (edit : Fix.edit) ->
+                      edit.line = first.line && edit.eline = first.line)
+                    edits)
+            (Fix.alternatives fix))
+        (fixes text))
+
 let tests =
   [
+    every_edit_lies_on_the_line_of_the_first_edit;
     Alcotest.test_case "Word replaces the tag word" `Quick
       word_replaces_the_tag_word;
     Alcotest.test_case "Pin without a revision inserts after the target" `Quick

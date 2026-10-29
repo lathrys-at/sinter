@@ -26,6 +26,36 @@ val not_utf_8_string_at : (int * string) QCheck2.Gen.t
 (** A string that is not valid UTF-8, and the byte offset of its first sequence
     that is not well-formed. The string is valid UTF-8 before that offset. *)
 
+val terminal_text : string QCheck2.Gen.t
+(** A string of at most 24 pieces that a terminal shows in different ways:
+    printable ASCII, tabs, carriage returns, line feeds, C0 and C1 control
+    characters, DEL, bidirectional formatting characters, wide characters, an
+    emoji, a combining accent, U+FFFD, and bytes that are not UTF-8. *)
+
+val rendered_finding :
+  (string * Sinter_core.Finding.t * Sinter_core.Finding_class.tier option)
+  QCheck2.Gen.t
+(** The content of a file [a.md], a finding, and its tier. The content holds up
+    to 6 lines of the pieces of {!terminal_text} but the line feed, with LF or
+    CRLF line endings, and sometimes no final line ending or a byte that is not
+    UTF-8. The place of the finding, when it has one, is in [a.md] or in the
+    missing file [missing.md], from line 1 to 7, on one line or two, and can
+    start or stop past the end of its line; its mark, when it has one, lies on
+    the first line of the place. *)
+
+val print_rendered :
+  (string * Sinter_core.Finding.t * Sinter_core.Finding_class.tier option)
+  QCheck2.Print.t
+(** [print_rendered] prints a value of {!rendered_finding}. *)
+
+val tag_block : string QCheck2.Gen.t
+(** The text of a markdown file: a heading, and a block of two citations. The
+    first cites [a] or [ab-c], with or without [v1], and with or without a
+    description with wide characters or a tab; the second is [@cites b v1]. The
+    block stands at the start of the line, indented, or in a list item. The
+    lines end with LF or with CRLF, and the last line has a line ending or none.
+*)
+
 (** {1 Records} *)
 
 val jsonl_int : int QCheck2.Gen.t

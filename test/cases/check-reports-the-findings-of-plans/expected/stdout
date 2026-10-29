@@ -1,10 +1,66 @@
-.plans/work.md:3:1: missing-plan-id plan:work the plan work has no plan id
-  fix: @plan work@ea5ea3
-.plans/work.md:12:1: scope-outside-plan step:work/write-the-logout-req the scope of the plan does not hold src/**
-.plans/work.md:15:1: promise-out-of-scope promise:step:work/write-the-logout-req:req:logout req:logout at docs/reqs.md:8 is outside the scope of the step
-.plans/work.md:15:1: unverified-promise promise:step:work/write-the-logout-req:req:logout the plan promises no @verifies logout
-.plans/work.md:17:1: scope-overlap step:work/overlap this step shares promises and scope with step:work/write-the-login-req
-.plans/work.md:22:1: duplicate line:.plans/work.md@L22 the slug overlap comes first at .plans/work.md:17
-.plans/work.md:25:1: misplaced-plan tag:.plans/work.md@L25C1 a @plan tag stands only in the first tag block of its file
-docs/reqs.md:3:1: untraced req:login nothing satisfies it, and nothing verifies it
-docs/reqs.md:8:1: untraced req:logout nothing satisfies it, and nothing verifies it
+missing-plan-id: the plan work has no plan id
+ --> .plans/work.md:3:1
+  |
+3 | @plan work
+  |       ^^^^ no plan id
+  |
+help: give the plan an id after its slug
+  |
+3 | @plan work@ea5ea3
+  |           +++++++
+  |
+
+scope-outside-plan: step:work/write-the-logout-req has src/** in its scope, outside the scope of the plan
+  --> .plans/work.md:12:1
+   |
+12 | ## Write the logout req
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+
+promise-out-of-scope: the promise req:logout is met only outside the scope of step:work/write-the-logout-req
+  --> .plans/work.md:15:1
+   |
+15 | @req logout
+   |      ^^^^^^ met only outside the scope of the step
+   |
+  ::: docs/reqs.md:8:1
+   |
+ 8 | @req logout v1
+   | -------------- meets the promise outside the scope
+   |
+
+unverified-promise: the plan promises no @verifies logout
+  --> .plans/work.md:15:1
+   |
+15 | @req logout
+   |      ^^^^^^ no promised @verifies
+   |
+
+scope-overlap: step:work/overlap shares promises and scope with step:work/write-the-login-req
+  --> .plans/work.md:17:1
+   |
+ 6 | ## Write the login req
+   | ---------------------- shares promises and scope
+...
+17 | ## Overlap
+   | ^^^^^^^^^^
+   |
+
+duplicate: the slug overlap of step:work/overlap is declared earlier
+  --> .plans/work.md:22:1
+   |
+17 | ## Overlap
+   | ---------- first declared here
+...
+22 | ## Overlap
+   | ^^^^^^^^^^
+   |
+
+misplaced-plan: @plan other is not in the first tag block of its file
+  --> .plans/work.md:25:1
+   |
+25 | @plan other
+   | ^^^^^ not in the first tag block
+   |
+
+untraced: 2 findings in docs/reqs.md

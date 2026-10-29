@@ -37,18 +37,6 @@ val exit_code : strict:bool -> entry list -> int
 
 (** {1 Output} *)
 
-val text : entry -> string list
-(** [text entry] is the text form of the finding, in lines without line feeds.
-    The first line is [<path>:<line>:<column>: ], then the tier and a space when
-    the entry has one, then the class, a space, and the subject id, and then a
-    space and the detail when the finding has one. A finding with no place gives
-    [-:-:-:] for its place. A subject id that holds a space or a tab stands in
-    double quotes, with a backslash before each double quote and each backslash
-    in it. The path and the subject id then take the form that {!Finding.escape}
-    gives, and no control character but the tab stands in a line. A second line,
-    [  fix: ] and {!Fix.text} of the fix in the form that {!Finding.escape}
-    gives, follows when the finding has a fix. *)
-
 val record : mode:Mode.t -> entry -> Jsonl.record
 (** [record ~mode entry] is the finding record of [entry] in a run of [mode]. It
     holds the fields [v], [kind], [id], [class], [subject], [ack_subject],
@@ -67,24 +55,80 @@ val record : mode:Mode.t -> entry -> Jsonl.record
     are those of the edit. The objects are sorted by
     [(alt, path, line, col, eline, ecol, text)], and no two are equal. *)
 
+val summary : documents:int -> entry list -> string
+(** [summary ~documents entries] is the summary of a check that reports
+    [entries], one line for the person who runs the tool. With no entry, it is
+    [no findings in <documents> files], with [1 file] when [documents] is 1.
+    Otherwise it is [<n> findings in <f> files], where [<n>] is the number of
+    entries and [<f>] the number of distinct paths of their places, with
+    [1 finding] and [1 file] for a count of 1. When the entries have a tier, a
+    colon, a space, and the count of each tier follow: [<b> block], then
+    [<w> warn], joined by [", "], and a tier with no entry left out. When [<x>]
+    entries have a fix, [; <x> have a fix] follows, or [; 1 has a fix]. *)
+
+(** One item of the full or the brief form. *)
+type item =
+  | Single of entry  (** one finding *)
+  | Folded of { first : entry; count : int }
+      (** [count] findings of one class in one file, folded into one line at the
+          place of the first, [first] *)
+
+val fold : strict:bool -> verbose:bool -> entry list -> item list
+(** [fold ~strict ~verbose entries] is [entries] in their order, with each group
+    of 2 entries or more folded into one item at the place of its first entry. A
+    group is the entries of one class and one path whose class is [untraced],
+    [unmet-promise], or [awaiting-approval] and whose tier is not [Block]; an
+    entry with no place is in no group. With [strict] or [verbose], every entry
+    is its own [Single] item. *)
+
+val fold_note : item list -> string option
+(** [fold_note items] is the text of the note that says how many findings
+    [items] fold:
+    [<n> findings are folded into <l> lines; use -v to list each one], with
+    [1 line] for one folded item; [None] when no item is folded. *)
+
 (** {1 The check} *)
 
 (** The form of the output. *)
-type format =
-  | Text  (** the text form of each finding *)
+type form =
+  | Full  (** the full form of each finding, {!Render.full} *)
+  | Brief  (** the brief form of each finding, {!Render.brief} *)
   | Json  (** the index record, and then the record of each finding *)
 
-type report = {
-  messages : string list;
-      (** the lines for the person who runs the tool, without line feeds: in the
-          format [Text], the line that names the base first; then the warnings
-          of the tree *)
-  lines : string list;
-      (** the output, in lines without line feeds: the findings in the order of
-          {!Finding.compare}, in the form that the format names *)
-  code : int;  (** the exit code, as {!exit_code} gives it *)
-}
-(** What a check gives. *)
+type report
+(** What a check gives: the lines for standard error, the exit code, and the
+    findings to write. The value holds the path of the root of the working tree,
+    so that {!write} can read the files of the findings. *)
+
+val messages : report -> string list
+(** [messages report] is the lines for the person who runs the tool, without
+    line feeds. In the forms [Full] and [Brief]: the {!summary} of the entries,
+    with the number of documents of the tree, unless the check is quiet; then
+    the warnings: those of the tree, and then {!Scan.ledger_warning} of the
+    facts of the working tree when there is one; then, unless the check is
+    quiet, [note: ] and {!fold_note} of the items of {!fold} when there is one;
+    then, when the check is verbose and not quiet, [note: ] and
+    {!Scan.base_note} of the base. In the form [Json]: the warnings. *)
+
+val notices : Format.formatter -> report -> unit
+(** [notices ppf report] writes {!messages} of [report] to [ppf], each with a
+    line feed, with the word [note:] in the style {!Style.Note}, and flushes
+    [ppf].
+
+    @raise Sys_error if [ppf] cannot write. *)
+
+val code : report -> int
+(** [code report] is the exit code, as {!exit_code} gives it. *)
+
+val write : ?phases:Allocation.t -> Format.formatter -> report -> unit
+(** [write ppf report] writes the findings of [report] to [ppf] in their form,
+    in the order of {!Finding.compare}, and flushes [ppf]. In the form [Full],
+    one empty line stands between two blocks of {!Render.full}, and each file of
+    a finding or of a related place is read once. In the form [Json], each
+    record is one line of {!Jsonl.to_string}. With [phases], it counts the words
+    of the writing, the reading of the files included, in the phase [output].
+
+    @raise Sys_error if [ppf] cannot write. *)
 
 val run :
   ?phases:Allocation.t ->
@@ -95,15 +139,18 @@ val run :
   mode:Mode.t ->
   gate:Finding_class.gate option ->
   strict:bool ->
-  format:format ->
+  form:form ->
+  verbose:bool ->
+  quiet:bool ->
   tool:string ->
   unit ->
   (report, Scan.error) result
-(** [run ~env ~dir ~manifest ~base ~mode ~gate ~strict ~format ~tool ()] checks
-    the working tree that {!Scan.load_with_base} reads with [env], [dir],
-    [manifest], and [base]. [gate] is the gate of the check, [strict] says
-    whether every finding counts for the exit code, and [tool] is the version of
-    the tool, for the index record.
+(** [run ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose ~quiet
+     ~tool ()] checks the working tree that {!Scan.load_with_base} reads with
+    [env], [dir], [manifest], and [base]. [gate] is the gate of the check,
+    [strict] says whether every finding counts for the exit code, [form] is the
+    form of the output, [verbose] and [quiet] select the lines of {!messages},
+    and [tool] is the version of the tool, for the index record.
 
     In the mode [Tree], the findings are those of the working tree. In the mode
     [Diff], they are the findings of the working tree less the findings of the
@@ -119,10 +166,10 @@ val run :
 
     With [phases], it counts the phases of {!Scan.load_with_base}, [facts]
     ({!Facts.make}) and [findings] (the findings, their subtraction, the classes
-    that compare with the base, and their selection), the index record in
-    [repository], and the phase [output], the lines of the report. In the mode
-    [Diff], it counts the facts of the base in [base-facts] and their findings
-    in [base-findings]. In the mode [Tree], the facts of the files of the base
-    that differ from the working tree count in [findings].
+    that compare with the base, and their selection), and the index record in
+    [repository]. In the mode [Diff], it counts the facts of the base in
+    [base-facts] and their findings in [base-findings]. In the mode [Tree], the
+    facts of the files of the base that differ from the working tree count in
+    [findings].
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)

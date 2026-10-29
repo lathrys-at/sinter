@@ -355,9 +355,10 @@ merge base is not found, the command stops with exit code 3. The
 message says that the clone is shallow, and says to fetch the whole
 history.
 
-The plain output of `sinter status` and of `sinter check` names the
-base that the command used: the ref that resolved, and the commit of
-the base. The `index` record carries the base and the default branch
+With `-v`, the full and the brief output of `sinter check` (and later
+of `sinter status`) name the base that the command used: the ref that
+resolved, and the first 7 hexadecimal digits of the commit of the base.
+The `index` record carries the base and the default branch
 ([jsonl.md](jsonl.md) section 10).
 
 ## 7. Globs, path sets, and the file set
