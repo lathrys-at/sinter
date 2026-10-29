@@ -216,6 +216,10 @@ let scan_cmd =
          the markdown pack reads. A file that git ignores, a symbolic link, a \
          file inside a submodule, and a file whose path is not UTF-8 are not \
          read. Each warning goes to standard error.";
+      `P
+        "When the repository has no ledger ref, $(b,refs/sinter/ledger), and \
+         the tree holds a plan, a warning says that every plan counts as open. \
+         $(b,sinter check --help) says how to fetch the ledger.";
     ]
   in
   let info = Cmd.info "scan" ~docs:plumbing ~doc ~man ~exits:scan_exits in
