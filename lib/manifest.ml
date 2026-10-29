@@ -147,7 +147,7 @@ type problem =
     }
   | Bad_marker of string
 
-type error = At of Toml.position * problem | No_pack
+type error = At of Toml.span * problem | No_pack
 
 let last key = match List.rev key with name :: _ -> name | [] -> ""
 
@@ -325,8 +325,8 @@ let message = function
   | No_pack -> "the manifest names no pack; " ^ no_pack_advice
 
 let render ~path = function
-  | At (position, problem) ->
-      Printf.sprintf "%s:%d:%d: %s" path position.Toml.line position.column
+  | At ({ start; _ }, problem) ->
+      Printf.sprintf "%s:%d:%d: %s" path start.Toml.line start.column
         (problem_message problem)
   | No_pack -> Printf.sprintf "%s names no pack; %s" path no_pack_advice
 
@@ -361,10 +361,10 @@ type t = {
 }
 
 type reading = {
-  mutable names_errors : (Toml.position * problem) list;
-  mutable value_errors : (Toml.position * problem) list;
+  mutable names_errors : (Toml.span * problem) list;
+  mutable value_errors : (Toml.span * problem) list;
   mutable default_branch : string option;
-  mutable pack_keys : (string * Toml.position) list;
+  mutable pack_keys : (string * Toml.span) list;
   mutable files : (string * Path_set.t option) list;
   mutable versions : (string * Major_minor.t option) list;
   mutable runners : (string * (Toml.key * Toml.table)) list;
@@ -390,18 +390,22 @@ type place =
   | Flag of (bool -> unit)
   | Texts of (Toml.node -> (Toml.node * string) list -> unit)
 
-let names_error reading position problem =
-  reading.names_errors <- (position, problem) :: reading.names_errors
+let names_error reading span problem =
+  reading.names_errors <- (span, problem) :: reading.names_errors
 
-let value_error reading position problem =
-  reading.value_errors <- (position, problem) :: reading.value_errors
+let value_error reading span problem =
+  reading.value_errors <- (span, problem) :: reading.value_errors
 
-let start node = (Toml.span node).start
+let one_character (position : Toml.position) =
+  {
+    Toml.start = position;
+    stop = { position with column = position.column + 1 };
+  }
 
 let inside node offset =
   match Toml.string_position node offset with
-  | Some position -> position
-  | None -> start node
+  | Some position -> one_character position
+  | None -> Toml.span node
 
 let is_name_char c = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
 
@@ -456,10 +460,10 @@ let read_path_set reading ~key array members set =
                 (Bad_glob { member; error })
           | Path_set.Repeated { index; member } ->
               value_error reading
-                (start (fst members.(index)))
+                (Toml.span (fst members.(index)))
                 (Repeated_member { key; member })
           | Path_set.No_plain_glob ->
-              value_error reading (start array) (No_plain_glob key))
+              value_error reading (Toml.span array) (No_plain_glob key))
         errors
 
 let path_set reading key set =
@@ -472,7 +476,7 @@ let word reading ~key choices name_of found =
       | Some choice -> found choice
       | None ->
           let names = List.map name_of choices in
-          value_error reading (start node)
+          value_error reading (Toml.span node)
             (Unknown_value
                {
                  key;
@@ -509,7 +513,7 @@ let pack_place reading (key : Toml.key) =
             let version = Major_minor.of_string value in
             reading.versions <- (name, version) :: reading.versions;
             if version = None then
-              value_error reading (start node)
+              value_error reading (Toml.span node)
                 (Not_a_version
                    { key = [ "scan"; "packs"; name; "version" ]; text = value }))
       )
@@ -617,11 +621,11 @@ let proof_place reading =
                  List.iter
                    (fun (node, name) ->
                      if not (is_variable_name name) then
-                       value_error reading (start node) (Bad_marker name))
+                       value_error reading (Toml.span node) (Bad_marker name))
                    members;
                  List.iter
                    (fun (node, member) ->
-                     value_error reading (start node)
+                     value_error reading (Toml.span node)
                        (Repeated_member
                           { key = [ "proof"; "agent-markers" ]; member }))
                    (first_repeated members);
@@ -654,8 +658,7 @@ let layout reading =
             Varying
               (fun key ->
                 if is_name key.name then begin
-                  reading.pack_keys <-
-                    (key.name, key.at.start) :: reading.pack_keys;
+                  reading.pack_keys <- (key.name, key.at) :: reading.pack_keys;
                   Ok (pack_place reading key)
                 end
                 else Error (Bad_pack_name key.name)) );
@@ -705,7 +708,7 @@ let layout reading =
 
 let rec walk reading ~path ~(key : Toml.key) place node =
   let wrong expected =
-    names_error reading (start node)
+    names_error reading (Toml.span node)
       (Wrong_type
          { key = path; expected; found = Toml.Kind.of_value (Toml.value node) })
   in
@@ -714,7 +717,7 @@ let rec walk reading ~path ~(key : Toml.key) place node =
   | Varying check, Toml.Table table -> walk_varying reading ~path check table
   | Kept found, Toml.Table table -> found table
   | (Fixed _ | Varying _ | Kept _), _ -> wrong A_table
-  | Refused problem, _ -> names_error reading key.at.start problem
+  | Refused problem, _ -> names_error reading key.at problem
   | Text found, Toml.String value -> found node value
   | Text _, _ -> wrong A_string
   | Flag found, Toml.Boolean value -> found value
@@ -726,7 +729,7 @@ let rec walk reading ~path ~(key : Toml.key) place node =
             match Toml.value member with
             | Toml.String value -> Some (member, value)
             | other ->
-                names_error reading (start member)
+                names_error reading (Toml.span member)
                   (Wrong_member_type
                      { key = path; found = Toml.Kind.of_value other });
                 None)
@@ -741,7 +744,7 @@ and walk_fixed reading ~path fields table =
       match List.assoc_opt key.name fields with
       | Some place -> walk reading ~path:(path @ [ key.name ]) ~key place child
       | None ->
-          names_error reading key.at.start
+          names_error reading key.at
             (unknown_key ~table:path ~valid:(List.map fst fields) key.name))
     table
 
@@ -750,15 +753,15 @@ and walk_varying reading ~path check table =
     (fun ((key : Toml.key), child) ->
       match check key with
       | Ok place -> walk reading ~path:(path @ [ key.name ]) ~key place child
-      | Error problem -> names_error reading key.at.start problem)
+      | Error problem -> names_error reading key.at problem)
     table
 
 let sort errors =
   List.sort_uniq
-    (fun ((a : Toml.position), p) ((b : Toml.position), q) ->
-      compare (a.line, a.column, p) (b.line, b.column, q))
+    (fun ((a : Toml.span), p) ((b : Toml.span), q) ->
+      compare (a.start.line, a.start.column, p) (b.start.line, b.start.column, q))
     errors
-  |> List.map (fun (position, problem) -> At (position, problem))
+  |> List.map (fun (span, problem) -> At (span, problem))
 
 let check_sinter_spec document =
   match
@@ -772,17 +775,18 @@ let check_sinter_spec document =
       | Toml.String text -> (
           match Major_minor.of_string text with
           | None ->
-              Error (start node, Not_a_version { key = [ "sinter-spec" ]; text })
+              Error
+                (Toml.span node, Not_a_version { key = [ "sinter-spec" ]; text })
           | Some sinter_spec
             when Major_minor.newer sinter_spec ~than:specification ->
-              Error (start node, Sinter_spec_too_new sinter_spec)
+              Error (Toml.span node, Sinter_spec_too_new sinter_spec)
           | Some sinter_spec
             when Major_minor.older_major sinter_spec ~than:specification ->
-              Error (start node, Sinter_spec_major_too_old sinter_spec)
+              Error (Toml.span node, Sinter_spec_major_too_old sinter_spec)
           | Some sinter_spec -> Ok (Some sinter_spec))
       | other ->
           Error
-            ( start node,
+            ( Toml.span node,
               Wrong_type
                 {
                   key = [ "sinter-spec" ];
@@ -798,8 +802,7 @@ let rec keys_newer ~sinter_spec ~path table =
         match since path with
         | Some version when Major_minor.newer version ~than:sinter_spec ->
             [
-              ( key.at.start,
-                Key_too_new { key = path; since = version; sinter_spec } );
+              (key.at, Key_too_new { key = path; since = version; sinter_spec });
             ]
         | _ -> []
       in
@@ -839,7 +842,7 @@ let check_runners_of_packs reading =
       match By_name.find_opt key.name !owners with
       | None -> owners := By_name.add key.name pack !owners
       | Some other ->
-          value_error reading key.at.start
+          value_error reading key.at
             (Runner_in_two_packs { runner = key.name; pack; other }))
     (List.stable_sort
        (fun (a, _) (b, _) -> String.compare a b)
@@ -857,13 +860,13 @@ let packs_of reading =
   let files_by_name = by_name reading.files
   and versions_by_name = by_name reading.versions in
   List.sort compare reading.pack_keys
-  |> List.filter_map (fun (name, position) ->
+  |> List.filter_map (fun (name, span) ->
       let files = By_name.find_opt name files_by_name
       and version = By_name.find_opt name versions_by_name
       and builtin = name = "markdown" in
-      if files = None then value_error reading position (Missing_files name);
+      if files = None then value_error reading span (Missing_files name);
       if version = None && not builtin then
-        value_error reading position (Missing_version name);
+        value_error reading span (Missing_version name);
       match (files, version) with
       | Some (Some files), None when builtin ->
           Some { name; files; version = None; runners = [] }
@@ -879,7 +882,8 @@ let packs_of reading =
 
 let of_string text =
   match Toml.parse text with
-  | Error error -> Error (sort [ (Toml.error_position error, Syntax error) ])
+  | Error error ->
+      Error (sort [ (one_character (Toml.error_position error), Syntax error) ])
   | Ok document -> (
       match check_sinter_spec document with
       | Error error -> Error (sort [ error ])

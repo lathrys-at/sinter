@@ -918,6 +918,39 @@ let a_large_manifest_reads_quickly () =
         (Manifest.message error)
   | _ -> Alcotest.fail "one error was expected"
 
+let spans text =
+  match Manifest.of_string text with
+  | Ok _ -> [ "no error" ]
+  | Error errors ->
+      List.map
+        (function
+          | Manifest.At ({ start; stop }, _) ->
+              Printf.sprintf "%d:%d-%d:%d" start.line start.column stop.line
+                stop.column
+          | Manifest.No_pack -> "no place")
+        errors
+
+let each_error_carries_the_span_of_the_text_at_fault () =
+  List.iter
+    (fun (name, text, expected) ->
+      Alcotest.(check (list string)) name expected (spans text))
+    [
+      ("a key", markdown ^ "[check]\nhistoric = true\n", [ "4:1-4:9" ]);
+      ( "the part of a dotted key",
+        "check.historic = true\n" ^ markdown,
+        [ "1:7-1:15" ] );
+      ("a quoted key", markdown ^ "[check]\n\"bad\" = 1\n", [ "4:1-4:6" ]);
+      ("a value", markdown ^ "[check]\nwarn-only = \"yes\"\n", [ "4:13-4:18" ]);
+      ( "a value over two lines",
+        markdown ^ "[check]\nwarn-only = [\n  1]\n",
+        [ "4:13-5:5" ] );
+      ( "a place inside a string",
+        "[scan]\npacks.markdown.files = [\"a/**b\"]\n",
+        [ "2:28-2:29" ] );
+      ("a syntax error", "[scan\n", [ "1:6-1:7" ]);
+      ("no pack", "[scan]\n", [ "no place" ]);
+    ]
+
 let errors_come_in_the_order_of_their_places () =
   reports "keys written out of order"
     "[check]\nzz = 1\naa = 2\n[proof]\nbb = 3\n"
@@ -1233,8 +1266,13 @@ let runner_errors () =
        runner";
     ]
 
-let message problem =
-  Manifest.message (Manifest.At ({ Toml.line = 1; column = 1 }, problem))
+let at line column =
+  {
+    Toml.start = { Toml.line; column };
+    stop = { Toml.line; column = column + 1 };
+  }
+
+let message problem = Manifest.message (Manifest.At (at 1 1, problem))
 
 let every_problem_has_a_message () =
   let check name expected problem =
@@ -1333,8 +1371,7 @@ let render_names_the_path_and_the_place () =
   Alcotest.(check string)
     "a place" "conf/s.toml:3:14: 'pack-mismatch' takes no tier at any gate"
     (Manifest.render ~path:"conf/s.toml"
-       (Manifest.At
-          ({ Toml.line = 3; column = 14 }, Manifest.No_tier_at_any_gate)))
+       (Manifest.At (at 3 14, Manifest.No_tier_at_any_gate)))
 
 let rows () =
   let text =
@@ -1439,8 +1476,11 @@ let load_gives_the_errors_of_the_text () =
       match Manifest.load path with
       | Error
           (Manifest.Invalid
-             [ Manifest.At ({ line = 1; column = 2 }, Manifest.Unknown_key _) ])
-        ->
+             [
+               Manifest.At
+                 ( { start = { line = 1; column = 2 }; _ },
+                   Manifest.Unknown_key _ );
+             ]) ->
           ()
       | _ -> Alcotest.fail "no error of the unknown key")
 
@@ -1561,8 +1601,13 @@ let damaged =
         ])
 
 let place_of = function
-  | Manifest.At (position, _) -> Some (position.Toml.line, position.column)
+  | Manifest.At ({ start; _ }, _) -> Some (start.Toml.line, start.column)
   | Manifest.No_pack -> None
+
+let stops_after_its_start = function
+  | Manifest.At ({ start; stop }, _) ->
+      compare (stop.Toml.line, stop.column) (start.Toml.line, start.column) > 0
+  | Manifest.No_pack -> true
 
 let of_string_answers_any_text =
   property ~count:400
@@ -1580,6 +1625,7 @@ let of_string_answers_any_text =
             (fun (line, column) -> line >= 1 && line <= lines && column >= 1)
             places
           && places = List.sort compare places
+          && List.for_all stops_after_its_start errors
           && List.length (List.sort_uniq compare errors) = List.length errors
           && List.mem Manifest.No_pack errors = (errors = [ Manifest.No_pack ])
           && List.for_all
@@ -2312,8 +2358,11 @@ let one_fault_gives_its_one_error =
       >|= fun (_, text) -> (text, problem, at))
     (fun (text, problem, at) ->
       match (locate text at, Manifest.of_string text) with
-      | Some position, Error errors ->
-          errors = [ Manifest.At (position, problem) ]
+      | Some position, Error errors -> (
+          match errors with
+          | [ Manifest.At ({ start; _ }, found) ] ->
+              start = position && found = problem
+          | _ -> false)
       | _ -> false)
 
 let case name test = Alcotest.test_case name `Quick test
@@ -2374,6 +2423,8 @@ let a_name_follows_the_pattern_of_a_pack_name () =
 
 let tests =
   [
+    case "each error carries the span of the text at fault"
+      each_error_carries_the_span_of_the_text_at_fault;
     case "the document keeps every key with its place"
       the_document_keeps_every_key_with_its_place;
     case "a name follows the pattern of a pack name"

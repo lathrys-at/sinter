@@ -164,10 +164,12 @@ type problem =
 
 (** One error of a manifest. *)
 type error =
-  | At of Toml.position * problem
-      (** a problem at a place: the line and the column, from 1, of the first
-          character that is in error. For a dotted key, the place is the first
-          part of the key that is in error. *)
+  | At of Toml.span * problem
+      (** a problem at a place: the span of the text that is in error. For a
+          key, the span is the part of the key that is in error; for a dotted
+          key, the first part that is in error. For a value, the span is the
+          span of the value. For a place inside a string, and for a TOML syntax
+          error, the span is one character. *)
   | No_pack  (** the manifest names no pack *)
 
 val newer_keys : sinter_spec:Major_minor.t -> Toml.table -> error list
