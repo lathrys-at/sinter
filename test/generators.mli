@@ -48,6 +48,16 @@ val print_rendered :
   QCheck2.Print.t
 (** [print_rendered] prints a value of {!rendered_finding}. *)
 
+val error_text : Sinter_core.Error_text.t QCheck2.Gen.t
+(** An error whose fault, help, path, and line hold the pieces of
+    {!terminal_text}. The help is sometimes empty. The place, when there is one,
+    starts from line 1 to 12 and from column 1 to 30, and stops one character
+    later, up to 12 characters later, or on one of the next three lines; its
+    line is sometimes not at hand. *)
+
+val print_error_text : Sinter_core.Error_text.t QCheck2.Print.t
+(** [print_error_text] prints a value of {!error_text}. *)
+
 val tag_block : string QCheck2.Gen.t
 (** The text of a markdown file: a heading, and a block of two citations. The
     first cites [a] or [ab-c], with or without [v1], and with or without a

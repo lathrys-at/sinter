@@ -77,7 +77,7 @@ let source_failure text =
         try
           ignore (output ~query:(Some query) ~paths:[ file ]);
           "no failure"
-        with Parse.Error message -> message)
+        with Parse.Error { fault; _ } -> fault)
   in
   (file, message)
 
@@ -107,11 +107,27 @@ let reports_a_file_that_does_not_exist () =
     try
       ignore (output ~query:(Some query) ~paths:[ "no-such-file.json" ]);
       "no failure"
-    with Parse.Error message -> message
+    with Parse.Error { fault; _ } -> fault
   in
   Alcotest.(check string)
     "the message is the message of the system"
     "no-such-file.json: No such file or directory" message
+
+let an_error_carries_the_help_of_its_kind () =
+  let help paths =
+    try
+      ignore (output ~query:(Some query) ~paths);
+      "no failure"
+    with Parse.Error { help; place; _ } ->
+      if place = None then help else "a place"
+  in
+  Alcotest.(check (list string))
+    "a missing file, and a name that is not UTF-8"
+    [
+      Query_file.help (Query_file.Unreadable Text_file.Is_a_directory);
+      Parse_record.help Parse_record.Path_not_utf_8;
+    ]
+    [ help [ "no-such-file.json" ]; help [ "\xff.json" ] ]
 
 let names_the_query_file_when_the_query_fails () =
   let file = Filename.temp_file "sinter-parse" ".scm" in
@@ -125,7 +141,7 @@ let names_the_query_file_when_the_query_fails () =
         try
           ignore (output ~query:(Some file) ~paths:[ sample ]);
           "no failure"
-        with Parse.Error message -> message)
+        with Parse.Error { fault; _ } -> fault)
   in
   Alcotest.(check bool)
     "the message names the query file, not the source file" true
@@ -141,7 +157,7 @@ let reports_an_empty_query_file () =
         try
           ignore (output ~query:(Some file) ~paths:[ sample ]);
           "no failure"
-        with Parse.Error message -> message)
+        with Parse.Error { fault; _ } -> fault)
   in
   Alcotest.(check string)
     "the message names the query file"
@@ -159,7 +175,7 @@ let a_query_file_of_one_character_is_not_empty () =
       ~finally:(fun () -> Sys.remove file)
       (fun () ->
         try output ~query:(Some file) ~paths:[ sample ]
-        with Parse.Error message -> message)
+        with Parse.Error { fault; _ } -> fault)
   in
   Alcotest.(check string)
     "the run writes no line and gives no failure" "" written
@@ -195,7 +211,7 @@ let reports_a_channel_that_cannot_be_written () =
         try
           Parse.run ~grammar ~query:(Some query) ~paths:[ sample ] channel;
           "no failure"
-        with Parse.Error message -> message)
+        with Parse.Error { fault; _ } -> fault)
   in
   Alcotest.(check bool)
     "the message says the output cannot be written" true
@@ -205,7 +221,7 @@ let name_failure path =
   try
     ignore (output ~query:(Some query) ~paths:[ path ]);
     "no failure"
-  with Parse.Error message -> message
+  with Parse.Error { fault; _ } -> fault
 
 let rejects_a_file_name_that_is_not_utf_8 () =
   Alcotest.(check string)
@@ -253,7 +269,7 @@ let names_a_source_that_cannot_be_read () =
     try
       ignore (output ~query:(Some query) ~paths:[ "." ]);
       "no failure"
-    with Parse.Error message -> message
+    with Parse.Error { fault; _ } -> fault
   in
   Alcotest.(check string)
     "the message names the directory and says what is wrong" ".: is a directory"
@@ -391,7 +407,7 @@ let refuses_a_module_that_names_itself_with_a_nul_byte () =
         try
           Parse.run ~grammar:path ~query:None ~paths:[ sample ] stdout;
           "no failure"
-        with Parse.Error message -> message)
+        with Parse.Error { fault; _ } -> fault)
   in
   Alcotest.(check bool)
     "the message names the grammar file" true
@@ -462,7 +478,7 @@ let fold_checks_every_file_name_first () =
             Parse.fold language ~query ~paths:[ sample; "\xffnope.json" ]
               ~f:(fun _ -> incr items);
             "no failure"
-          with Parse.Error message -> message
+          with Parse.Error { fault; _ } -> fault
         in
         (!items, message))
   in
@@ -486,7 +502,7 @@ let command_output ~query ~paths =
       let outcome =
         match Parse.run ~grammar ~query ~paths channel with
         | () -> Ok ()
-        | exception Parse.Error message -> Error message
+        | exception Parse.Error { fault; _ } -> Error fault
       in
       close_out_noerr channel;
       let channel = open_in_bin file in
@@ -591,7 +607,7 @@ let names_the_grammar_before_a_bad_file_name () =
           Parse.run ~grammar:"no-such-grammar.wasm" ~query:None
             ~paths:[ "\xffname.json" ] channel;
           "no failure"
-        with Parse.Error message -> message)
+        with Parse.Error { fault; _ } -> fault)
   in
   Alcotest.(check bool)
     "the message names the grammar file" true
@@ -599,6 +615,8 @@ let names_the_grammar_before_a_bad_file_name () =
 
 let tests =
   [
+    Alcotest.test_case "an error carries the help of its kind" `Quick
+      an_error_carries_the_help_of_its_kind;
     Alcotest.test_case "prints the captures of the fixture" `Quick
       prints_the_captures_of_the_fixture;
     Alcotest.test_case "prints the parse tree" `Quick prints_the_parse_tree;

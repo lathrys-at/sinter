@@ -17,15 +17,19 @@ let scan ?(dir = "") ?manifest ?base repo =
     ~dir:(Filename.concat (Git_fixture.root repo) dir)
     ~manifest ~base ~tool:"v1" ()
 
+let messages error =
+  List.map
+    (fun { Error_text.fault; help; _ } -> fault ^ "; " ^ help)
+    (Scan.explain error)
+
 let outcome = function
   | Ok outcome -> outcome
   | Error error ->
-      Alcotest.failf "the scan fails: %s"
-        (String.concat "; " (Scan.messages error))
+      Alcotest.failf "the scan fails: %s" (String.concat "; " (messages error))
 
 let failure = function
   | Ok _ -> Alcotest.fail "the scan gives an outcome"
-  | Error error -> String.concat "\n" (Scan.messages error)
+  | Error error -> String.concat "\n" (messages error)
 
 let field name record =
   match List.assoc_opt name record with
@@ -120,8 +124,7 @@ let load ?base repo =
   with
   | Ok tree -> tree
   | Error error ->
-      Alcotest.failf "the load fails: %s"
-        (String.concat "; " (Scan.messages error))
+      Alcotest.failf "the load fails: %s" (String.concat "; " (messages error))
 
 let shared_tree =
   lazy
@@ -267,7 +270,7 @@ let a_check_runs_no_git_command_twice () =
         | Ok _ -> ()
         | Error error ->
             Alcotest.failf "the check fails: %s"
-              (String.concat "; " (Scan.messages error)))
+              (String.concat "; " (messages error)))
   in
   Alcotest.(check bool)
     "the check ran the tree key, the diff, and the read of blobs" true
@@ -403,7 +406,7 @@ let a_plan_file_needs_the_pack_markdown_when_it_names_none () =
   Alcotest.(check string)
     "the message"
     ".plans/p.md is under .plans/, and the pack markdown does not read it; add \
-     \".plans/\" to its files"
+     \".plans/\" to the files of the pack markdown"
     (failure (scan ~manifest:path repo))
 
 let sinter = Filename.concat (Sys.getcwd ()) "../bin/main.exe"
@@ -456,94 +459,256 @@ let into_a_closed_pipe command =
       in
       (status, In_channel.with_open_bin errors In_channel.input_all))
 
+let broken_pipe =
+  [
+    "error: cannot write the output: Broken pipe";
+    "  = help: check that the output stays open and that the disk has space";
+  ]
+
 let a_scan_that_cannot_write_its_output_says_so () =
   let _, _, { Scan.warnings; _ } = Lazy.force shared in
   let status, errors = into_a_closed_pipe "scan" in
   Alcotest.(check (pair int (list string)))
     "the exit code and the lines of standard error"
-    ( 3,
-      List.map (fun warning -> "warning: " ^ warning) warnings
-      @ [ "sinter: cannot write the output: Broken pipe" ] )
+    (3, List.map (fun warning -> "warning: " ^ warning) warnings @ broken_pipe)
     ( status,
       List.filter (fun line -> line <> "") (String.split_on_char '\n' errors) )
 
 let a_check_that_cannot_write_its_output_says_so () =
   let status, errors = into_a_closed_pipe "check" in
   Alcotest.(check (pair int (list string)))
-    "the exit code and the lines of standard error"
-    (3, [ "sinter: cannot write the output: Broken pipe" ])
+    "the exit code and the lines of standard error" (3, broken_pipe)
     ( status,
       List.filter (fun line -> line <> "") (String.split_on_char '\n' errors) )
 
-let each_error_says_what_is_wrong () =
+let text { Error_text.fault; help; _ } = (fault, help)
+let tree_errors = Sinter_bridge.Tree.[ Did_not_finish; Too_long ]
+
+let text_file_errors =
+  Text_file.
+    [
+      Is_a_directory;
+      Cannot_open "a.md: the file does not open";
+      Cannot_read "no read";
+      Shorter_than_its_length;
+      Not_utf_8 3;
+    ]
+
+let every_error =
+  [
+    Scan.Repository (Git.Git_not_found "no PATH");
+    Scan.Repository (Git.Not_a_repository { dir = "/x"; detail = "d" });
+    Scan.Repository (Git.Bad_revision "r");
+    Scan.Repository (Git.Default_branch_not_found "m");
+    Scan.Repository (Git.No_merge_base ("a", "b"));
+    Scan.Repository
+      (Git.Command_failed
+         {
+           args = [ "log"; "-1" ];
+           status = Unix.WEXITED 128;
+           stderr = "fatal: bad\nmore";
+         });
+    Scan.Repository
+      (Git.Malformed_output { args = [ "log"; "-1" ]; detail = "no NUL" });
+    Scan.Repository (Git.File_error "the index does not read");
+    Scan.No_manifest;
+    Scan.Missing_manifest "m.toml";
+    Scan.Unreadable_manifest { path = "m.toml"; reason = "Is a directory" };
+    Scan.Invalid_manifest { path = "m.toml"; errors = [ Manifest.No_pack ] };
+    Scan.Two_packs { file = "a.md"; pack = "markdown"; other = "ocaml" };
+    Scan.Plan_not_read ".plans/p.md";
+    Scan.Pack_not_available "ocaml";
+    Scan.Bad_base "nope";
+    Scan.Default_branch_not_found "trunk";
+    Scan.No_merge_base "main";
+    Scan.Shallow_clone "trunk";
+    Scan.No_head;
+  ]
+  @ List.map
+      (fun error -> Scan.Unreadable_file { file = "a.md"; error })
+      text_file_errors
+  @ List.map
+      (fun error -> Scan.Unparsed_file { file = "a.md"; error })
+      tree_errors
+  @ List.map
+      (fun error -> Scan.Unparsed_base_file { file = "b.md"; error })
+      tree_errors
+  @ [
+      Scan.Reader (Markdown.Grammar (Sinter_bridge.Language.Version 9));
+      Scan.Reader (Markdown.Query (Sinter_bridge.Query.Not_utf_8 3));
+    ]
+
+let constructor = function
+  | Scan.Repository error -> (
+      match error with
+      | Git.Git_not_found _ -> "Git_not_found"
+      | Git.Not_a_repository _ -> "Not_a_repository"
+      | Git.Bad_revision _ -> "Bad_revision"
+      | Git.Default_branch_not_found _ -> "Git.Default_branch_not_found"
+      | Git.No_merge_base _ -> "Git.No_merge_base"
+      | Git.Command_failed _ -> "Command_failed"
+      | Git.Malformed_output _ -> "Malformed_output"
+      | Git.File_error _ -> "File_error")
+  | Scan.No_manifest -> "No_manifest"
+  | Scan.Missing_manifest _ -> "Missing_manifest"
+  | Scan.Unreadable_manifest _ -> "Unreadable_manifest"
+  | Scan.Invalid_manifest _ -> "Invalid_manifest"
+  | Scan.Two_packs _ -> "Two_packs"
+  | Scan.Plan_not_read _ -> "Plan_not_read"
+  | Scan.Pack_not_available _ -> "Pack_not_available"
+  | Scan.Bad_base _ -> "Bad_base"
+  | Scan.Default_branch_not_found _ -> "Default_branch_not_found"
+  | Scan.No_merge_base _ -> "No_merge_base"
+  | Scan.Shallow_clone _ -> "Shallow_clone"
+  | Scan.No_head -> "No_head"
+  | Scan.Unreadable_file { error; _ } -> (
+      match error with
+      | Text_file.Is_a_directory -> "Unreadable_file Is_a_directory"
+      | Text_file.Cannot_open _ -> "Unreadable_file Cannot_open"
+      | Text_file.Cannot_read _ -> "Unreadable_file Cannot_read"
+      | Text_file.Shorter_than_its_length ->
+          "Unreadable_file Shorter_than_its_length"
+      | Text_file.Not_utf_8 _ -> "Unreadable_file Not_utf_8")
+  | Scan.Unparsed_file { error; _ } -> (
+      match error with
+      | Sinter_bridge.Tree.Did_not_finish -> "Unparsed_file Did_not_finish"
+      | Sinter_bridge.Tree.Too_long -> "Unparsed_file Too_long")
+  | Scan.Unparsed_base_file { error; _ } -> (
+      match error with
+      | Sinter_bridge.Tree.Did_not_finish -> "Unparsed_base_file Did_not_finish"
+      | Sinter_bridge.Tree.Too_long -> "Unparsed_base_file Too_long")
+  | Scan.Reader (Markdown.Grammar _) -> "Reader Grammar"
+  | Scan.Reader (Markdown.Query _) -> "Reader Query"
+
+let every_error_has_a_fault_and_a_help () =
+  Alcotest.(check int)
+    "the examples are of 31 distinct cases, the cases that [constructor] names"
+    31
+    (List.length
+       (List.sort_uniq String.compare (List.map constructor every_error)));
+  List.iter
+    (fun error ->
+      List.iter
+        (fun { Error_text.fault; help; place = _ } ->
+          Alcotest.(check bool)
+            (constructor error ^ " has a fault and a help")
+            true
+            (fault <> "" && help <> ""))
+        (Scan.explain error))
+    every_error
+
+let each_error_says_what_is_wrong_and_what_to_do () =
   let manifest_error =
     match Manifest.of_string "[scan]\n" with
     | Error errors -> errors
     | Ok _ -> Alcotest.fail "the manifest has no error"
   in
-  Alcotest.(check (list (list string)))
-    "the messages"
+  Alcotest.(check (list (list (pair string string))))
+    "the faults and the helps"
     [
-      [ "cannot start git: no PATH" ];
-      [ "the folder /x is in no git repository" ];
-      [ "'r' names no commit" ];
-      [ "no branch 'm' exists" ];
-      [ "a and b have no common ancestor" ];
-      [ "git log -1 failed: fatal: bad" ];
-      [ "git log -1 gave output that sinter cannot read: no NUL" ];
-      [ "the index does not read" ];
       [
-        "no sinter.toml at the repository root; create one, or name one with \
-         --manifest";
-      ];
-      [ "no manifest at m.toml" ];
-      [ "cannot read the manifest m.toml: Is a directory" ];
-      List.map (Manifest.render ~path:"m.toml") manifest_error;
-      [
-        "a.md is in the files of two packs, markdown and ocaml; add a '!' glob \
-         to one of them";
+        ( "cannot start git: no PATH",
+          "install git 2.43.7 or later, and put it on PATH" );
       ];
       [
-        ".plans/p.md is under .plans/, and the pack markdown does not read it; \
-         add \".plans/\" to its files";
+        ( "the folder /x is in no git repository",
+          "run sinter inside the working tree of a git repository" );
+      ];
+      [ ("'r' names no commit", "name a revision that names a commit") ];
+      [
+        ( "no branch 'm' exists",
+          "set 'default-branch' in sinter.toml to the name of the default \
+           branch" );
+      ];
+      [ ("a and b have no common ancestor", "name a base with --base") ];
+      [
+        ( "git log -1 failed: fatal: bad",
+          "run the same git command in the repository to see the whole message"
+        );
       ];
       [
-        "the pack ocaml is not in the cache of packs; run sinter pack add ocaml";
-      ];
-      [ "the base 'nope' names no commit" ];
-      [
-        "no branch 'trunk' exists here or on origin; fetch it with git fetch \
-         origin trunk:refs/remotes/origin/trunk, or set 'default-branch' in \
-         sinter.toml to the name of the default branch";
+        ( "git log -1 gave output that sinter cannot read: no NUL",
+          "use git 2.43.7 or later; with such a git, report this as a fault of \
+           sinter" );
       ];
       [
-        "HEAD and the branch 'main' have no common ancestor; name a base with \
-         --base";
+        ( "the index does not read",
+          "check that you can read and write the file, and that the disk has \
+           space" );
       ];
       [
-        "this clone is shallow, so the merge base of HEAD and the branch \
-         'trunk' is not here; fetch the whole history with git fetch \
-         --unshallow origin trunk:refs/remotes/origin/trunk";
-      ];
-      [ "HEAD names no commit; make a commit, or name a base with --base" ];
-      [ "a.md: the file does not open" ];
-      [
-        "a.md: " ^ Sinter_bridge.Tree.message Sinter_bridge.Tree.Did_not_finish;
+        ( "no sinter.toml at the repository root",
+          "create one, or name one with --manifest" );
       ];
       [
-        "b.md at the base: "
-        ^ Sinter_bridge.Tree.message Sinter_bridge.Tree.Too_long;
+        ("no manifest at m.toml", "name a manifest that exists with --manifest");
       ];
       [
-        "the built-in grammar of markdown does not load: "
-        ^ Sinter_bridge.Language.message (Sinter_bridge.Language.Version 9);
+        ( "cannot read the manifest m.toml: Is a directory",
+          "name a manifest that is a file that you can read" );
+      ];
+      List.map text (List.map (Manifest.explain ~path:"m.toml") manifest_error);
+      [
+        ( "a.md is in the files of two packs, markdown and ocaml",
+          "add a '!' glob to one of them" );
       ];
       [
-        "the built-in query of markdown does not compile: "
-        ^ Sinter_bridge.Query.message (Sinter_bridge.Query.Not_utf_8 3);
+        ( ".plans/p.md is under .plans/, and the pack markdown does not read it",
+          "add \".plans/\" to the files of the pack markdown" );
+      ];
+      [
+        ( "the pack ocaml is not in the cache of packs",
+          "run sinter pack add ocaml" );
+      ];
+      [
+        ( "the base 'nope' names no commit",
+          "give --base a revision that names a commit" );
+      ];
+      [
+        ( "no branch 'trunk' exists here or on origin",
+          "fetch it with git fetch origin trunk:refs/remotes/origin/trunk, or \
+           set 'default-branch' in sinter.toml to the name of the default \
+           branch" );
+      ];
+      [
+        ( "HEAD and the branch 'main' have no common ancestor",
+          "name a base with --base" );
+      ];
+      [
+        ( "this clone is shallow, so the merge base of HEAD and the branch \
+           'trunk' is not here",
+          "fetch the whole history with git fetch --unshallow origin \
+           trunk:refs/remotes/origin/trunk" );
+      ];
+      [ ("HEAD names no commit", "make a commit, or name a base with --base") ];
+      [
+        ( "a.md: the file does not open",
+          "make the file readable, or leave it out of the files of the pack \
+           markdown with a '!' glob" );
+      ];
+      [
+        ( "a.md: " ^ Sinter_bridge.Tree.message Sinter_bridge.Tree.Did_not_finish,
+          "leave the file out of the files of the pack markdown with a '!' glob"
+        );
+      ];
+      [
+        ( "b.md at the base: "
+          ^ Sinter_bridge.Tree.message Sinter_bridge.Tree.Too_long,
+          "name another base with --base" );
+      ];
+      [
+        ( "the built-in grammar of markdown does not load: "
+          ^ Sinter_bridge.Language.message (Sinter_bridge.Language.Version 9),
+          "report this as a fault of sinter" );
+      ];
+      [
+        ( "the built-in query of markdown does not compile: "
+          ^ Sinter_bridge.Query.message (Sinter_bridge.Query.Not_utf_8 3),
+          "report this as a fault of sinter" );
       ];
     ]
-    (List.map Scan.messages
+    (List.map
+       (fun error -> List.map text (Scan.explain error))
        [
          Scan.Repository (Git.Git_not_found "no PATH");
          Scan.Repository (Git.Not_a_repository { dir = "/x"; detail = "d" });
@@ -595,8 +760,7 @@ let load_with_base repo =
   with
   | Ok loaded -> loaded
   | Error error ->
-      Alcotest.failf "the load fails: %s"
-        (String.concat "; " (Scan.messages error))
+      Alcotest.failf "the load fails: %s" (String.concat "; " (messages error))
 
 let declared (document : Markdown.t) =
   List.filter_map
@@ -799,8 +963,7 @@ let a_manifest_outside_the_repository_has_no_base () =
   | Ok (_, compared) ->
       Alcotest.(check string) "the base" "outside" (base_manifest compared)
   | Error error ->
-      Alcotest.failf "the load fails: %s"
-        (String.concat "; " (Scan.messages error))
+      Alcotest.failf "the load fails: %s" (String.concat "; " (messages error))
 
 let case name f = Alcotest.test_case name `Quick f
 
@@ -871,5 +1034,7 @@ let tests =
       the_ledger_warning_needs_a_plan_and_no_ledger;
     case "a check that cannot write its output says so"
       a_check_that_cannot_write_its_output_says_so;
-    case "each error says what is wrong" each_error_says_what_is_wrong;
+    case "every error has a fault and a help" every_error_has_a_fault_and_a_help;
+    case "each error says what is wrong and what to do"
+      each_error_says_what_is_wrong_and_what_to_do;
   ]

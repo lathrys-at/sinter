@@ -48,3 +48,7 @@ val tree : Sinter_bridge.Language.t -> path:string -> (string, error) result
 val message : path:string -> error -> string
 (** [message ~path error] says why the file at [path] gives no result, for the
     person who runs the tool. The message names [path]. *)
+
+val help : error -> string
+(** [help error] says what the person who runs the tool can do about [error]. It
+    is never empty. *)

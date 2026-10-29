@@ -42,10 +42,10 @@ type error =
           [markdown] gives no tree *)
   | Reader of Markdown.load_error  (** the built-in grammar does not load *)
 
-val messages : error -> string list
-(** [messages error] says what is wrong and, when it can, what to do, for the
-    person who runs the tool: one line for each error of an invalid manifest,
-    and one line otherwise. No line ends with a full stop. *)
+val explain : error -> Error_text.t list
+(** [explain error] says what is wrong and what to do, for the person who runs
+    the tool: one error for each error of an invalid manifest, as
+    {!Manifest.explain} gives it, and one error with no place otherwise. *)
 
 val escape_path : string -> string
 (** [escape_path path] is [path] with each byte that is not part of a valid

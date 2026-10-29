@@ -1266,6 +1266,45 @@ let print_rendered (content, (finding : Finding.t), tier) =
           finding.related))
     (Option.fold ~none:"none" ~some:Fix.text finding.fix)
 
+let error_text =
+  let open Gen in
+  let position =
+    let* line = int_range 1 12 in
+    let* column = int_range 1 30 in
+    return { Toml.line; column }
+  in
+  let place =
+    let* path = terminal_text in
+    let* start = position in
+    let* stop =
+      oneof
+        [
+          return { start with column = start.column + 1 };
+          map
+            (fun width -> { start with Toml.column = start.column + width })
+            (int_range 1 12);
+          map
+            (fun (lines, column) -> { Toml.line = start.line + lines; column })
+            (pair (int_range 1 3) (int_range 1 30));
+        ]
+    in
+    let* line = option terminal_text in
+    return { Error_text.path; span = { start; stop }; line }
+  in
+  let* fault = terminal_text in
+  let* help = oneof [ return ""; terminal_text ] in
+  let* place = option place in
+  return { Error_text.fault; help; place }
+
+let print_error_text ({ fault; help; place } : Error_text.t) =
+  Printf.sprintf "fault %S, help %S, place %s" fault help
+    (Option.fold ~none:"none"
+       ~some:(fun ({ path; span; line } : Error_text.place) ->
+         Printf.sprintf "%S %d:%d-%d:%d, line %s" path span.start.line
+           span.start.column span.stop.line span.stop.column
+           (Option.fold ~none:"none" ~some:(Printf.sprintf "%S") line))
+       place)
+
 let tag_block =
   let open Gen in
   let* prefix = oneof_list [ ""; "  "; "- " ] in

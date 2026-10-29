@@ -48,3 +48,10 @@ let message ~path = function
       path ^ ": cannot read the query: " ^ Bridge.Query.message error
   | Not_parsed error -> path ^ ": " ^ Bridge.Tree.message error
   | Not_run error -> path ^ ": " ^ Bridge.Query.run_message error
+
+let help = function
+  | Unreadable _ -> "name a file that you can read and that holds UTF-8 text"
+  | Empty -> "write a tree-sitter query in the file"
+  | Not_compiled _ -> "correct the query at the place that the message names"
+  | Not_parsed _ -> "parse a file that the grammar can read"
+  | Not_run _ -> Error_text.fault_of_sinter

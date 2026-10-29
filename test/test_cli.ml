@@ -260,8 +260,11 @@ let a_closed_standard_output_names_the_failure () =
         contents errors)
   in
   Alcotest.(check (list string))
-    "standard error holds one line that names the failure"
-    [ "sinter: cannot write the output: standard output is closed" ]
+    "standard error holds the error and its help"
+    [
+      "error: cannot write the output: standard output is closed";
+      "  = help: run the command with its standard output open";
+    ]
     (lines text)
 
 let outcome_and_errors command ~input =
@@ -303,7 +306,9 @@ let a_failed_read_names_the_input () =
     "the run ends with the environment code" "exited 3" outcome;
   Alcotest.(check bool)
     "standard error names the read" true
-    (String.starts_with ~prefix:"sinter: cannot read the input: " text)
+    (String.starts_with ~prefix:"error: cannot read the input: " text
+    && List.mem "  = help: give the command an input that it can read"
+         (lines text))
 
 let a_closed_standard_error_keeps_the_exit_code () =
   Alcotest.(check string)
@@ -368,8 +373,7 @@ let a_parse_run_that_fails_names_no_module_of_the_library () =
       code (Printf.sprintf "%s exits 3" what) 3 status;
       Alcotest.(check bool)
         (Printf.sprintf "%s names no module of the library" what)
-        false
-        (contains "sinter: Sinter_" text))
+        false (contains "Sinter_" text))
     [
       ( "a grammar that is not wasm",
         Printf.sprintf "parse --grammar %s --tree %s" sample sample );

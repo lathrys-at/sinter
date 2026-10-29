@@ -1,1 +1,2 @@
-sinter: the pack ocaml is not in the cache of packs; run sinter pack add ocaml
+error: the pack ocaml is not in the cache of packs
+  = help: run sinter pack add ocaml

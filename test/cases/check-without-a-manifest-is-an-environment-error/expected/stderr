@@ -1,1 +1,2 @@
-sinter: no sinter.toml at the repository root; create one, or name one with --manifest
+error: no sinter.toml at the repository root
+  = help: create one, or name one with --manifest

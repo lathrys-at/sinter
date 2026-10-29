@@ -1,1 +1,2 @@
-sinter: no manifest at none.toml
+error: no manifest at none.toml
+  = help: name a manifest that exists with --manifest

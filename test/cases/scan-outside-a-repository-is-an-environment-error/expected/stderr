@@ -1,1 +1,2 @@
-sinter: the folder <root> is in no git repository
+error: the folder <root> is in no git repository
+  = help: run sinter inside the working tree of a git repository

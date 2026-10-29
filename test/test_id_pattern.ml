@@ -308,11 +308,11 @@ let each_error_has_its_message () =
   message "a.b"
     "'.' is not in the id pattern language; put it in a class, for example [.]";
   message "^a"
-    "'^' is not in the id pattern language; a pattern always matches the whole \
-     id, and a class cannot leave characters out";
+    "'^' is not in the id pattern language; remove it, since a pattern always \
+     matches the whole id, and a class cannot leave characters out";
   message "a$"
-    "'$' is not in the id pattern language; a pattern always matches the whole \
-     id";
+    "'$' is not in the id pattern language; remove it, since a pattern always \
+     matches the whole id";
   message "a]"
     "']' is not in the id pattern language, and no pattern matches it";
   message "a}"
@@ -321,8 +321,8 @@ let each_error_has_its_message () =
   message "a\\d"
     "'\\' is not in the id pattern language, and no pattern matches it";
   message "[^a]"
-    "'^' is not in the id pattern language; a pattern always matches the whole \
-     id, and a class cannot leave characters out";
+    "'^' is not in the id pattern language; remove it, since a pattern always \
+     matches the whole id, and a class cannot leave characters out";
   message "a\xc3\xa9" "'\xc3\xa9' is not printable ASCII, and no id holds it";
   message "a\t"
     "a control character is not in the id pattern language, and no id holds one";

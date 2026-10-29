@@ -106,8 +106,31 @@ let names_a_parse_that_gives_no_tree () =
     (Query_file.message ~path:"f.json"
        (Query_file.Not_parsed B.Tree.Did_not_finish))
 
+let every_error_has_a_help () =
+  List.iter
+    (fun (error : Query_file.error) ->
+      let name =
+        match error with
+        | Query_file.Unreadable _ -> "Unreadable"
+        | Query_file.Empty -> "Empty"
+        | Query_file.Not_compiled _ -> "Not_compiled"
+        | Query_file.Not_parsed _ -> "Not_parsed"
+        | Query_file.Not_run _ -> "Not_run"
+      in
+      Alcotest.(check bool)
+        (name ^ " has a help") true
+        (Query_file.help error <> ""))
+    [
+      Query_file.Unreadable Text_file.Is_a_directory;
+      Query_file.Empty;
+      Query_file.Not_compiled (Sinter_bridge.Query.Not_utf_8 0);
+      Query_file.Not_parsed Sinter_bridge.Tree.Did_not_finish;
+      Query_file.Not_run Sinter_bridge.Query.Language_mismatch;
+    ]
+
 let tests =
   [
+    Alcotest.test_case "every error has a help" `Quick every_error_has_a_help;
     Alcotest.test_case "compiles a query file" `Quick compiles_a_query_file;
     Alcotest.test_case "refuses a query file of white space" `Quick
       refuses_a_query_file_of_white_space;

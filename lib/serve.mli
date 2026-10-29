@@ -7,9 +7,9 @@
     no channel and writes none: the caller gives it one line and writes the
     lines it gives back. *)
 
-exception Error of string
-(** The loop cannot start. The string says why, and it is fit to show to the
-    person who ran the command. *)
+exception Error of Error_text.t
+(** The loop cannot start. The error says why, and what to do, for the person
+    who ran the command. It has no place. *)
 
 type t
 (** The state of one loop: a parser engine, and every grammar the loop has

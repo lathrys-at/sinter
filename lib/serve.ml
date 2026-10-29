@@ -1,7 +1,7 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-exception Error of string
+exception Error of Error_text.t
 
 type control = Done of int | Failed of int * string
 
@@ -37,7 +37,13 @@ let create () =
         closed = false;
       }
   | exception Sinter_bridge.Error message ->
-      raise (Error ("the parser bridge does not start: " ^ message))
+      raise
+        (Error
+           {
+             Error_text.fault = "the parser bridge does not start: " ^ message;
+             help = Error_text.fault_of_sinter;
+             place = None;
+           })
 
 let close state =
   if not state.closed then (
@@ -72,7 +78,14 @@ let with_language state path use =
       let language =
         match Grammar.load state.engine ~path with
         | Ok language -> language
-        | Error error -> raise (Parse.Error (Grammar.message ~path error))
+        | Error error ->
+            raise
+              (Parse.Error
+                 {
+                   Error_text.fault = Grammar.message ~path error;
+                   help = Grammar.help error;
+                   place = None;
+                 })
       in
       match now with
       | Some (size, modified) ->
@@ -108,8 +121,8 @@ let run state rid (op : Request.op) =
               Parse.fold language ~query ~paths:files ~f:emit)
         with
         | () -> Done Exit_code.clean
-        | exception Parse.Error message ->
-            Failed (Exit_code.environment_error, printable message)
+        | exception Parse.Error { fault; _ } ->
+            Failed (Exit_code.environment_error, printable fault)
         | exception Sinter_bridge.Error message ->
             Failed (Exit_code.environment_error, printable message)
         | exception Sys_error message ->

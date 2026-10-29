@@ -719,7 +719,10 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
     | Ok report -> report
     | Error error ->
         Alcotest.failf "the check fails: %s"
-          (String.concat "; " (Scan.messages error))
+          (String.concat "; "
+             (List.map
+                (fun { Error_text.fault; help; _ } -> fault ^ "; " ^ help)
+                (Scan.explain error)))
   in
   let text = run Check.Brief None in
   Alcotest.(check (list string))
@@ -767,7 +770,10 @@ let the_options_choose_the_lines_of_standard_error () =
     | Ok report -> Check.messages report
     | Error error ->
         Alcotest.failf "the check fails: %s"
-          (String.concat "; " (Scan.messages error))
+          (String.concat "; "
+             (List.map
+                (fun { Error_text.fault; help; _ } -> fault ^ "; " ^ help)
+                (Scan.explain error)))
   in
   let note = "note: base " ^ String.sub head 0 7 ^ ", from --base HEAD" in
   Alcotest.(check (list (list string)))
@@ -853,7 +859,10 @@ let diff_lines ?base repo =
   | Ok report -> written report
   | Error error ->
       Alcotest.failf "the check fails: %s"
-        (String.concat "; " (Scan.messages error))
+        (String.concat "; "
+           (List.map
+              (fun { Error_text.fault; help; _ } -> fault ^ "; " ^ help)
+              (Scan.explain error)))
 
 let commit repo message =
   ignore (Git_fixture.git repo [ "add"; "-A" ]);

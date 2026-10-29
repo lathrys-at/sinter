@@ -66,8 +66,26 @@ let reports_a_grammar_that_does_not_load () =
                 (Grammar.message ~path error)
           | _ -> Alcotest.fail "bytes that are not a module gave a grammar"))
 
+let every_error_has_a_help () =
+  List.iter
+    (fun (name, error) ->
+      Alcotest.(check bool)
+        (name ^ " has a help") true
+        (Grammar.help error <> ""))
+    (List.map
+       (fun (error : Grammar.error) ->
+         ( (match error with
+           | Grammar.Unreadable _ -> "Unreadable"
+           | Grammar.Not_loaded _ -> "Not_loaded"),
+           error ))
+       [
+         Grammar.Unreadable Text_file.Is_a_directory;
+         Grammar.Not_loaded Sinter_bridge.Language.Name_not_utf_8;
+       ])
+
 let tests =
   [
+    Alcotest.test_case "every error has a help" `Quick every_error_has_a_help;
     Alcotest.test_case "loads the fixture grammar" `Quick
       loads_the_fixture_grammar;
     Alcotest.test_case "takes the name from the module" `Quick

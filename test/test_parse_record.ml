@@ -258,8 +258,30 @@ let a_record_of_a_capture_with_a_bad_string_is_refused (source, capture, field)
       && contains "is not UTF-8 text"
            (Parse_record.message ~path:"f.json" error)
 
+let every_error_has_a_help () =
+  List.iter
+    (fun (error : Parse_record.error) ->
+      let name =
+        match error with
+        | Parse_record.Path_not_utf_8 -> "Path_not_utf_8"
+        | Parse_record.Not_utf_8 Parse_record.Capture_name -> "Capture_name"
+        | Parse_record.Not_utf_8 Parse_record.Node_type -> "Node_type"
+        | Parse_record.Not_utf_8 Parse_record.Node_text -> "Node_text"
+      in
+      Alcotest.(check bool)
+        (name ^ " has a help") true
+        (Parse_record.help error <> ""))
+    Parse_record.
+      [
+        Path_not_utf_8;
+        Not_utf_8 Capture_name;
+        Not_utf_8 Node_type;
+        Not_utf_8 Node_text;
+      ]
+
 let tests =
   [
+    Alcotest.test_case "every error has a help" `Quick every_error_has_a_help;
     Alcotest.test_case "places the end of a capture that ends before byte two"
       `Quick places_the_end_of_a_capture_that_ends_before_byte_two;
     Alcotest.test_case "places the end of a capture that ends at byte two"

@@ -1,2 +1,7 @@
-sinter: sinter.toml:5:1: unknown key 'historic' in [paths]; did you mean 'historical'?
-sinter: sinter.toml:8:13: 'warn-only' takes true or false, not a string
+error: unknown key 'historic' in [paths]
+ --> sinter.toml:5:1
+  = help: did you mean 'historical'?
+
+error: 'warn-only' takes true or false, not a string
+ --> sinter.toml:8:13
+  = help: write true or false

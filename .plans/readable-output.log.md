@@ -157,3 +157,15 @@
 - The warnings of `Scan` and `Check` hold their text without the word
   `warning:`, so that the printer can give the word its style (ruling
   of the lead).
+- A new module, `Error_text`, holds the fault, the help, and the place
+  of an error. `Manifest.explain` and `Scan.explain` give it; `Grammar`,
+  `Query_file`, and `Parse_record` keep `message` as the fault and gain
+  `help`. `Parse.Error` and `Serve.Error` carry an `Error_text.t`; the
+  control line of `serve` keeps the fault as its message, so its JSON
+  does not change (ruling of the lead).
+- A message that the manifest reader embeds from `Toml`, `Branch_name`,
+  `Glob`, or `Id_pattern` splits at its first "; ": the part after it
+  is the help. A message with no such part gets a help of its own. The
+  messages of those modules whose part after "; " stated a fact now
+  state an action there, for example "write ']' here" in the place of
+  "expected ']'".

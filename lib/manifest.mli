@@ -178,14 +178,11 @@ val newer_keys : sinter_spec:Major_minor.t -> Toml.table -> error list
     order of their places. {!of_string} gives these errors when the manifest
     states [sinter-spec]. *)
 
-val message : error -> string
-(** [message error] says what is wrong and, when it can, what to write instead.
-    It is one line, without the place and without a full stop at the end. *)
-
-val render : path:string -> error -> string
-(** [render ~path error] is the line that reports [error] in the manifest at
-    [path]: [path], the line, and the column, joined by [:], and then the
-    message. For [No_pack], it is the message with [path] as its subject. *)
+val explain : path:string -> error -> Error_text.t
+(** [explain ~path error] says what is wrong and what to write instead, for the
+    person who runs the tool, in the manifest at [path]. For [At], the place is
+    [path] and the span of the error, with no line. For [No_pack], the fault
+    names [path], and there is no place. *)
 
 (** {1 Reading} *)
 

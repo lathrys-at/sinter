@@ -1,1 +1,2 @@
-sinter: the base 'nope' names no commit
+error: the base 'nope' names no commit
+  = help: give --base a revision that names a commit

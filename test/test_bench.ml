@@ -209,7 +209,7 @@ let budgets_refuse_a_bad_file () =
         (Result.map (fun _ -> ()) (Budgets.of_string text)))
     [
       ( "[scan\n",
-        "line 1, column 6: the table header is not valid; expected ']'" );
+        "line 1, column 6: the table header is not valid; write ']' here" );
       ("[check]\nallocation-growth = 1\n", "the table [scan] is missing");
       ("[scan]\nallocation-growth = 1\n", "the table [check] is missing");
       ("scan = 1\n", "[scan] is an integer, not a table");

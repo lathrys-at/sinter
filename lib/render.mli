@@ -96,6 +96,35 @@ val note : Format.formatter -> string -> unit
 (** [note ppf text] prints the line [note: <text>] to [ppf], as {!warning} does,
     with the word [note:] in the style {!Style.Note}. *)
 
+val error : Format.formatter -> Error_text.t -> unit
+(** [error ppf error] prints the block of [error] to [ppf], one line at a time,
+    each line with its line feed. The fault, the help, and the path print as
+    {!Display.clean} gives them, and no line ends in a space. The lines, in
+    order:
+
+    + [error: ] and the fault, with the word [error:] in the style
+      {!Style.Block}.
+    + With a place, the location: [W] spaces, [-->], a space, and
+      [<path>:<line>:<column>] of the start of the span.
+    + With a place whose line is at hand, the snippet of {!full}: an empty
+      gutter line, the line, a mark line, and an empty gutter line. The mark is
+      [^] in the style {!Style.Block}, with no label, under the span on its
+      first line: from the start of the span to its stop, or to the end of the
+      line when the span goes on to a later line or stops past the end. A line
+      [...] follows the line when the span goes on. With no line at hand, or
+      when the span starts after the column past the last character of the line,
+      there is no snippet.
+    + When the help is not empty: [W + 1] spaces, [=] in the style
+      {!Style.Frame}, a space, [help:] in the style {!Style.Help}, a space, and
+      the help.
+
+    [W] is the number of digits of the number of the line that the snippet
+    shows, and 1 with no snippet. *)
+
+val errors : Format.formatter -> Error_text.t list -> unit
+(** [errors ppf list] prints the block of each error of [list] with {!error}, in
+    order, with an empty line between two blocks. *)
+
 val folded_full :
   Format.formatter -> tier:Finding_class.tier option -> Finding.t -> int -> unit
 (** [folded_full ppf ~tier finding count] prints the full form of [count]

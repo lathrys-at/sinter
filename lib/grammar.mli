@@ -20,3 +20,7 @@ val load :
 val message : path:string -> error -> string
 (** [message ~path error] says why the grammar file at [path] gives no grammar,
     for the person who runs the tool. The message names [path]. *)
+
+val help : error -> string
+(** [help error] says what the person who runs the tool can do about [error]. It
+    is never empty. *)

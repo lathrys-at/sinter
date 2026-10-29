@@ -177,8 +177,8 @@ let message text expected =
 let each_error_has_its_message () =
   message "" "a glob cannot be empty";
   message "/a"
-    "a glob cannot start with '/'; a glob always matches from the repository \
-     root";
+    "a glob cannot start with '/'; write the path from the repository root, \
+     without the '/'";
   message "a//b" "a glob cannot hold two '/' together";
   message "a/../b" "a glob cannot hold the segment '..'";
   message "a/**x"
@@ -191,21 +191,22 @@ let each_error_has_its_message () =
     "the segment \"**\\u007F\" holds '**' and other characters; write \
      \"**/*\\u007F\"";
   message "\t**"
-    "the segment \"\\t**\" holds '**' and other characters; '**' must be a \
-     whole segment, and '*' matches characters inside one name";
+    "the segment \"\\t**\" holds '**' and other characters; write '**' as a \
+     whole segment, or '*' for the characters inside one name";
   message "src/**.ts"
     "the segment '**.ts' holds '**' and other characters; write '**/*.ts'";
   message "a**"
-    "the segment 'a**' holds '**' and other characters; '**' must be a whole \
-     segment, and '*' matches characters inside one name";
+    "the segment 'a**' holds '**' and other characters; write '**' as a whole \
+     segment, or '*' for the characters inside one name";
   message "***"
-    "the segment '***' holds '**' and other characters; '**' must be a whole \
-     segment, and '*' matches characters inside one name";
+    "the segment '***' holds '**' and other characters; write '**' as a whole \
+     segment, or '*' for the characters inside one name";
   message "**a**"
-    "the segment '**a**' holds '**' and other characters; '**' must be a whole \
-     segment, and '*' matches characters inside one name";
+    "the segment '**a**' holds '**' and other characters; write '**' as a \
+     whole segment, or '*' for the characters inside one name";
   message "a?"
-    "a glob cannot hold '?'; '*' matches any characters inside one name";
+    "a glob cannot hold '?'; write '*', which matches any characters inside \
+     one name";
   message "a[" "a glob cannot hold '['; write one glob for each name";
   message "a]" "a glob cannot hold ']'; write one glob for each name";
   message "a{" "a glob cannot hold '{'; write one glob for each choice";
@@ -216,8 +217,8 @@ let each_error_has_its_message () =
       Alcotest.(check string)
         ("the message for the segment " ^ segment)
         (Printf.sprintf
-           "the segment '%s' holds '**' and other characters; '**' must be a \
-            whole segment, and '*' matches characters inside one name"
+           "the segment '%s' holds '**' and other characters; write '**' as a \
+            whole segment, or '*' for the characters inside one name"
            segment)
         (Glob.message (Glob.Double_star_in_segment { offset = 0; segment })))
     [ "**"; "*"; ""; "a*b" ]

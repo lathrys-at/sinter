@@ -293,11 +293,12 @@ let describe = function
                example [%s]"
               character character
         | "$" ->
-            "'$' is not in the id pattern language; a pattern always matches \
-             the whole id"
+            "'$' is not in the id pattern language; remove it, since a pattern \
+             always matches the whole id"
         | "^" ->
-            "'^' is not in the id pattern language; a pattern always matches \
-             the whole id, and a class cannot leave characters out"
+            "'^' is not in the id pattern language; remove it, since a pattern \
+             always matches the whole id, and a class cannot leave characters \
+             out"
         | _ ->
             Printf.sprintf
               "'%s' is not in the id pattern language, and no pattern matches \

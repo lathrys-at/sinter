@@ -30,7 +30,24 @@ let environment_exit =
 let exits = [ clean_exit; findings_exit; usage_exit; environment_exit ]
 let parse_exits = [ success_exit; usage_exit; environment_exit ]
 
-let with_phases run =
+let colored setting descriptor =
+  Sinter_core.Style.color setting ~getenv:Sys.getenv_opt
+    ~terminal:(Unix.isatty descriptor)
+
+let report setting errors =
+  let ppf =
+    Sinter_core.Style.formatter stderr ~color:(colored setting Unix.stderr)
+  in
+  Sinter_core.Render.errors ppf errors;
+  Format.pp_print_flush ppf ()
+
+let failure ~help fault = { Sinter_core.Error_text.fault; help; place = None }
+
+let output_failure message =
+  failure ~help:Sinter_core.Error_text.output_help
+    ("cannot write the output: " ^ message)
+
+let with_phases setting run =
   match Sys.getenv_opt Sinter_core.Allocation.variable with
   | None | Some "" -> run None
   | Some path -> (
@@ -42,8 +59,14 @@ let with_phases run =
               (Sinter_core.Allocation.to_string phases));
         code
       with Sys_error message ->
-        Printf.eprintf "sinter: cannot write the words of the phases: %s\n"
-          message;
+        report setting
+          [
+            failure
+              ~help:
+                ("name a file that you can write in "
+               ^ Sinter_core.Allocation.variable)
+              ("cannot write the words of the phases: " ^ message);
+          ];
         environment_error)
 
 let plumbing = "PLUMBING COMMANDS"
@@ -65,10 +88,6 @@ let color =
            ])
         Sinter_core.Style.Auto
     & info [ "color" ] ~docv:"WHEN" ~doc)
-
-let colored setting descriptor =
-  Sinter_core.Style.color setting ~getenv:Sys.getenv_opt
-    ~terminal:(Unix.isatty descriptor)
 
 let parse_cmd =
   let doc = "Parse files with a tree-sitter grammar and print the captures" in
@@ -129,7 +148,7 @@ let parse_cmd =
     let doc = "The files to parse." in
     Arg.(non_empty & pos_all string [] & info [] ~docv:"FILE" ~doc)
   in
-  let run _color grammar query tree paths =
+  let run color grammar query tree paths =
     match (query, tree) with
     | Some _, true ->
         `Error
@@ -139,9 +158,13 @@ let parse_cmd =
         try
           Sinter_core.Parse.run ~grammar ~query ~paths stdout;
           `Ok clean
-        with Sinter_core.Parse.Error message | Sys_error message ->
-          Printf.eprintf "sinter: %s\n" message;
-          `Ok environment_error)
+        with
+        | Sinter_core.Parse.Error error ->
+            report color [ error ];
+            `Ok environment_error
+        | Sys_error message ->
+            report color [ output_failure message ];
+            `Ok environment_error)
   in
   Cmd.v info Term.(ret (const run $ color $ grammar $ query $ tree $ paths))
 
@@ -187,14 +210,15 @@ let serve_cmd =
     ]
   in
   let info = Cmd.info "serve" ~docs:plumbing ~doc ~man ~exits:serve_exits in
-  let report message =
-    Printf.eprintf "sinter: %s\n" message;
-    environment_error
-  in
-  let rec answer state =
+  let rec answer color state =
     match In_channel.input_line stdin with
     | exception Sys_error message ->
-        report (Printf.sprintf "cannot read the input: %s" message)
+        report color
+          [
+            failure ~help:"give the command an input that it can read"
+              ("cannot read the input: " ^ message);
+          ];
+        environment_error
     | None -> clean
     | Some line ->
         let response = Sinter_core.Serve.respond state line in
@@ -202,18 +226,21 @@ let serve_cmd =
           (Sinter_core.Jsonl.output stdout)
           (Sinter_core.Serve.lines response);
         flush stdout;
-        answer state
+        answer color state
   in
-  let run _color =
+  let run color =
     match Sinter_core.Serve.create () with
-    | exception Sinter_core.Serve.Error message -> report message
+    | exception Sinter_core.Serve.Error error ->
+        report color [ error ];
+        environment_error
     | state ->
         Fun.protect
           ~finally:(fun () -> Sinter_core.Serve.close state)
           (fun () ->
-            try answer state
+            try answer color state
             with Sys_error message ->
-              report (Printf.sprintf "cannot write the output: %s" message))
+              report color [ output_failure message ];
+              environment_error)
   in
   Cmd.v info Term.(const run $ color)
 
@@ -259,15 +286,14 @@ let scan_cmd =
     in
     Arg.(value & opt (some string) None & info [ "base" ] ~docv:"REVISION" ~doc)
   in
-  let report lines = List.iter (Printf.eprintf "sinter: %s\n") lines in
   let run color manifest base =
-    with_phases (fun phases ->
+    with_phases color (fun phases ->
         match
           Sinter_core.Scan.run ?phases ~env:(Unix.environment ())
             ~dir:(Sys.getcwd ()) ~manifest ~base ~tool:version ()
         with
         | Error error ->
-            report (Sinter_core.Scan.messages error);
+            report color (Sinter_core.Scan.explain error);
             environment_error
         | Ok { warnings; records } -> (
             let errors =
@@ -282,7 +308,7 @@ let scan_cmd =
                   flush stdout);
               clean
             with Sys_error message ->
-              report [ Printf.sprintf "cannot write the output: %s" message ];
+              report color [ output_failure message ];
               environment_error))
   in
   Cmd.v info Term.(const run $ color $ manifest $ base)
@@ -454,7 +480,6 @@ let check_cmd =
     in
     Arg.(value & flag & info [ "diff" ] ~doc)
   in
-  let report lines = List.iter (Printf.eprintf "sinter: %s\n") lines in
   let verbose =
     let doc =
       "List each finding, and fold none. In the full and brief forms, also \
@@ -469,7 +494,7 @@ let check_cmd =
     Arg.(value & flag & info [ "q"; "quiet" ] ~doc)
   in
   let run color manifest base diff gate strict form verbose quiet =
-    with_phases @@ fun phases ->
+    with_phases color @@ fun phases ->
     match
       Sinter_core.Check.run ?phases ~env:(Unix.environment ())
         ~dir:(Sys.getcwd ()) ~manifest ~base
@@ -477,7 +502,7 @@ let check_cmd =
         ~gate ~strict ~form ~verbose ~quiet ~tool:version ()
     with
     | Error error ->
-        report (Sinter_core.Scan.messages error);
+        report color (Sinter_core.Scan.explain error);
         environment_error
     | Ok outcome -> (
         match
@@ -496,7 +521,7 @@ let check_cmd =
               Sinter_core.Check.code outcome
             with Sys_error _ -> environment_error)
         | exception Sys_error message ->
-            report [ Printf.sprintf "cannot write the output: %s" message ];
+            report color [ output_failure message ];
             environment_error)
   in
   Cmd.v info
@@ -554,7 +579,11 @@ let () =
   let output_closed = reserve Unix.stdout [ Unix.O_WRONLY ] in
   ignore (reserve Unix.stderr [ Unix.O_WRONLY ]);
   if output_closed then (
-    prerr_endline "sinter: cannot write the output: standard output is closed";
+    report Sinter_core.Style.Auto
+      [
+        failure ~help:"run the command with its standard output open"
+          "cannot write the output: standard output is closed";
+      ];
     exit environment_error);
   let code = Cmd.eval' ~term_err:usage_error cmd in
   exit (if code = Cmd.Exit.cli_error then usage_error else code)
