@@ -305,3 +305,34 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
   assume-unchanged and skip-worktree, so the tree key does not see an
   edit of a file with such a flag. The two `ls-files` of the file set
   could be one, with `-t`.
+
+## Cut the manifest by question
+
+- The specification of the manifest takes its sections in the order of
+  the tables: 9 `[paths]`, 10 `[proof]`, 11 `[check]`, then 12
+  built-ins, 13 facts, 14 rule files, and 15 examples (ruled by the
+  lead). Every reference to these sections moved.
+- A kind stays a name that varies, as in `plan.locations.<kind>`.
+  `[paths]` and `[proof]` each hold fixed keys and kinds. An unknown
+  name gets the nearest valid name of its table, kinds included. So an
+  old `[plan]` table gives "unknown key 'plan' at the top level; did
+  you mean 'scan'?", and `check.historical` gives "'historical' belongs
+  in [paths]". The lead accepted these messages.
+- The base side of `config-changed` counts only the new key paths. On
+  this branch, `check --diff` reports each member of `paths.exempt` and
+  `paths.decision` as added, with the direction "weakens": 15 warnings,
+  and nothing about the old `[plan]`. The lead ruled to keep the
+  specification as it is, because the finding never blocks.
+- Rulings of the lead on details that the brief left open: under
+  `proof.step = "approval"`, a step without promises is approved only
+  by its own approval, and every other step when its plan is; a change
+  of `proof.step` to `"promises"` strengthens, a change from it
+  weakens, and a change between `"change"` and `"approval"` changes;
+  the approval command refuses a step of a plan with no plan id; a
+  step is no subject of a decline.
+- The branch was rebased on the output forms. The detail of
+  `step-without-promises` names its step, as the record `output-forms`
+  asks. The class blocks, so it never folds.
+- The benchmark on one checkout and on the generated trees: the peak
+  memory and the instructions stay within 0.5 percent of `main`, inside
+  the spread of the runs.
