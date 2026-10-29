@@ -49,6 +49,7 @@ let () =
       ("display", Test_display.tests);
       ("style", Test_style.tests);
       ("render", Test_render.tests);
+      ("usage", Test_usage.tests);
       ("tag line", Test_tag_line.tests);
       ("slug", Test_slug.tests);
       ("plan target", Test_plan_target.tests);

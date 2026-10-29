@@ -18,16 +18,16 @@ let write path text =
     ~finally:(fun () -> close_out_noerr channel)
     (fun () -> output_string channel text)
 
-let run arguments =
+let shell command =
   let output = Filename.temp_file "sinter-cli" ".out" in
-  let command =
-    Printf.sprintf "%s %s >%s 2>&1" (Filename.quote sinter) arguments
-      (Filename.quote output)
-  in
+  let command = Printf.sprintf "%s >%s 2>&1" command (Filename.quote output) in
   let code = Sys.command command in
   Fun.protect
     ~finally:(fun () -> Sys.remove output)
     (fun () -> (code, contents output))
+
+let run arguments =
+  shell (Printf.sprintf "%s %s" (Filename.quote sinter) arguments)
 
 let lines text =
   let pieces = String.split_on_char '\n' text in
@@ -388,8 +388,99 @@ let a_parse_run_that_fails_names_no_module_of_the_library () =
         Printf.sprintf "parse --grammar %s --tree fixtures" grammar );
     ]
 
+let colorless = "-u NO_COLOR -u CLICOLOR_FORCE -u FORCE_COLOR -u CLICOLOR"
+
+let usage_error ~term arguments =
+  shell
+    (Printf.sprintf "env %s %s %s %s" colorless
+       (match term with None -> "-u TERM" | Some term -> "TERM=" ^ term)
+       (Filename.quote sinter) arguments)
+
+let usage_errors =
+  [
+    ( "check --foo",
+      "unknown option '--foo'",
+      "sinter check [--help] [OPTION]\xe2\x80\xa6" );
+    ( "check -o x",
+      "option '-o': invalid value 'x', expected one of 'full', 'brief' or \
+       'json'",
+      "sinter check [--help] [OPTION]\xe2\x80\xa6" );
+    ( "nope",
+      "unknown command 'nope'. Must be one of 'check', 'parse', 'scan' or \
+       'serve'",
+      "sinter [--help] [COMMAND] \xe2\x80\xa6" );
+    ( "check extra",
+      "too many arguments, don't know what to do with 'extra'",
+      "sinter check [--help] [OPTION]\xe2\x80\xa6" );
+    ( "check --gate",
+      "option '--gate' needs an argument",
+      "sinter check [--help] [OPTION]\xe2\x80\xa6" );
+    ( "parse",
+      "required argument FILE is missing",
+      "sinter parse [--help] [OPTION]\xe2\x80\xa6 FILE\xe2\x80\xa6" );
+    ( "parse --grammar g x",
+      "give either --query or --tree",
+      "sinter parse [--help] [OPTION]\xe2\x80\xa6 FILE\xe2\x80\xa6" );
+  ]
+
+let a_usage_error_is_an_error_and_a_help_line () =
+  List.iter
+    (fun (arguments, message, usage) ->
+      Alcotest.(check (pair int (list string)))
+        (arguments ^ ", with no TERM")
+        (2, [ "error: " ^ message; "  = help: usage: " ^ usage ])
+        (let status, text = usage_error ~term:None arguments in
+         (status, lines text)))
+    usage_errors
+
+let a_usage_error_is_the_same_with_term_set () =
+  List.iter
+    (fun (arguments, _, _) ->
+      Alcotest.(check (pair int string))
+        (arguments ^ ", with TERM=xterm and with no TERM")
+        (usage_error ~term:None arguments)
+        (usage_error ~term:(Some "xterm") arguments))
+    usage_errors
+
+let a_required_option_gains_quotes_with_term_set () =
+  Alcotest.(check (pair (list string) (list string)))
+    "with no TERM, and with TERM=xterm"
+    ( [
+        "error: required option --grammar is missing";
+        "  = help: usage: sinter parse [--help] [OPTION]\xe2\x80\xa6 \
+         FILE\xe2\x80\xa6";
+      ],
+      [
+        "error: required option '--grammar' is missing";
+        "  = help: usage: sinter parse [--help] [OPTION]\xe2\x80\xa6 \
+         FILE\xe2\x80\xa6";
+      ] )
+    ( lines (snd (usage_error ~term:None "parse --tree x")),
+      lines (snd (usage_error ~term:(Some "xterm") "parse --tree x")) )
+
+let a_usage_error_takes_its_color_from_the_environment () =
+  Alcotest.(check (pair int string))
+    "error: and = help: in their styles, under CLICOLOR_FORCE=1, and not under \
+     --color=never"
+    ( 2,
+      "\x1b[1m\x1b[91merror:\x1b[0;1m\x1b[0m unknown option '--foo'\n\
+      \  \x1b[1m\x1b[94m=\x1b[0;1m\x1b[0m \x1b[1m\x1b[36mhelp:\x1b[0;1m\x1b[0m \
+       usage: sinter check [--help] [OPTION]\xe2\x80\xa6\n" )
+    (shell
+       (Printf.sprintf
+          "env %s CLICOLOR_FORCE=1 TERM=xterm %s check --color=never --foo"
+          "-u NO_COLOR -u FORCE_COLOR -u CLICOLOR" (Filename.quote sinter)))
+
 let tests =
   [
+    Alcotest.test_case "a usage error is an error and a help line" `Quick
+      a_usage_error_is_an_error_and_a_help_line;
+    Alcotest.test_case "a usage error is the same with TERM set" `Quick
+      a_usage_error_is_the_same_with_term_set;
+    Alcotest.test_case "a required option gains quotes with TERM set" `Quick
+      a_required_option_gains_quotes_with_term_set;
+    Alcotest.test_case "a usage error takes its color from the environment"
+      `Quick a_usage_error_takes_its_color_from_the_environment;
     Alcotest.test_case "the version names the checkout" `Quick
       the_version_names_the_checkout;
     Alcotest.test_case "the version starts with the release version" `Quick

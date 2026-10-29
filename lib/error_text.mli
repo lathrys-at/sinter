@@ -16,8 +16,8 @@ type place = {
 type t = {
   fault : string;  (** what is wrong, with no full stop at the end *)
   help : string;
-      (** what the person can do, with no full stop at the end; never empty for
-          an error of Sinter *)
+      (** what the person can do, with no full stop at the end; empty only for a
+          usage error whose text {!Usage.error} does not read *)
   place : place option;
 }
 (** One error. *)

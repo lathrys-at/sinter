@@ -1,1 +1,2 @@
-sinter: give either --query or --tree
+error: give either --query or --tree
+  = help: usage: sinter parse [--help] [OPTION]… FILE…

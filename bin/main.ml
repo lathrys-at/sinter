@@ -152,8 +152,8 @@ let parse_cmd =
     match (query, tree) with
     | Some _, true ->
         `Error
-          (false, "--query and --tree exclude each other; give one of the two")
-    | None, false -> `Error (false, "give either --query or --tree")
+          (true, "--query and --tree exclude each other; give one of the two")
+    | None, false -> `Error (true, "give either --query or --tree")
     | query, _ -> (
         try
           Sinter_core.Parse.run ~grammar ~query ~paths stdout;
@@ -585,5 +585,12 @@ let () =
           "cannot write the output: standard output is closed";
       ];
     exit environment_error);
-  let code = Cmd.eval' ~term_err:usage_error cmd in
+  let buffer = Buffer.create 256 in
+  let err = Format.formatter_of_buffer buffer in
+  Sinter_core.Style.prepare err `None;
+  let code = Cmd.eval' ~err ~term_err:usage_error cmd in
+  Format.pp_print_flush err ();
+  if Buffer.length buffer > 0 then
+    report Sinter_core.Style.Auto
+      [ Sinter_core.Usage.error (Buffer.contents buffer) ];
   exit (if code = Cmd.Exit.cli_error then usage_error else code)
