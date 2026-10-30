@@ -29,8 +29,11 @@ outside the agent must enforce it, and that system needs two
 properties:
 
 1. It reads the state of the work from artifacts, which are the files
-   of the repository and the results of test runs. It never reads the
-   state from the agent's report about its own work.
+   of the repository and the results of test runs. A statement that an
+   agent writes in a file changes a state only when it is a line of the
+   diff, tied by a hash or a revision to the text that it is about. So
+   the person who merges the change sees each such statement and can
+   check it.
 2. It blocks a change that breaks an agreement at the merge, by rules
    that give the same answer every time. Before the merge, it makes
    each such change impossible to miss.
@@ -1071,7 +1074,7 @@ enforces and which it only records.
    rubric. A fresh context has no wish to finish. This kind is
    deferred, with `sinter judge`.
 3. **Acknowledged.** The expect is `acked(<rule>)`: an
-   `@ack <rule> <hash>` (section 3.3). This is a report of the agent
+   `@ack <rule> <hash>` (section 3.3). This is a statement of the agent
    with a check that it is still live: when the text changes, the ack is
    void, and the obligation returns. A known weak point: an agent under
    pressure to finish will at some point ack text that it only glanced

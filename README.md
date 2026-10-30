@@ -11,7 +11,9 @@ showed up.
 It is built for projects where coding agents write much of the code.
 Agents lose track of plans when their context changes, and sometimes
 they say work is done when it isn't. Sinter checks the files and the
-test results, never what an agent says about its own work.
+test results. A statement that an agent writes in a file counts only
+when it shows in the diff and is tied to the text that it is about, so
+that the person who merges can check it.
 
 Sinter is new and under construction. The full design is in
 [docs/design-notes.md](docs/design-notes.md). The [spec/](spec/)
