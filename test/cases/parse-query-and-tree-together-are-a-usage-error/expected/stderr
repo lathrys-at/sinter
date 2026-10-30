@@ -1,1 +1,2 @@
-sinter: --query and --tree exclude each other; give one of the two
+error: --query and --tree exclude each other; give one of the two
+  = help: usage: sinter parse [--help] [OPTION]… FILE…

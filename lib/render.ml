@@ -435,6 +435,64 @@ let brief ppf ~tier (finding : Finding.t) =
       newline ppf)
     finding.fix
 
+let message ppf element word text =
+  Style.string element ppf word;
+  let text = shown text in
+  if text <> "" then (
+    Fmt.string ppf " ";
+    Fmt.string ppf text);
+  newline ppf
+
+let warning ppf text = message ppf Style.Warn "warning:" text
+let note ppf text = message ppf Style.Note "note:" text
+
+let error_row (place : Error_text.place) =
+  Option.bind place.line (fun raw ->
+      let last = Display.length raw + 1 in
+      let continues = place.span.stop.line > place.span.start.line in
+      let stop = if continues then last else min place.span.stop.column last in
+      Option.map
+        (fun (start, width) ->
+          {
+            number = place.span.start.line;
+            text = shown raw;
+            marks =
+              [
+                { start; width; label = None; sign = '^'; style = Style.Block };
+              ];
+            continues;
+          })
+        (marked raw ~start:place.span.start.column ~stop))
+
+let error ppf (error : Error_text.t) =
+  let row = Option.bind error.place error_row in
+  let width =
+    match row with Some row -> digits row.number | None -> digits 0
+  in
+  message ppf Style.Block "error:" error.fault;
+  Option.iter
+    (fun (place : Error_text.place) ->
+      spaces ppf width;
+      Style.string Style.Frame ppf "-->";
+      Fmt.pf ppf " %s:%d:%d" (shown place.path) place.span.start.line
+        place.span.start.column;
+      newline ppf)
+    error.place;
+  snippet ppf width (Option.to_list row);
+  let help = shown error.help in
+  if help <> "" then (
+    spaces ppf (width + 1);
+    Style.string Style.Frame ppf "=";
+    Fmt.string ppf " ";
+    message ppf Style.Help "help:" help)
+
+let errors ppf list =
+  List.iteri
+    (fun index item ->
+      if index > 0 then newline ppf;
+      error ppf item)
+    list
+
 let folded_count count = Printf.sprintf "%d findings" count
 
 let folded_full ppf ~tier (finding : Finding.t) count =

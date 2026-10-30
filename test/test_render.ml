@@ -817,8 +817,242 @@ let the_output_is_the_same_on_each_run =
   property "the full form is the same on each run" Generators.rendered_finding
     Generators.print_rendered (fun input -> render input = render input)
 
+let span (line, column) (eline, ecol) =
+  {
+    Toml.start = { Toml.line; column };
+    stop = { Toml.line = eline; column = ecol };
+  }
+
+let failure ?(help = "do this") ?place fault = { Error_text.fault; help; place }
+
+let at ?line ?(path = "sinter.toml") start stop =
+  { Error_text.path; span = span start stop; line }
+
+let error ?renderer item = print ?renderer (fun ppf -> Render.error ppf item)
+
+let an_error_with_no_place_is_two_lines () =
+  check_lines "the headline and the help"
+    [ "error: no sinter.toml at the root"; "  = help: create one"; "" ]
+    (error (failure ~help:"create one" "no sinter.toml at the root"))
+
+let an_error_with_no_line_shows_its_location () =
+  check_lines "the headline, the location, and the help"
+    [
+      "error: unknown key 'historic' in [check]";
+      " --> sinter.toml:9:1";
+      "  = help: did you mean 'historical'?";
+      "";
+    ]
+    (error
+       (failure ~help:"did you mean 'historical'?"
+          ~place:(at (9, 1) (9, 9))
+          "unknown key 'historic' in [check]"))
+
+let an_error_with_its_line_shows_the_line_and_a_mark () =
+  check_lines "the block of the full form"
+    [
+      "error: unknown key 'historic' in [check]";
+      " --> sinter.toml:9:1";
+      "  |";
+      "9 | historic = true";
+      "  | ^^^^^^^^";
+      "  |";
+      "  = help: did you mean 'historical'?";
+      "";
+    ]
+    (error
+       (failure ~help:"did you mean 'historical'?"
+          ~place:(at ~line:"historic = true" (9, 1) (9, 9))
+          "unknown key 'historic' in [check]"))
+
+let the_gutter_of_an_error_takes_the_width_of_its_line_number () =
+  check_lines "a gutter of two digits"
+    [
+      "error: f";
+      "  --> sinter.toml:12:5";
+      "   |";
+      "12 | a = \"x\"";
+      "   |     ^^^";
+      "   |";
+      "   = help: do this";
+      "";
+    ]
+    (error (failure ~place:(at ~line:"a = \"x\"" (12, 5) (12, 8)) "f"))
+
+let the_mark_of_an_error_stands_under_the_display_width () =
+  check_lines "a wide character and a tab before the span"
+    [
+      "error: f";
+      " --> sinter.toml:1:4";
+      "  |";
+      "1 | \xe6\x97\xa5    = x";
+      "  |        ^";
+      "  |";
+      "  = help: do this";
+      "";
+    ]
+    (error (failure ~place:(at ~line:"\xe6\x97\xa5\t= x" (1, 4) (1, 5)) "f"))
+
+let the_mark_of_an_error_stops_at_the_end_of_its_line () =
+  check_lines "a span past the end, and a span at the end"
+    [
+      "error: f";
+      " --> sinter.toml:1:3";
+      "  |";
+      "1 | a = 1";
+      "  |   ^^^";
+      "  |";
+      "  = help: do this";
+      "";
+      "error: g";
+      " --> sinter.toml:1:6";
+      "  |";
+      "1 | [scan";
+      "  |      ^";
+      "  |";
+      "  = help: do this";
+      "";
+    ]
+    (print (fun ppf ->
+         Render.errors ppf
+           [
+             failure ~place:(at ~line:"a = 1" (1, 3) (1, 20)) "f";
+             failure ~place:(at ~line:"[scan" (1, 6) (1, 7)) "g";
+           ]))
+
+let an_error_past_its_line_shows_no_line () =
+  check_lines "a span that starts two columns past the end"
+    [ "error: f"; " --> sinter.toml:1:7"; "  = help: do this"; "" ]
+    (error (failure ~place:(at ~line:"[scan" (1, 7) (1, 8)) "f"))
+
+let an_error_over_two_lines_marks_its_first_line () =
+  check_lines "the mark to the end of the line, then ..."
+    [
+      "error: f";
+      " --> sinter.toml:2:13";
+      "  |";
+      "2 | warn-only = [";
+      "  |             ^";
+      "...";
+      "  |";
+      "  = help: do this";
+      "";
+    ]
+    (error (failure ~place:(at ~line:"warn-only = [" (2, 13) (3, 5)) "f"))
+
+let an_error_with_no_help_has_no_help_line () =
+  check_lines "the headline alone" [ "error: f"; "" ]
+    (error (failure ~help:"" "f"))
+
+let an_error_prints_its_text_clean () =
+  check_lines
+    "a control character in the fault, the help, the path, and the line"
+    [
+      "error: a\xef\xbf\xbdb";
+      " --> c\xef\xbf\xbdd:1:1";
+      "  |";
+      "1 | e\xef\xbf\xbdf";
+      "  | ^";
+      "  |";
+      "  = help: g\xef\xbf\xbdh";
+      "";
+    ]
+    (error
+       (failure ~help:"g\027h "
+          ~place:(at ~path:"c\027d" ~line:"e\027f" (1, 1) (1, 2))
+          "a\027b "))
+
+let an_error_takes_its_styles () =
+  Alcotest.(check string)
+    "error: and the mark in bold bright red, = and the gutter in bold bright \
+     blue, help: in bold cyan"
+    "\x1b[1m\x1b[91merror:\x1b[0;1m\x1b[0m f\n\
+    \ \x1b[1m\x1b[94m-->\x1b[0;1m\x1b[0m p:1:1\n\
+    \  \x1b[1m\x1b[94m|\x1b[0;1m\x1b[0m\n\
+     \x1b[1m\x1b[94m1 |\x1b[0;1m\x1b[0m ab\n\
+    \  \x1b[1m\x1b[94m|\x1b[0;1m\x1b[0m \x1b[1m\x1b[91m^\x1b[0;1m\x1b[0m\n\
+    \  \x1b[1m\x1b[94m|\x1b[0;1m\x1b[0m\n\
+    \  \x1b[1m\x1b[94m=\x1b[0;1m\x1b[0m \x1b[1m\x1b[36mhelp:\x1b[0;1m\x1b[0m h\n"
+    (error ~renderer:`Ansi_tty
+       (failure ~help:"h" ~place:(at ~path:"p" ~line:"ab" (1, 1) (1, 2)) "f"))
+
+let errors_stand_apart_by_an_empty_line () =
+  check_lines "two blocks and no empty line at the end"
+    [ "error: a"; "  = help: do this"; ""; "error: b"; "  = help: do this"; "" ]
+    (print (fun ppf -> Render.errors ppf [ failure "a"; failure "b" ]))
+
+let an_error_prints_no_control_character =
+  property
+    "an error block prints no control character but the line feed, and no line \
+     ends in a space"
+    Generators.error_text Generators.print_error_text (fun item ->
+      let text = error item in
+      printable text 0
+      && String.ends_with ~suffix:"\n" text
+      && List.for_all
+           (fun line -> not (String.ends_with ~suffix:" " line))
+           (lines text))
+
+let the_styles_of_an_error_change_no_character =
+  property "a styled error block, without its escape codes, is the plain block"
+    Generators.error_text Generators.print_error_text (fun item ->
+      strip (error ~renderer:`Ansi_tty item) = error item)
+
+let a_warning_and_a_note_are_one_line_each () =
+  Alcotest.(check (list string))
+    "a warning, a cleaned warning, an empty warning, and a note"
+    [
+      "warning: no ledger\n";
+      "warning: a\xef\xbf\xbdb    c\n";
+      "warning:\n";
+      "note: base abc\n";
+    ]
+    [
+      print (fun ppf -> Render.warning ppf "no ledger");
+      print (fun ppf -> Render.warning ppf "a\027b\tc ");
+      print (fun ppf -> Render.warning ppf "");
+      print (fun ppf -> Render.note ppf "base abc");
+    ]
+
+let a_warning_and_a_note_take_their_styles () =
+  Alcotest.(check (list string))
+    "the word in its style, and the text plain"
+    [ "\x1b[1m\x1b[33mwarning:\x1b[0;1m\x1b[0m x\n"; "\x1b[1mnote:\x1b[0m x\n" ]
+    [
+      print ~renderer:`Ansi_tty (fun ppf -> Render.warning ppf "x");
+      print ~renderer:`Ansi_tty (fun ppf -> Render.note ppf "x");
+    ]
+
 let tests =
   [
+    case "an error with no place is two lines"
+      an_error_with_no_place_is_two_lines;
+    case "an error with no line shows its location"
+      an_error_with_no_line_shows_its_location;
+    case "an error with its line shows the line and a mark"
+      an_error_with_its_line_shows_the_line_and_a_mark;
+    case "the gutter of an error takes the width of its line number"
+      the_gutter_of_an_error_takes_the_width_of_its_line_number;
+    case "the mark of an error stands under the display width"
+      the_mark_of_an_error_stands_under_the_display_width;
+    case "the mark of an error stops at the end of its line"
+      the_mark_of_an_error_stops_at_the_end_of_its_line;
+    case "an error past its line shows no line"
+      an_error_past_its_line_shows_no_line;
+    case "an error over two lines marks its first line"
+      an_error_over_two_lines_marks_its_first_line;
+    case "an error with no help has no help line"
+      an_error_with_no_help_has_no_help_line;
+    case "an error prints its text clean" an_error_prints_its_text_clean;
+    case "an error takes its styles" an_error_takes_its_styles;
+    case "errors stand apart by an empty line"
+      errors_stand_apart_by_an_empty_line;
+    an_error_prints_no_control_character;
+    the_styles_of_an_error_change_no_character;
+    case "a warning and a note are one line each"
+      a_warning_and_a_note_are_one_line_each;
+    case "a warning and a note take their styles"
+      a_warning_and_a_note_take_their_styles;
     case "a block shows the headline, the location, and the mark"
       a_block_shows_the_headline_the_location_and_the_mark;
     case "the headline names the tier and the class"

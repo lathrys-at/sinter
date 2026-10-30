@@ -772,10 +772,12 @@ let error_message = function
       | None, Some construct, "" ->
           Printf.sprintf "the %s is not valid" (construct_name construct)
       | None, Some construct, _ ->
-          Printf.sprintf "the %s is not valid; expected %s"
+          Printf.sprintf "the %s is not valid; write %s here"
             (construct_name construct) expected
       | None, None, "" -> "the text is not valid TOML here"
-      | None, None, _ -> "expected " ^ expected)
+      | None, None, _ ->
+          Printf.sprintf "the text is not valid TOML here; write %s here"
+            expected)
 
 let first_invalid_byte text =
   let length = String.length text in

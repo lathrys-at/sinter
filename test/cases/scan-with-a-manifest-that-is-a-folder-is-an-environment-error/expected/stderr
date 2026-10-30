@@ -1,1 +1,2 @@
-sinter: cannot read the manifest docs: Is a directory
+error: cannot read the manifest docs: Is a directory
+  = help: name a manifest that is a file that you can read

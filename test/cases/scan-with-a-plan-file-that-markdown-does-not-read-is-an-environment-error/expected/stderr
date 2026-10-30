@@ -1,1 +1,2 @@
-sinter: .plans/p.md is under .plans/, and the pack markdown does not read it; add ".plans/" to its files
+error: .plans/p.md is under .plans/, and the pack markdown does not read it
+  = help: add ".plans/" to the files of the pack markdown

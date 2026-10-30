@@ -536,10 +536,13 @@ let names_a_dotted_key_into_a_table_that_a_header_made () =
 
 let messages =
   [
-    ("a = 1 b = 2\n", (1, 9), "expected the end of the line or a comment");
-    ("[a\n", (1, 3), "the table header is not valid; expected ']'");
-    ("[[a]\n", (1, 5), "the table header is not valid; expected ']'");
-    ("[[a\n", (1, 4), "the table header is not valid; expected ']]'");
+    ( "a = 1 b = 2\n",
+      (1, 9),
+      "the text is not valid TOML here; write the end of the line or a comment \
+       here" );
+    ("[a\n", (1, 3), "the table header is not valid; write ']' here");
+    ("[[a]\n", (1, 5), "the table header is not valid; write ']' here");
+    ("[[a\n", (1, 4), "the table header is not valid; write ']]' here");
     ( "a = x\n",
       (1, 5),
       "the value is not valid; write a string in quotes, a number, true, \
@@ -554,18 +557,18 @@ let messages =
        false, a date, a time, an array, or an inline table" );
     ( "a = \"\\q\"\n",
       (1, 7),
-      "the escape sequence is not valid; expected 'b', 't', 'n', 'f', 'r', \
-       'e', '\"', '\\', 'x', 'u', or 'U'" );
+      "the escape sequence is not valid; write 'b', 't', 'n', 'f', 'r', 'e', \
+       '\"', '\\', 'x', 'u', or 'U' here" );
     ( "a = \"\\u12\"\n",
       (1, 10),
-      "the escape sequence is not valid; expected a hexadecimal digit" );
+      "the escape sequence is not valid; write a hexadecimal digit here" );
     ("a = \"\\uD800\"\n", (1, 8), "the escape sequence is out of range");
     ("a = \"abc\n", (1, 9), "the basic string is not valid");
     ("\"\"\"a\"\"\" = 1\n", (1, 1), "the key is not valid");
-    ("a\n", (1, 2), "expected '='");
-    ("a = [1, 2\n", (1, 10), "the array is not valid; expected ']'");
-    ("a = { b = 1\n", (1, 12), "the inline table is not valid; expected '}'");
-    ("a = {,}\n", (1, 6), "the inline table is not valid; expected a key");
+    ("a\n", (1, 2), "the text is not valid TOML here; write '=' here");
+    ("a = [1, 2\n", (1, 10), "the array is not valid; write ']' here");
+    ("a = { b = 1\n", (1, 12), "the inline table is not valid; write '}' here");
+    ("a = {,}\n", (1, 6), "the inline table is not valid; write a key here");
     ("a = 1\na = 2\n", (2, 1), "the key 'a' is already defined");
     ("[t]\n[t]\n", (2, 2), "the key 't' is already defined");
     ( "a = 1\na.b = 2\n",
@@ -594,8 +597,8 @@ let messages =
     ("a = 9223372036854775808\n", (1, 5), "the integer is out of range");
     ("a = -9223372036854775809\n", (1, 5), "the integer is out of range");
     ("a = 1e400\n", (1, 5), "the float is out of range");
-    ("a = 1.\n", (1, 7), "the float is not valid; expected a digit");
-    ("a = 0X1F\n", (1, 5), "the integer is not valid; expected '0x'");
+    ("a = 1.\n", (1, 7), "the float is not valid; write a digit here");
+    ("a = 0X1F\n", (1, 5), "the integer is not valid; write '0x' here");
     ("a = 0x\n", (1, 5), "the hexadecimal integer is not valid");
     ("a = 0o\n", (1, 5), "the octal integer is not valid");
     ("a = [0b]\n", (1, 6), "the binary integer is not valid");
@@ -985,8 +988,8 @@ let error_message_names_every_construct () =
 let error_message_names_every_expected_form () =
   Alcotest.(check string)
     "the list"
-    "expected the end of the line, a comment, ']]', \"'\", a digit, a \
-     hexadecimal digit, a key, or a value"
+    "the text is not valid TOML here; write the end of the line, a comment, \
+     ']]', \"'\", a digit, a hexadecimal digit, a key, or a value here"
     (Toml.error_message
        (Toml.Syntax
           {

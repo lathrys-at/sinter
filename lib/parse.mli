@@ -4,9 +4,9 @@
 (** Parse source files with a tree-sitter grammar and report what a tree-sitter
     query captures. *)
 
-exception Error of string
-(** Something went wrong, and the string says what. The string is fit to show to
-    the person who ran the command. *)
+exception Error of Error_text.t
+(** Something went wrong. The error says what, and what to do, for the person
+    who ran the command. It has no place. *)
 
 (** One result of one file. *)
 type item =

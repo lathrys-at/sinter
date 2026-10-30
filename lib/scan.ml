@@ -6,7 +6,11 @@ type error =
   | No_manifest
   | Missing_manifest of string
   | Unreadable_manifest of { path : string; reason : string }
-  | Invalid_manifest of { path : string; errors : Manifest.error list }
+  | Invalid_manifest of {
+      path : string;
+      text : string;
+      errors : Manifest.error list;
+    }
   | Two_packs of { file : string; pack : string; other : string }
   | Plan_not_read of string
   | Pack_not_available of string
@@ -27,96 +31,156 @@ let first_line text =
   | Some stop -> String.sub text 0 stop
   | None -> text
 
-let git_message = function
-  | Git.Git_not_found reason -> "cannot start git: " ^ reason
+let git_text = function
+  | Git.Git_not_found reason ->
+      ( "cannot start git: " ^ reason,
+        "install git 2.43.7 or later, and put it on PATH" )
   | Git.Not_a_repository { dir; _ } ->
-      Printf.sprintf "the folder %s is in no git repository" dir
-  | Git.Bad_revision revision -> Printf.sprintf "'%s' names no commit" revision
+      ( Printf.sprintf "the folder %s is in no git repository" dir,
+        "run sinter inside the working tree of a git repository" )
+  | Git.Bad_revision revision ->
+      ( Printf.sprintf "'%s' names no commit" revision,
+        "name a revision that names a commit" )
   | Git.Default_branch_not_found name ->
-      Printf.sprintf "no branch '%s' exists" name
+      ( Printf.sprintf "no branch '%s' exists" name,
+        "set 'default-branch' in sinter.toml to the name of the default branch"
+      )
   | Git.No_merge_base (a, b) ->
-      Printf.sprintf "%s and %s have no common ancestor" a b
+      ( Printf.sprintf "%s and %s have no common ancestor" a b,
+        "name a base with --base" )
   | Git.Command_failed { args; stderr; _ } ->
-      Printf.sprintf "git %s failed: %s" (String.concat " " args)
-        (first_line stderr)
+      ( Printf.sprintf "git %s failed: %s" (String.concat " " args)
+          (first_line stderr),
+        "run the same git command in the repository to see the whole message" )
   | Git.Malformed_output { args; detail } ->
-      Printf.sprintf "git %s gave output that sinter cannot read: %s"
-        (String.concat " " args) detail
-  | Git.File_error reason -> reason
+      ( Printf.sprintf "git %s gave output that sinter cannot read: %s"
+          (String.concat " " args) detail,
+        "use git 2.43.7 or later; with such a git, "
+        ^ Error_text.fault_of_sinter )
+  | Git.File_error reason ->
+      ( reason,
+        "check that you can read and write the file, and that the disk has \
+         space" )
 
-let messages = function
-  | Repository error -> [ git_message error ]
+let bug = Error_text.fault_of_sinter
+let plain (fault, help) = { Error_text.fault; help; place = None }
+
+let explain = function
+  | Repository error -> [ plain (git_text error) ]
   | No_manifest ->
       [
-        "no sinter.toml at the repository root; create one, or name one with \
-         --manifest";
+        plain
+          ( "no sinter.toml at the repository root",
+            "create one, or name one with --manifest" );
       ]
-  | Missing_manifest path -> [ Printf.sprintf "no manifest at %s" path ]
+  | Missing_manifest path ->
+      [
+        plain
+          ( Printf.sprintf "no manifest at %s" path,
+            "name a manifest that exists with --manifest" );
+      ]
   | Unreadable_manifest { path; reason } ->
-      [ Printf.sprintf "cannot read the manifest %s: %s" path reason ]
-  | Invalid_manifest { path; errors } ->
-      List.map (fun error -> Manifest.render ~path error) errors
+      [
+        plain
+          ( Printf.sprintf "cannot read the manifest %s: %s" path reason,
+            "name a manifest that is a file that you can read" );
+      ]
+  | Invalid_manifest { path; text; errors } ->
+      let lines = Line_index.make text in
+      List.map (Manifest.explain ~path ~lines) errors
   | Two_packs { file; pack; other } ->
       [
-        Printf.sprintf
-          "%s is in the files of two packs, %s and %s; add a '!' glob to one \
-           of them"
-          file pack other;
+        plain
+          ( Printf.sprintf "%s is in the files of two packs, %s and %s" file
+              pack other,
+            "add a '!' glob to one of them" );
       ]
   | Plan_not_read file ->
       [
-        Printf.sprintf
-          "%s is under .plans/, and the pack markdown does not read it; add \
-           \".plans/\" to its files"
-          file;
+        plain
+          ( Printf.sprintf
+              "%s is under .plans/, and the pack markdown does not read it" file,
+            "add \".plans/\" to the files of the pack markdown" );
       ]
   | Pack_not_available name ->
       [
-        Printf.sprintf
-          "the pack %s is not in the cache of packs; run sinter pack add %s"
-          name name;
+        plain
+          ( Printf.sprintf "the pack %s is not in the cache of packs" name,
+            Printf.sprintf "run sinter pack add %s" name );
       ]
   | Bad_base revision ->
-      [ Printf.sprintf "the base '%s' names no commit" revision ]
+      [
+        plain
+          ( Printf.sprintf "the base '%s' names no commit" revision,
+            "give --base a revision that names a commit" );
+      ]
   | Default_branch_not_found name ->
       [
-        Printf.sprintf
-          "no branch '%s' exists here or on origin; fetch it with git fetch \
-           origin %s:refs/remotes/origin/%s, or set 'default-branch' in \
-           sinter.toml to the name of the default branch"
-          name name name;
+        plain
+          ( Printf.sprintf "no branch '%s' exists here or on origin" name,
+            Printf.sprintf
+              "fetch it with git fetch origin %s:refs/remotes/origin/%s, or \
+               set 'default-branch' in sinter.toml to the name of the default \
+               branch"
+              name name );
       ]
   | No_merge_base name ->
       [
-        Printf.sprintf
-          "HEAD and the branch '%s' have no common ancestor; name a base with \
-           --base"
-          name;
+        plain
+          ( Printf.sprintf "HEAD and the branch '%s' have no common ancestor"
+              name,
+            "name a base with --base" );
       ]
   | Shallow_clone name ->
       [
-        Printf.sprintf
-          "this clone is shallow, so the merge base of HEAD and the branch \
-           '%s' is not here; fetch the whole history with git fetch \
-           --unshallow origin %s:refs/remotes/origin/%s"
-          name name name;
+        plain
+          ( Printf.sprintf
+              "this clone is shallow, so the merge base of HEAD and the branch \
+               '%s' is not here"
+              name,
+            Printf.sprintf
+              "fetch the whole history with git fetch --unshallow origin \
+               %s:refs/remotes/origin/%s"
+              name name );
       ]
   | No_head ->
-      [ "HEAD names no commit; make a commit, or name a base with --base" ]
-  | Unreadable_file { file; error } -> [ Text_file.message file error ]
+      [
+        plain
+          ("HEAD names no commit", "make a commit, or name a base with --base");
+      ]
+  | Unreadable_file { file; error } ->
+      [
+        plain
+          ( Text_file.message file error,
+            "make the file readable, or leave it out of the files of the pack \
+             markdown with a '!' glob" );
+      ]
   | Unparsed_file { file; error } ->
-      [ file ^ ": " ^ Sinter_bridge.Tree.message error ]
+      [
+        plain
+          ( file ^ ": " ^ Sinter_bridge.Tree.message error,
+            "leave the file out of the files of the pack markdown with a '!' \
+             glob" );
+      ]
   | Unparsed_base_file { file; error } ->
-      [ file ^ " at the base: " ^ Sinter_bridge.Tree.message error ]
+      [
+        plain
+          ( file ^ " at the base: " ^ Sinter_bridge.Tree.message error,
+            "name another base with --base" );
+      ]
   | Reader (Markdown.Grammar error) ->
       [
-        "the built-in grammar of markdown does not load: "
-        ^ Sinter_bridge.Language.message error;
+        plain
+          ( "the built-in grammar of markdown does not load: "
+            ^ Sinter_bridge.Language.message error,
+            bug );
       ]
   | Reader (Markdown.Query error) ->
       [
-        "the built-in query of markdown does not compile: "
-        ^ Sinter_bridge.Query.message error;
+        plain
+          ( "the built-in query of markdown does not compile: "
+            ^ Sinter_bridge.Query.message error,
+            bug );
       ]
 
 type outcome = { warnings : string list; records : Jsonl.record list }
@@ -145,8 +209,8 @@ let load_manifest ~path ~shown ~missing =
   | Error Manifest.Missing -> Error missing
   | Error (Manifest.Unreadable reason) ->
       Error (Unreadable_manifest { path = shown; reason })
-  | Error (Manifest.Invalid errors) ->
-      Error (Invalid_manifest { path = shown; errors })
+  | Error (Manifest.Invalid { text; errors }) ->
+      Error (Invalid_manifest { path = shown; text; errors })
 
 let manifest_location ~root path =
   match (Unix.realpath root, Unix.realpath path) with
@@ -354,8 +418,7 @@ let prepare ~env ~dir ~manifest ~base =
       not_utf_8 )
 
 let not_utf_8_warning path =
-  Printf.sprintf
-    "warning: the path %s is not UTF-8, so sinter does not read the file"
+  Printf.sprintf "the path %s is not UTF-8, so sinter does not read the file"
     (Display.clean (escape_path path))
 
 type base_manifest = Outside | Absent | Unchanged | Changed of string
@@ -541,7 +604,7 @@ let ledger_warning tree facts =
   | _ :: _ -> (
       match Git.commit_of tree.repo ledger_ref with
       | Error (Git.Bad_revision _) ->
-          Some "warning: no ledger found, so every plan counts as open"
+          Some "no ledger found, so every plan counts as open"
       | Ok _ | Error _ -> None)
 
 let index ?(mode = Mode.Tree) tree ~tool =

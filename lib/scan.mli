@@ -14,8 +14,11 @@ type error =
       (** nothing is at the path of the manifest that the caller named *)
   | Unreadable_manifest of { path : string; reason : string }
       (** the manifest does not open or read *)
-  | Invalid_manifest of { path : string; errors : Manifest.error list }
-      (** the manifest holds errors, in the order of their places *)
+  | Invalid_manifest of {
+      path : string;
+      text : string;  (** the text of the manifest *)
+      errors : Manifest.error list;
+    }  (** the manifest holds errors, in the order of their places *)
   | Two_packs of { file : string; pack : string; other : string }
       (** a file is in the files of two packs; [pack] comes before [other] in
           byte order *)
@@ -42,10 +45,11 @@ type error =
           [markdown] gives no tree *)
   | Reader of Markdown.load_error  (** the built-in grammar does not load *)
 
-val messages : error -> string list
-(** [messages error] says what is wrong and, when it can, what to do, for the
-    person who runs the tool: one line for each error of an invalid manifest,
-    and one line otherwise. No line ends with a full stop. *)
+val explain : error -> Error_text.t list
+(** [explain error] says what is wrong and what to do, for the person who runs
+    the tool: one error for each error of an invalid manifest, as
+    {!Manifest.explain} gives it with the lines of the text of the manifest, and
+    one error with no place otherwise. *)
 
 val escape_path : string -> string
 (** [escape_path path] is [path] with each byte that is not part of a valid
@@ -92,10 +96,11 @@ type tree = private {
           not UTF-8 text, in the order of the paths, with the byte offset of its
           first sequence that is not well-formed *)
   warnings : string list;
-      (** one line for each file of the file set whose path is not UTF-8, in the
-          order of the paths, with the path as {!Display.clean} gives
-          {!escape_path} of it. After {!load_with_base}, the file set of the
-          base counts too, and a path of both file sets has one line. *)
+      (** the text of one warning, without the word [warning:], for each file of
+          the file set whose path is not UTF-8, in the order of the paths, with
+          the path as {!Display.clean} gives {!escape_path} of it. After
+          {!load_with_base}, the file set of the base counts too, and a path of
+          both file sets has one warning. *)
 }
 (** The working tree of a repository as a scan reads it. *)
 
@@ -178,11 +183,11 @@ val load_with_base :
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
 
 val ledger_warning : tree -> Facts.t -> string option
-(** [ledger_warning tree facts] is the warning
-    [warning: no ledger found, so every plan counts as open] when [facts] hold
-    at least one plan and the ref [refs/sinter/ledger] of the repository of
-    [tree] names no commit ({!Git.commit_of} gives [Bad_revision]); [None]
-    otherwise. It runs git only when [facts] hold a plan. *)
+(** [ledger_warning tree facts] is the text of the warning
+    [no ledger found, so every plan counts as open] when [facts] hold at least
+    one plan and the ref [refs/sinter/ledger] of the repository of [tree] names
+    no commit ({!Git.commit_of} gives [Bad_revision]); [None] otherwise. It runs
+    git only when [facts] hold a plan. *)
 
 val index : ?mode:Mode.t -> tree -> tool:string -> (Jsonl.record, error) result
 (** [index tree ~tool] is the index record of [tree]. [tool] is the version of

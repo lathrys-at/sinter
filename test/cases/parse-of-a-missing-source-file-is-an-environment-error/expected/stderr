@@ -1,1 +1,2 @@
-sinter: no-such-file.json: No such file or directory
+error: no-such-file.json: No such file or directory
+  = help: name a file that you can read and that holds UTF-8 text

@@ -1,35 +1,46 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-exception Error of string
+exception Error of Error_text.t
 
 type item = Capture of Jsonl.record | Tree of { path : string; sexp : string }
 
-let fail format = Printf.ksprintf (fun message -> raise (Error message)) format
+let fail ~help fault = raise (Error { Error_text.fault; help; place = None })
+
+let record_failure ~path error =
+  fail ~help:(Parse_record.help error) (Parse_record.message ~path error)
 
 let check_path path =
   if not (Sinter_bridge.Utf_8.is_valid path) then
-    raise (Error (Parse_record.message ~path Parse_record.Path_not_utf_8))
+    record_failure ~path Parse_record.Path_not_utf_8
 
 let of_bridge path f =
-  try f () with Sinter_bridge.Error message -> fail "%s: %s" path message
+  try f ()
+  with Sinter_bridge.Error message ->
+    fail
+      ~help:
+        ("parse a file below 4 GiB; for a smaller file, "
+       ^ Error_text.fault_of_sinter)
+      (path ^ ": " ^ message)
 
 let or_fail path = function
   | Ok value -> value
-  | Error error -> raise (Error (Query_file.message ~path error))
+  | Error error ->
+      fail ~help:(Query_file.help error) (Query_file.message ~path error)
 
 let records ~path ~source found =
   List.map
     (fun capture ->
       match Parse_record.of_capture ~path ~source capture with
       | Ok record -> record
-      | Error error -> raise (Error (Parse_record.message ~path error)))
+      | Error error -> record_failure ~path error)
     found
 
 let load engine ~grammar =
   match Grammar.load engine ~path:grammar with
   | Ok language -> language
-  | Error error -> raise (Error (Grammar.message ~path:grammar error))
+  | Error error ->
+      fail ~help:(Grammar.help error) (Grammar.message ~path:grammar error)
 
 let fold language ~query ~paths ~f =
   List.iter check_path paths;
@@ -68,7 +79,8 @@ let run ~grammar ~query ~paths channel =
   let engine =
     try Sinter_bridge.create ()
     with Sinter_bridge.Error message ->
-      fail "the parser bridge does not start: %s" message
+      fail ~help:Error_text.fault_of_sinter
+        ("the parser bridge does not start: " ^ message)
   in
   Fun.protect
     ~finally:(fun () -> Sinter_bridge.close engine)
@@ -84,4 +96,6 @@ let run ~grammar ~query ~paths channel =
           try
             fold language ~query ~paths ~f:write;
             flush channel
-          with Sys_error message -> fail "cannot write the output: %s" message))
+          with Sys_error message ->
+            fail ~help:Error_text.output_help
+              ("cannot write the output: " ^ message)))

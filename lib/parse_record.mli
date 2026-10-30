@@ -51,3 +51,7 @@ val message : path:string -> error -> string
 (** [message ~path error] says what is wrong, for the person who runs the tool.
     The message names the file at [path], and gives its name as escaped bytes
     when the name is not UTF-8 text. *)
+
+val help : error -> string
+(** [help error] says what the person who runs the tool can do about [error]. It
+    is never empty. *)

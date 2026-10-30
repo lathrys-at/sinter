@@ -1,4 +1,31 @@
-sinter: sinter.toml:5:1: 'historical' belongs in [paths]
-sinter: sinter.toml:7:2: unknown key 'plan' at the top level; did you mean 'scan'?
-sinter: sinter.toml:11:2: unknown key 'ledger' at the top level
-sinter: sinter.toml:15:2: unknown key 'evidence' at the top level
+error: 'historical' belongs in [paths]
+ --> sinter.toml:5:1
+  |
+5 | historical = ["docs/log/"]
+  | ^^^^^^^^^^
+  |
+  = help: move it to [paths]
+
+error: unknown key 'plan' at the top level
+ --> sinter.toml:7:2
+  |
+7 | [plan]
+  |  ^^^^
+  |
+  = help: did you mean 'scan'?
+
+error: unknown key 'ledger' at the top level
+  --> sinter.toml:11:2
+   |
+11 | [ledger]
+   |  ^^^^^^
+   |
+   = help: remove this key, or correct its name
+
+error: unknown key 'evidence' at the top level
+  --> sinter.toml:15:2
+   |
+15 | [evidence]
+   |  ^^^^^^^^
+   |
+   = help: remove this key, or correct its name

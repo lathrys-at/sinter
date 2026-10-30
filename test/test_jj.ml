@@ -217,7 +217,10 @@ let load repo =
   | Ok tree -> tree
   | Error error ->
       Alcotest.failf "the load fails: %s"
-        (String.concat "; " (Scan.messages error))
+        (String.concat "; "
+           (List.map
+              (fun { Error_text.fault; help; _ } -> fault ^ "; " ^ help)
+              (Scan.explain error)))
 
 let trunk repo = String.trim (Repo.git repo [ "rev-parse"; "main" ])
 

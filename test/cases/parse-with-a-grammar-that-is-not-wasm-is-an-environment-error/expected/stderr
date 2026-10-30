@@ -1,1 +1,2 @@
-sinter: sample.json: the grammar does not load: Failed to parse wasm: failed to parse dylink section of Wasm module
+error: sample.json: the grammar does not load: Failed to parse wasm: failed to parse dylink section of Wasm module
+  = help: name a tree-sitter grammar that is compiled to WebAssembly, as .wasm

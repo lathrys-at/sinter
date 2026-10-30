@@ -5,19 +5,27 @@ open Sinter_core
 module Gen = QCheck2.Gen
 
 let markdown = "[scan]\npacks.markdown.files = [\"**/*.md\"]\n"
+let text_of { Error_text.fault; help; _ } = fault ^ "; " ^ help
+
+let render ~path error =
+  let explained = Manifest.explain ~path error in
+  match explained.place with
+  | Some { span = { start; _ }; _ } ->
+      Printf.sprintf "%s:%d:%d: %s" path start.line start.column
+        (text_of explained)
+  | None -> text_of explained
 
 let read text =
   match Manifest.of_string text with
   | Ok manifest -> manifest
   | Error errors ->
       Alcotest.failf "the manifest has errors:\n%s"
-        (String.concat "\n"
-           (List.map (Manifest.render ~path:"sinter.toml") errors))
+        (String.concat "\n" (List.map (render ~path:"sinter.toml") errors))
 
 let lines text =
   match Manifest.of_string text with
   | Ok _ -> [ "no error" ]
-  | Error errors -> List.map (Manifest.render ~path:"sinter.toml") errors
+  | Error errors -> List.map (render ~path:"sinter.toml") errors
 
 let reports name text expected =
   Alcotest.(check (list string)) name expected (lines text)
@@ -462,12 +470,14 @@ let sinter_spec_errors () =
   reports "a patch number" "sinter-spec = \"1.0.0\"\n"
     [
       "sinter.toml:1:15: 'sinter-spec' takes a version of the form \
-       MAJOR.MINOR, such as \"1.0\", not \"1.0.0\"";
+       MAJOR.MINOR, such as \"1.0\", not \"1.0.0\"; write the version as two \
+       numbers joined by '.'";
     ];
   reports "an integer" "sinter-spec = 1\n"
     [
       "sinter.toml:1:15: 'sinter-spec' takes a version of the form \
-       MAJOR.MINOR, such as \"1.0\", not an integer";
+       MAJOR.MINOR, such as \"1.0\", not an integer; write a version of the \
+       form MAJOR.MINOR, such as \"1.0\"";
     ];
   reports "a minor version of the same major"
     ("sinter-spec = \"1.0\"\n" ^ markdown)
@@ -502,11 +512,16 @@ let unknown_keys () =
   reports "no near name in [paths] or [proof]"
     "[paths]\nfoo = []\n[proof]\nbar = 1\n"
     [
-      "sinter.toml:2:1: unknown key 'foo' in [paths]";
-      "sinter.toml:4:1: unknown key 'bar' in [proof]";
+      "sinter.toml:2:1: unknown key 'foo' in [paths]; remove this key, or \
+       correct its name";
+      "sinter.toml:4:1: unknown key 'bar' in [proof]; remove this key, or \
+       correct its name";
     ];
   reports "no near name" "[check]\nfoo = 1\n"
-    [ "sinter.toml:2:1: unknown key 'foo' in [check]" ];
+    [
+      "sinter.toml:2:1: unknown key 'foo' in [check]; remove this key, or \
+       correct its name";
+    ];
   reports "a table at the top level" "[chek]\n"
     [
       "sinter.toml:1:2: unknown key 'chek' at the top level; did you mean \
@@ -534,7 +549,10 @@ let unknown_keys () =
 
 let an_old_name_is_an_unknown_name () =
   reports "target" "target = \"trunk\"\n"
-    [ "sinter.toml:1:1: unknown key 'target' at the top level" ];
+    [
+      "sinter.toml:1:1: unknown key 'target' at the top level; remove this \
+       key, or correct its name";
+    ];
   reports "the gate merge" "[check.tiers.merge]\n"
     [
       "sinter.toml:1:14: unknown gate 'merge' in [check.tiers]; did you mean \
@@ -542,11 +560,14 @@ let an_old_name_is_an_unknown_name () =
     ];
   reports "the gate target" "[check.tiers.target]\n"
     [
-      "sinter.toml:1:14: unknown gate 'target' in [check.tiers]; the gates are \
-       'turn', 'review', or 'merged'";
+      "sinter.toml:1:14: unknown gate 'target' in [check.tiers]; write one of \
+       the gates 'turn', 'review', or 'merged'";
     ];
   reports "scan.refs" "[scan]\nrefs.gh = \"[1-9][0-9]*\"\n"
-    [ "sinter.toml:2:1: unknown key 'refs' in [scan]" ];
+    [
+      "sinter.toml:2:1: unknown key 'refs' in [scan]; remove this key, or \
+       correct its name";
+    ];
   reports "the table plan" "[plan]\nexempt = []\n"
     [
       "sinter.toml:1:2: unknown key 'plan' at the top level; did you mean \
@@ -558,46 +579,66 @@ let an_old_name_is_an_unknown_name () =
        'scan'?";
     ];
   reports "spec" "spec = \"1.0\"\n"
-    [ "sinter.toml:1:1: unknown key 'spec' at the top level" ];
+    [
+      "sinter.toml:1:1: unknown key 'spec' at the top level; remove this key, \
+       or correct its name";
+    ];
   reports "check.rollout-cap" "[check]\nrollout-cap = true\n"
-    [ "sinter.toml:2:1: unknown key 'rollout-cap' in [check]" ];
+    [
+      "sinter.toml:2:1: unknown key 'rollout-cap' in [check]; remove this key, \
+       or correct its name";
+    ];
   reports "the table ledger" "[ledger]\napproval-required = [\"req\"]\n"
-    [ "sinter.toml:1:2: unknown key 'ledger' at the top level" ];
+    [
+      "sinter.toml:1:2: unknown key 'ledger' at the top level; remove this \
+       key, or correct its name";
+    ];
   reports "the table evidence" "[evidence]\ntest-coverage = \"required\"\n"
-    [ "sinter.toml:1:2: unknown key 'evidence' at the top level" ];
+    [
+      "sinter.toml:1:2: unknown key 'evidence' at the top level; remove this \
+       key, or correct its name";
+    ];
   reports "check.historical" "[check]\nhistorical = [\"docs/\"]\n"
-    [ "sinter.toml:2:1: 'historical' belongs in [paths]" ];
+    [ "sinter.toml:2:1: 'historical' belongs in [paths]; move it to [paths]" ];
   reports "approval-required and test-coverage under [proof]"
     "[proof]\napproval-required = [\"req\"]\ntest-coverage = \"required\"\n"
     [
-      "sinter.toml:2:1: unknown key 'approval-required' in [proof]";
-      "sinter.toml:3:1: unknown key 'test-coverage' in [proof]";
+      "sinter.toml:2:1: unknown key 'approval-required' in [proof]; remove \
+       this key, or correct its name";
+      "sinter.toml:3:1: unknown key 'test-coverage' in [proof]; remove this \
+       key, or correct its name";
     ]
 
 let a_name_with_a_control_character_is_escaped () =
   reports "an unknown key" "\"a\\nb\" = 1\n"
-    [ "sinter.toml:1:1: unknown key \"a\\nb\" at the top level" ];
+    [
+      "sinter.toml:1:1: unknown key \"a\\nb\" at the top level; remove this \
+       key, or correct its name";
+    ];
   reports "a space is no control character" "\"a b\" = 1\n"
-    [ "sinter.toml:1:1: unknown key 'a b' at the top level" ];
+    [
+      "sinter.toml:1:1: unknown key 'a b' at the top level; remove this key, \
+       or correct its name";
+    ];
   reports "an unknown gate and a pack name"
     (markdown
    ^ "packs.\"x\\ty\".files = [\"a\"]\n\
       [check.tiers]\n\
       \"m\\u007Fe\".dangling = \"warn\"\n")
     [
-      "sinter.toml:3:7: \"x\\ty\" is not a pack name; a pack name is \
+      "sinter.toml:3:7: \"x\\ty\" is not a pack name; write a pack name of \
        lower-case letters and digits, in words joined by '-', such as 'ocaml' \
        or 'tree-sitter'";
-      "sinter.toml:5:1: unknown gate \"m\\u007Fe\" in [check.tiers]; the gates \
-       are 'turn', 'review', or 'merged'";
+      "sinter.toml:5:1: unknown gate \"m\\u007Fe\" in [check.tiers]; write one \
+       of the gates 'turn', 'review', or 'merged'";
     ]
 
 let keys_at_the_wrong_place () =
   reports "a top-level key under a table"
     "[check]\ndefault-branch = \"trunk\"\n"
     [
-      "sinter.toml:2:1: 'default-branch' belongs at the top level, above the \
-       first table header";
+      "sinter.toml:2:1: 'default-branch' belongs at the top level; write it \
+       above the first table header";
     ];
   reports "a table under another table" "[paths]\ncheck = 1\n"
     [
@@ -605,18 +646,21 @@ let keys_at_the_wrong_place () =
        under the header [check]";
     ];
   reports "a key of another table" "[scan]\nwarn-only = true\n"
-    [ "sinter.toml:2:1: 'warn-only' belongs in [check]" ];
+    [ "sinter.toml:2:1: 'warn-only' belongs in [check]; move it to [check]" ];
   reports "a key of a pack" "files = []\n"
-    [ "sinter.toml:1:1: 'files' belongs in [scan.packs.<name>]" ];
+    [
+      "sinter.toml:1:1: 'files' belongs in [scan.packs.<name>]; move it to \
+       [scan.packs.<name>]";
+    ];
   reports "a fixed name where a gate goes" "[check.tiers]\nwarn-only = true\n"
-    [ "sinter.toml:2:1: 'warn-only' belongs in [check]" ];
+    [ "sinter.toml:2:1: 'warn-only' belongs in [check]; move it to [check]" ];
   reports "a fixed name where a class goes"
     "[check.tiers.review]\nhistorical = []\n"
-    [ "sinter.toml:2:1: 'historical' belongs in [paths]" ];
+    [ "sinter.toml:2:1: 'historical' belongs in [paths]; move it to [paths]" ];
   reports "a key of [proof] under [paths]" "[paths]\nverifies = \"x\"\n"
-    [ "sinter.toml:2:1: 'verifies' belongs in [proof]" ];
+    [ "sinter.toml:2:1: 'verifies' belongs in [proof]; move it to [proof]" ];
   reports "a key of [paths] under [proof]" "[proof]\nexempt = []\n"
-    [ "sinter.toml:2:1: 'exempt' belongs in [paths]" ];
+    [ "sinter.toml:2:1: 'exempt' belongs in [paths]; move it to [paths]" ];
   reports "a table where a kind goes" "[paths]\nproof = 1\n"
     [
       "sinter.toml:2:1: 'proof' is a table of the top level; write its keys \
@@ -625,30 +669,46 @@ let keys_at_the_wrong_place () =
 
 let wrong_types () =
   reports "a string for a boolean" "[check]\nwarn-only = \"yes\"\n"
-    [ "sinter.toml:2:13: 'warn-only' takes true or false, not a string" ];
+    [
+      "sinter.toml:2:13: 'warn-only' takes true or false, not a string; write \
+       true or false";
+    ];
   reports "a member that is not a string" "[paths]\nhistorical = [\"a\", 1]\n"
     [
       "sinter.toml:2:20: 'historical' takes an array of strings, and this \
-       member is an integer";
+       member is an integer; write the member as a string";
     ];
   reports "an integer for a table" "scan = 1\n"
-    [ "sinter.toml:1:8: 'scan' takes a table, not an integer" ];
+    [ "sinter.toml:1:8: 'scan' takes a table, not an integer; write a table" ];
   reports "an array of tables for a table" "[[check]]\n"
-    [ "sinter.toml:1:3: 'check' takes a table, not an array of tables" ];
+    [
+      "sinter.toml:1:3: 'check' takes a table, not an array of tables; write a \
+       table";
+    ];
   reports "a table for a string" "[default-branch]\n"
-    [ "sinter.toml:1:2: 'default-branch' takes a string, not a table" ];
+    [
+      "sinter.toml:1:2: 'default-branch' takes a string, not a table; write a \
+       string";
+    ];
   reports "a string for an array" "[paths]\nhistorical = \"docs/\"\n"
-    [ "sinter.toml:2:14: 'historical' takes an array of strings, not a string" ];
+    [
+      "sinter.toml:2:14: 'historical' takes an array of strings, not a string; \
+       write an array of strings";
+    ];
   reports "an array for a word of [proof]"
     "[proof]\nreq = [\"approval\"]\nverifies = true\nagent-markers = \"A\"\n"
     [
-      "sinter.toml:2:7: 'req' takes a string, not an array";
-      "sinter.toml:3:12: 'verifies' takes a string, not a boolean";
-      "sinter.toml:4:17: 'agent-markers' takes an array of strings, not a \
+      "sinter.toml:2:7: 'req' takes a string, not an array; write a string";
+      "sinter.toml:3:12: 'verifies' takes a string, not a boolean; write a \
        string";
+      "sinter.toml:4:17: 'agent-markers' takes an array of strings, not a \
+       string; write an array of strings";
     ];
   reports "a string for the table of a kind" "[paths]\ndecision = \"d/\"\n"
-    [ "sinter.toml:2:12: 'decision' takes an array of strings, not a string" ];
+    [
+      "sinter.toml:2:12: 'decision' takes an array of strings, not a string; \
+       write an array of strings";
+    ];
   reports "a float, a date, and a boolean"
     "default-branch = 1.5\n\
      [paths]\n\
@@ -656,10 +716,12 @@ let wrong_types () =
      [check]\n\
      warn-only = 1979-05-27\n"
     [
-      "sinter.toml:1:18: 'default-branch' takes a string, not a float";
+      "sinter.toml:1:18: 'default-branch' takes a string, not a float; write a \
+       string";
       "sinter.toml:3:15: 'historical' takes an array of strings, and this \
-       member is a boolean";
-      "sinter.toml:5:13: 'warn-only' takes true or false, not a date or a time";
+       member is a boolean; write the member as a string";
+      "sinter.toml:5:13: 'warn-only' takes true or false, not a date or a \
+       time; write true or false";
     ]
 
 let names_that_vary () =
@@ -671,13 +733,14 @@ let names_that_vary () =
     ];
   reports "a gate far from every gate" "[check.tiers.pr]\n"
     [
-      "sinter.toml:1:14: unknown gate 'pr' in [check.tiers]; the gates are \
-       'turn', 'review', or 'merged'";
+      "sinter.toml:1:14: unknown gate 'pr' in [check.tiers]; write one of the \
+       gates 'turn', 'review', or 'merged'";
     ];
   reports "a class with no tier at the gate"
     "[check.tiers.merged]\nscope-outside-plan = \"warn\"\n"
     [
-      "sinter.toml:2:1: 'scope-outside-plan' takes no tier at the gate 'merged'";
+      "sinter.toml:2:1: 'scope-outside-plan' takes no tier at the gate \
+       'merged'; remove this key";
     ];
   reports "config-changed, pack-mismatch, and an unknown class"
     "[check.tiers.review]\n\
@@ -686,22 +749,23 @@ let names_that_vary () =
      xyz = \"warn\"\n"
     [
       "sinter.toml:2:1: 'config-changed' takes no tier; it always reports and \
-       never blocks";
-      "sinter.toml:3:1: 'pack-mismatch' takes no tier at any gate";
+       never blocks; remove this key";
+      "sinter.toml:3:1: 'pack-mismatch' takes no tier at any gate; remove this \
+       key";
       "sinter.toml:4:1: unknown finding class 'xyz' in [check.tiers.review]; \
-       'tiers' names built-in finding classes only";
+       write the name of a built-in finding class";
     ];
   reports "config-changed is never a suggestion"
     "[check.tiers.review]\nconfig-chnged = \"warn\"\n"
     [
       "sinter.toml:2:1: unknown finding class 'config-chnged' in \
-       [check.tiers.review]; 'tiers' names built-in finding classes only";
+       [check.tiers.review]; write the name of a built-in finding class";
     ];
   reports "the suggestion is a class that takes a tier at the gate"
     "[check.tiers.merged]\nbad-scop = \"warn\"\n"
     [
       "sinter.toml:2:1: unknown finding class 'bad-scop' in \
-       [check.tiers.merged]; 'tiers' names built-in finding classes only";
+       [check.tiers.merged]; write the name of a built-in finding class";
     ];
   reports "kinds of locations"
     "[paths]\ndecisions = [\"docs/\"]\nplan = [\"x\"]\nfoo = []\n"
@@ -709,13 +773,14 @@ let names_that_vary () =
       "sinter.toml:2:1: unknown key 'decisions' in [paths]; did you mean \
        'decision'?";
       "sinter.toml:3:1: 'plan' takes no location; plan files always live under \
-       .plans/";
-      "sinter.toml:4:1: unknown key 'foo' in [paths]";
+       .plans/; remove this key";
+      "sinter.toml:4:1: unknown key 'foo' in [paths]; remove this key, or \
+       correct its name";
     ];
   reports "the location of plans as a dotted key" "paths.plan = [\"x\"]\n"
     [
       "sinter.toml:1:7: 'plan' takes no location; plan files always live under \
-       .plans/";
+       .plans/; remove this key";
     ];
   reports "pack names and namespaces"
     "[scan.packs.Markdown]\n\
@@ -729,23 +794,29 @@ let names_that_vary () =
      aB = \"x\"\n\
      a_b = \"x\"\n"
     [
-      "sinter.toml:1:13: 'Markdown' is not a pack name; a pack name is \
+      "sinter.toml:1:13: 'Markdown' is not a pack name; write a pack name of \
        lower-case letters and digits, in words joined by '-', such as 'ocaml' \
        or 'tree-sitter'";
-      "sinter.toml:4:1: 'GH' is not a namespace; a namespace is lower-case \
+      "sinter.toml:4:1: 'GH' is not a namespace; write a namespace of \
+       lower-case letters and digits, in words joined by '-', such as 'gh' or \
+       'jira'";
+      "sinter.toml:5:1: 'a-' is not a namespace; write a namespace of \
+       lower-case letters and digits, in words joined by '-', such as 'gh' or \
+       'jira'";
+      "sinter.toml:6:1: '-a' is not a namespace; write a namespace of \
+       lower-case letters and digits, in words joined by '-', such as 'gh' or \
+       'jira'";
+      "sinter.toml:7:1: '' is not a namespace; write a namespace of lower-case \
        letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:5:1: 'a-' is not a namespace; a namespace is lower-case \
-       letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:6:1: '-a' is not a namespace; a namespace is lower-case \
-       letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:7:1: '' is not a namespace; a namespace is lower-case \
-       letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:8:1: '1a' is not a namespace; a namespace is lower-case \
-       letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:9:1: 'aB' is not a namespace; a namespace is lower-case \
-       letters and digits, in words joined by '-', such as 'gh' or 'jira'";
-      "sinter.toml:10:1: 'a_b' is not a namespace; a namespace is lower-case \
-       letters and digits, in words joined by '-', such as 'gh' or 'jira'";
+      "sinter.toml:8:1: '1a' is not a namespace; write a namespace of \
+       lower-case letters and digits, in words joined by '-', such as 'gh' or \
+       'jira'";
+      "sinter.toml:9:1: 'aB' is not a namespace; write a namespace of \
+       lower-case letters and digits, in words joined by '-', such as 'gh' or \
+       'jira'";
+      "sinter.toml:10:1: 'a_b' is not a namespace; write a namespace of \
+       lower-case letters and digits, in words joined by '-', such as 'gh' or \
+       'jira'";
     ];
   reports "names with words and digits"
     (markdown
@@ -759,7 +830,7 @@ let names_that_vary () =
     "[scan.packs.markdown]\nfiles = [\"**/*.md\"]\nversion = \"1.0\"\n"
     [
       "sinter.toml:3:1: the pack markdown is built into sinter and takes no \
-       version";
+       version; remove the version";
     ]
 
 let values () =
@@ -767,19 +838,19 @@ let values () =
     ("default-branch = \"a..b\"\n" ^ markdown)
     [
       "sinter.toml:1:20: \"a..b\" is not a branch name; a branch name cannot \
-       hold '..'";
+       hold '..'; write the name of the default branch";
     ];
   reports "a column counts code points"
     ("default-branch = \"\xc3\xa9..b\"\n" ^ markdown)
     [
       "sinter.toml:1:20: \"\xc3\xa9..b\" is not a branch name; a branch name \
-       cannot hold '..'";
+       cannot hold '..'; write the name of the default branch";
     ];
   reports "an escape puts the error at the string"
     ("default-branch = \"a\\u002e.b\"\n" ^ markdown)
     [
       "sinter.toml:1:18: \"a..b\" is not a branch name; a branch name cannot \
-       hold '..'";
+       hold '..'; write the name of the default branch";
     ];
   reports "globs, packs, and patterns"
     "[scan]\n\
@@ -793,43 +864,46 @@ let values () =
     [
       "sinter.toml:2:30: \"src/**.ts\" is not a glob: the segment '**.ts' \
        holds '**' and other characters; write '**/*.ts'";
-      "sinter.toml:2:44: \"!x\" occurs twice in 'files'";
+      "sinter.toml:2:44: \"!x\" occurs twice in 'files'; remove this member";
       "sinter.toml:3:7: the pack x needs 'version', the release that the \
-       repository uses, such as \"1.0\"";
+       repository uses; add 'version' to the pack x, such as \"1.0\"";
       "sinter.toml:3:17: 'files' holds only '!' globs, so it holds no path; \
        add a glob without '!'";
       "sinter.toml:4:7: the pack y needs 'files', the globs of the files that \
-       it reads";
+       it reads; add 'files' to the pack y";
       "sinter.toml:4:19: 'version' takes a version of the form MAJOR.MINOR, \
-       such as \"1.0\", not \"1\"";
+       such as \"1.0\", not \"1\"; write the version as two numbers joined by \
+       '.'";
       "sinter.toml:5:7: the pack z needs 'files', the globs of the files that \
-       it reads";
+       it reads; add 'files' to the pack z";
       "sinter.toml:5:7: the pack z needs 'version', the release that the \
-       repository uses, such as \"1.0\"";
+       repository uses; add 'version' to the pack z, such as \"1.0\"";
       "sinter.toml:6:7: the pack w needs 'version', the release that the \
-       repository uses, such as \"1.0\"";
+       repository uses; add 'version' to the pack w, such as \"1.0\"";
       "sinter.toml:7:18: '.' is not in the id pattern language; put it in a \
        class, for example [.]";
-      "sinter.toml:8:20: the pattern matches an empty id";
+      "sinter.toml:8:20: the pattern matches an empty id; correct the id \
+       pattern of the namespace 'jira'";
     ];
   reports "a pack with files and a bad version"
     (markdown
    ^ "packs.ocaml.files = [\"**/*.ml\"]\npacks.ocaml.version = \"v1\"\n")
     [
       "sinter.toml:4:23: 'version' takes a version of the form MAJOR.MINOR, \
-       such as \"1.0\", not \"v1\"";
+       such as \"1.0\", not \"v1\"; write the version as two numbers joined by \
+       '.'";
     ];
   reports "a pack with a bad glob and a version"
     (markdown ^ "packs.ocaml.files = [\"?\"]\npacks.ocaml.version = \"1.0\"\n")
     [
-      "sinter.toml:3:23: \"?\" is not a glob: a glob cannot hold '?'; '*' \
-       matches any characters inside one name";
+      "sinter.toml:3:23: \"?\" is not a glob: a glob cannot hold '?'; write \
+       '*', which matches any characters inside one name";
     ];
   reports "a ! glob that is not a glob"
     (markdown ^ "[paths]\nhistorical = [\"a\", \"!/b\"]\n")
     [
       "sinter.toml:4:22: \"!/b\" is not a glob: a glob cannot start with '/'; \
-       a glob always matches from the repository root";
+       write the path from the repository root, without the '/'";
     ];
   reports "words"
     (markdown
@@ -847,16 +921,19 @@ let values () =
       "sinter.toml:6:7: 'req' takes \"declaration\" or \"approval\", not \
        \"aproval\"; did you mean \"approval\"?";
       "sinter.toml:7:18: \"MY-VAR\" is not a name of an environment variable; \
-       a name holds letters, digits, and '_', and does not start with a digit";
-      "sinter.toml:7:33: \"A\" occurs twice in 'agent-markers'";
-      "sinter.toml:7:38: \"1A\" is not a name of an environment variable; a \
-       name holds letters, digits, and '_', and does not start with a digit";
-      "sinter.toml:7:44: \"\" is not a name of an environment variable; a name \
-       holds letters, digits, and '_', and does not start with a digit";
+       write a name of letters, digits, and '_' that does not start with a \
+       digit";
+      "sinter.toml:7:33: \"A\" occurs twice in 'agent-markers'; remove this \
+       member";
+      "sinter.toml:7:38: \"1A\" is not a name of an environment variable; \
+       write a name of letters, digits, and '_' that does not start with a \
+       digit";
+      "sinter.toml:7:44: \"\" is not a name of an environment variable; write \
+       a name of letters, digits, and '_' that does not start with a digit";
       "sinter.toml:8:12: 'verifies' takes \"whole-run\" or \"each-test\", not \
        \"each-tests\"; did you mean \"each-test\"?";
       "sinter.toml:9:8: 'plan' takes \"declaration\" or \"approval\", not \
-       \"declared\"";
+       \"declared\"; write \"declaration\" or \"approval\"";
       "sinter.toml:10:8: 'step' takes \"change\", \"approval\", or \
        \"promises\", not \"promise\"; did you mean \"promises\"?";
     ];
@@ -864,7 +941,7 @@ let values () =
     (markdown ^ "[proof]\nverifies = \"x\"\n")
     [
       "sinter.toml:4:12: 'verifies' takes \"whole-run\" or \"each-test\", not \
-       \"x\"";
+       \"x\"; write \"whole-run\" or \"each-test\"";
     ]
 
 let a_manifest_with_no_pack () =
@@ -883,8 +960,10 @@ let the_names_come_before_the_values () =
   reports "an unknown key and a bad glob"
     "[check]\nfoo = 1\nwarn-only = 1\n[scan]\npacks.markdown.files = [\"a?\"]\n"
     [
-      "sinter.toml:2:1: unknown key 'foo' in [check]";
-      "sinter.toml:3:13: 'warn-only' takes true or false, not an integer";
+      "sinter.toml:2:1: unknown key 'foo' in [check]; remove this key, or \
+       correct its name";
+      "sinter.toml:3:13: 'warn-only' takes true or false, not an integer; \
+       write true or false";
     ]
 
 let a_large_manifest_reads_quickly () =
@@ -914,25 +993,62 @@ let a_large_manifest_reads_quickly () =
   match Manifest.of_string repeated with
   | Error [ error ] ->
       Alcotest.(check string)
-        "the repeated member at the end" "\"d0/\" occurs twice in 'historical'"
-        (Manifest.message error)
+        "the repeated member at the end"
+        "\"d0/\" occurs twice in 'historical'; remove this member"
+        (text_of (Manifest.explain ~path:"sinter.toml" error))
   | _ -> Alcotest.fail "one error was expected"
+
+let spans text =
+  match Manifest.of_string text with
+  | Ok _ -> [ "no error" ]
+  | Error errors ->
+      List.map
+        (function
+          | Manifest.At ({ start; stop }, _) ->
+              Printf.sprintf "%d:%d-%d:%d" start.line start.column stop.line
+                stop.column
+          | Manifest.No_pack -> "no place")
+        errors
+
+let each_error_carries_the_span_of_the_text_at_fault () =
+  List.iter
+    (fun (name, text, expected) ->
+      Alcotest.(check (list string)) name expected (spans text))
+    [
+      ("a key", markdown ^ "[check]\nhistoric = true\n", [ "4:1-4:9" ]);
+      ( "the part of a dotted key",
+        "check.historic = true\n" ^ markdown,
+        [ "1:7-1:15" ] );
+      ("a quoted key", markdown ^ "[check]\n\"bad\" = 1\n", [ "4:1-4:6" ]);
+      ("a value", markdown ^ "[check]\nwarn-only = \"yes\"\n", [ "4:13-4:18" ]);
+      ( "a value over two lines",
+        markdown ^ "[check]\nwarn-only = [\n  1]\n",
+        [ "4:13-5:5" ] );
+      ( "a place inside a string",
+        "[scan]\npacks.markdown.files = [\"a/**b\"]\n",
+        [ "2:28-2:29" ] );
+      ("a syntax error", "[scan\n", [ "1:6-1:7" ]);
+      ("no pack", "[scan]\n", [ "no place" ]);
+    ]
 
 let errors_come_in_the_order_of_their_places () =
   reports "keys written out of order"
     "[check]\nzz = 1\naa = 2\n[proof]\nbb = 3\n"
     [
-      "sinter.toml:2:1: unknown key 'zz' in [check]";
-      "sinter.toml:3:1: unknown key 'aa' in [check]";
-      "sinter.toml:5:1: unknown key 'bb' in [proof]";
+      "sinter.toml:2:1: unknown key 'zz' in [check]; remove this key, or \
+       correct its name";
+      "sinter.toml:3:1: unknown key 'aa' in [check]; remove this key, or \
+       correct its name";
+      "sinter.toml:5:1: unknown key 'bb' in [proof]; remove this key, or \
+       correct its name";
     ];
   reports "two errors in one line"
     (markdown ^ "[paths]\nhistorical = [1, 2]\n")
     [
       "sinter.toml:4:15: 'historical' takes an array of strings, and this \
-       member is an integer";
+       member is an integer; write the member as a string";
       "sinter.toml:4:18: 'historical' takes an array of strings, and this \
-       member is an integer";
+       member is an integer; write the member as a string";
     ]
 
 let the_example_messages_of_the_specification () =
@@ -950,21 +1066,25 @@ let the_example_messages_of_the_specification () =
   check "[paths]\nhistoric = 1\n"
     "unknown key 'historic' in [paths]; did you mean 'historical'?";
   check "[check]\ndefault-branch = \"trunk\"\n"
-    "'default-branch' belongs at the top level, above the first table header";
+    "'default-branch' belongs at the top level; write it above the first table \
+     header";
   check "[check]\nwarn-only = \"x\"\n"
-    "'warn-only' takes true or false, not a string";
+    "'warn-only' takes true or false, not a string; write true or false";
   check "[scan.packs.markdown]\nfiles = [\"a\"]\nversion = \"1.0\"\n"
-    "the pack markdown is built into sinter and takes no version";
+    "the pack markdown is built into sinter and takes no version; remove the \
+     version";
   check "[check.tiers.review]\nconfig-changed = \"warn\"\n"
-    "'config-changed' takes no tier; it always reports and never blocks";
+    "'config-changed' takes no tier; it always reports and never blocks; \
+     remove this key";
   check "[check.tiers.merged]\nscope-outside-plan = \"warn\"\n"
-    "'scope-outside-plan' takes no tier at the gate 'merged'";
+    "'scope-outside-plan' takes no tier at the gate 'merged'; remove this key";
   check
     (markdown ^ "namespaces.gh = \".\"\n")
     "'.' is not in the id pattern language; put it in a class, for example [.]";
   check
     (markdown ^ "namespaces.gh = \"[0-9]*\"\n")
-    "the pattern matches an empty id"
+    "the pattern matches an empty id; correct the id pattern of the namespace \
+     'gh'"
 
 let rec value_text node =
   match Toml.value node with
@@ -1125,21 +1245,21 @@ let runner_errors () =
       packs.ts.runners.a_b = {}\n\
       packs.ts.runners.\"x\\ny\" = {}\n")
     [
-      "sinter.toml:5:18: 'Vitest' is not a runner name; a runner name is \
+      "sinter.toml:5:18: 'Vitest' is not a runner name; write a runner name of \
        lower-case letters and digits, in words joined by '-', such as 'vitest' \
        or 'cargo-nextest'";
-      "sinter.toml:6:18: '-a' is not a runner name; a runner name is \
+      "sinter.toml:6:18: '-a' is not a runner name; write a runner name of \
        lower-case letters and digits, in words joined by '-', such as 'vitest' \
        or 'cargo-nextest'";
-      "sinter.toml:7:18: '' is not a runner name; a runner name is lower-case \
-       letters and digits, in words joined by '-', such as 'vitest' or \
-       'cargo-nextest'";
-      "sinter.toml:8:18: 'a_b' is not a runner name; a runner name is \
+      "sinter.toml:7:18: '' is not a runner name; write a runner name of \
        lower-case letters and digits, in words joined by '-', such as 'vitest' \
        or 'cargo-nextest'";
-      "sinter.toml:9:18: \"x\\ny\" is not a runner name; a runner name is \
+      "sinter.toml:8:18: 'a_b' is not a runner name; write a runner name of \
        lower-case letters and digits, in words joined by '-', such as 'vitest' \
        or 'cargo-nextest'";
+      "sinter.toml:9:18: \"x\\ny\" is not a runner name; write a runner name \
+       of lower-case letters and digits, in words joined by '-', such as \
+       'vitest' or 'cargo-nextest'";
     ];
   reports "a runner in three packs, written out of byte order"
     (markdown
@@ -1167,19 +1287,20 @@ let runner_errors () =
       packs.go.version = \"1.0\"\n\
       packs.go.runners.X = {}\n")
     [
-      "sinter.toml:5:18: 'X' is not a runner name; a runner name is lower-case \
-       letters and digits, in words joined by '-', such as 'vitest' or \
-       'cargo-nextest'";
-      "sinter.toml:8:18: 'X' is not a runner name; a runner name is lower-case \
-       letters and digits, in words joined by '-', such as 'vitest' or \
-       'cargo-nextest'";
+      "sinter.toml:5:18: 'X' is not a runner name; write a runner name of \
+       lower-case letters and digits, in words joined by '-', such as 'vitest' \
+       or 'cargo-nextest'";
+      "sinter.toml:8:18: 'X' is not a runner name; write a runner name of \
+       lower-case letters and digits, in words joined by '-', such as 'vitest' \
+       or 'cargo-nextest'";
     ];
   reports "runners for markdown"
     "[scan.packs.markdown]\nfiles = [\"**/*.md\"]\nrunners.x = {}\nx.mode = 1\n"
     [
       "sinter.toml:3:1: the pack markdown is built into sinter and has no \
-       runner";
-      "sinter.toml:4:1: unknown key 'x' in [scan.packs.markdown]";
+       runner; remove the runners";
+      "sinter.toml:4:1: unknown key 'x' in [scan.packs.markdown]; remove this \
+       key, or correct its name";
     ];
   reports "a runner table under the pack and not under runners"
     (markdown ^ ts
@@ -1187,7 +1308,8 @@ let runner_errors () =
       packs.ts.vitest.mode = 1\n\
       packs.ts.runner = {}\n")
     [
-      "sinter.toml:6:10: unknown key 'vitest' in [scan.packs.ts]";
+      "sinter.toml:6:10: unknown key 'vitest' in [scan.packs.ts]; remove this \
+       key, or correct its name";
       "sinter.toml:7:10: unknown key 'runner' in [scan.packs.ts]; did you mean \
        'runners'?";
     ];
@@ -1197,24 +1319,27 @@ let runner_errors () =
       packs.ts.runners.jest = [{ a = 1 }]\n\
       [[scan.packs.ts.runners.mocha]]\n")
     [
-      "sinter.toml:5:27: 'vitest' takes a table, not an integer";
-      "sinter.toml:6:25: 'jest' takes a table, not an array";
-      "sinter.toml:7:25: 'mocha' takes a table, not an array of tables";
+      "sinter.toml:5:27: 'vitest' takes a table, not an integer; write a table";
+      "sinter.toml:6:25: 'jest' takes a table, not an array; write a table";
+      "sinter.toml:7:25: 'mocha' takes a table, not an array of tables; write \
+       a table";
     ];
   reports "an array of runner names is not a table"
     (markdown ^ ts ^ "packs.ts.runners = [\"vitest\"]\n")
-    [ "sinter.toml:5:20: 'runners' takes a table, not an array" ];
+    [ "sinter.toml:5:20: 'runners' takes a table, not an array; write a table" ];
   reports "a bad name with its table"
     (markdown ^ ts ^ "packs.ts.runners.Vitest.mode = 1\n")
     [
-      "sinter.toml:5:18: 'Vitest' is not a runner name; a runner name is \
+      "sinter.toml:5:18: 'Vitest' is not a runner name; write a runner name of \
        lower-case letters and digits, in words joined by '-', such as 'vitest' \
        or 'cargo-nextest'";
     ];
   reports "a runner key out of a pack" "runners = {}\n[check]\nrunners = {}\n"
     [
-      "sinter.toml:1:1: 'runners' belongs in [scan.packs.<name>]";
-      "sinter.toml:3:1: 'runners' belongs in [scan.packs.<name>]";
+      "sinter.toml:1:1: 'runners' belongs in [scan.packs.<name>]; move it to \
+       [scan.packs.<name>]";
+      "sinter.toml:3:1: 'runners' belongs in [scan.packs.<name>]; move it to \
+       [scan.packs.<name>]";
     ];
   reports "the names come before the runner values"
     "[scan.packs.markdown]\n\
@@ -1230,11 +1355,17 @@ let runner_errors () =
      runners.vitest = {}\n"
     [
       "sinter.toml:3:1: the pack markdown is built into sinter and has no \
-       runner";
+       runner; remove the runners";
     ]
 
+let at line column =
+  {
+    Toml.start = { Toml.line; column };
+    stop = { Toml.line; column = column + 1 };
+  }
+
 let message problem =
-  Manifest.message (Manifest.At ({ Toml.line = 1; column = 1 }, problem))
+  text_of (Manifest.explain ~path:"sinter.toml" (Manifest.At (at 1 1, problem)))
 
 let every_problem_has_a_message () =
   let check name expected problem =
@@ -1249,47 +1380,267 @@ let every_problem_has_a_message () =
          since = Major_minor.make 1 1;
          sinter_spec = Major_minor.make 1 0;
        });
-  check "a wrong type of no key" "'' takes a string, not an integer"
+  check "a wrong type of no key"
+    "'' takes a string, not an integer; write a string"
     (Manifest.Wrong_type
        { key = []; expected = Manifest.A_string; found = Toml.Kind.Integer });
   check "a member of no key"
-    "'' takes an array of strings, and this member is a float"
+    "'' takes an array of strings, and this member is a float; write the \
+     member as a string"
     (Manifest.Wrong_member_type { key = []; found = Toml.Kind.Float });
   check "an unknown gate with no near name"
-    "unknown gate 'x' in [check.tiers]; the gates are 'turn', 'review', or \
-     'merged'"
+    "unknown gate 'x' in [check.tiers]; write one of the gates 'turn', \
+     'review', or 'merged'"
     (Manifest.Unknown_gate { name = "x"; nearest = None });
-  check "a word of a single choice" "'k' takes \"a\", not \"b\""
+  check "a word of a single choice" "'k' takes \"a\", not \"b\"; write \"a\""
     (Manifest.Unknown_value
        { key = [ "k" ]; value = "b"; choices = [ "a" ]; nearest = None });
-  check "a word of no choice" "'k' takes , not \"b\""
+  check "a word of no choice" "'k' takes , not \"b\"; write "
     (Manifest.Unknown_value
        { key = [ "k" ]; value = "b"; choices = []; nearest = None });
   check "a misplaced key whose place is quoted"
-    "'x' belongs in [\"a b\".<name>]"
+    "'x' belongs in [\"a b\".<name>]; move it to [\"a b\".<name>]"
     (Manifest.Misplaced_key { name = "x"; place = [ "a b"; "<name>" ] });
-  check "an unknown key in a nested table" "unknown key 'x' in [a.\"b c\"]"
+  check "an unknown key in a nested table"
+    "unknown key 'x' in [a.\"b c\"]; remove this key, or correct its name"
     (Manifest.Unknown_key { name = "x"; table = [ "a"; "b c" ]; nearest = None });
-  check "a pattern error" "an alternative of the pattern is empty"
+  check "a pattern error"
+    "an alternative of the pattern is empty; correct the id pattern of the \
+     namespace 'gh'"
     (Manifest.Bad_id_pattern
        { namespace = "gh"; error = Id_pattern.Empty_alternative 0 });
   Alcotest.(check string)
     "the error of no pack, without a path"
     "the manifest names no pack; add a line such as packs.markdown.files = \
      [\"**/*.md\"] under [scan]"
-    (Manifest.message Manifest.No_pack)
+    (text_of (Manifest.explain ~path:"the manifest" Manifest.No_pack))
+
+let toml_errors =
+  List.filter_map
+    (fun text ->
+      match Toml.parse text with Error error -> Some error | Ok _ -> None)
+    [ "\xff"; "a = \n"; "[a.b]\nx = 1\n[a]\nb.y = 2\n" ]
+  @ [ Toml.Unrecognized { at = { line = 1; column = 1 } } ]
+
+let branch_errors =
+  Branch_name.
+    [
+      Empty;
+      Full_ref_name;
+      Bad_character { offset = 0; character = ' ' };
+      Two_dots 0;
+      At_brace 0;
+      Empty_component 0;
+      Component_starts_with_dot 0;
+      Component_ends_with_lock 0;
+      Ends_with_dot 0;
+    ]
+
+let glob_errors =
+  Glob.
+    [
+      Empty;
+      Leading_slash;
+      Empty_segment 0;
+      Dot_segment { offset = 0; segment = ".." };
+      Double_star_in_segment { offset = 0; segment = "**.ts" };
+      Double_star_in_segment { offset = 0; segment = "a**b" };
+      Forbidden_character { offset = 0; character = '?' };
+      Forbidden_character { offset = 0; character = '\\' };
+    ]
+
+let pattern_errors =
+  Id_pattern.
+    [
+      Not_allowed { offset = 0; character = "." };
+      Unclosed_class 0;
+      Empty_class 0;
+      Bad_range 0;
+      Misplaced_hyphen 0;
+      Unclosed_group 0;
+      Unopened_group 0;
+      Empty_group 0;
+      Empty_alternative 0;
+      Quantifier_without_part 0;
+      Two_quantifiers 0;
+      Bad_count 0;
+      Count_too_large 0;
+      Counts_out_of_order 0;
+      Matches_empty;
+    ]
+
+let every_problem =
+  let open Manifest in
+  List.map (fun error -> Syntax error) toml_errors
+  @ [
+      Not_a_version { key = [ "sinter-spec" ]; text = "1" };
+      Sinter_spec_too_new (Major_minor.make 9 0);
+      Sinter_spec_major_too_old (Major_minor.make 0 1);
+      Key_too_new
+        {
+          key = [ "check" ];
+          since = Major_minor.make 1 1;
+          sinter_spec = Major_minor.make 1 0;
+        };
+      Unknown_key { name = "x"; table = []; nearest = None };
+      Unknown_key { name = "x"; table = []; nearest = Some "y" };
+      Misplaced_key { name = "check"; place = [] };
+      Misplaced_key { name = "default-branch"; place = [] };
+      Misplaced_key { name = "warn-only"; place = [ "check" ] };
+      Bad_pack_name "X";
+      Bad_namespace "X";
+      Unknown_gate { name = "x"; nearest = None };
+      Unknown_gate { name = "x"; nearest = Some "turn" };
+      Unknown_class { name = "x"; gate = Finding_class.Turn; nearest = None };
+      Unknown_class
+        { name = "x"; gate = Finding_class.Turn; nearest = Some "dangling" };
+      No_tier_at_gate
+        { finding_class = Finding_class.Dangling; gate = Finding_class.Turn };
+      Never_blocks;
+      No_tier_at_any_gate;
+      Plan_location;
+      Markdown_version;
+      Markdown_runners;
+      Bad_runner_name "X";
+      Runner_in_two_packs { runner = "r"; pack = "a"; other = "b" };
+      Wrong_type
+        { key = [ "k" ]; expected = A_string; found = Toml.Kind.Integer };
+      Wrong_type
+        { key = [ "k" ]; expected = A_version; found = Toml.Kind.Integer };
+      Wrong_type
+        { key = [ "k" ]; expected = True_or_false; found = Toml.Kind.Integer };
+      Wrong_type
+        { key = [ "k" ]; expected = Strings; found = Toml.Kind.Integer };
+      Wrong_type
+        { key = [ "k" ]; expected = A_table; found = Toml.Kind.Integer };
+      Wrong_member_type { key = [ "k" ]; found = Toml.Kind.Integer };
+    ]
+  @ List.map (fun error -> Not_a_branch { name = "x"; error }) branch_errors
+  @ List.map (fun error -> Bad_glob { member = "x"; error }) glob_errors
+  @ [
+      Repeated_member { key = [ "k" ]; member = "m" };
+      No_plain_glob [ "k" ];
+      Missing_files "p";
+      Missing_version "p";
+    ]
+  @ List.map
+      (fun error -> Bad_id_pattern { namespace = "gh"; error })
+      pattern_errors
+  @ [
+      Unknown_value
+        { key = [ "k" ]; value = "v"; choices = [ "a"; "b" ]; nearest = None };
+      Unknown_value
+        {
+          key = [ "k" ];
+          value = "v";
+          choices = [ "a"; "b" ];
+          nearest = Some "a";
+        };
+      Bad_marker "1";
+    ]
+
+let constructor = function
+  | Manifest.Syntax _ -> "Syntax"
+  | Manifest.Not_a_version _ -> "Not_a_version"
+  | Manifest.Sinter_spec_too_new _ -> "Sinter_spec_too_new"
+  | Manifest.Sinter_spec_major_too_old _ -> "Sinter_spec_major_too_old"
+  | Manifest.Key_too_new _ -> "Key_too_new"
+  | Manifest.Unknown_key _ -> "Unknown_key"
+  | Manifest.Misplaced_key _ -> "Misplaced_key"
+  | Manifest.Bad_pack_name _ -> "Bad_pack_name"
+  | Manifest.Bad_namespace _ -> "Bad_namespace"
+  | Manifest.Unknown_gate _ -> "Unknown_gate"
+  | Manifest.Unknown_class _ -> "Unknown_class"
+  | Manifest.No_tier_at_gate _ -> "No_tier_at_gate"
+  | Manifest.Never_blocks -> "Never_blocks"
+  | Manifest.No_tier_at_any_gate -> "No_tier_at_any_gate"
+  | Manifest.Plan_location -> "Plan_location"
+  | Manifest.Markdown_version -> "Markdown_version"
+  | Manifest.Markdown_runners -> "Markdown_runners"
+  | Manifest.Bad_runner_name _ -> "Bad_runner_name"
+  | Manifest.Runner_in_two_packs _ -> "Runner_in_two_packs"
+  | Manifest.Wrong_type _ -> "Wrong_type"
+  | Manifest.Wrong_member_type _ -> "Wrong_member_type"
+  | Manifest.Not_a_branch _ -> "Not_a_branch"
+  | Manifest.Bad_glob _ -> "Bad_glob"
+  | Manifest.Repeated_member _ -> "Repeated_member"
+  | Manifest.No_plain_glob _ -> "No_plain_glob"
+  | Manifest.Missing_files _ -> "Missing_files"
+  | Manifest.Missing_version _ -> "Missing_version"
+  | Manifest.Bad_id_pattern _ -> "Bad_id_pattern"
+  | Manifest.Unknown_value _ -> "Unknown_value"
+  | Manifest.Bad_marker _ -> "Bad_marker"
+
+let every_error_has_a_fault_and_a_help () =
+  Alcotest.(check int)
+    "the examples are of 30 distinct constructors, the constructors of problem"
+    30
+    (List.length
+       (List.sort_uniq String.compare (List.map constructor every_problem)));
+  Alcotest.(check (list string))
+    "the examples of TOML errors"
+    [ "Not_utf_8"; "Syntax"; "Header_table"; "Unrecognized" ]
+    (List.map
+       (function
+         | Toml.Not_utf_8 _ -> "Not_utf_8"
+         | Toml.Syntax _ -> "Syntax"
+         | Toml.Header_table _ -> "Header_table"
+         | Toml.Unrecognized _ -> "Unrecognized")
+       toml_errors);
+  List.iter
+    (fun error ->
+      let { Error_text.fault; help; _ } =
+        Manifest.explain ~path:"sinter.toml" error
+      in
+      let name =
+        match error with
+        | Manifest.At (_, problem) -> constructor problem
+        | Manifest.No_pack -> "No_pack"
+      in
+      Alcotest.(check bool)
+        (name ^ " has a fault and a help, with no full stop")
+        true
+        (fault <> "" && help <> ""
+        && (not (String.ends_with ~suffix:"." help))
+        && not (String.ends_with ~suffix:"." fault)))
+    (Manifest.No_pack
+    :: List.map (fun problem -> Manifest.At (at 1 1, problem)) every_problem)
+
+let an_error_at_a_place_names_its_path_and_span () =
+  let span = at 3 14 in
+  match
+    (Manifest.explain ~path:"conf/s.toml"
+       (Manifest.At (span, Manifest.Never_blocks)))
+      .place
+  with
+  | Some { path; span = found; line } ->
+      Alcotest.(check (triple string bool (option string)))
+        "the path, the span, and no line"
+        ("conf/s.toml", true, None)
+        (path, found = span, line)
+  | None -> Alcotest.fail "the error has no place"
+
+let no_pack_names_the_path_and_has_no_place () =
+  let { Error_text.fault; place; _ } =
+    Manifest.explain ~path:"conf/s.toml" Manifest.No_pack
+  in
+  Alcotest.(check (pair string bool))
+    "the fault and no place"
+    ("conf/s.toml names no pack", true)
+    (fault, place = None)
 
 let a_value_in_a_message_is_a_toml_string () =
   Alcotest.(check string)
     "the escapes"
     "\"a\\\"b\\\\c\\nd\\te\\u0001f\\u007Fg\xc3\xa9 h\" is not a name of an \
-     environment variable; a name holds letters, digits, and '_', and does not \
-     start with a digit"
+     environment variable; write a name of letters, digits, and '_' that does \
+     not start with a digit"
     (message (Manifest.Bad_marker "a\"b\\c\nd\te\001f\127g\xc3\xa9 h"))
 
 let a_table_with_an_empty_name () =
   Alcotest.(check string)
-    "the empty name in quotes" "unknown key 'x' in [\"\"]"
+    "the empty name in quotes"
+    "unknown key 'x' in [\"\"]; remove this key, or correct its name"
     (message
        (Manifest.Unknown_key { name = "x"; table = [ "" ]; nearest = None }))
 
@@ -1303,8 +1654,8 @@ let a_runner_message_stays_on_one_line () =
           { runner = "a\tb"; pack = "e\nf"; other = "c d" }));
   Alcotest.(check string)
     "a name with an upper-case letter"
-    "'Files' is not a runner name; a runner name is lower-case letters and \
-     digits, in words joined by '-', such as 'vitest' or 'cargo-nextest'"
+    "'Files' is not a runner name; write a runner name of lower-case letters \
+     and digits, in words joined by '-', such as 'vitest' or 'cargo-nextest'"
     (message (Manifest.Bad_runner_name "Files"))
 
 let newer_keys_names_each_key_newer_than_sinter_spec () =
@@ -1321,8 +1672,7 @@ let newer_keys_names_each_key_newer_than_sinter_spec () =
           "s:3:1: 'check.warn-only' needs specification 1.0, and the manifest \
            states sinter-spec = \"0.9\"; write sinter-spec = \"1.0\"";
         ]
-        (List.map
-           (Manifest.render ~path:"s")
+        (List.map (render ~path:"s")
            (Manifest.newer_keys ~sinter_spec:(Major_minor.make 0 9) document));
       Alcotest.(check int)
         "no key is newer than 1.0" 0
@@ -1331,10 +1681,11 @@ let newer_keys_names_each_key_newer_than_sinter_spec () =
 
 let render_names_the_path_and_the_place () =
   Alcotest.(check string)
-    "a place" "conf/s.toml:3:14: 'pack-mismatch' takes no tier at any gate"
-    (Manifest.render ~path:"conf/s.toml"
-       (Manifest.At
-          ({ Toml.line = 3; column = 14 }, Manifest.No_tier_at_any_gate)))
+    "a place"
+    "conf/s.toml:3:14: 'pack-mismatch' takes no tier at any gate; remove this \
+     key"
+    (render ~path:"conf/s.toml"
+       (Manifest.At (at 3 14, Manifest.No_tier_at_any_gate)))
 
 let rows () =
   let text =
@@ -1434,15 +1785,22 @@ let load_reads_a_file () =
             (List.length (Manifest.packs manifest))
       | Error _ -> Alcotest.fail "the file did not read")
 
-let load_gives_the_errors_of_the_text () =
+let load_gives_the_errors_and_the_text () =
   with_file "[chek]\n" (fun path ->
       match Manifest.load path with
       | Error
           (Manifest.Invalid
-             [ Manifest.At ({ line = 1; column = 2 }, Manifest.Unknown_key _) ])
-        ->
+             {
+               text = "[chek]\n";
+               errors =
+                 [
+                   Manifest.At
+                     ( { start = { line = 1; column = 2 }; _ },
+                       Manifest.Unknown_key _ );
+                 ];
+             }) ->
           ()
-      | _ -> Alcotest.fail "no error of the unknown key")
+      | _ -> Alcotest.fail "no error of the unknown key with the text")
 
 let load_of_no_file_is_missing () =
   let path =
@@ -1561,12 +1919,19 @@ let damaged =
         ])
 
 let place_of = function
-  | Manifest.At (position, _) -> Some (position.Toml.line, position.column)
+  | Manifest.At ({ start; _ }, _) -> Some (start.Toml.line, start.column)
   | Manifest.No_pack -> None
+
+let stops_after_its_start = function
+  | Manifest.At ({ start; stop }, _) ->
+      compare (stop.Toml.line, stop.column) (start.Toml.line, start.column) > 0
+  | Manifest.No_pack -> true
 
 let of_string_answers_any_text =
   property ~count:400
-    ~name:"of_string answers any text with sorted one-line errors in it"
+    ~name:
+      "of_string answers any text with sorted errors in it, each with a \
+       one-line fault and help"
     ~print:QCheck2.Print.string
     Gen.(oneof [ text; damaged ])
     (fun text ->
@@ -1580,14 +1945,20 @@ let of_string_answers_any_text =
             (fun (line, column) -> line >= 1 && line <= lines && column >= 1)
             places
           && places = List.sort compare places
+          && List.for_all stops_after_its_start errors
           && List.length (List.sort_uniq compare errors) = List.length errors
           && List.mem Manifest.No_pack errors = (errors = [ Manifest.No_pack ])
           && List.for_all
                (fun e ->
-                 let message = Manifest.message e in
-                 String.length message > 0
-                 && (not (String.contains message '\n'))
-                 && not (String.contains message '\r'))
+                 let { Error_text.fault; help; _ } =
+                   Manifest.explain ~path:"m" e
+                 in
+                 List.for_all
+                   (fun text ->
+                     String.length text > 0
+                     && (not (String.contains text '\n'))
+                     && not (String.contains text '\r'))
+                   [ fault; help ])
                errors)
 
 let settings =
@@ -2312,8 +2683,11 @@ let one_fault_gives_its_one_error =
       >|= fun (_, text) -> (text, problem, at))
     (fun (text, problem, at) ->
       match (locate text at, Manifest.of_string text) with
-      | Some position, Error errors ->
-          errors = [ Manifest.At (position, problem) ]
+      | Some position, Error errors -> (
+          match errors with
+          | [ Manifest.At ({ start; _ }, found) ] ->
+              start = position && found = problem
+          | _ -> false)
       | _ -> false)
 
 let case name test = Alcotest.test_case name `Quick test
@@ -2374,6 +2748,13 @@ let a_name_follows_the_pattern_of_a_pack_name () =
 
 let tests =
   [
+    case "every error has a fault and a help" every_error_has_a_fault_and_a_help;
+    case "an error at a place names its path and span"
+      an_error_at_a_place_names_its_path_and_span;
+    case "no pack names the path and has no place"
+      no_pack_names_the_path_and_has_no_place;
+    case "each error carries the span of the text at fault"
+      each_error_carries_the_span_of_the_text_at_fault;
     case "the document keeps every key with its place"
       the_document_keeps_every_key_with_its_place;
     case "a name follows the pattern of a pack name"
@@ -2440,7 +2821,7 @@ let tests =
       a_name_that_varies_is_any_name_but_a_fixed_one;
     case "the implemented version is 1.0" the_implemented_version_is_1_0;
     case "load reads a file" load_reads_a_file;
-    case "load gives the errors of the text" load_gives_the_errors_of_the_text;
+    case "load gives the errors and the text" load_gives_the_errors_and_the_text;
     case "load of no file is missing" load_of_no_file_is_missing;
     case "load of a folder is unreadable" load_of_a_folder_is_unreadable;
     case "load of a path under a file is missing"

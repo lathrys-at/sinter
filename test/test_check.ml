@@ -719,7 +719,10 @@ let a_check_reads_the_repository_and_reports_at_its_gate () =
     | Ok report -> report
     | Error error ->
         Alcotest.failf "the check fails: %s"
-          (String.concat "; " (Scan.messages error))
+          (String.concat "; "
+             (List.map
+                (fun { Error_text.fault; help; _ } -> fault ^ "; " ^ help)
+                (Scan.explain error)))
   in
   let text = run Check.Brief None in
   Alcotest.(check (list string))
@@ -767,7 +770,10 @@ let the_options_choose_the_lines_of_standard_error () =
     | Ok report -> Check.messages report
     | Error error ->
         Alcotest.failf "the check fails: %s"
-          (String.concat "; " (Scan.messages error))
+          (String.concat "; "
+             (List.map
+                (fun { Error_text.fault; help; _ } -> fault ^ "; " ^ help)
+                (Scan.explain error)))
   in
   let note = "note: base " ^ String.sub head 0 7 ^ ", from --base HEAD" in
   Alcotest.(check (list (list string)))
@@ -813,9 +819,10 @@ let folding_leaves_the_json_as_it_is () =
     "the records of the JSON" 3
     (List.length (written (run Check.Json false)))
 
-let notices_write_the_note_in_its_style () =
+let notices_write_the_warning_and_the_note_in_their_styles () =
   let repo = Git_fixture.init () in
   Git_fixture.write repo "sinter.toml" packs;
+  Git_fixture.write repo ".plans/p.md" "# P\n\n@plan p\n";
   ignore (Git_fixture.git repo [ "add"; "-A" ]);
   ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
   match
@@ -834,10 +841,13 @@ let notices_write_the_note_in_its_style () =
       in
       let head = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]) in
       let base = "base " ^ String.sub head 0 7 ^ ", from --base HEAD\n" in
+      let summary = "1 finding in 1 file; 1 has a fix\n" in
+      let ledger = " no ledger found, so every plan counts as open\n" in
       Alcotest.(check (pair string string))
         "the lines with no style and with styles"
-        ( "no findings in 0 files\nnote: " ^ base,
-          "no findings in 0 files\n\x1b[1mnote:\x1b[0m " ^ base )
+        ( summary ^ "warning:" ^ ledger ^ "note: " ^ base,
+          summary ^ "\x1b[1m\x1b[33mwarning:\x1b[0;1m\x1b[0m" ^ ledger
+          ^ "\x1b[1mnote:\x1b[0m " ^ base )
         (written `None, written `Ansi_tty)
 
 let diff_lines ?base repo =
@@ -849,7 +859,10 @@ let diff_lines ?base repo =
   | Ok report -> written report
   | Error error ->
       Alcotest.failf "the check fails: %s"
-        (String.concat "; " (Scan.messages error))
+        (String.concat "; "
+           (List.map
+              (fun { Error_text.fault; help; _ } -> fault ^ "; " ^ help)
+              (Scan.explain error)))
 
 let commit repo message =
   ignore (Git_fixture.git repo [ "add"; "-A" ]);
@@ -957,8 +970,8 @@ let tests =
     case "the options choose the lines of standard error"
       the_options_choose_the_lines_of_standard_error;
     case "folding leaves the JSON as it is" folding_leaves_the_json_as_it_is;
-    case "notices write the note in its style"
-      notices_write_the_note_in_its_style;
+    case "notices write the warning and the note in their styles"
+      notices_write_the_warning_and_the_note_in_their_styles;
     case "a check reads the repository and reports at its gate"
       a_check_reads_the_repository_and_reports_at_its_gate;
   ]

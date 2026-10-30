@@ -130,8 +130,8 @@ let suggestion segment =
 let message = function
   | Empty -> "a glob cannot be empty"
   | Leading_slash ->
-      "a glob cannot start with '/'; a glob always matches from the repository \
-       root"
+      "a glob cannot start with '/'; write the path from the repository root, \
+       without the '/'"
   | Empty_segment _ -> "a glob cannot hold two '/' together"
   | Dot_segment { segment; _ } ->
       Printf.sprintf "a glob cannot hold the segment '%s'" segment
@@ -144,12 +144,12 @@ let message = function
       | Some better -> Printf.sprintf "%s; write %s" start (Toml.quote better)
       | None ->
           start
-          ^ "; '**' must be a whole segment, and '*' matches characters inside \
+          ^ "; write '**' as a whole segment, or '*' for the characters inside \
              one name")
   | Forbidden_character { character; _ } ->
       let advice =
         match character with
-        | '?' -> "; '*' matches any characters inside one name"
+        | '?' -> "; write '*', which matches any characters inside one name"
         | '[' | ']' -> "; write one glob for each name"
         | '{' | '}' -> "; write one glob for each choice"
         | _ -> ""

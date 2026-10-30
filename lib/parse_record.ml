@@ -69,3 +69,9 @@ let message ~path = function
         | Node_text -> "the text of a node"
       in
       Printf.sprintf "%s: %s is not UTF-8 text" path what
+
+let help = function
+  | Path_not_utf_8 -> "rename the file to a name that is UTF-8 text"
+  | Not_utf_8 Capture_name -> "use a query whose capture names are UTF-8 text"
+  | Not_utf_8 Node_type -> "use a grammar whose node types are UTF-8 text"
+  | Not_utf_8 Node_text -> "parse a file that is UTF-8 text"

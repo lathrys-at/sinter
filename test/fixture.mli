@@ -7,6 +7,8 @@
     A case folder holds these entries, and no other:
 
     - [args]: a file. Each line is one argument of the run, with no shell.
+    - [env]: a file, optional. Each line is one variable of the environment of
+      the run, as [NAME=value], with no shell.
     - [tree/]: a folder, the files of the working tree.
     - [base/]: a folder, optional. When it exists, the case is a diff case: the
       run starts in a git repository whose one commit holds [base/] and whose
@@ -51,6 +53,8 @@ type error =
       (** The case holds [ledger.jsonl] or [evidence], which the harness does
           not read. *)
   | Repository_with_base  (** The case holds both [base/] and [repository]. *)
+  | Bad_variable of string
+      (** A line of [env] has no [=], or starts with [=]. *)
   | Did_not_end of float
       (** The run was still going after this many seconds, and was killed. *)
   | Ended_by_signal of int
@@ -89,7 +93,12 @@ val mode_of_environment :
     when [promote] is [Some "1"] and [source_root] is [None]. *)
 
 val run :
-  ?bound:float -> binary:string -> mode -> string -> (string list, error) result
+  ?bound:float ->
+  ?caller:string array ->
+  binary:string ->
+  mode ->
+  string ->
+  (string list, error) result
 (** [run ~binary mode case] runs the case folder [case] once and compares or
     promotes its output, as [mode] says. [binary] is the absolute path of the
     executable that the run starts, with the arguments of [args]. It raises
@@ -102,6 +111,11 @@ val run :
     field [tool] of each index record, a JSON line whose field [kind] is
     [index], as [<tool>]. The run is killed after [bound] seconds; the default
     is 10.
+
+    The run of [binary] gets the environment [caller] without the variables
+    [TERM], [NO_COLOR], [CLICOLOR_FORCE], [FORCE_COLOR], and [CLICOLOR], and
+    with the variables of [env] after it. The default of [caller] is
+    [Unix.environment ()], the environment of the process.
 
     Each run gets a new home folder that holds only a configuration of wasmtime.
     The configuration names one cache folder for every run of the process. The

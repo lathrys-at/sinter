@@ -189,8 +189,9 @@ let a_file_that_cannot_be_written_is_an_environment_error () =
     "exit and errors"
     ( 3,
       Printf.sprintf
-        "sinter: cannot write the words of the phases: %s: No such file or \
-         directory\n"
+        "error: cannot write the words of the phases: %s: No such file or \
+         directory\n\
+        \  = help: name a file that you can write in SINTER_PHASE_WORDS\n"
         words )
     (status, without_warnings errors)
 

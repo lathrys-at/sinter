@@ -30,7 +30,24 @@ let environment_exit =
 let exits = [ clean_exit; findings_exit; usage_exit; environment_exit ]
 let parse_exits = [ success_exit; usage_exit; environment_exit ]
 
-let with_phases run =
+let colored setting descriptor =
+  Sinter_core.Style.color setting ~getenv:Sys.getenv_opt
+    ~terminal:(Unix.isatty descriptor)
+
+let report setting errors =
+  let ppf =
+    Sinter_core.Style.formatter stderr ~color:(colored setting Unix.stderr)
+  in
+  Sinter_core.Render.errors ppf errors;
+  Format.pp_print_flush ppf ()
+
+let failure ~help fault = { Sinter_core.Error_text.fault; help; place = None }
+
+let output_failure message =
+  failure ~help:Sinter_core.Error_text.output_help
+    ("cannot write the output: " ^ message)
+
+let with_phases setting run =
   match Sys.getenv_opt Sinter_core.Allocation.variable with
   | None | Some "" -> run None
   | Some path -> (
@@ -42,11 +59,63 @@ let with_phases run =
               (Sinter_core.Allocation.to_string phases));
         code
       with Sys_error message ->
-        Printf.eprintf "sinter: cannot write the words of the phases: %s\n"
-          message;
+        report setting
+          [
+            failure
+              ~help:
+                ("name a file that you can write in "
+               ^ Sinter_core.Allocation.variable)
+              ("cannot write the words of the phases: " ^ message);
+          ];
         environment_error)
 
 let plumbing = "PLUMBING COMMANDS"
+
+let envs =
+  let rule condition result =
+    Printf.sprintf "When it is %s, the output gets %s." condition result
+  in
+  [
+    Cmd.Env.info "NO_COLOR" ~doc:(rule "set and not empty" "no color");
+    Cmd.Env.info "CLICOLOR_FORCE" ~doc:(rule "set and not $(b,0)" "color");
+    Cmd.Env.info "FORCE_COLOR" ~doc:(rule "set and not empty" "color");
+    Cmd.Env.info "CLICOLOR" ~doc:(rule "$(b,0)" "no color");
+    Cmd.Env.info "TERM" ~doc:(rule "$(b,dumb)" "no color");
+  ]
+
+let environment =
+  [
+    `S Manpage.s_environment;
+    `P
+      "The value $(b,always) or $(b,never) of the option $(b,--color) wins \
+       over each of these variables. The option $(b,--color) of each command \
+       gives the order of the rules.";
+  ]
+
+let color =
+  let doc =
+    "When to color the output: $(b,auto), $(b,always), or $(b,never). Color \
+     applies to the full and brief forms and to the messages on standard \
+     error, and never to JSON. With $(b,auto), the first of these rules that \
+     matches decides, for standard output and for standard error apart: \
+     $(b,NO_COLOR) set and not empty gives no color; $(b,CLICOLOR_FORCE) set \
+     and not $(b,0), or $(b,FORCE_COLOR) set and not empty, gives color; \
+     $(b,TERM) set to $(b,dumb), or $(b,CLICOLOR) set to $(b,0), gives no \
+     color; otherwise a stream gets color when it is a terminal. An error on \
+     the command line comes before this option is read, so it takes its color \
+     from these rules alone."
+  in
+  Arg.(
+    value
+    & opt
+        (enum
+           [
+             ("auto", Sinter_core.Style.Auto);
+             ("always", Sinter_core.Style.Always);
+             ("never", Sinter_core.Style.Never);
+           ])
+        Sinter_core.Style.Auto
+    & info [ "color" ] ~docv:"WHEN" ~doc)
 
 let parse_cmd =
   let doc = "Parse files with a tree-sitter grammar and print the captures" in
@@ -82,7 +151,10 @@ let parse_cmd =
          S-expression instead, one tree per line, and read no query.";
     ]
   in
-  let info = Cmd.info "parse" ~docs:plumbing ~doc ~man ~exits:parse_exits in
+  let info =
+    Cmd.info "parse" ~docs:plumbing ~doc ~man:(man @ environment) ~envs
+      ~exits:parse_exits
+  in
   let grammar =
     let doc =
       "The grammar to parse with: a tree-sitter grammar as $(i,.wasm)."
@@ -107,21 +179,25 @@ let parse_cmd =
     let doc = "The files to parse." in
     Arg.(non_empty & pos_all string [] & info [] ~docv:"FILE" ~doc)
   in
-  let run grammar query tree paths =
+  let run color grammar query tree paths =
     match (query, tree) with
     | Some _, true ->
         `Error
-          (false, "--query and --tree exclude each other; give one of the two")
-    | None, false -> `Error (false, "give either --query or --tree")
+          (true, "--query and --tree exclude each other; give one of the two")
+    | None, false -> `Error (true, "give either --query or --tree")
     | query, _ -> (
         try
           Sinter_core.Parse.run ~grammar ~query ~paths stdout;
           `Ok clean
-        with Sinter_core.Parse.Error message | Sys_error message ->
-          Printf.eprintf "sinter: %s\n" message;
-          `Ok environment_error)
+        with
+        | Sinter_core.Parse.Error error ->
+            report color [ error ];
+            `Ok environment_error
+        | Sys_error message ->
+            report color [ output_failure message ];
+            `Ok environment_error)
   in
-  Cmd.v info Term.(ret (const run $ grammar $ query $ tree $ paths))
+  Cmd.v info Term.(ret (const run $ color $ grammar $ query $ tree $ paths))
 
 let serve_exits = [ success_exit; usage_exit; environment_exit ]
 
@@ -164,15 +240,19 @@ let serve_cmd =
          once. It reads a grammar file again when the file changes.";
     ]
   in
-  let info = Cmd.info "serve" ~docs:plumbing ~doc ~man ~exits:serve_exits in
-  let report message =
-    Printf.eprintf "sinter: %s\n" message;
-    environment_error
+  let info =
+    Cmd.info "serve" ~docs:plumbing ~doc ~man:(man @ environment) ~envs
+      ~exits:serve_exits
   in
-  let rec answer state =
+  let rec answer color state =
     match In_channel.input_line stdin with
     | exception Sys_error message ->
-        report (Printf.sprintf "cannot read the input: %s" message)
+        report color
+          [
+            failure ~help:"give the command an input that it can read"
+              ("cannot read the input: " ^ message);
+          ];
+        environment_error
     | None -> clean
     | Some line ->
         let response = Sinter_core.Serve.respond state line in
@@ -180,20 +260,23 @@ let serve_cmd =
           (Sinter_core.Jsonl.output stdout)
           (Sinter_core.Serve.lines response);
         flush stdout;
-        answer state
+        answer color state
   in
-  let run () =
+  let run color =
     match Sinter_core.Serve.create () with
-    | exception Sinter_core.Serve.Error message -> report message
+    | exception Sinter_core.Serve.Error error ->
+        report color [ error ];
+        environment_error
     | state ->
         Fun.protect
           ~finally:(fun () -> Sinter_core.Serve.close state)
           (fun () ->
-            try answer state
+            try answer color state
             with Sys_error message ->
-              report (Printf.sprintf "cannot write the output: %s" message))
+              report color [ output_failure message ];
+              environment_error)
   in
-  Cmd.v info Term.(const run $ const ())
+  Cmd.v info Term.(const run $ color)
 
 let scan_exits = [ success_exit; usage_exit; environment_exit ]
 
@@ -222,7 +305,10 @@ let scan_cmd =
          $(b,sinter check --help) says how to fetch the ledger.";
     ]
   in
-  let info = Cmd.info "scan" ~docs:plumbing ~doc ~man ~exits:scan_exits in
+  let info =
+    Cmd.info "scan" ~docs:plumbing ~doc ~man:(man @ environment) ~envs
+      ~exits:scan_exits
+  in
   let manifest =
     let doc =
       "The manifest to read, instead of $(i,sinter.toml) at the root of the \
@@ -237,28 +323,32 @@ let scan_cmd =
     in
     Arg.(value & opt (some string) None & info [ "base" ] ~docv:"REVISION" ~doc)
   in
-  let report lines = List.iter (Printf.eprintf "sinter: %s\n") lines in
-  let run manifest base =
-    with_phases (fun phases ->
+  let run color manifest base =
+    with_phases color (fun phases ->
         match
           Sinter_core.Scan.run ?phases ~env:(Unix.environment ())
             ~dir:(Sys.getcwd ()) ~manifest ~base ~tool:version ()
         with
         | Error error ->
-            report (Sinter_core.Scan.messages error);
+            report color (Sinter_core.Scan.explain error);
             environment_error
         | Ok { warnings; records } -> (
-            List.iter prerr_endline warnings;
+            let errors =
+              Sinter_core.Style.formatter stderr
+                ~color:(colored color Unix.stderr)
+            in
+            List.iter (Sinter_core.Render.warning errors) warnings;
+            Format.pp_print_flush errors ();
             try
               Sinter_core.Allocation.measure phases "output" (fun () ->
                   List.iter (Sinter_core.Jsonl.output stdout) records;
                   flush stdout);
               clean
             with Sys_error message ->
-              report [ Printf.sprintf "cannot write the output: %s" message ];
+              report color [ output_failure message ];
               environment_error))
   in
-  Cmd.v info Term.(const run $ manifest $ base)
+  Cmd.v info Term.(const run $ color $ manifest $ base)
 
 let check_exits = [ clean_exit; findings_exit; usage_exit; environment_exit ]
 
@@ -360,7 +450,9 @@ let check_cmd =
     ]
   in
   let info =
-    Cmd.info "check" ~doc ~man:(man @ exits_doc @ examples) ~exits:check_exits
+    Cmd.info "check" ~doc
+      ~man:(man @ exits_doc @ environment @ examples)
+      ~envs ~exits:check_exits
   in
   let manifest =
     let doc =
@@ -427,7 +519,6 @@ let check_cmd =
     in
     Arg.(value & flag & info [ "diff" ] ~doc)
   in
-  let report lines = List.iter (Printf.eprintf "sinter: %s\n") lines in
   let verbose =
     let doc =
       "List each finding, and fold none. In the full and brief forms, also \
@@ -441,8 +532,8 @@ let check_cmd =
     in
     Arg.(value & flag & info [ "q"; "quiet" ] ~doc)
   in
-  let run manifest base diff gate strict form verbose quiet =
-    with_phases @@ fun phases ->
+  let run color manifest base diff gate strict form verbose quiet =
+    with_phases color @@ fun phases ->
     match
       Sinter_core.Check.run ?phases ~env:(Unix.environment ())
         ~dir:(Sys.getcwd ()) ~manifest ~base
@@ -450,29 +541,32 @@ let check_cmd =
         ~gate ~strict ~form ~verbose ~quiet ~tool:version ()
     with
     | Error error ->
-        report (Sinter_core.Scan.messages error);
+        report color (Sinter_core.Scan.explain error);
         environment_error
     | Ok outcome -> (
         match
           Sinter_core.Check.write ?phases
-            (Sinter_core.Style.formatter stdout Sinter_core.Style.Output)
+            (Sinter_core.Style.formatter stdout
+               ~color:
+                 (form <> Sinter_core.Check.Json && colored color Unix.stdout))
             outcome
         with
         | () -> (
             try
               Sinter_core.Check.notices
-                (Sinter_core.Style.formatter stderr Sinter_core.Style.Errors)
+                (Sinter_core.Style.formatter stderr
+                   ~color:(colored color Unix.stderr))
                 outcome;
               Sinter_core.Check.code outcome
             with Sys_error _ -> environment_error)
         | exception Sys_error message ->
-            report [ Printf.sprintf "cannot write the output: %s" message ];
+            report color [ output_failure message ];
             environment_error)
   in
   Cmd.v info
     Term.(
-      const run $ manifest $ base $ diff $ gate $ strict $ output $ verbose
-      $ quiet)
+      const run $ color $ manifest $ base $ diff $ gate $ strict $ output
+      $ verbose $ quiet)
 
 let cmd =
   let doc = "a linter for keeping your specs, plans, and code in sync" in
@@ -502,7 +596,9 @@ let cmd =
          when one of them blocks.";
     ]
   in
-  let info = Cmd.info "sinter" ~version ~doc ~man ~exits in
+  let info =
+    Cmd.info "sinter" ~version ~doc ~man:(man @ environment) ~envs ~exits
+  in
   Cmd.group info
     ~default:Term.(ret (const (`Help (`Pager, None))))
     [ check_cmd; parse_cmd; scan_cmd; serve_cmd ]
@@ -524,7 +620,18 @@ let () =
   let output_closed = reserve Unix.stdout [ Unix.O_WRONLY ] in
   ignore (reserve Unix.stderr [ Unix.O_WRONLY ]);
   if output_closed then (
-    prerr_endline "sinter: cannot write the output: standard output is closed";
+    report Sinter_core.Style.Auto
+      [
+        failure ~help:"run the command with its standard output open"
+          "cannot write the output: standard output is closed";
+      ];
     exit environment_error);
-  let code = Cmd.eval' ~term_err:usage_error cmd in
+  let buffer = Buffer.create 256 in
+  let err = Format.formatter_of_buffer buffer in
+  Sinter_core.Style.prepare err `None;
+  let code = Cmd.eval' ~err ~term_err:usage_error cmd in
+  Format.pp_print_flush err ();
+  if Buffer.length buffer > 0 then
+    report Sinter_core.Style.Auto
+      [ Sinter_core.Usage.error (Buffer.contents buffer) ];
   exit (if code = Cmd.Exit.cli_error then usage_error else code)

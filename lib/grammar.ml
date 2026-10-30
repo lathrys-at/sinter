@@ -23,3 +23,8 @@ let message ~path = function
   | Not_loaded error ->
       Printf.sprintf "%s: the grammar does not load: %s" path
         (Sinter_bridge.Language.message error)
+
+let help = function
+  | Unreadable _ -> "name a grammar file that you can read"
+  | Not_loaded _ ->
+      "name a tree-sitter grammar that is compiled to WebAssembly, as .wasm"

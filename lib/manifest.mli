@@ -164,10 +164,12 @@ type problem =
 
 (** One error of a manifest. *)
 type error =
-  | At of Toml.position * problem
-      (** a problem at a place: the line and the column, from 1, of the first
-          character that is in error. For a dotted key, the place is the first
-          part of the key that is in error. *)
+  | At of Toml.span * problem
+      (** a problem at a place: the span of the text that is in error. For a
+          key, the span is the part of the key that is in error; for a dotted
+          key, the first part that is in error. For a value, the span is the
+          span of the value. For a place inside a string, and for a TOML syntax
+          error, the span is one character. *)
   | No_pack  (** the manifest names no pack *)
 
 val newer_keys : sinter_spec:Major_minor.t -> Toml.table -> error list
@@ -176,14 +178,13 @@ val newer_keys : sinter_spec:Major_minor.t -> Toml.table -> error list
     order of their places. {!of_string} gives these errors when the manifest
     states [sinter-spec]. *)
 
-val message : error -> string
-(** [message error] says what is wrong and, when it can, what to write instead.
-    It is one line, without the place and without a full stop at the end. *)
-
-val render : path:string -> error -> string
-(** [render ~path error] is the line that reports [error] in the manifest at
-    [path]: [path], the line, and the column, joined by [:], and then the
-    message. For [No_pack], it is the message with [path] as its subject. *)
+val explain : path:string -> ?lines:Line_index.t -> error -> Error_text.t
+(** [explain ~path ~lines error] says what is wrong and what to write instead,
+    for the person who runs the tool, in the manifest at [path]. [lines] are the
+    lines of the text of the manifest. For [At], the place is [path] and the
+    span of the error, with the line of the start of the span when [lines] holds
+    it, and no line otherwise. For [No_pack], the fault names [path], and there
+    is no place. *)
 
 (** {1 Reading} *)
 
@@ -228,7 +229,8 @@ type load_error =
   | Missing  (** nothing is at the path *)
   | Unreadable of string
       (** the file did not open or read, for example a folder; the reason *)
-  | Invalid of error list  (** the text holds errors, as {!of_string} gives *)
+  | Invalid of { text : string; errors : error list }
+      (** the text [text] holds errors, as {!of_string} gives them *)
 
 val load : string -> (t, load_error) result
 (** [load path] reads the file at [path] and then its text, as {!of_string}

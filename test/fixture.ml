@@ -15,6 +15,7 @@ type error =
   | Wrong_kind of { entry : string; folder : bool }
   | Reserved_entry of string
   | Repository_with_base
+  | Bad_variable of string
   | Did_not_end of float
   | Ended_by_signal of int
   | Git_failed of { arguments : string list; output : string }
@@ -24,7 +25,7 @@ type error =
 type mode = Compare | Promote_into of string
 
 let ( let* ) = Result.bind
-let known = [ "args"; "tree"; "base"; "repository"; "stdin"; "expected" ]
+let known = [ "args"; "env"; "tree"; "base"; "repository"; "stdin"; "expected" ]
 let reserved = [ "ledger.jsonl"; "evidence" ]
 let outputs = [ "stdout"; "stderr"; "exit" ]
 
@@ -44,7 +45,7 @@ let message ~case error =
           entry
     | Unknown_entry entry ->
         Printf.sprintf
-          "unknown entry %s. A case folder holds only args, tree, base, \
+          "unknown entry %s. A case folder holds only args, env, tree, base, \
            repository, stdin, and expected."
           entry
     | Missing_entry entry when String.starts_with ~prefix:"expected/" entry ->
@@ -65,6 +66,10 @@ let message ~case error =
     | Repository_with_base ->
         "the case holds both base and repository. A case with base already \
          runs in a repository; remove repository."
+    | Bad_variable line ->
+        Printf.sprintf
+          "the line %S of env is not NAME=value, with a name that is not empty."
+          line
     | Did_not_end bound ->
         Printf.sprintf "the run did not end within %g seconds, and was killed."
           bound
@@ -148,13 +153,24 @@ let guarded f =
 
 let coverage_prefix = Filename.concat (Sys.getcwd ()) "bisect"
 
-let environment ~home ~root ~git =
+let environment ~caller ~home ~root ~git =
   let replaced binding =
     List.exists
       (fun prefix -> String.starts_with ~prefix binding)
-      [ "GIT_"; "HOME="; "XDG_CONFIG_HOME="; "NO_COLOR="; "PWD="; "PATH=" ]
+      [
+        "GIT_";
+        "HOME=";
+        "XDG_CONFIG_HOME=";
+        "PWD=";
+        "PATH=";
+        "NO_COLOR=";
+        "CLICOLOR_FORCE=";
+        "FORCE_COLOR=";
+        "CLICOLOR=";
+        "TERM=";
+      ]
   in
-  let suite = Array.to_list (Unix.environment ()) in
+  let suite = Array.to_list caller in
   let path =
     let folders =
       Option.to_list (Sys.getenv_opt "PATH")
@@ -175,7 +191,6 @@ let environment ~home ~root ~git =
       "PATH=" ^ String.concat ":" path;
       "PWD=" ^ root;
       "GIT_CEILING_DIRECTORIES=" ^ Filename.dirname root;
-      "NO_COLOR=1";
       "GIT_CONFIG_GLOBAL=/dev/null";
       "GIT_CONFIG_NOSYSTEM=1";
       "GIT_CONFIG_COUNT=1";
@@ -298,13 +313,13 @@ let program =
            | Ok _ | Error _ -> "git")
      with Sys_error _ | Unix.Unix_error _ | Fun.Finally_raised _ -> "git")
 
-let prepare temporary =
+let prepare ?(caller = Unix.environment ()) temporary =
   let home = make_folder temporary "home" in
   configure_wasmtime home;
   let root = make_folder temporary "work" in
   {
     root;
-    environment = environment ~home ~root ~git:(Lazy.force program);
+    environment = environment ~caller ~home ~root ~git:(Lazy.force program);
     scratch = temporary;
   }
 
@@ -368,6 +383,7 @@ let with_repository ~base ~tree f =
 
 type layout = {
   args : string;
+  env : string option;
   tree : string;
   base : string option;
   repository : bool;
@@ -402,6 +418,7 @@ let read_layout mode case =
     in
     let* args = find case "args" ~folder:false in
     let* args = required "args" args in
+    let* env = find case "env" ~folder:false in
     let* tree = find case "tree" ~folder:true in
     let* tree = required "tree" tree in
     let* base = find case "base" ~folder:true in
@@ -433,6 +450,7 @@ let read_layout mode case =
     Ok
       {
         args;
+        env;
         tree;
         base;
         repository = Option.is_some repository;
@@ -445,6 +463,15 @@ let arguments text =
   else
     let pieces = String.split_on_char '\n' text in
     match List.rev pieces with "" :: rest -> List.rev rest | _ -> pieces
+
+let variables text =
+  List.fold_right
+    (fun line found ->
+      let* found = found in
+      match String.index_opt line '=' with
+      | Some 0 | None -> Error (Bad_variable line)
+      | Some _ -> Ok (line :: found))
+    (arguments text) (Ok [])
 
 let lines text =
   let length = String.length text in
@@ -554,14 +581,19 @@ let settle mode ~name ~expected actual =
                Some path))
            actual)
 
-let run ?(bound = 10.) ~binary mode case =
+let run ?(bound = 10.) ?caller ~binary mode case =
   if Filename.is_relative binary then
     invalid_arg "Fixture.run: the binary is not an absolute path";
   guarded (fun () ->
       let* layout = read_layout mode case in
       let arguments = arguments (read_file layout.args) in
+      let* variables =
+        match layout.env with
+        | None -> Ok []
+        | Some path -> variables (read_file path)
+      in
       with_temporary_folder (fun temporary ->
-          let workspace = prepare temporary in
+          let workspace = prepare ?caller temporary in
           let* () =
             match (layout.base, layout.repository) with
             | None, false -> Ok (copy_folder layout.tree workspace.root)
@@ -575,7 +607,10 @@ let run ?(bound = 10.) ~binary mode case =
           let output = Filename.concat temporary "stdout"
           and errors = Filename.concat temporary "stderr" in
           let* code =
-            execute ~environment:workspace.environment ~folder:workspace.root
+            execute
+              ~environment:
+                (Array.append workspace.environment (Array.of_list variables))
+              ~folder:workspace.root
               ~input:(Option.value layout.stdin ~default:"/dev/null")
               ~output ~errors ~bound binary arguments
           in

@@ -1,0 +1,7 @@
+error: the value is not valid
+ --> sinter.toml:5:13
+  |
+5 | warn-only = 日
+  |             ^^
+  |
+  = help: write a string in quotes, a number, true, false, a date, a time, an array, or an inline table

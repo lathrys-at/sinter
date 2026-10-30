@@ -1,1 +1,2 @@
-sinter: docs/a.md is in the files of two packs, markdown and ocaml; add a '!' glob to one of them
+error: docs/a.md is in the files of two packs, markdown and ocaml
+  = help: add a '!' glob to one of them

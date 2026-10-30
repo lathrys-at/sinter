@@ -147,3 +147,37 @@
   a detail too. The details of `parse-error` and `ignored-tag` stay:
   their location is their item. The labels of the marks do not
   change.
+
+## Print errors in one layout and in color
+
+- The fixture runner no longer passes the caller's `TERM`, `NO_COLOR`,
+  `CLICOLOR_FORCE`, `FORCE_COLOR`, and `CLICOLOR` to a run, and no
+  longer sets `NO_COLOR=1`. A case sets a variable in a new entry,
+  `env`, one `NAME=value` on each line (ruling of the lead).
+- The warnings of `Scan` and `Check` hold their text without the word
+  `warning:`, so that the printer can give the word its style (ruling
+  of the lead).
+- A new module, `Error_text`, holds the fault, the help, and the place
+  of an error. `Manifest.explain` and `Scan.explain` give it; `Grammar`,
+  `Query_file`, and `Parse_record` keep `message` as the fault and gain
+  `help`. `Parse.Error` and `Serve.Error` carry an `Error_text.t`; the
+  control line of `serve` keeps the fault as its message, so its JSON
+  does not change (ruling of the lead).
+- A message that the manifest reader embeds from `Toml`, `Branch_name`,
+  `Glob`, or `Id_pattern` splits at its first "; ": the part after it
+  is the help. A message with no such part gets a help of its own. The
+  messages of those modules whose part after "; " stated a fact now
+  state an action there, for example "write ']' here" in the place of
+  "expected ']'".
+- The mark of a manifest error stops at the column after the last
+  character of its line when the span goes on past it. A syntax error
+  at the end of a line thus shows one caret after the last character.
+  A span that starts further right shows no source line (ruling of the
+  lead).
+- A usage error that `parse` makes itself now asks cmdliner for the
+  usage line, so it gets the help `usage: ...` as cmdliner's own usage
+  errors do (ruling of the lead).
+- cmdliner writes the option of "required option X is missing" in
+  bold under `TERM=xterm` and plain with no quotes without `TERM`. The
+  bold part becomes a quoted part, so this one message reads
+  `'--grammar'` under `TERM=xterm` and `--grammar` without `TERM`.

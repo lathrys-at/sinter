@@ -147,7 +147,7 @@ type problem =
     }
   | Bad_marker of string
 
-type error = At of Toml.position * problem | No_pack
+type error = At of Toml.span * problem | No_pack
 
 let last key = match List.rev key with name :: _ -> name | [] -> ""
 
@@ -170,9 +170,7 @@ let choice words =
   | [ b; a ] -> a ^ " or " ^ b
   | final :: rest -> String.concat ", " (List.rev rest) ^ ", or " ^ final
 
-let did_you_mean ~quote = function
-  | None -> ""
-  | Some name -> "; did you mean " ^ quote name ^ "?"
+let did_you_mean ~quote name = "did you mean " ^ quote name ^ "?"
 
 let expected_text = function
   | A_string -> "a string"
@@ -184,151 +182,202 @@ let expected_text = function
 let name_rule ~examples =
   "lower-case letters and digits, in words joined by '-', such as " ^ examples
 
-let problem_message = function
-  | Syntax error -> Toml.error_message error
+let nearest_or ~quote nearest otherwise =
+  match nearest with Some name -> did_you_mean ~quote name | None -> otherwise
+
+let remove = "remove this key"
+
+let split ~otherwise message =
+  let length = String.length message in
+  let rec find index =
+    if index + 1 >= length then (message, otherwise)
+    else if message.[index] = ';' && message.[index + 1] = ' ' then
+      ( String.sub message 0 index,
+        String.sub message (index + 2) (length - index - 2) )
+    else find (index + 1)
+  in
+  find 0
+
+let problem_text = function
+  | Syntax error ->
+      split ~otherwise:"write the text here as TOML 1.1.0 allows"
+        (Toml.error_message error)
   | Not_a_version { key; text } ->
-      Printf.sprintf "%s takes %s, not %s"
-        (Toml.quote (last key))
-        (expected_text A_version) (Toml.basic_string text)
+      ( Printf.sprintf "%s takes %s, not %s"
+          (Toml.quote (last key))
+          (expected_text A_version) (Toml.basic_string text),
+        "write the version as two numbers joined by '.'" )
   | Sinter_spec_too_new version ->
-      Printf.sprintf
-        "this manifest needs specification %s, and this sinter implements %s; \
-         install a newer sinter"
-        (Major_minor.to_string version)
-        (Major_minor.to_string specification)
+      ( Printf.sprintf
+          "this manifest needs specification %s, and this sinter implements %s"
+          (Major_minor.to_string version)
+          (Major_minor.to_string specification),
+        "install a newer sinter" )
   | Sinter_spec_major_too_old version ->
-      Printf.sprintf
-        "this manifest is for specification %s, and this sinter implements %s, \
-         a new major version that can change the meaning of a key; read the \
-         notes on the changes in specification %s, then update the manifest \
-         and its 'sinter-spec'"
-        (Major_minor.to_string version)
-        (Major_minor.to_string specification)
-        (Major_minor.to_string specification)
+      ( Printf.sprintf
+          "this manifest is for specification %s, and this sinter implements \
+           %s, a new major version that can change the meaning of a key"
+          (Major_minor.to_string version)
+          (Major_minor.to_string specification),
+        Printf.sprintf
+          "read the notes on the changes in specification %s, then update the \
+           manifest and its 'sinter-spec'"
+          (Major_minor.to_string specification) )
   | Key_too_new { key; since; sinter_spec } ->
-      Printf.sprintf
-        "%s needs specification %s, and the manifest states sinter-spec = %s; \
-         write sinter-spec = %s"
-        (Toml.quote (Toml.render_path key))
-        (Major_minor.to_string since)
-        (Toml.basic_string (Major_minor.to_string sinter_spec))
-        (Toml.basic_string (Major_minor.to_string since))
+      ( Printf.sprintf
+          "%s needs specification %s, and the manifest states sinter-spec = %s"
+          (Toml.quote (Toml.render_path key))
+          (Major_minor.to_string since)
+          (Toml.basic_string (Major_minor.to_string sinter_spec)),
+        Printf.sprintf "write sinter-spec = %s"
+          (Toml.basic_string (Major_minor.to_string since)) )
   | Unknown_key { name; table; nearest } ->
-      Printf.sprintf "unknown key %s %s%s" (Toml.quote name) (in_table table)
-        (did_you_mean ~quote:Toml.quote nearest)
+      ( Printf.sprintf "unknown key %s %s" (Toml.quote name) (in_table table),
+        nearest_or ~quote:Toml.quote nearest
+          "remove this key, or correct its name" )
   | Misplaced_key { name; place = [] } when is_table_name name ->
-      Printf.sprintf
-        "%s is a table of the top level; write its keys under the header [%s]"
-        (Toml.quote name) name
+      ( Printf.sprintf "%s is a table of the top level" (Toml.quote name),
+        Printf.sprintf "write its keys under the header [%s]" name )
   | Misplaced_key { name; place = [] } ->
-      Printf.sprintf "%s belongs at the top level, above the first table header"
-        (Toml.quote name)
+      ( Printf.sprintf "%s belongs at the top level" (Toml.quote name),
+        "write it above the first table header" )
   | Misplaced_key { name; place } ->
-      Printf.sprintf "%s belongs in %s" (Toml.quote name) (table_name place)
+      ( Printf.sprintf "%s belongs in %s" (Toml.quote name) (table_name place),
+        Printf.sprintf "move it to %s" (table_name place) )
   | Bad_pack_name name ->
-      Printf.sprintf "%s is not a pack name; a pack name is %s"
-        (Toml.quote name)
-        (name_rule ~examples:"'ocaml' or 'tree-sitter'")
+      ( Printf.sprintf "%s is not a pack name" (Toml.quote name),
+        "write a pack name of " ^ name_rule ~examples:"'ocaml' or 'tree-sitter'"
+      )
   | Bad_namespace name ->
-      Printf.sprintf "%s is not a namespace; a namespace is %s"
-        (Toml.quote name)
-        (name_rule ~examples:"'gh' or 'jira'")
+      ( Printf.sprintf "%s is not a namespace" (Toml.quote name),
+        "write a namespace of " ^ name_rule ~examples:"'gh' or 'jira'" )
   | Unknown_gate { name; nearest } ->
-      Printf.sprintf "unknown gate %s in [check.tiers]%s" (Toml.quote name)
-        (match nearest with
-        | Some _ -> did_you_mean ~quote:Toml.quote nearest
-        | None ->
-            "; the gates are "
-            ^ choice
-                (List.map
-                   (fun gate -> Toml.quote (Finding_class.gate_name gate))
-                   Finding_class.gates))
+      ( Printf.sprintf "unknown gate %s in [check.tiers]" (Toml.quote name),
+        nearest_or ~quote:Toml.quote nearest
+          ("write one of the gates "
+          ^ choice
+              (List.map
+                 (fun gate -> Toml.quote (Finding_class.gate_name gate))
+                 Finding_class.gates)) )
   | Unknown_class { name; gate; nearest } ->
-      Printf.sprintf "unknown finding class %s in [check.tiers.%s]%s"
-        (Toml.quote name)
-        (Finding_class.gate_name gate)
-        (match nearest with
-        | Some _ -> did_you_mean ~quote:Toml.quote nearest
-        | None -> "; 'tiers' names built-in finding classes only")
+      ( Printf.sprintf "unknown finding class %s in [check.tiers.%s]"
+          (Toml.quote name)
+          (Finding_class.gate_name gate),
+        nearest_or ~quote:Toml.quote nearest
+          "write the name of a built-in finding class" )
   | No_tier_at_gate { finding_class; gate } ->
-      Printf.sprintf "%s takes no tier at the gate %s"
-        (Toml.quote (Finding_class.name finding_class))
-        (Toml.quote (Finding_class.gate_name gate))
+      ( Printf.sprintf "%s takes no tier at the gate %s"
+          (Toml.quote (Finding_class.name finding_class))
+          (Toml.quote (Finding_class.gate_name gate)),
+        remove )
   | Never_blocks ->
-      "'config-changed' takes no tier; it always reports and never blocks"
-  | No_tier_at_any_gate -> "'pack-mismatch' takes no tier at any gate"
+      ( "'config-changed' takes no tier; it always reports and never blocks",
+        remove )
+  | No_tier_at_any_gate -> ("'pack-mismatch' takes no tier at any gate", remove)
   | Plan_location ->
-      "'plan' takes no location; plan files always live under .plans/"
+      ("'plan' takes no location; plan files always live under .plans/", remove)
   | Markdown_version ->
-      "the pack markdown is built into sinter and takes no version"
+      ( "the pack markdown is built into sinter and takes no version",
+        "remove the version" )
   | Markdown_runners ->
-      "the pack markdown is built into sinter and has no runner"
+      ( "the pack markdown is built into sinter and has no runner",
+        "remove the runners" )
   | Bad_runner_name name ->
-      Printf.sprintf "%s is not a runner name; a runner name is %s"
-        (Toml.quote name)
-        (name_rule ~examples:"'vitest' or 'cargo-nextest'")
+      ( Printf.sprintf "%s is not a runner name" (Toml.quote name),
+        "write a runner name of "
+        ^ name_rule ~examples:"'vitest' or 'cargo-nextest'" )
   | Runner_in_two_packs { runner; pack; other } ->
-      Printf.sprintf
-        "%s is in the runners of two packs, %s and %s; remove it from one of \
-         them"
-        (Toml.quote runner)
-        (Toml.render_path [ other ])
-        (Toml.render_path [ pack ])
+      ( Printf.sprintf "%s is in the runners of two packs, %s and %s"
+          (Toml.quote runner)
+          (Toml.render_path [ other ])
+          (Toml.render_path [ pack ]),
+        "remove it from one of them" )
   | Wrong_type { key; expected; found } ->
-      Printf.sprintf "%s takes %s, not %s"
-        (Toml.quote (last key))
-        (expected_text expected) (Toml.Kind.name found)
+      ( Printf.sprintf "%s takes %s, not %s"
+          (Toml.quote (last key))
+          (expected_text expected) (Toml.Kind.name found),
+        "write " ^ expected_text expected )
   | Wrong_member_type { key; found } ->
-      Printf.sprintf "%s takes an array of strings, and this member is %s"
-        (Toml.quote (last key))
-        (Toml.Kind.name found)
+      ( Printf.sprintf "%s takes an array of strings, and this member is %s"
+          (Toml.quote (last key))
+          (Toml.Kind.name found),
+        "write the member as a string" )
   | Not_a_branch { name; error } ->
-      Printf.sprintf "%s is not a branch name; %s" (Toml.basic_string name)
-        (Branch_name.message error)
+      let reason, help =
+        split ~otherwise:"write the name of the default branch"
+          (Branch_name.message error)
+      in
+      ( Printf.sprintf "%s is not a branch name; %s" (Toml.basic_string name)
+          reason,
+        help )
   | Bad_glob { member; error } ->
-      Printf.sprintf "%s is not a glob: %s" (Toml.basic_string member)
-        (Glob.message error)
+      let reason, help =
+        split ~otherwise:"write a glob such as \"docs/**/*.md\""
+          (Glob.message error)
+      in
+      ( Printf.sprintf "%s is not a glob: %s" (Toml.basic_string member) reason,
+        help )
   | Repeated_member { key; member } ->
-      Printf.sprintf "%s occurs twice in %s" (Toml.basic_string member)
-        (Toml.quote (last key))
+      ( Printf.sprintf "%s occurs twice in %s" (Toml.basic_string member)
+          (Toml.quote (last key)),
+        "remove this member" )
   | No_plain_glob key ->
-      Printf.sprintf
-        "%s holds only '!' globs, so it holds no path; add a glob without '!'"
-        (Toml.quote (last key))
+      ( Printf.sprintf "%s holds only '!' globs, so it holds no path"
+          (Toml.quote (last key)),
+        "add a glob without '!'" )
   | Missing_files pack ->
-      Printf.sprintf
-        "the pack %s needs 'files', the globs of the files that it reads"
-        (Toml.render_path [ pack ])
+      ( Printf.sprintf
+          "the pack %s needs 'files', the globs of the files that it reads"
+          (Toml.render_path [ pack ]),
+        Printf.sprintf "add 'files' to the pack %s" (Toml.render_path [ pack ])
+      )
   | Missing_version pack ->
-      Printf.sprintf
-        "the pack %s needs 'version', the release that the repository uses, \
-         such as \"1.0\""
-        (Toml.render_path [ pack ])
-  | Bad_id_pattern { error; _ } -> Id_pattern.message error
+      ( Printf.sprintf
+          "the pack %s needs 'version', the release that the repository uses"
+          (Toml.render_path [ pack ]),
+        Printf.sprintf "add 'version' to the pack %s, such as \"1.0\""
+          (Toml.render_path [ pack ]) )
+  | Bad_id_pattern { namespace; error } ->
+      split
+        ~otherwise:
+          (Printf.sprintf "correct the id pattern of the namespace %s"
+             (Toml.quote namespace))
+        (Id_pattern.message error)
   | Unknown_value { key; value; choices; nearest } ->
-      Printf.sprintf "%s takes %s, not %s%s"
-        (Toml.quote (last key))
-        (choice (List.map Toml.basic_string choices))
-        (Toml.basic_string value)
-        (did_you_mean ~quote:Toml.basic_string nearest)
+      ( Printf.sprintf "%s takes %s, not %s"
+          (Toml.quote (last key))
+          (choice (List.map Toml.basic_string choices))
+          (Toml.basic_string value),
+        nearest_or ~quote:Toml.basic_string nearest
+          ("write " ^ choice (List.map Toml.basic_string choices)) )
   | Bad_marker name ->
-      Printf.sprintf
-        "%s is not a name of an environment variable; a name holds letters, \
-         digits, and '_', and does not start with a digit"
-        (Toml.basic_string name)
+      ( Printf.sprintf "%s is not a name of an environment variable"
+          (Toml.basic_string name),
+        "write a name of letters, digits, and '_' that does not start with a \
+         digit" )
 
-let no_pack_advice =
-  "add a line such as packs.markdown.files = [\"**/*.md\"] under [scan]"
+let line_of lines number =
+  Option.bind lines (fun lines ->
+      if number >= 1 && number <= Line_index.count lines then
+        Some (Line_index.content lines number)
+      else None)
 
-let message = function
-  | At (_, problem) -> problem_message problem
-  | No_pack -> "the manifest names no pack; " ^ no_pack_advice
-
-let render ~path = function
-  | At (position, problem) ->
-      Printf.sprintf "%s:%d:%d: %s" path position.Toml.line position.column
-        (problem_message problem)
-  | No_pack -> Printf.sprintf "%s names no pack; %s" path no_pack_advice
+let explain ~path ?lines = function
+  | At (span, problem) ->
+      let fault, help = problem_text problem in
+      {
+        Error_text.fault;
+        help;
+        place =
+          Some { Error_text.path; span; line = line_of lines span.start.line };
+      }
+  | No_pack ->
+      {
+        Error_text.fault = path ^ " names no pack";
+        help =
+          "add a line such as packs.markdown.files = [\"**/*.md\"] under [scan]";
+        place = None;
+      }
 
 type runner = {
   name : string;
@@ -361,10 +410,10 @@ type t = {
 }
 
 type reading = {
-  mutable names_errors : (Toml.position * problem) list;
-  mutable value_errors : (Toml.position * problem) list;
+  mutable names_errors : (Toml.span * problem) list;
+  mutable value_errors : (Toml.span * problem) list;
   mutable default_branch : string option;
-  mutable pack_keys : (string * Toml.position) list;
+  mutable pack_keys : (string * Toml.span) list;
   mutable files : (string * Path_set.t option) list;
   mutable versions : (string * Major_minor.t option) list;
   mutable runners : (string * (Toml.key * Toml.table)) list;
@@ -390,18 +439,22 @@ type place =
   | Flag of (bool -> unit)
   | Texts of (Toml.node -> (Toml.node * string) list -> unit)
 
-let names_error reading position problem =
-  reading.names_errors <- (position, problem) :: reading.names_errors
+let names_error reading span problem =
+  reading.names_errors <- (span, problem) :: reading.names_errors
 
-let value_error reading position problem =
-  reading.value_errors <- (position, problem) :: reading.value_errors
+let value_error reading span problem =
+  reading.value_errors <- (span, problem) :: reading.value_errors
 
-let start node = (Toml.span node).start
+let one_character (position : Toml.position) =
+  {
+    Toml.start = position;
+    stop = { position with column = position.column + 1 };
+  }
 
 let inside node offset =
   match Toml.string_position node offset with
-  | Some position -> position
-  | None -> start node
+  | Some position -> one_character position
+  | None -> Toml.span node
 
 let is_name_char c = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
 
@@ -456,10 +509,10 @@ let read_path_set reading ~key array members set =
                 (Bad_glob { member; error })
           | Path_set.Repeated { index; member } ->
               value_error reading
-                (start (fst members.(index)))
+                (Toml.span (fst members.(index)))
                 (Repeated_member { key; member })
           | Path_set.No_plain_glob ->
-              value_error reading (start array) (No_plain_glob key))
+              value_error reading (Toml.span array) (No_plain_glob key))
         errors
 
 let path_set reading key set =
@@ -472,7 +525,7 @@ let word reading ~key choices name_of found =
       | Some choice -> found choice
       | None ->
           let names = List.map name_of choices in
-          value_error reading (start node)
+          value_error reading (Toml.span node)
             (Unknown_value
                {
                  key;
@@ -509,7 +562,7 @@ let pack_place reading (key : Toml.key) =
             let version = Major_minor.of_string value in
             reading.versions <- (name, version) :: reading.versions;
             if version = None then
-              value_error reading (start node)
+              value_error reading (Toml.span node)
                 (Not_a_version
                    { key = [ "scan"; "packs"; name; "version" ]; text = value }))
       )
@@ -617,11 +670,11 @@ let proof_place reading =
                  List.iter
                    (fun (node, name) ->
                      if not (is_variable_name name) then
-                       value_error reading (start node) (Bad_marker name))
+                       value_error reading (Toml.span node) (Bad_marker name))
                    members;
                  List.iter
                    (fun (node, member) ->
-                     value_error reading (start node)
+                     value_error reading (Toml.span node)
                        (Repeated_member
                           { key = [ "proof"; "agent-markers" ]; member }))
                    (first_repeated members);
@@ -654,8 +707,7 @@ let layout reading =
             Varying
               (fun key ->
                 if is_name key.name then begin
-                  reading.pack_keys <-
-                    (key.name, key.at.start) :: reading.pack_keys;
+                  reading.pack_keys <- (key.name, key.at) :: reading.pack_keys;
                   Ok (pack_place reading key)
                 end
                 else Error (Bad_pack_name key.name)) );
@@ -705,7 +757,7 @@ let layout reading =
 
 let rec walk reading ~path ~(key : Toml.key) place node =
   let wrong expected =
-    names_error reading (start node)
+    names_error reading (Toml.span node)
       (Wrong_type
          { key = path; expected; found = Toml.Kind.of_value (Toml.value node) })
   in
@@ -714,7 +766,7 @@ let rec walk reading ~path ~(key : Toml.key) place node =
   | Varying check, Toml.Table table -> walk_varying reading ~path check table
   | Kept found, Toml.Table table -> found table
   | (Fixed _ | Varying _ | Kept _), _ -> wrong A_table
-  | Refused problem, _ -> names_error reading key.at.start problem
+  | Refused problem, _ -> names_error reading key.at problem
   | Text found, Toml.String value -> found node value
   | Text _, _ -> wrong A_string
   | Flag found, Toml.Boolean value -> found value
@@ -726,7 +778,7 @@ let rec walk reading ~path ~(key : Toml.key) place node =
             match Toml.value member with
             | Toml.String value -> Some (member, value)
             | other ->
-                names_error reading (start member)
+                names_error reading (Toml.span member)
                   (Wrong_member_type
                      { key = path; found = Toml.Kind.of_value other });
                 None)
@@ -741,7 +793,7 @@ and walk_fixed reading ~path fields table =
       match List.assoc_opt key.name fields with
       | Some place -> walk reading ~path:(path @ [ key.name ]) ~key place child
       | None ->
-          names_error reading key.at.start
+          names_error reading key.at
             (unknown_key ~table:path ~valid:(List.map fst fields) key.name))
     table
 
@@ -750,15 +802,15 @@ and walk_varying reading ~path check table =
     (fun ((key : Toml.key), child) ->
       match check key with
       | Ok place -> walk reading ~path:(path @ [ key.name ]) ~key place child
-      | Error problem -> names_error reading key.at.start problem)
+      | Error problem -> names_error reading key.at problem)
     table
 
 let sort errors =
   List.sort_uniq
-    (fun ((a : Toml.position), p) ((b : Toml.position), q) ->
-      compare (a.line, a.column, p) (b.line, b.column, q))
+    (fun ((a : Toml.span), p) ((b : Toml.span), q) ->
+      compare (a.start.line, a.start.column, p) (b.start.line, b.start.column, q))
     errors
-  |> List.map (fun (position, problem) -> At (position, problem))
+  |> List.map (fun (span, problem) -> At (span, problem))
 
 let check_sinter_spec document =
   match
@@ -772,17 +824,18 @@ let check_sinter_spec document =
       | Toml.String text -> (
           match Major_minor.of_string text with
           | None ->
-              Error (start node, Not_a_version { key = [ "sinter-spec" ]; text })
+              Error
+                (Toml.span node, Not_a_version { key = [ "sinter-spec" ]; text })
           | Some sinter_spec
             when Major_minor.newer sinter_spec ~than:specification ->
-              Error (start node, Sinter_spec_too_new sinter_spec)
+              Error (Toml.span node, Sinter_spec_too_new sinter_spec)
           | Some sinter_spec
             when Major_minor.older_major sinter_spec ~than:specification ->
-              Error (start node, Sinter_spec_major_too_old sinter_spec)
+              Error (Toml.span node, Sinter_spec_major_too_old sinter_spec)
           | Some sinter_spec -> Ok (Some sinter_spec))
       | other ->
           Error
-            ( start node,
+            ( Toml.span node,
               Wrong_type
                 {
                   key = [ "sinter-spec" ];
@@ -798,8 +851,7 @@ let rec keys_newer ~sinter_spec ~path table =
         match since path with
         | Some version when Major_minor.newer version ~than:sinter_spec ->
             [
-              ( key.at.start,
-                Key_too_new { key = path; since = version; sinter_spec } );
+              (key.at, Key_too_new { key = path; since = version; sinter_spec });
             ]
         | _ -> []
       in
@@ -839,7 +891,7 @@ let check_runners_of_packs reading =
       match By_name.find_opt key.name !owners with
       | None -> owners := By_name.add key.name pack !owners
       | Some other ->
-          value_error reading key.at.start
+          value_error reading key.at
             (Runner_in_two_packs { runner = key.name; pack; other }))
     (List.stable_sort
        (fun (a, _) (b, _) -> String.compare a b)
@@ -857,13 +909,13 @@ let packs_of reading =
   let files_by_name = by_name reading.files
   and versions_by_name = by_name reading.versions in
   List.sort compare reading.pack_keys
-  |> List.filter_map (fun (name, position) ->
+  |> List.filter_map (fun (name, span) ->
       let files = By_name.find_opt name files_by_name
       and version = By_name.find_opt name versions_by_name
       and builtin = name = "markdown" in
-      if files = None then value_error reading position (Missing_files name);
+      if files = None then value_error reading span (Missing_files name);
       if version = None && not builtin then
-        value_error reading position (Missing_version name);
+        value_error reading span (Missing_version name);
       match (files, version) with
       | Some (Some files), None when builtin ->
           Some { name; files; version = None; runners = [] }
@@ -879,7 +931,8 @@ let packs_of reading =
 
 let of_string text =
   match Toml.parse text with
-  | Error error -> Error (sort [ (Toml.error_position error, Syntax error) ])
+  | Error error ->
+      Error (sort [ (one_character (Toml.error_position error), Syntax error) ])
   | Ok document -> (
       match check_sinter_spec document with
       | Error error -> Error (sort [ error ])
@@ -920,7 +973,10 @@ let of_string text =
                     step = reading.step;
                   })
 
-type load_error = Missing | Unreadable of string | Invalid of error list
+type load_error =
+  | Missing
+  | Unreadable of string
+  | Invalid of { text : string; errors : error list }
 
 let read_all path =
   if not (Sys.file_exists path) then Error Missing
@@ -935,7 +991,7 @@ let load path =
   | Ok text -> (
       match of_string text with
       | Ok manifest -> Ok manifest
-      | Error errors -> Error (Invalid errors))
+      | Error errors -> Error (Invalid { text; errors }))
 
 let document (manifest : t) = manifest.document
 let sinter_spec (manifest : t) = manifest.sinter_spec
