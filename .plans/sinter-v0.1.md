@@ -225,6 +225,14 @@ manifest by the question that each answers, add the table `[proof]`
 with a value for steps without promises, and move Sinter's own
 manifest and the skills to the new keys.
 
+## State the rule for an agent's statements
+@scope docs/**, README.md, CLAUDE.md
+@decision agent-statements
+Replace the sentence that Sinter never reads an agent's report with
+the rule that holds: a statement that an agent writes in a file
+changes a state only when it is a line of the diff, tied by a hash or
+a revision to the text that it is about.
+
 ## Let a plan span branches
 @scope spec/**, docs/**, lib/**, test/**, plugins/**, .claude-plugin/**
 Carry out the record `plans-span-branches`: specify that a plan

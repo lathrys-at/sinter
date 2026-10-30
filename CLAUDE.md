@@ -31,8 +31,10 @@ Sinter traces plans, requirements, decisions, and tests through a
 repository. It reads tags in the repository's own text files, and it
 checks that code, tests, and documents keep the agreements a project
 made. It reads the state of the work from files and from test
-results, never from an agent's report about its own work. Coding
-agents write most of Sinter, and Sinter's own method applies to Sinter.
+results. A statement that an agent writes in a file counts only as a
+line of the diff, tied to the text that it is about, so that a person
+can check it. Coding agents write most of Sinter, and Sinter's own
+method applies to Sinter.
 
 ## Layout
 
