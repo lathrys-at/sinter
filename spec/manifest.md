@@ -208,8 +208,8 @@ The tool checks a manifest in five steps, in this order:
    tree.
 
 The tool stops at the first step that finds an error. It reports each
-error of that step that it finds, one per line, in the order of their
-positions in the file. Then the command stops with exit code 3.
+error of that step that it finds, in the order of their positions in
+the file. Then the command stops with exit code 3.
 
 Step 2 comes before step 3. So when `sinter-spec` states a version
 that is newer than the version of the tool, the tool reports the
@@ -222,6 +222,12 @@ manifest, the line, and the column. Lines and columns count from 1, as
 in [jsonl.md](jsonl.md) section 3. A column counts Unicode code points
 (characters), not bytes. For a dotted key, the position is
 the first part of the key that is in error.
+
+The message shows the line of the manifest at that position, with a
+mark under the text at fault: the key, the value, or for a TOML syntax
+error the character where the error starts. So each error takes
+several lines, and a blank line separates two errors. Section 4.3
+shows the layout.
 
 **An unknown key.** A table, a key, or a name that varies is an error
 when it is not valid at its place. The message suggests the nearest
@@ -254,26 +260,33 @@ The front matter of a rule file follows the same rules (section 14).
 
 ### 4.3 Example messages
 
-This list is informative.
+This section is informative.
+
+A manifest with two errors at step 3 gives two blocks:
 
 ```
-sinter: no sinter.toml at the repository root; create one, or name one with --manifest
-sinter: sinter.toml names no pack; add a line such as packs.markdown.files = ["**/*.md"] under [scan]
-sinter: sinter.toml:9:1: unknown key 'historic' in [paths]; did you mean 'historical'?
-sinter: sinter.toml:14:1: 'default-branch' belongs at the top level, above the first table header
-sinter: sinter.toml:8:13: 'warn-only' takes true or false, not a string
-sinter: sinter.toml:4:1: the dotted key 'b.ct' adds a key to the table 'a.b', which a table header made; write 'ct' under the header [a.b]
-sinter: sinter.toml:1:15: this manifest needs specification 1.2, and this sinter implements 1.1; install a newer sinter
-sinter: sinter.toml:5:1: the pack markdown is built into sinter and takes no version
-sinter: sinter.toml:7:26: the pack typescript has no runner 'jest'; its runners are vitest
-sinter: sinter.toml:12:1: 'config-changed' takes no tier; it always reports and never blocks
-sinter: sinter.toml:13:1: 'scope-outside-plan' takes no tier at the gate 'merged'
-sinter: sinter.toml:6:12: '.' is not in the id pattern language; put it in a class, for example [.]
-sinter: sinter.toml:6:12: the pattern matches an empty id
-sinter: no branch 'main' exists here or on origin; fetch it with git fetch origin main:refs/remotes/origin/main, or set 'default-branch' in sinter.toml to the name of the default branch
-sinter: this clone is shallow, so the merge base of HEAD and the branch 'main' is not here; fetch the whole history with git fetch --unshallow origin main:refs/remotes/origin/main
-sinter: src/a.ts is in the files of two packs, typescript and javascript; add a '!' glob to one of them
-sinter: .plans/auth.md is under .plans/, and the pack markdown does not read it; add ".plans/" to its files
+error: unknown key 'historic' in [paths]
+ --> sinter.toml:5:1
+  |
+5 | historic = ["old/"]
+  | ^^^^^^^^
+  |
+  = help: did you mean 'historical'?
+
+error: 'warn-only' takes true or false, not a string
+ --> sinter.toml:8:13
+  |
+8 | warn-only = "yes"
+  |             ^^^^^
+  |
+  = help: write true or false
+```
+
+An error with no position in the manifest has no source line:
+
+```
+error: no sinter.toml at the repository root
+  = help: create one, or name one with --manifest
 ```
 
 ## 5. The specification version: `sinter-spec`
