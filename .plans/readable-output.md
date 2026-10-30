@@ -52,7 +52,7 @@ standard error, the warning about a missing ledger, and the folding of
 the incompleteness classes.
 
 ## Print errors in one layout and in color
-@scope lib/**, bin/**, test/**, docs/**
+@scope spec/**, lib/**, bin/**, test/**, docs/**
 @decision color-settings
 @decision error-layout
 Print every failure as `error:` and `help:`, usage errors included.
