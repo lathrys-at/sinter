@@ -27,6 +27,14 @@ let select manifest gate findings =
           | Some Finding_class.Off | None -> None)
         findings
 
+let reports manifest gate finding_class =
+  match gate with
+  | None -> true
+  | Some gate -> (
+      match Manifest.tier manifest gate finding_class with
+      | Some (Finding_class.Warn | Finding_class.Block) -> true
+      | Some Finding_class.Off | None -> false)
+
 let blocks entry =
   match entry.tier with Some (_, Finding_class.Block) -> true | _ -> false
 
@@ -368,7 +376,7 @@ let configuration (tree : Scan.tree) (compared : Scan.compared) facts =
   | Scan.Absent -> read None
   | Scan.Changed text -> read (Some text)
 
-let compare_with_base ?phases ~mode (tree : Scan.tree)
+let compare_with_base ?phases ~mode ~gate (tree : Scan.tree)
     (compared : Scan.compared) facts findings =
   let held = Paths.of_list tree.documents
   and earlier = Paths.of_list compared.base_documents in
@@ -406,7 +414,19 @@ let compare_with_base ?phases ~mode (tree : Scan.tree)
   in
   Allocation.measure phases "findings" (fun () ->
       List.merge Finding.compare
-        (Adjudicator.classes ~same ~base facts
+        (Adjudicator.classes ~same
+           ~changed:
+             (List.filter_map
+                (fun (path, change) ->
+                  if Git.hunks change = [] then None else Some path)
+                compared.diff)
+           ~whole_base:
+             (match mode with
+             | Mode.Diff -> lazy base
+             | Mode.Tree ->
+                 lazy (Facts.make tree.manifest compared.base_documents))
+           ~wanted:(reports tree.manifest gate)
+           ~base facts
            (findings
            @ Unplanned.findings ~same ~base
                ~manifest:
@@ -430,7 +450,9 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
           ~base:(Scan.base_commit tree.base)
           ~not_text:tree.not_text)
   in
-  let findings = compare_with_base ?phases ~mode tree compared facts findings in
+  let findings =
+    compare_with_base ?phases ~mode ~gate tree compared facts findings
+  in
   let entries =
     Allocation.measure phases "findings" (fun () ->
         select tree.manifest gate findings)

@@ -26,6 +26,10 @@ type t =
   | Duplicate
   | Scope_outside_plan
   | Step_without_promises
+  | Stale_mark
+  | Mark_without_change
+  | Mark_on_unmet_step
+  | Unmarked_step
   | Misplaced_plan
   | Missing_plan_id
   | Unpinned
@@ -53,6 +57,7 @@ type t =
   | Promise_out_of_scope
   | Unverified_promise
   | Promise_collision
+  | Renamed_step
   | Scope_overlap
   | Waiting_on
   | Branch_overlap
@@ -72,6 +77,10 @@ let all =
     Duplicate;
     Scope_outside_plan;
     Step_without_promises;
+    Stale_mark;
+    Mark_without_change;
+    Mark_on_unmet_step;
+    Unmarked_step;
     Misplaced_plan;
     Missing_plan_id;
     Unpinned;
@@ -99,6 +108,7 @@ let all =
     Promise_out_of_scope;
     Unverified_promise;
     Promise_collision;
+    Renamed_step;
     Scope_overlap;
     Waiting_on;
     Branch_overlap;
@@ -118,6 +128,10 @@ let name = function
   | Duplicate -> "duplicate"
   | Scope_outside_plan -> "scope-outside-plan"
   | Step_without_promises -> "step-without-promises"
+  | Stale_mark -> "stale-mark"
+  | Mark_without_change -> "mark-without-change"
+  | Mark_on_unmet_step -> "mark-on-unmet-step"
+  | Unmarked_step -> "unmarked-step"
   | Misplaced_plan -> "misplaced-plan"
   | Missing_plan_id -> "missing-plan-id"
   | Unpinned -> "unpinned"
@@ -145,6 +159,7 @@ let name = function
   | Promise_out_of_scope -> "promise-out-of-scope"
   | Unverified_promise -> "unverified-promise"
   | Promise_collision -> "promise-collision"
+  | Renamed_step -> "renamed-step"
   | Scope_overlap -> "scope-overlap"
   | Waiting_on -> "waiting-on"
   | Branch_overlap -> "branch-overlap"
@@ -164,6 +179,10 @@ let tiers = function
   | Duplicate -> (Some Block, Some Block, Some Block)
   | Scope_outside_plan -> (Some Block, Some Block, None)
   | Step_without_promises -> (Some Block, Some Block, Some Block)
+  | Stale_mark -> (Some Block, Some Block, Some Block)
+  | Mark_without_change -> (Some Block, Some Block, None)
+  | Mark_on_unmet_step -> (Some Block, Some Block, Some Block)
+  | Unmarked_step -> (None, Some Block, None)
   | Misplaced_plan -> (Some Block, Some Block, Some Block)
   | Missing_plan_id -> (Some Block, Some Block, Some Block)
   | Unpinned -> (Some Block, Some Block, Some Block)
@@ -191,13 +210,14 @@ let tiers = function
   | Promise_out_of_scope -> (Some Warn, Some Warn, None)
   | Unverified_promise -> (Some Warn, Some Warn, None)
   | Promise_collision -> (Some Block, Some Block, None)
+  | Renamed_step -> (Some Block, Some Block, None)
   | Scope_overlap -> (Some Warn, Some Warn, None)
   | Waiting_on -> (Some Off, Some Warn, None)
   | Branch_overlap -> (Some Warn, Some Warn, None)
   | Unplanned_change -> (Some Block, Some Block, None)
   | Unmet_rule -> (Some Warn, Some Block, Some Block)
   | Config_changed -> (Some Warn, Some Warn, Some Warn)
-  | Merged_incomplete -> (None, None, Some Block)
+  | Merged_incomplete -> (None, Some Block, Some Block)
   | Ledger_broken -> (None, None, Some Block)
   | Pack_mismatch -> (None, None, None)
 

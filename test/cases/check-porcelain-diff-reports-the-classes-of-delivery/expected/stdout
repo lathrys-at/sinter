@@ -1,0 +1,7 @@
+block	renamed-step	.plans/p.md	3	1	3	15	step:p@0a1b2c/old-name	the base delivers step:p@0a1b2c/old-name, and the plan has no step with the slug old-name now
+block	merged-incomplete	.plans/p.md	11	1	11	8	step:p@0a1b2c/part	step:p@0a1b2c/part has 1 of its 2 promises met
+block	mark-without-change	.plans/p.md	20	1	20	18	step:p@0a1b2c/tidy	the diff adds the mark of step:p@0a1b2c/tidy, and it changes no file in the scope of the step
+block	unmarked-step	.plans/p.md	23	1	23	11	step:p@0a1b2c/write-d	the diff makes the promises of step:p@0a1b2c/write-d met, and the step has no mark
+block	stale-mark	.plans/p.md	31	1	31	18	step:p@0a1b2c/clean	the mark of step:p@0a1b2c/clean names 222222, and the step hash starts with e0254b
+block	merged-incomplete	.plans/p.md	34	1	34	17	step:p@0a1b2c/write-e-and-f	step:p@0a1b2c/write-e-and-f has 1 of its 2 promises met
+block	mark-on-unmet-step	.plans/p.md	39	1	39	18	step:p@0a1b2c/write-e-and-f	step:p@0a1b2c/write-e-and-f is marked as delivered, and 1 of its 2 promises are not met

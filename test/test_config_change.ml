@@ -39,7 +39,7 @@ let defaults =
     "setting:proof.design \"declaration\"";
     "setting:proof.plan \"declaration\"";
     "setting:proof.req \"declaration\"";
-    "setting:proof.step \"change\"";
+    "setting:proof.step \"delivered\"";
     "setting:proof.verifies \"whole-run\"";
   ]
 
@@ -245,7 +245,7 @@ let a_written_default_is_no_change () =
         decision = \"declaration\"\n\
         plan = \"declaration\"\n\
         verifies = \"whole-run\"\n\
-        step = \"change\"\n\
+        step = \"delivered\"\n\
         [check]\n\
         warn-only = false\n")
 
@@ -353,16 +353,16 @@ let rows =
       "proof.verifies: \"each-test\" -> \"whole-run\" (weakens)" );
     ( "",
       "[proof]\nstep = \"promises\"\n",
-      "proof.step: \"change\" -> \"promises\" (strengthens)",
-      "proof.step: \"promises\" -> \"change\" (weakens)" );
+      "proof.step: \"delivered\" -> \"promises\" (strengthens)",
+      "proof.step: \"promises\" -> \"delivered\" (weakens)" );
     ( "[proof]\nstep = \"approval\"\n",
       "[proof]\nstep = \"promises\"\n",
       "proof.step: \"approval\" -> \"promises\" (strengthens)",
       "proof.step: \"promises\" -> \"approval\" (weakens)" );
     ( "",
       "[proof]\nstep = \"approval\"\n",
-      "proof.step: \"change\" -> \"approval\" (changes)",
-      "proof.step: \"approval\" -> \"change\" (changes)" );
+      "proof.step: \"delivered\" -> \"approval\" (changes)",
+      "proof.step: \"approval\" -> \"delivered\" (changes)" );
   ]
 
 let each_row_of_the_direction_table_holds_both_ways () =
@@ -686,7 +686,7 @@ let config =
         optional [ "proof"; "step" ]
           (map
              (fun c -> Text c)
-             (oneof_list [ "change"; "approval"; "promises" ]));
+             (oneof_list [ "delivered"; "approval"; "promises" ]));
       ]
     >|= List.concat)
 
@@ -1015,7 +1015,7 @@ let proof_defaults =
     ([ "proof"; "decision" ], "declaration");
     ([ "proof"; "plan" ], "declaration");
     ([ "proof"; "verifies" ], "whole-run");
-    ([ "proof"; "step" ], "change");
+    ([ "proof"; "step" ], "delivered");
   ]
 
 let each_key_of_proof_has_its_written_value_or_its_default =

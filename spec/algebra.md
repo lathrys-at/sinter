@@ -230,7 +230,7 @@ citation is still a citation.
 | `scope(S)` | plan, step, rule, claim | located facts and hunks whose `path` matches the effective scope of some member of `S`. A step's effective scope is the step's own `@scope` when the step declares one; otherwise it is the plan's scope. A plan's effective scope is the union of the effective scopes of its steps. A rule's scope is its `scope` field. `∅` when `S` holds no scope-bearing fact |
 | `promises(S)` | plan, step | promise facts whose step or plan is in `S` |
 | `met(P)` | promise | the promises in `P` that are met, as defined in [vocabulary.md](vocabulary.md) section 10.5 |
-| `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met. For a step with no promises, the first condition depends on `proof.step` ([manifest.md](manifest.md) section 10.4): under `"change"`, the step's scope intersects `changed(base)`; under `"approval"`, the step is approved (section 6.5); under `"promises"`, the condition never holds. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unmeasured` when `proof.verifies` is `"whole-run"` ([manifest.md](manifest.md) section 10.3). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
+| `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met. For a step with no promises, the first condition depends on `proof.step` ([manifest.md](manifest.md) section 10.4): under `"delivered"`, the step has a mark that counts ([vocabulary.md](vocabulary.md) section 10.8); under `"approval"`, the step is approved (section 6.5); under `"promises"`, the condition never holds. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unmeasured` when `proof.verifies` is `"whole-run"` ([manifest.md](manifest.md) section 10.3). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
 
 ### 6.5 Status predicates
 
@@ -242,7 +242,7 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 | `approved(S)` | any | A kind needs approval when its key `proof.<kind>` is `"approval"` ([manifest.md](manifest.md) section 10.1). The predicate keeps `f` when any one of these conditions holds: `f` is a declaration of a kind that needs approval, and the ledger holds an approval for `f`'s `(slug, rev, xh)`; `f` is a declaration of a kind that does not need approval; `f` is a plan, the kind `plan` needs approval, and `f`'s current commitment set is approved against the plan's latest approved set ([ledger.md](ledger.md) section 11); `f` is a plan, and the kind `plan` does not need approval; `f` is a step without promises, `proof.step` is `"approval"` ([manifest.md](manifest.md) section 10.4), and the ledger holds an approval of `f` that matches its current step hash ([ledger.md](ledger.md) section 5.1); `f` is a step, the plan of `f` is approved, and `f` has promises or `proof.step` is not `"approval"`; `f` is a fact of any other kind |
 | `bumped(S)` | node | `f` is a declaration, and the fact set of `B` holds no declaration with the slug of `f`, or holds one with a smaller revision. The compare is by slug, across the kinds that share the namespace ([vocabulary.md](vocabulary.md) section 9) |
 | `declined(S)` | node | `f` is a declaration or a plan with a live decline: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
-| `waiting(P)` | promise | The tag target of the promise is a slug that no declaration in `T` declares, and that some claim promises to declare. This case means that the current branch and the claim's branch are ordered, not that the promise is broken. The tool reports `waiting-on` for it, and not `dangling` |
+| `waiting(P)` | promise | The tag target of the promise is a slug that no declaration in `T` declares, and that some claim promises to declare. A claim is an open plan that the ledger holds an approval of, and whose full form `T` does not hold ([ledger.md](ledger.md) section 10.2). This case means that the work of the claim comes first, not that the promise is broken. The tool reports `waiting-on` for it, and not `dangling` |
 
 ### 6.6 Edge predicates
 
@@ -429,7 +429,8 @@ A finding that exists at the base and still exists in the working tree
 is pre-existing; diff mode does not report it. A finding absent at the
 base is what the diff introduced. The diff-relative classes —
 `unbumped`, `unplanned-change`, `config-changed`, `code-drift`,
-`renamed`, `promise-collision` — have `F(b) = ∅` by construction and
+`renamed`, `promise-collision`, `mark-without-change`,
+`unmarked-step`, `renamed-step` — have `F(b) = ∅` by construction and
 appear in both modes. So a check in tree mode also reads the base, and
 reports these classes.
 
@@ -500,11 +501,15 @@ column to `warn`, at every gate. `sinter init` writes
 | `parse-error` | file | *engine*: a governed file with a parse failure ([packs.md](packs.md) section 5.2). In a file of a fetched pack, the file's facts are absent. In a markdown file, the facts stay, one finding sits at each error, and the tier of such a finding is `warn` where the class's tier is `block` | tree | · | · | warn, block, block |
 | `typo-tag` | line | *engine*: a tag line whose tag word ([vocabulary.md](vocabulary.md) section 3.1) is not in the vocabulary and lies within Damerau–Levenshtein distance 2 of a word of the vocabulary. The pack's foreign vocabulary is exempt. The fix writes the nearest word of the vocabulary in place of the tag word. When two words are equally near, it writes the first in byte order, as [manifest.md](manifest.md) section 4.2 does for keys | tree | · | F | warn, warn, warn |
 | `ignored-tag` | line | *engine*: in markdown, a paragraph that a section or a list item holds directly, that is not the first paragraph of that section or list item, that no block quote holds, and whose first line is a tag line. The scanner reads no tag in it ([packs.md](packs.md) section 7.2) | tree | · | · | warn, warn, warn |
-| `invalid-target` | tag | *engine*: a tag target that fails its pattern: a slug that fails the slug pattern, an external id whose namespace is undeclared or whose id fails the pattern of its namespace, or a tag target of `@plan` that fails the rules of the full form ([vocabulary.md](vocabulary.md) sections 4.1, 4.2, and 4.3). Such a tag target is never `dangling` | tree | · | · | block, block, block |
-| `duplicate` | tag or line | *engine*: two slugs in one namespace that are equal, or that differ only in case ([vocabulary.md](vocabulary.md) section 4.1): two declarations; two open plans; or two steps of one plan. Two plans of any state with one full form ([vocabulary.md](vocabulary.md) section 4.3) are also a group. Order the facts of one such group by the byte order of their paths, and then by their lines. Each fact after the first gives one finding. Its subject is the tag of that fact or, for a step, the line of the step's heading ([jsonl.md](jsonl.md) section 9). A plan that both rules of plans report gives one finding, by the rule of the full form. The `detail` names the rule that applies | tree | · | · | block, block, block |
+| `invalid-target` | tag | *engine*: a tag target that fails its pattern: a slug that fails the slug pattern, an external id whose namespace is undeclared or whose id fails the pattern of its namespace, a tag target of `@plan` that fails the rules of the full form, or a tag target of `@delivered` that is not a mark hash, or a `@delivered` tag with no tag target ([vocabulary.md](vocabulary.md) sections 4.1, 4.2, 4.3, and 4.4). Such a tag target is never `dangling` | tree | · | · | block, block, block |
+| `duplicate` | tag or line | *engine*: two slugs in one namespace that are equal, or that differ only in case ([vocabulary.md](vocabulary.md) section 4.1): two declarations; two open plans; or two steps of one plan. Two plans of any state with one full form ([vocabulary.md](vocabulary.md) section 4.3) are also a group. Order the facts of one such group by the byte order of their paths, and then by their lines. Each fact after the first gives one finding. Its subject is the tag of that fact or, for a step, the line of the step's heading ([jsonl.md](jsonl.md) section 9). A plan that both rules of plans report gives one finding, by the rule of the full form. The `@delivered` tags of the tag block of one step are also a group, in the order of their lines: the first is the mark of the step, and each later one gives one finding, whose subject is its tag ([vocabulary.md](vocabulary.md) section 10.8). The `detail` names the rule that applies | tree | · | · | block, block, block |
 | `scope-outside-plan` | step | *engine*: a step whose `@scope` is not contained in its plan's `@scope`. The tool decides containment on the plain globs ([manifest.md](manifest.md) section 7.2), by the rule of glob containment of [ledger.md](ledger.md) section 11: each plain glob of the step must be contained in a plain glob of the plan. A `!` glob of the step only narrows the step's scope, so it never breaks containment | tree | · | · | block, block, — |
 | `step-without-promises` | step | *engine*: a step without promises of an open plan, while `proof.step` is `"promises"` ([manifest.md](manifest.md) section 10.4). The finding sits at the heading of the step. It has no fix | tree | · | · | block, block, block |
-| `misplaced-plan` | tag | *engine*: a `@plan` tag that does not stand in the first tag block of a file under `.plans/`: a `@plan` outside `.plans/**`, or a `@plan` in a later block of a file under `.plans/` ([vocabulary.md](vocabulary.md) section 10.1) | tree | · | · | block, block, block |
+| `stale-mark` | step | *engine*: a step of an open plan whose mark does not count: its mark hash is not the first six hex digits of the current step hash ([vocabulary.md](vocabulary.md) section 10.8). A mark whose tag target is not a mark hash is `invalid-target` only. The finding sits at the mark. The fix writes the first six hex digits of the step hash in place of the mark hash | tree | · | F | block, block, block |
+| `mark-without-change` | step | *engine*: a step whose mark the diff adds ([vocabulary.md](vocabulary.md) section 10.7), when no hunk of the diff lies in the effective scope of the step, apart from the hunks of the plan file. A new mark hash on a step whose mark counts in `B` is no added mark, so the repair of a stale mark gives no finding. The finding sits at the mark. It has no fix | diff | · | · | block, block, — |
+| `mark-on-unmet-step` | step | *engine*: a step of an open plan with a mark that counts and a promise that is not met. A promise counts as met by the rule of section 9.2. The finding sits at the mark, and its related places are the promises that are not met. It has no fix | tree | · | · | block, block, block |
+| `unmarked-step` | step | *engine*: a step with promises and no mark, when the diff makes its promises met: each promise is met in `T`, and some promise is not met in `B`. A promise counts as met by the rule of section 9.2. A promise is met in `B` when the fact set of `B` holds a fact that meets it inside the effective scope of the step in `T`, or inside the default location of its kind ([vocabulary.md](vocabulary.md) section 10.5); no plan of `B` is needed. So a plan whose promises the base already meets gives no finding in the pull request that brings the plan. A step that has a mark gives no finding, because `stale-mark` or `invalid-target` reports that mark. The finding sits at the heading of the step. The fix inserts the line `@delivered <hash>` after the last tag line of the tag block of the step, where `<hash>` is the first six hex digits of the step hash | diff | · | F | —, block, — |
+| `misplaced-plan` | tag | *engine*: a `@plan` tag outside the first tag block of a file under `.plans/`, or a `@delivered` tag outside the tag block of a step. A `@plan` outside `.plans/**` and a `@plan` in a later block of a file under `.plans/` are misplaced ([vocabulary.md](vocabulary.md) section 10.1). A `@delivered` tag in a file that is not a plan file, in the first tag block of a plan file, or in a block of a step other than its tag block is misplaced ([vocabulary.md](vocabulary.md) section 10.8) | tree | · | · | block, block, block |
 | `missing-plan-id` | plan | *engine*: a plan whose `@plan` tag has no plan id ([vocabulary.md](vocabulary.md) section 4.3). The fix inserts `@` and a plan id at the end of the tag target. That plan id is the first six hex digits of the SHA-256 of three parts, as UTF-8 bytes: the object id of the base commit in lowercase hex (the field `base` of the `index` record, [jsonl.md](jsonl.md) section 10), one LF, and the path of the plan file, relative to the repository root | tree | · | F | block, block, block |
 | `unpinned` | edge | *engine*: a `satisfies`, `verifies`, `refines`, or `supersedes` edge without a revision | tree | · | F | block, block, block |
 | `dangling` | edge | `dangling(kind(edge))`, minus edges whose tag target a claim promises to declare — those surface as `waiting-on` instead — and minus the edges that `renamed` reports (*engine* performs these subtractions). When the tag target differs from a declared slug only in case, the fix of the finding writes the declared spelling in place of the tag target | tree | · | · | block, block, block |
@@ -530,14 +535,15 @@ column to `warn`, at every gate. `sinter init` writes
 | `unmet-promise` | promise | `unmet(active)` where `unmet(p) = promises($p) - met(promises($p))` — incompleteness | tree | · | · | —, off, — |
 | `promise-out-of-scope` | promise | *engine*: a promise met only by facts outside its step's scope | tree | · | · | warn, warn, — |
 | `unverified-promise` | promise | *engine*: a promised `req` or `design` with no promised `verifies` of it in the same plan | tree | · | · | warn, warn, — |
-| `promise-collision` | promise | *engine*: a promised declaration whose slug a claim promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise of the same plan with the same step, word, and target. A plan of `B` and a plan of `T` are the same plan when their full forms are equal ([vocabulary.md](vocabulary.md) section 4.3), or when the plan of `B` has no plan id and the two have the same slug and the same path. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered, and a plan id added to a plan makes none of its promises new. A tool that does not read the ledger has no claims, so it reports only the second case | diff | · | · | block, block, — |
+| `promise-collision` | promise | *engine*: a promised declaration whose slug a claim promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise of the same plan with the same word and target, in any step, so that a rename of a step gives no finding of this class. A plan of `B` and a plan of `T` are the same plan when their full forms are equal ([vocabulary.md](vocabulary.md) section 4.3), or when the plan of `B` has no plan id and the two have the same slug and the same path. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered, and a plan id added to a plan makes none of its promises new. A tool that does not read the ledger has no claims, so it reports only the second case | diff | · | · | block, block, — |
+| `renamed-step` | step | *engine*: a step of a plan of `B` that is delivered in `B`, when the same plan of `T`, by the rule of `promise-collision`, has no step of its slug: a rename, a split, a merge, or a removal lost the slug. A step is delivered in `B` when its mark counts in `B`, or when a promise of the step is met in `B`; a promise counts as met by the rule of section 9.2. Each lost slug gives one finding. Its subject is the step of `B`, and it sits at the `@plan` tag of the plan of `T`. It has no fix | diff | · | · | block, block, — |
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets. Two scopes intersect when a plain glob of one contains a plain glob of the other, or is contained in it, by the rule of glob containment of [ledger.md](ledger.md) section 11 | tree | · | · | warn, warn, — |
 | `waiting-on` | promise | `waiting(promises(kind(plan)))` — reported in place of `dangling`, with the claim and step named | tree | · | · | off, warn, — |
-| `branch-overlap` | step | *engine*: a step's scope intersects the scope of another branch's claim | tree | · | · | warn, warn, — |
+| `branch-overlap` | step | *engine*: a step's scope intersects the scope of a claim | tree | · | · | warn, warn, — |
 | `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - exempt`. The engine also exempts each hunk that is a mechanical repair (section 9.1). The detail is `no step of an open plan, no rule, and no exempt path covers <path>`. The finding has no fix | diff | · | · | block, block, — |
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's `expect` is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
 | `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 13.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
-| `merged-incomplete` | plan | *engine*: an open plan on the default branch that fails the completion condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |
+| `merged-incomplete` | step | *engine*: a step of an open plan with some of its promises met and some not: a step merged in part. A promise counts as met by the rule of section 9.2. The finding sits at the heading of the step, and its related places are the promises that are not met. It has no fix | tree | · | · | —, block, block |
 | `ledger-broken` | ledger | *engine*: ledger verification fails | tree | · | · | —, —, block |
 | `pack-mismatch` | pack | *engine*: the hash of a fetched pack in the cache does not match the hash that the lock file `sinter.lock` fixes for it. The built-in pack `markdown` is not in the lock file. The class takes no tier at any gate: the tool stops with exit code 3 | tree | · | · | — |
 
@@ -545,10 +551,11 @@ column to `warn`, at every gate. `sinter init` writes
 incompleteness classes. They take no tier at the gate `turn`, so a
 check at that gate never reports them. A manifest cannot give them a
 tier there ([manifest.md](manifest.md) section 11.2). `sinter status`
-reports them, and the check that closes a plan (`status --done` and
-the completion condition in [ledger.md](ledger.md)) reads them. Every
-other class is a violation, or a signal about the health of the
-repository's checking machinery.
+reports them. `status --done` exits 0 when the steps that the branch
+delivers ([vocabulary.md](vocabulary.md) section 10.7) are done. The
+job that closes plans checks the completion condition of
+[ledger.md](ledger.md) section 8. Every other class is a violation, or
+a signal about the health of the repository's checking machinery.
 
 ### 9.1 Mechanical repairs
 
@@ -573,7 +580,9 @@ report such a hunk. These are the changes:
   `missing-plan-id`).
 
 When Sinter adds a fix, the change that its edits make joins this
-list.
+list. A fix that edits only plan files, such as the fix of
+`stale-mark`, need not join the list: each plan file is an exempt
+path, so a hunk of a plan file is never an unplanned change.
 
 A hunk that holds no line is not a mechanical repair. Examples are
 the hunk of a binary file and the hunk of an added empty file.
@@ -595,6 +604,21 @@ a bump of a declaration can write any higher revision, and an added
 plan id can be any six lowercase hex digits. The column of
 the `@` and the rest of each line of the pair, the inline description,
 must be equal.
+
+### 9.2 Promises without evidence
+
+The classes `mark-on-unmet-step`, `unmarked-step`, `renamed-step`, and
+`merged-incomplete` read a promised `@verifies` in one more way. When
+no evidence set exists for the tree (global rule 3), a promised
+`@verifies` counts as met for these classes when a `verifies` edge
+with its tag target exists inside the effective scope of the step, its
+source is a test, its tag target resolves, and it is not suspect. A
+`verifies` edge whose source is not a test is at rung `wrong-source`
+(section 6.7), and it never counts. When an evidence set exists, the
+rung decides, as [vocabulary.md](vocabulary.md) section 10.5 says. The
+rule applies to these classes alone: `done()` and the completion
+condition of [ledger.md](ledger.md) section 8 read every promise as
+section 10.5 says.
 
 ## 10. Evaluation, ordering, and errors
 

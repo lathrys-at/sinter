@@ -82,10 +82,10 @@ let verifies_name = function
   | Whole_run -> "whole-run"
   | Each_test -> "each-test"
 
-type step = Change | Step_approval | Promises
+type step = Delivered | Step_approval | Promises
 
 let step_name = function
-  | Change -> "change"
+  | Delivered -> "delivered"
   | Step_approval -> "approval"
   | Promises -> "promises"
 
@@ -661,7 +661,7 @@ let proof_place reading =
       | "step" ->
           Ok
             (word reading ~key:[ "proof"; "step" ]
-               [ Change; Step_approval; Promises ] step_name (fun value ->
+               [ Delivered; Step_approval; Promises ] step_name (fun value ->
                  reading.step <- value))
       | "agent-markers" ->
           Ok
@@ -881,7 +881,7 @@ let new_reading () =
     approvals = [];
     agent_markers = [];
     verifies = Whole_run;
-    step = Change;
+    step = Delivered;
   }
 
 let check_runners_of_packs reading =

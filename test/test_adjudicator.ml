@@ -56,6 +56,69 @@ let compared ?(findings = []) base tree =
 
 let strings = Alcotest.(list string)
 
+let marked ?(changed = []) base tree =
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) ->
+         finding.finding_class = Finding_class.Mark_without_change)
+       (Adjudicator.classes ~changed ~base:(facts base) (facts tree) []))
+
+let mark_plan ?(id = "p@0a1b2c") ?(text = "Text.") mark =
+  ( ".plans/p.md",
+    "# P\n\n@plan " ^ id ^ "\n@scope **\n\n## Do it\n\n@scope lib/**\n" ^ mark
+    ^ text ^ "\n" )
+
+let hash_of (path, text) =
+  match Facts.plans (facts [ (path, text) ]) with
+  | [ { steps = step :: _; _ } ] -> Facts.mark_hash step
+  | _ -> Alcotest.fail "the plan has no step"
+
+let mark_without_change_sits_at_a_mark_with_no_change_in_scope () =
+  let hash = hash_of (mark_plan "") in
+  let mark = mark_plan ("@delivered " ^ hash ^ "\n") in
+  let finding =
+    [
+      ".plans/p.md:9 | finding:mark-without-change:step:p@0a1b2c/do-it | the \
+       diff adds the mark of step:p@0a1b2c/do-it, and it changes no file in \
+       the scope of the step";
+    ]
+  in
+  Alcotest.check strings "no change" finding
+    (marked ~changed:[ ".plans/p.md"; "docs/a.md" ] [ mark_plan "" ] [ mark ]);
+  Alcotest.check strings "a change in the scope" []
+    (marked ~changed:[ ".plans/p.md"; "lib/a.ml" ] [ mark_plan "" ] [ mark ]);
+  Alcotest.check strings "a new plan" finding (marked [] [ mark ]);
+  Alcotest.check strings "the mark was there" [] (marked [ mark ] [ mark ]);
+  Alcotest.check strings "the mark was there, beside another plan" []
+    (marked
+       [ (".plans/a.md", "# A\n\n@plan a@111111\n\n## One\n\n@req z\n"); mark ]
+       [ mark ])
+
+let a_new_hash_on_a_mark_that_counted_is_no_added_mark () =
+  let edited mark = mark_plan ~text:"Other text." mark in
+  let new_hash = hash_of (edited "") in
+  let old_hash = hash_of (mark_plan "") in
+  Alcotest.(check bool)
+    "the edit changes the hash" false
+    (String.equal new_hash old_hash);
+  Alcotest.check strings "a repair of a mark that counted" []
+    (marked
+       [ mark_plan ("@delivered " ^ old_hash ^ "\n") ]
+       [ edited ("@delivered " ^ new_hash ^ "\n") ]);
+  Alcotest.check strings "a new hash on a mark that was stale"
+    [
+      ".plans/p.md:9 | finding:mark-without-change:step:p@0a1b2c/do-it | the \
+       diff adds the mark of step:p@0a1b2c/do-it, and it changes no file in \
+       the scope of the step";
+    ]
+    (marked
+       [ mark_plan "@delivered 000000\n" ]
+       [ edited ("@delivered " ^ new_hash ^ "\n") ]);
+  Alcotest.check strings "the same plan without its id in the base" []
+    (marked
+       [ mark_plan ~id:"p" ("@delivered " ^ old_hash ^ "\n") ]
+       [ mark_plan ("@delivered " ^ old_hash ^ "\n") ])
+
 let a_tombstone_names_each_fact_that_the_working_tree_lacks () =
   let base =
     facts
@@ -383,9 +446,13 @@ let collisions ~base:(base_path, base_target) (path, target) =
   in
   let declared = ("docs/a.md", "# A\n\n@req taken v1\n") in
   List.length
-    (compared
-       [ declared; (base_path, plan base_target) ]
-       [ declared; (path, plan target) ])
+    (List.filter
+       (fun (finding : Finding.t) ->
+         finding.finding_class = Finding_class.Promise_collision)
+       (Adjudicator.classes
+          ~base:(facts [ declared; (base_path, plan base_target) ])
+          (facts [ declared; (path, plan target) ])
+          []))
 
 let the_same_plan_across_the_base_holds_its_promises () =
   Alcotest.(check (list int))
@@ -517,7 +584,10 @@ let a_base_without_the_same_files_gives_the_same_classes =
       let found = Findings.of_facts tree ~base:base_commit ~not_text:[] in
       let tombstone (t : Adjudicator.tombstone) = t.was in
       List.map show (Adjudicator.classes ~base:full tree found)
-      = List.map show (Adjudicator.classes ~same ~base:part tree found)
+      = List.map show
+          (Adjudicator.classes ~same
+             ~whole_base:(lazy full)
+             ~base:part tree found)
       && List.map tombstone (Adjudicator.tombstones ~base:full tree)
          = List.map tombstone (Adjudicator.tombstones ~same ~base:part tree))
 
@@ -670,8 +740,206 @@ let promise_collision_marks_the_target () =
 
 let case name f = Alcotest.test_case name `Quick f
 
+let unmarked ?same ?whole_base base tree =
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) ->
+         finding.finding_class = Finding_class.Unmarked_step)
+       (Adjudicator.classes ?same ?whole_base ~base:(facts base) (facts tree) []))
+
+let promise_plan mark =
+  ( ".plans/p.md",
+    "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Do it\n\n@req a\n" ^ mark
+    ^ "Text.\n" )
+
+let declared = ("docs/a.md", "# A\n\n@req a\n")
+
+let scoped_plan mark =
+  ( ".plans/p.md",
+    "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Do it\n\n@scope docs/**\n@req a\n"
+    ^ mark ^ "Text.\n" )
+
+let unmarked_step_sits_at_a_step_that_the_diff_makes_met () =
+  let hash = hash_of (promise_plan "") in
+  Alcotest.check strings "the diff declares a"
+    [
+      Printf.sprintf
+        ".plans/p.md:6 | finding:unmarked-step:step:p@0a1b2c/do-it | the diff \
+         makes the promises of step:p@0a1b2c/do-it met, and the step has no \
+         mark | fix: @delivered %s"
+        hash;
+    ]
+    (unmarked [ promise_plan "" ] [ promise_plan ""; declared ]);
+  Alcotest.check strings "a new plan with its promise met"
+    [
+      Printf.sprintf
+        ".plans/p.md:6 | finding:unmarked-step:step:p@0a1b2c/do-it | the diff \
+         makes the promises of step:p@0a1b2c/do-it met, and the step has no \
+         mark | fix: @delivered %s"
+        hash;
+    ]
+    (unmarked [] [ promise_plan ""; declared ]);
+  Alcotest.check strings "a mark that counts" []
+    (unmarked
+       [ promise_plan "" ]
+       [ promise_plan ("@delivered " ^ hash ^ "\n"); declared ]);
+  Alcotest.check strings "a stale mark" []
+    (unmarked
+       [ promise_plan "" ]
+       [ promise_plan "@delivered 000000\n"; declared ]);
+  Alcotest.check strings "a new plan whose promise the base meets" []
+    (unmarked [ declared ] [ promise_plan ""; declared ]);
+  Alcotest.check strings "a new plan whose citation the base holds" []
+    (unmarked
+       [ ("docs/guide.md", "# G\n\n@cites gh/1\n") ]
+       [
+         ( ".plans/p.md",
+           "# P\n\n@plan p@0a1b2c\n@scope docs/**\n\n## Do it\n\n@cites gh/1\n"
+         );
+         ("docs/guide.md", "# G\n\n@cites gh/1\n");
+       ]);
+  Alcotest.check strings "the base meets it outside the scope of the step"
+    [
+      ".plans/p.md:6 | finding:unmarked-step:step:p@0a1b2c/do-it | the diff \
+       makes the promises of step:p@0a1b2c/do-it met, and the step has no mark \
+       | fix: @delivered "
+      ^ hash_of (scoped_plan "");
+    ]
+    (unmarked
+       [ scoped_plan ""; ("lib/a.md", "# A\n\n@req a\n") ]
+       [ scoped_plan ""; ("docs/a.md", "# A\n\n@req a\n") ]);
+  Alcotest.check strings "met in the base already" []
+    (unmarked [ promise_plan ""; declared ] [ promise_plan ""; declared ]);
+  Alcotest.check strings "not met in the tree" []
+    (unmarked [ promise_plan "" ] [ promise_plan "" ])
+
+let unmarked_step_reads_the_unchanged_files_of_the_base () =
+  let base_plan = promise_plan "" in
+  let tree_plan =
+    let path, text = promise_plan "" in
+    (path, text ^ "More text.\n")
+  in
+  let unchanged path = String.equal path "docs/a.md" in
+  Alcotest.check strings "the meeting fact sits in an unchanged file" []
+    (unmarked ~same:unchanged
+       ~whole_base:(lazy (facts [ base_plan; declared ]))
+       [ base_plan ] [ tree_plan; declared ])
+
+let the_fix_of_unmarked_step_makes_a_mark_that_counts () =
+  let path, text = promise_plan "" in
+  match
+    List.filter
+      (fun (finding : Finding.t) ->
+        finding.finding_class = Finding_class.Unmarked_step)
+      (Adjudicator.classes
+         ~base:(facts [ (path, text) ])
+         (facts [ (path, text); declared ])
+         [])
+  with
+  | [ { fix = Some fix; _ } ] -> (
+      let marked = Edits.apply text (List.hd (Fix.alternatives fix)) in
+      Alcotest.(check bool)
+        "one more line" true
+        (String.length marked > String.length text);
+      match Facts.plans (facts [ (path, marked) ]) with
+      | [ { steps = [ step ]; _ } ] ->
+          Alcotest.(check bool) "the mark counts" true (Facts.delivered step)
+      | _ -> Alcotest.fail "one plan with one step")
+  | _ -> Alcotest.fail "one unmarked-step with a fix"
+
+let renamed_steps ?same ?whole_base base tree =
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) ->
+         finding.finding_class = Finding_class.Renamed_step
+         || finding.finding_class = Finding_class.Promise_collision)
+       (Adjudicator.classes ?same ?whole_base ~base:(facts base) (facts tree) []))
+
+let steps_plan steps =
+  (".plans/p.md", "# P\n\n@plan p@0a1b2c\n@scope **\n" ^ steps)
+
+let lost slug =
+  Printf.sprintf
+    ".plans/p.md:3 | finding:renamed-step:step:p@0a1b2c/%s | the base delivers \
+     step:p@0a1b2c/%s, and the plan has no step with the slug %s now"
+    slug slug slug
+
+let renamed_step_reports_each_lost_slug_of_a_delivered_step () =
+  let a = ("docs/a.md", "# A\n\n@req a\n\n## B\n\n@req b\n") in
+  let one = steps_plan "\n## Do it\n\n@req a\n@req b\n" in
+  Alcotest.check strings "a rename"
+    [ lost "do-it" ]
+    (renamed_steps [ one; a ]
+       [ steps_plan "\n## Do that\n\n@req a\n@req b\n"; a ]);
+  Alcotest.check strings "a split"
+    [ lost "do-it" ]
+    (renamed_steps [ one; a ]
+       [ steps_plan "\n## Do a\n\n@req a\n\n## Do b\n\n@req b\n"; a ]);
+  Alcotest.check strings "a removal"
+    [ lost "do-it" ]
+    (renamed_steps [ one; a ] [ steps_plan "\n## Other\n\n@req c\n"; a ]);
+  Alcotest.check strings "a step that is not delivered" []
+    (renamed_steps [ one ] [ steps_plan "\n## Do that\n\n@req a\n@req b\n" ]);
+  Alcotest.check strings "the slug stays" []
+    (renamed_steps [ one; a ]
+       [ steps_plan "\n## Do it\n\n@req a\n@req b\nMore.\n"; a ]);
+  Alcotest.check strings "another plan: a collision, and no renamed-step"
+    [
+      ".plans/p.md:8 | \
+       finding:promise-collision:promise:step:p@111111/do-that:req:a | the \
+       base already declares req:a";
+    ]
+    (renamed_steps [ one; a ]
+       [
+         ( ".plans/p.md",
+           "# P\n\n@plan p@111111\n@scope **\n\n## Do that\n\n@req a\n" );
+         a;
+       ])
+
+let renamed_step_reads_the_mark_of_a_step_without_promises () =
+  let refactor mark =
+    steps_plan ("\n## Tidy\n\n@scope lib/**\n" ^ mark ^ "Tidy it.\n")
+  in
+  let hash = hash_of (refactor "") in
+  Alcotest.check strings "a mark that counts"
+    [ lost "tidy" ]
+    (renamed_steps
+       [ refactor ("@delivered " ^ hash ^ "\n") ]
+       [ steps_plan "\n## Tidy more\n\n@scope lib/**\nTidy it.\n" ]);
+  Alcotest.check strings "a stale mark" []
+    (renamed_steps
+       [ refactor "@delivered 000000\n" ]
+       [ steps_plan "\n## Tidy more\n\n@scope lib/**\nTidy it.\n" ])
+
+let renamed_step_reads_the_unchanged_files_of_the_base () =
+  let a = ("docs/a.md", "# A\n\n@req a\n") in
+  let one = steps_plan "\n## Do it\n\n@req a\n" in
+  Alcotest.check strings "the meeting fact sits in an unchanged file"
+    [ lost "do-it" ]
+    (renamed_steps ~same:(String.equal "docs/a.md")
+       ~whole_base:(lazy (facts [ one; a ]))
+       [ one ]
+       [ steps_plan "\n## Do that\n\n@req a\n"; a ])
+
 let tests =
   [
+    Alcotest.test_case "renamed-step reports each lost slug of a delivered step"
+      `Quick renamed_step_reports_each_lost_slug_of_a_delivered_step;
+    Alcotest.test_case "renamed-step reads the mark of a step without promises"
+      `Quick renamed_step_reads_the_mark_of_a_step_without_promises;
+    Alcotest.test_case "renamed-step reads the unchanged files of the base"
+      `Quick renamed_step_reads_the_unchanged_files_of_the_base;
+    Alcotest.test_case "unmarked-step sits at a step that the diff makes met"
+      `Quick unmarked_step_sits_at_a_step_that_the_diff_makes_met;
+    Alcotest.test_case "unmarked-step reads the unchanged files of the base"
+      `Quick unmarked_step_reads_the_unchanged_files_of_the_base;
+    Alcotest.test_case "the fix of unmarked-step makes a mark that counts"
+      `Quick the_fix_of_unmarked_step_makes_a_mark_that_counts;
+    Alcotest.test_case
+      "mark-without-change sits at a mark with no change in scope" `Quick
+      mark_without_change_sits_at_a_mark_with_no_change_in_scope;
+    Alcotest.test_case "a new hash on a mark that counted is no added mark"
+      `Quick a_new_hash_on_a_mark_that_counted_is_no_added_mark;
     case "unbumped marks the revision or the word"
       unbumped_marks_the_revision_or_the_word;
     case "renamed marks the target and names the new declaration"

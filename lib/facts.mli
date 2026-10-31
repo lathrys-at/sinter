@@ -21,12 +21,20 @@
 type t
 (** The facts of one tree. *)
 
+val may_hold_plan : string -> bool
+(** [may_hold_plan path] is [true] when [path] starts with [.plans/]: only a
+    file at such a path can be a plan file. *)
+
 val make : Manifest.t -> (string * Markdown.t) list -> t
 (** [make manifest files] is the facts of [files]. Each pair is the path of one
     file, relative to the repository root, and the document that
     {!Markdown.read} gave for the file. No path occurs twice. The manifest gives
     the namespaces, the kinds that need approval, and the default locations of
-    the kinds. *)
+    the kinds.
+
+    @raise Invalid_argument
+      if the document of a plan file that gives a plan holds no text of a
+      section ({!Markdown.section.text}). *)
 
 val manifest : t -> Manifest.t
 (** [manifest facts] is the manifest that {!make} took. *)
@@ -56,20 +64,13 @@ val iter_identities :
     [within] is [true], and on each external id that an edge of such a path
     names. [within] is [true] for every path when absent. *)
 
-val needs_changes : t -> bool
-(** [needs_changes facts] is [true] when [proof.step] is ["change"] and a step
-    of a plan has no promise. Only then does {!records} read its argument
-    [changed]. *)
-
-val records : t -> changed:string list -> Jsonl.record list
-(** [records facts ~changed] is every record of [facts], in the order of
+val records : t -> Jsonl.record list
+(** [records facts] is every record of [facts], in the order of
     [(kind, path, line, col, id)], with each record that has no path after the
-    others, in the order of their ids. [changed] is the paths of the files that
-    the diff between the base and the working tree changes, of every pack and of
-    no pack. A step with no promise is done only when [proof.step] is ["change"]
-    and a path of [changed] is in its scope. The record of each step holds its
-    step hash, [csh]: the SHA-256 of the canonical JSON object [{"scope":[...]}]
-    with the globs of its effective scope, each once, sorted in byte order.
+    others, in the order of their ids. A step with no promise is done only when
+    [proof.step] is ["delivered"] and the step has a mark that counts
+    ({!delivered}). The record of each step holds its step hash, [csh], as
+    {!step.hash} gives it.
 
     Every string of the result is valid UTF-8 when every path of [make] is. *)
 
@@ -156,6 +157,20 @@ type step = private {
   own_scope : string list option;  (** the globs of the [@scope] of the step *)
   promises : promise list;
       (** in the order of the file, each word and tag target once *)
+  block : int;
+      (** the index in the blocks of the document of the plan file of the tag
+          block of the step: the block of its first tag line *)
+  marks : Markdown.tag list;
+      (** each tag line of the word [delivered] in the tag block, in the order
+          of the file. The first is the mark of the step ({!mark}). *)
+  hash : string;
+      (** the step hash, as 64 lowercase hexadecimal digits: the SHA-256 of the
+          canonical JSON object with the keys [promises], [scope], and [text].
+          [promises] holds an object with the keys [target] and [word] for each
+          promise, sorted by the word and then by the tag target, in byte order.
+          [scope] holds the globs of the effective scope, each once, in byte
+          order. [text] is the {!Markdown.section.text} of the section of the
+          step. *)
 }
 (** One step of a plan. *)
 
@@ -177,6 +192,18 @@ val declaration_id : declaration -> string
 
 val edge_id : edge -> string
 (** [edge_id edge] is [<word>:<src>-><tag target>]. *)
+
+val mark : step -> Markdown.tag option
+(** [mark step] is the mark of [step]: the first tag line of {!step.marks}, or
+    [None] when the tag block holds no such line. *)
+
+val mark_hash : step -> string
+(** [mark_hash step] is the first six digits of {!step.hash}: the hash that a
+    mark that counts names. *)
+
+val delivered : step -> bool
+(** [delivered step] is [true] when the mark of [step] counts: its tag target is
+    {!mark_hash} [step]. *)
 
 val full_form : plan -> string
 (** [full_form plan] is the full form of [plan]: its slug, then [@] and its plan
@@ -293,6 +320,16 @@ val standing : t -> plan -> step -> promise -> standing
       if [plan] is not one of {!plans} [facts] or [step] is not one of the steps
       of [plan], when it is applied to [step]; and if [promise] is not one of
       the promises of [step], when it is applied to [promise]. *)
+
+val met_within : t -> scope:string list -> word:string -> target:string -> bool
+(** [met_within facts ~scope ~word ~target] is [true] when a fact of [facts]
+    meets a promise of the word [word] and the tag target [target] of a step
+    whose effective scope is [scope], by the rule of {!standing}: a declaration
+    of the kind [word] and the slug [target] in [scope] or in the default
+    location of its kind, or an edge of the word [word] and the tag target
+    [target] in [scope] whose tag target resolves and that is not suspect. No
+    edge of the word [verifies] meets it. The step need not be a step of a plan
+    of [facts]. *)
 
 val index :
   tree:string ->

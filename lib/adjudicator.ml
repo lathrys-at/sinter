@@ -265,8 +265,7 @@ module Keys = Set.Make (struct
   let compare = List.compare String.compare
 end)
 
-let promise_key (step : Facts.step) (promise : Facts.promise) =
-  [ step.slug; promise.word; promise.target ]
+let promise_key (promise : Facts.promise) = [ promise.word; promise.target ]
 
 let promise_collisions ~base ~same facts =
   let candidates =
@@ -292,7 +291,7 @@ let promise_collisions ~base ~same facts =
           (fun keys (step : Facts.step) ->
             List.fold_left
               (fun keys promise ->
-                let key = promise_key step promise in
+                let key = promise_key promise in
                 let keys = Keys.add (Facts.full_form plan :: key) keys in
                 match plan.id with
                 | None -> Keys.add ("" :: plan.slug :: plan.path :: key) keys
@@ -305,8 +304,8 @@ let promise_collisions ~base ~same facts =
           (fun (plan : Facts.plan) -> same plan.path)
           (Facts.plans facts))
   in
-  let held (plan : Facts.plan) step promise =
-    let key = promise_key step promise in
+  let held (plan : Facts.plan) promise =
+    let key = promise_key promise in
     Keys.mem (Facts.full_form plan :: key) promised
     || Keys.mem ("" :: plan.slug :: plan.path :: key) promised
   in
@@ -320,7 +319,7 @@ let promise_collisions ~base ~same facts =
   List.filter_map
     (fun ((plan : Facts.plan), step, (promise : Facts.promise)) ->
       match Names.find_opt promise.target declared with
-      | Some (first :: _) when not (held plan step promise) ->
+      | Some (first :: _) when not (held plan promise) ->
           let id = Facts.promise_id plan step promise in
           Some
             (Finding.make Finding_class.Promise_collision
@@ -335,6 +334,163 @@ let promise_collisions ~base ~same facts =
                ())
       | Some _ | None -> None)
     candidates
+
+let same_plan (old : Facts.plan) (plan : Facts.plan) =
+  String.equal (Facts.full_form old) (Facts.full_form plan)
+  || Option.is_none old.id
+     && String.equal old.slug plan.slug
+     && String.equal old.path plan.path
+
+let base_step plans plan (step : Facts.step) =
+  List.find_map
+    (fun (old : Facts.plan) ->
+      if same_plan old plan then
+        List.find_opt
+          (fun (other : Facts.step) -> String.equal other.slug step.slug)
+          old.steps
+      else None)
+    plans
+
+let adds_mark ~base_plans plan (step : Facts.step) =
+  match Facts.mark step with
+  | None -> false
+  | Some (tag : Markdown.tag) -> (
+      match base_step base_plans plan step with
+      | None -> true
+      | Some old -> (
+          match Facts.mark old with
+          | None -> true
+          | Some (was : Markdown.tag) ->
+              (not (Facts.delivered old)) && was.target <> tag.target))
+
+let marks_without_change ~base ~same ~changed facts =
+  let base_plans = Facts.plans base in
+  let covering = lazy (Facts.covering facts) in
+  List.concat_map
+    (fun (plan : Facts.plan) ->
+      if same plan.path then []
+      else
+        List.filter_map
+          (fun (step : Facts.step) ->
+            let id = Facts.step_id plan step in
+            match Facts.mark step with
+            | Some tag
+              when adds_mark ~base_plans plan step
+                   && not
+                        (List.exists
+                           (fun path ->
+                             (not (String.equal path plan.path))
+                             && List.mem id (Lazy.force covering path))
+                           changed) ->
+                Some
+                  (Finding.make Finding_class.Mark_without_change
+                     (Finding.Fact { id; ack_name = step.slug })
+                     ~place:{ Finding.path = plan.path; span = tag.span }
+                     ~detail:
+                       (Printf.sprintf
+                          "the diff adds the mark of %s, and it changes no \
+                           file in the scope of the step"
+                          id)
+                     ?mark:(Finding.part tag Tag_line.Word "added here")
+                     ())
+            | Some _ | None -> None)
+          plan.steps)
+    (Facts.plans facts)
+
+let met_in facts plan step =
+  let standing = Facts.standing facts plan step in
+  fun promise -> Option.is_some (standing promise).Facts.by
+
+let met_in_base whole_base plan step (promise : Facts.promise) =
+  Facts.met_within whole_base
+    ~scope:(Facts.effective_scope plan step)
+    ~word:promise.word ~target:promise.target
+
+let unmarked_steps ~whole_base facts =
+  let candidates =
+    List.concat_map
+      (fun (plan : Facts.plan) ->
+        List.filter_map
+          (fun (step : Facts.step) ->
+            if
+              step.promises <> []
+              && Option.is_none (Facts.mark step)
+              && List.for_all (met_in facts plan step) step.promises
+            then Some (plan, step)
+            else None)
+          plan.steps)
+      (Facts.plans facts)
+  in
+  List.filter_map
+    (fun ((plan : Facts.plan), (step : Facts.step)) ->
+      let met_before = met_in_base (Lazy.force whole_base) plan step in
+      if List.for_all met_before step.promises then None
+      else
+        let id = Facts.step_id plan step in
+        let fix =
+          Option.map
+            (fun document ->
+              Fix.mark_line document ~block:step.block
+                ~hash:(Facts.mark_hash step))
+            (List.assoc_opt plan.path (Facts.files facts))
+        in
+        Some
+          (Finding.make Finding_class.Unmarked_step
+             (Finding.Fact { id; ack_name = step.slug })
+             ~place:{ Finding.path = plan.path; span = step.span }
+             ~detail:
+               (Printf.sprintf
+                  "the diff makes the promises of %s met, and the step has no \
+                   mark"
+                  id)
+             ?fix ()))
+    candidates
+
+let renamed_steps ~base ~same ~whole_base facts =
+  let plans = Facts.plans facts in
+  List.concat_map
+    (fun (old : Facts.plan) ->
+      if same old.path then []
+      else
+        match List.find_opt (same_plan old) plans with
+        | None -> []
+        | Some (plan : Facts.plan) ->
+            let lost =
+              List.filter
+                (fun (step : Facts.step) ->
+                  not
+                    (List.exists
+                       (fun (other : Facts.step) ->
+                         String.equal other.slug step.slug)
+                       plan.steps))
+                old.steps
+            in
+            let delivered (step : Facts.step) =
+              Facts.delivered step
+              || List.exists
+                   (fun (promise : Facts.promise) ->
+                     Facts.met_within (Lazy.force whole_base)
+                       ~scope:(Facts.effective_scope old step)
+                       ~word:promise.word ~target:promise.target)
+                   step.promises
+            in
+            List.filter_map
+              (fun (step : Facts.step) ->
+                if delivered step then
+                  let id = Facts.step_id old step in
+                  Some
+                    (Finding.make Finding_class.Renamed_step
+                       (Finding.Fact { id; ack_name = step.slug })
+                       ~place:{ Finding.path = plan.path; span = plan.span }
+                       ~detail:
+                         (Printf.sprintf
+                            "the base delivers %s, and the plan has no step \
+                             with the slug %s now"
+                            id step.slug)
+                       ())
+                else None)
+              lost)
+    (Facts.plans base)
 
 let renamed_to ?(same = fun _ -> false) ~base facts =
   let resolve = lazy (Facts.resolve facts)
@@ -354,7 +510,9 @@ let historical facts (finding : Finding.t) =
   | Some place -> Manifest.is_historical (Facts.manifest facts) place.path
   | None -> false
 
-let classes ?(same = fun _ -> false) ~base facts findings =
+let classes ?(same = fun _ -> false) ?(changed = []) ?whole_base
+    ?(wanted = fun _ -> true) ~base facts findings =
+  let whole_base = Option.value whole_base ~default:(lazy base) in
   let tombstones = tombstones ~same ~base facts in
   let renamed = renamed ~base ~same ~tombstones facts in
   let replaced =
@@ -373,4 +531,12 @@ let classes ?(same = fun _ -> false) ~base facts findings =
     @ List.filter
         (fun finding -> not (historical facts finding))
         (unbumped ~base ~same facts @ renamed
-        @ promise_collisions ~base ~same facts))
+        @ promise_collisions ~base ~same facts
+        @ marks_without_change ~base ~same ~changed facts
+        @ (if wanted Finding_class.Unmarked_step then
+             unmarked_steps ~whole_base facts
+           else [])
+        @
+        if wanted Finding_class.Renamed_step then
+          renamed_steps ~base ~same ~whole_base facts
+        else []))

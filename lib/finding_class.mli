@@ -41,6 +41,10 @@ type t =
   | Duplicate
   | Scope_outside_plan
   | Step_without_promises
+  | Stale_mark
+  | Mark_without_change
+  | Mark_on_unmet_step
+  | Unmarked_step
   | Misplaced_plan
   | Missing_plan_id
   | Unpinned
@@ -68,6 +72,7 @@ type t =
   | Promise_out_of_scope
   | Unverified_promise
   | Promise_collision
+  | Renamed_step
   | Scope_overlap
   | Waiting_on
   | Branch_overlap

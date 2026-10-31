@@ -30,11 +30,7 @@
  (dirs :standard .plans))
 
 (subdir
- cases/scan-with-a-base-reads-a-refactor-step-against-it/base
- (dirs :standard .plans))
-
-(subdir
- cases/scan-with-a-base-reads-a-refactor-step-against-it/tree
+ cases/scan-reads-a-refactor-step-as-done-by-its-mark/tree
  (dirs :standard .plans))
 
 (subdir
@@ -43,6 +39,14 @@
 
 (subdir
  cases/check-reports-the-findings-of-plans/tree
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-porcelain-diff-reports-the-classes-of-delivery/base
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-porcelain-diff-reports-the-classes-of-delivery/tree
  (dirs :standard .plans))
 
 (subdir

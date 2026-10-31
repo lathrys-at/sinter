@@ -1,0 +1,7 @@
+check
+--diff
+--gate
+review
+-o
+porcelain
+--no-headers

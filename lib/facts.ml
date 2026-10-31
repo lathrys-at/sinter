@@ -140,6 +140,9 @@ type step = {
   span : Markdown.span;
   own_scope : string list option;
   promises : promise list;
+  block : int;
+  marks : Markdown.tag list;
+  hash : string;
 }
 
 type plan = {
@@ -363,11 +366,10 @@ let ordinary_file ~base ~path (document : Markdown.t) =
   in
   (declarations, edges, sites, acks)
 
+let may_hold_plan path = String.starts_with ~prefix:".plans/" path
+
 let plan_tag ~path (document : Markdown.t) =
-  if
-    String.starts_with ~prefix:".plans/" path
-    && Array.length document.blocks > 0
-  then
+  if may_hold_plan path && Array.length document.blocks > 0 then
     List.find_opt
       (fun index -> String.equal document.tags.(index).word "plan")
       document.blocks.(0).tags
@@ -404,6 +406,26 @@ let promises_of (document : Markdown.t) indices =
          | Some _ | None -> found)
        [] indices)
 
+let step_hash ~scope promises text =
+  Sha256.hex
+    (Jsonl.to_string
+       [
+         ( "promises",
+           Jsonl.objects
+             (List.map
+                (fun (word, target) ->
+                  [
+                    ("target", Jsonl.String target); ("word", Jsonl.String word);
+                  ])
+                (List.sort compare
+                   (List.map
+                      (fun (promise : promise) ->
+                        (promise.word, promise.target))
+                      promises))) );
+         ("scope", Jsonl.strings (List.sort_uniq String.compare scope));
+         ("text", Jsonl.string text);
+       ])
+
 let plan_file ~path (document : Markdown.t) plan_index =
   let plan_tag = document.tags.(plan_index) in
   match Option.map Plan_target.parse plan_tag.target with
@@ -414,9 +436,12 @@ let plan_file ~path (document : Markdown.t) plan_index =
           (fun index -> not (List.mem index first_block))
           (List.init (Array.length document.tags) Fun.id)
       in
+      let plan_scope =
+        Option.value (first_scope document first_block) ~default:[]
+      in
       let step section_index =
         match document.sections.(section_index) with
-        | { level = 2; heading = Some heading; _ } ->
+        | { level = 2; heading = Some heading; text; _ } -> (
             let held =
               List.filter
                 (fun index ->
@@ -426,16 +451,41 @@ let plan_file ~path (document : Markdown.t) plan_index =
             in
             let own_scope = first_scope document held in
             let promises = promises_of document held in
-            if Option.is_none own_scope && promises = [] then None
-            else
-              Some
-                {
-                  slug = heading.slug;
-                  title = heading.text;
-                  span = heading.span;
-                  own_scope;
-                  promises;
-                }
+            match held with
+            | first :: _ when Option.is_some own_scope || promises <> [] ->
+                let block = document.tags.(first).block in
+                let text =
+                  match text with
+                  | Some text -> text
+                  | None ->
+                      invalid_arg
+                        "Facts.make: the document of a plan file holds no \
+                         section text"
+                in
+                Some
+                  {
+                    slug = heading.slug;
+                    title = heading.text;
+                    span = heading.span;
+                    own_scope;
+                    promises;
+                    block;
+                    marks =
+                      List.filter_map
+                        (fun index ->
+                          let tag = document.tags.(index) in
+                          if
+                            String.equal tag.word "delivered"
+                            && tag.block = block
+                          then Some tag
+                          else None)
+                        held;
+                    hash =
+                      step_hash
+                        ~scope:(Option.value own_scope ~default:plan_scope)
+                        promises text;
+                  }
+            | _ -> None)
         | _ -> None
       in
       Some
@@ -448,7 +498,7 @@ let plan_file ~path (document : Markdown.t) plan_index =
             Option.map
               (fun (heading : Markdown.heading) -> heading.text)
               document.sections.(plan_tag.section).heading;
-          scope = Option.value (first_scope document first_block) ~default:[];
+          scope = plan_scope;
           steps =
             List.filter_map step
               (List.init (Array.length document.sections) Fun.id);
@@ -658,13 +708,6 @@ let make manifest files =
                groups)
            Blocks.empty (List.rev acks));
   }
-
-let needs_changes facts =
-  Manifest.step facts.manifest = Manifest.Change
-  && List.exists
-       (fun plan ->
-         List.exists (fun (step : step) -> step.promises = []) plan.steps)
-       facts.plans
 
 type fact = {
   key : string * string * int * int * string;
@@ -892,6 +935,34 @@ let standing facts plan step =
       invalid_arg "Facts.standing: the promise is not one of this step";
     standing_within facts ~in_scope promise
 
+let met_within facts ~scope ~word ~target =
+  let in_scope = Path_set.mem (path_set scope) in
+  if List.mem word declaration_words then
+    let location =
+      Option.bind (manifest_kind word) (Manifest.location facts.manifest)
+    in
+    Array.exists
+      (fun (d : declaration) ->
+        String.equal d.kind word && String.equal d.slug target
+        && (in_scope d.path
+           || Option.fold ~none:false
+                ~some:(fun set -> Path_set.mem set d.path)
+                location))
+      facts.declarations
+  else
+    (not (String.equal word "verifies"))
+    && List.exists2
+         (fun (edge : edge) resolved ->
+           String.equal edge.word word
+           && String.equal edge.target_text target
+           && in_scope edge.path
+           &&
+           match (resolved, edge.rev) with
+           | Declaration index, Some rev -> facts.declarations.(index).rev = rev
+           | Declaration _, None | External _, _ -> true
+           | Unresolved _, _ -> false)
+         facts.edges facts.targets
+
 let full_form (plan : plan) =
   Plan_target.to_string { slug = plan.slug; id = plan.id }
 
@@ -902,10 +973,17 @@ let promise_id plan step (promise : promise) =
   String.concat ":"
     [ "promise"; step_id plan step; promise.word; promise.target ]
 
-let step_hash scope =
-  Sha256.hex (Jsonl.to_string [ ("scope", Jsonl.strings (canonical scope)) ])
+let mark (step : step) =
+  match step.marks with first :: _ -> Some first | [] -> None
 
-let plan_records facts ~changed plan =
+let mark_hash (step : step) = String.sub step.hash 0 6
+
+let delivered step =
+  match mark step with
+  | Some { target = Some target; _ } -> String.equal target (mark_hash step)
+  | Some { target = None; _ } | None -> false
+
+let plan_records facts plan =
   let plan_approved = not (needs_approval facts.manifest Manifest.Plan) in
   let plan_record =
     located ~kind:"plan" ~id:(plan_fact_id plan) ~path:plan.path ~span:plan.span
@@ -950,26 +1028,30 @@ let plan_records facts ~changed plan =
       if total > 0 then met = total
       else
         match Manifest.step facts.manifest with
-        | Manifest.Change -> List.exists in_scope changed
+        | Manifest.Delivered -> delivered step
         | Manifest.Step_approval -> approved
         | Manifest.Promises -> false
     in
     let done_ = verified && settled in
     located ~kind:"step" ~id:step_id ~path:plan.path ~span:step.span
-      [
-        ("plan", Jsonl.string (full_form plan));
-        ("slug", Jsonl.string step.slug);
-        ("title", Jsonl.string step.title);
-        ("scope", Jsonl.strings scope);
-        ("own_scope", Jsonl.bool (Option.is_some step.own_scope));
-        ("refactor", Jsonl.bool (total = 0));
-        ("met", Jsonl.int met);
-        ("total", Jsonl.int total);
-        ("done", Jsonl.bool done_);
-        ("csh", Jsonl.string (step_hash scope));
-        ("approved", Jsonl.bool approved);
-        ("active", Jsonl.bool false);
-      ]
+      ([
+         ("plan", Jsonl.string (full_form plan));
+         ("slug", Jsonl.string step.slug);
+         ("title", Jsonl.string step.title);
+         ("scope", Jsonl.strings scope);
+         ("own_scope", Jsonl.bool (Option.is_some step.own_scope));
+         ("refactor", Jsonl.bool (total = 0));
+         ("met", Jsonl.int met);
+         ("total", Jsonl.int total);
+         ("done", Jsonl.bool done_);
+         ("csh", Jsonl.string step.hash);
+         ("delivered", Jsonl.bool (delivered step));
+         ("approved", Jsonl.bool approved);
+         ("active", Jsonl.bool false);
+       ]
+      @ optional "mark"
+          (Option.bind (mark step) (fun (tag : Markdown.tag) ->
+               Option.map Jsonl.string tag.target)))
     :: List.map
          (fun ((promise : promise), by, out_of_scope) ->
            located ~kind:"promise"
@@ -990,7 +1072,7 @@ let plan_records facts ~changed plan =
   in
   plan_record :: List.concat_map step_records plan.steps
 
-let records facts ~changed =
+let records facts =
   let approved = approved facts.manifest facts.declarations in
   let inforce = facts.inforce in
   List.map
@@ -1003,7 +1085,7 @@ let records facts ~changed =
             edge_records facts;
             site_records facts;
             ack_records facts;
-            List.concat_map (plan_records facts ~changed) facts.plans;
+            List.concat_map (plan_records facts) facts.plans;
           ]))
   @ external_records facts
 

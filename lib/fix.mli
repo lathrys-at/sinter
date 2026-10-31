@@ -61,11 +61,25 @@ val plan_id : Markdown.tag -> Plan_target.id -> t
 
     @raise Invalid_argument if [tag] has no target. *)
 
+val mark_hash : Markdown.tag -> string -> t
+(** [mark_hash tag hash] is the fix of [stale-mark]: the mark hash [hash] in
+    place of the target of the [@delivered] tag [tag].
+
+    @raise Invalid_argument if [tag] has no target. *)
+
 val ack : Markdown.t -> block:int -> target:string -> t
 (** [ack document ~block ~target] is the fix of [retired] when the cited item
     has no successor: the line [@ack retired <target> <hash>] after the last tag
     line of the block at index [block] of [document], where [<hash>] is the
     first eight digits of the block hash.
+
+    @raise Invalid_argument
+      if [block] is not an index of {!Markdown.t.blocks} of [document]. *)
+
+val mark_line : Markdown.t -> block:int -> hash:string -> t
+(** [mark_line document ~block ~hash] is the fix of [unmarked-step]: the line
+    [@delivered <hash>] after the last tag line of the block at index [block] of
+    [document].
 
     @raise Invalid_argument
       if [block] is not an index of {!Markdown.t.blocks} of [document]. *)
@@ -91,6 +105,7 @@ val alternatives : t -> edit list list
       or, when the tag has no revision, the empty span at the end of its target,
       with a space, [v], and the revision.
     - {!spelling}: the target, with the new target.
+    - {!mark_hash}: the target, with the new mark hash.
     - {!plan_id}: the empty span at the end of the target, with [@] and the plan
       id.
     - {!rename} and each successor of {!successors}: the target, with the slug;
@@ -98,7 +113,9 @@ val alternatives : t -> edit list list
       revision, with [v] and the new revision.
     - {!ack}: the empty span at the end of the last tag line of the block,
       before its line ending, with {!Markdown.block.new_line} of the block and
-      then the [@ack] line. *)
+      then the [@ack] line.
+    - {!mark_line}: the same empty span, with {!Markdown.block.new_line} of the
+      block and then the [@delivered] line. *)
 
 val help : t -> string
 (** [help fix] is the help message of [fix], one line for the person who reads
@@ -109,6 +126,7 @@ val help : t -> string
 val text : t -> string
 (** [text fix] is the fix in one string: [@] and the word for {!word}; the head
     of the new tag line, [@<word> <target>] with [ v<rev>] when the new line has
-    a revision, for {!pin}, {!bump}, {!spelling}, {!rename}, and {!plan_id};
-    that head for each successor, joined by [" or "], for {!successors}; and the
-    [@ack] line for {!ack}. *)
+    a revision, for {!pin}, {!bump}, {!spelling}, {!rename}, {!plan_id}, and
+    {!mark_hash}; that head for each successor, joined by [" or "], for
+    {!successors}; the [@ack] line for {!ack}; and the [@delivered] line for
+    {!mark_line}. *)

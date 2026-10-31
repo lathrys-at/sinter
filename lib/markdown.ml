@@ -40,6 +40,7 @@ type section = {
   parent : int option;
   first_paragraph : span option;
   extent : span option;
+  text : string option;
 }
 
 type node = Section_paragraph | Item_paragraph
@@ -335,7 +336,8 @@ and walk_section walk ~parent ~holder section =
   in
   let in_section =
     add walk.sections
-      ({ level; heading; parent; first_paragraph; extent = None }, container)
+      ( { level; heading; parent; first_paragraph; extent = None; text = None },
+        container )
   in
   walk_blocks walk ~container ~in_section ~bearer:Section_paragraph blocks
 
@@ -463,6 +465,28 @@ let extent_lines lines ~holes first last =
   in
   List.rev (drop_blank (List.rev all))
 
+let plain_line lines ~numbered line =
+  let content = Line_index.content lines line in
+  match numbered line with
+  | Some (offset, cut) ->
+      let start = offset - Line_index.first lines line in
+      strip_end
+        (String.sub content 0 start
+        ^ String.sub content (start + cut) (String.length content - start - cut)
+        )
+  | None -> strip_end content
+
+let section_text lines ~at ~numbered first last =
+  let rec drop_blank = function
+    | line :: rest when is_blank_line lines line -> drop_blank rest
+    | kept -> kept
+  in
+  List.init (max 0 (last - first + 1)) (fun offset -> first + offset)
+  |> List.filter (fun line -> Option.is_none (at line))
+  |> drop_blank |> List.rev |> drop_blank |> List.rev
+  |> List.map (fun line -> plain_line lines ~numbered line ^ "\n")
+  |> String.concat ""
+
 let hash_lines lines ~at ~numbered ~own included =
   let normal line =
     match at line with
@@ -476,17 +500,7 @@ let hash_lines lines ~at ~numbered ~own included =
         in
         Some
           (strip_end (prefix ^ Tag_line.without_revision pending.tag_line.rest))
-    | _ -> (
-        let content = Line_index.content lines line in
-        match numbered line with
-        | Some (offset, cut) ->
-            let start = offset - Line_index.first lines line in
-            Some
-              (strip_end
-                 (String.sub content 0 start
-                 ^ String.sub content (start + cut)
-                     (String.length content - start - cut)))
-        | None -> Some (strip_end content))
+    | _ -> Some (plain_line lines ~numbered line)
   in
   Sha256.hex (String.concat "\n" (List.filter_map normal included) ^ "\n")
 
@@ -581,7 +595,7 @@ let new_line lines ~open_end ~line ~at =
       (if crlf then "\r\n" else "\n")
       ^ Tag_line.indent (String.sub text first (at - first))
 
-let assemble lines ~open_end walk errors =
+let assemble lines ~open_end ~texts walk errors =
   let pending = Dynarray.create () and pending_blocks = Dynarray.create () in
   Dynarray.iter (read_paragraph lines pending pending_blocks) walk.paragraphs;
   let pending = Dynarray.to_array pending in
@@ -699,7 +713,16 @@ let assemble lines ~open_end walk errors =
                   Line_index.after lines (Line_index.content_end lines last);
               })
         in
-        { section with extent })
+        let text =
+          if texts then
+            Some
+              (section_text lines ~at ~numbered
+                 (if section.level = 0 then container.first_line
+                  else container.first_line + 1)
+                 container.last_line)
+          else None
+        in
+        { section with extent; text })
       (Dynarray.to_array walk.sections)
   in
   { sections; tags; blocks; unread = Dynarray.to_list walk.unread; errors }
@@ -718,7 +741,7 @@ let columns (tag : tag) part =
           (column range.start, column range.stop))
         (Tag_line.range { Tag_line.word = tag.word; rest = tag.rest } part)
 
-let read reader content =
+let read ?(texts = true) reader content =
   match Sinter_bridge.Utf_8.first_invalid content with
   | Some offset -> Error (Not_utf_8 offset)
   | None -> (
@@ -742,4 +765,4 @@ let read reader content =
               Ok
                 (assemble lines
                    ~open_end:(String.length text <> String.length content)
-                   (structure lines captures) errors)))
+                   ~texts (structure lines captures) errors)))

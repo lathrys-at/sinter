@@ -1275,8 +1275,78 @@ let new_line_ends_the_last_tag_line_and_reaches_its_at =
                    before))
         file.blocks)
 
+let section_text text slug =
+  match read text with
+  | Error _ -> Alcotest.fail "the text gives no document"
+  | Ok file -> (
+      match
+        Array.find_opt
+          (fun (section : Markdown.section) ->
+            match section.heading with
+            | Some heading -> String.equal heading.slug slug
+            | None -> String.equal slug "")
+          file.sections
+      with
+      | Some section -> section.text
+      | None -> Alcotest.failf "no section %s" slug)
+
+let the_text_of_a_section_leaves_out_its_heading_and_its_tag_lines () =
+  let text =
+    "# P\n\n\
+     @plan p\n\n\
+     ## Step one  \n\n\
+     @scope lib/**\n\
+     @delivered abc123\n\
+     Do the work.  \n\
+     More.\n\n\
+     ### 2.1 Detail\n\n\
+     - @req a\n\
+    \  Item prose.\n\n\n\
+     ## Two\n\n\
+     X\n"
+  in
+  Alcotest.(check (option string))
+    "the text of the step"
+    (Some "Do the work.\nMore.\n\n### Detail\n\n  Item prose.\n")
+    (section_text text "step-one");
+  Alcotest.(check (option string))
+    "the text of a nested section" (Some "  Item prose.\n")
+    (section_text text "detail");
+  Alcotest.(check (option string))
+    "the text of the last section" (Some "X\n") (section_text text "two")
+
+let a_section_of_tag_lines_alone_has_an_empty_text () =
+  Alcotest.(check (option string))
+    "the text" (Some "")
+    (section_text "# P\n\n@plan p\n\n## S\n\n@scope a/**\n@req a\n\n" "s")
+
+let the_text_of_a_section_ends_each_line_with_one_lf () =
+  Alcotest.(check (option string))
+    "the text" (Some "One.\nTwo.\n")
+    (section_text "# P\r\n\r\n## S\r\n\r\n@req a\r\nOne. \t\r\nTwo." "s")
+
+let a_read_without_texts_gives_no_text () =
+  match
+    Markdown.read ~texts:false (Lazy.force reader) "# P\n\n## S\n\nText.\n"
+  with
+  | Error _ -> Alcotest.fail "the text gives no document"
+  | Ok file ->
+      Array.iter
+        (fun (section : Markdown.section) ->
+          Alcotest.(check (option string)) "no text" None section.text)
+        file.sections
+
 let tests =
   [
+    Alcotest.test_case
+      "the text of a section leaves out its heading and its tag lines" `Quick
+      the_text_of_a_section_leaves_out_its_heading_and_its_tag_lines;
+    Alcotest.test_case "a section of tag lines alone has an empty text" `Quick
+      a_section_of_tag_lines_alone_has_an_empty_text;
+    Alcotest.test_case "the text of a section ends each line with one LF" `Quick
+      the_text_of_a_section_ends_each_line_with_one_lf;
+    Alcotest.test_case "a read without texts gives no text" `Quick
+      a_read_without_texts_gives_no_text;
     Alcotest.test_case "a read after close is refused" `Quick
       read_after_close_is_refused;
     Alcotest.test_case "create on a closed engine is refused" `Quick

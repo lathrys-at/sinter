@@ -321,7 +321,7 @@ let documents ?phases reader ~root files =
       | Ok content -> (
           match
             Allocation.measure phases "parse" (fun () ->
-                Markdown.read reader content)
+                Markdown.read ~texts:(Facts.may_hold_plan file) reader content)
           with
           | Ok document -> Ok ((file, document) :: documents, not_text)
           | Error (Markdown.Not_utf_8 offset) ->
@@ -332,19 +332,6 @@ let documents ?phases reader ~root files =
     files
   |> Result.map (fun (documents, not_text) ->
       (List.rev documents, List.rev not_text))
-
-let changed_paths repo ~files commit =
-  let* base = repository (Git.read_base repo commit) in
-  let* changes = repository (Git.diff repo ~files ~base) in
-  Ok
-    (List.filter_map
-       (fun (path, change) ->
-         match change with
-         | Git.Modified (Git.Text []) -> None
-         | Git.Added _ | Git.Deleted _
-         | Git.Modified (Git.Binary | Git.Text (_ :: _)) ->
-             Some path)
-       changes)
 
 type tree = {
   repo : Git.t;
@@ -447,7 +434,9 @@ let read_blobs reader repo wanted ~manifest =
     | Ok (documents, not_text, [], _) ->
         Ok (documents, not_text, [], Some content)
     | Ok (documents, not_text, file :: rest, found) -> (
-        match Markdown.read reader content with
+        match
+          Markdown.read ~texts:(Facts.may_hold_plan file) reader content
+        with
         | Ok document ->
             Ok ((file, document) :: documents, not_text, rest, found)
         | Error (Markdown.Not_utf_8 offset) ->
@@ -628,14 +617,8 @@ let run ?phases ~env ~dir ~manifest ~base ~tool () =
     Allocation.measure phases "facts" (fun () ->
         Facts.make tree.manifest tree.documents)
   in
-  let* changed =
-    Allocation.measure phases "repository" (fun () ->
-        if Facts.needs_changes facts then
-          changed_paths tree.repo ~files:tree.file_set (base_commit tree.base)
-        else Ok [])
-  in
   let records =
-    Allocation.measure phases "records" (fun () -> Facts.records facts ~changed)
+    Allocation.measure phases "records" (fun () -> Facts.records facts)
   in
   Ok
     {

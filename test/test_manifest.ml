@@ -42,7 +42,7 @@ let the_smallest_manifest_takes_every_default () =
   Alcotest.(check bool)
     "verifies" true
     (Manifest.verifies manifest = Manifest.Whole_run);
-  Alcotest.(check bool) "step" true (Manifest.step manifest = Manifest.Change);
+  Alcotest.(check bool) "step" true (Manifest.step manifest = Manifest.Delivered);
   Alcotest.(check int)
     "no namespace" 0
     (List.length (Manifest.namespaces manifest));
@@ -343,7 +343,7 @@ let each_word_of_proof_has_its_name () =
       "approval";
       "whole-run";
       "each-test";
-      "change";
+      "delivered";
       "approval";
       "promises";
     ]
@@ -352,7 +352,7 @@ let each_word_of_proof_has_its_name () =
       Manifest.approval_name Manifest.Approval;
       Manifest.verifies_name Manifest.Whole_run;
       Manifest.verifies_name Manifest.Each_test;
-      Manifest.step_name Manifest.Change;
+      Manifest.step_name Manifest.Delivered;
       Manifest.step_name Manifest.Step_approval;
       Manifest.step_name Manifest.Promises;
     ]
@@ -365,7 +365,16 @@ let each_value_of_step_reads () =
         (Manifest.step_name
            (Manifest.step
               (read (markdown ^ Printf.sprintf "[proof]\nstep = %S\n" word)))))
-    [ "change"; "approval"; "promises" ]
+    [ "delivered"; "approval"; "promises" ]
+
+let change_is_no_value_of_step () =
+  reports "the word of the old default"
+    (markdown ^ "[proof]\nstep = \"change\"\n")
+    [
+      "sinter.toml:4:8: 'step' takes \"delivered\", \"approval\", or \
+       \"promises\", not \"change\"; write \"delivered\", \"approval\", or \
+       \"promises\"";
+    ]
 
 let every_location_kind_reads () =
   let manifest =
@@ -947,7 +956,7 @@ let values () =
        \"each-tests\"; did you mean \"each-test\"?";
       "sinter.toml:9:8: 'plan' takes \"declaration\" or \"approval\", not \
        \"declared\"; write \"declaration\" or \"approval\"";
-      "sinter.toml:10:8: 'step' takes \"change\", \"approval\", or \
+      "sinter.toml:10:8: 'step' takes \"delivered\", \"approval\", or \
        \"promises\", not \"promise\"; did you mean \"promises\"?";
     ];
   reports "a word far from every word"
@@ -2258,7 +2267,7 @@ let canonical =
     let* markers = some_of [ "A"; "B_2"; "CLAUDECODE" ] in
     let* each_test = option bool in
     let* step =
-      option (oneof_list Manifest.[ Change; Step_approval; Promises ])
+      option (oneof_list Manifest.[ Delivered; Step_approval; Promises ])
     in
     let* warn_only = option bool in
     let* tiers =
@@ -2368,7 +2377,8 @@ let a_manifest_in_the_canonical_form_reads_back_its_values =
          =
          if c.each_test = Some true then Manifest.Each_test
          else Manifest.Whole_run)
-      && Manifest.step manifest = Option.value c.step ~default:Manifest.Change
+      && Manifest.step manifest
+         = Option.value c.step ~default:Manifest.Delivered
       && Manifest.warn_only manifest = (c.warn_only = Some true)
       && List.sort compare
            (List.map
@@ -2841,6 +2851,7 @@ let tests =
     case "each kind takes its own approval" each_kind_takes_its_own_approval;
     case "each word of proof has its name" each_word_of_proof_has_its_name;
     case "each value of step reads" each_value_of_step_reads;
+    case "change is no value of step" change_is_no_value_of_step;
     case "every location kind reads" every_location_kind_reads;
     case "a default branch reads" a_default_branch_reads;
     case "an empty array is an absent key" an_empty_array_is_an_absent_key;

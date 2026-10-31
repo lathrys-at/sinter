@@ -85,6 +85,16 @@ type section = {
           A blank line holds only spaces and tabs. The section of level 0 starts
           at line 1, so it holds the front matter. [None] when no line is left.
       *)
+  text : string option;
+      (** the text of the section, when {!read} takes [~texts:true]: the lines
+          of the section after its heading, with the lines of each section
+          inside it, without each tag line of {!field-tags}, and without the
+          blank lines at the start and at the end. On each heading line that
+          opens a section, the section number of the heading text goes, with the
+          spaces and tabs after it. Each line loses the spaces and tabs at its
+          end, and ends with one LF. The section of level 0 starts at line 1.
+          [""] when no line is left; [None] when {!read} takes [~texts:false].
+      *)
 }
 (** One section. *)
 
@@ -183,10 +193,11 @@ type error =
           is not well-formed *)
   | No_tree of Sinter_bridge.Tree.error  (** the parse gives no tree *)
 
-val read : reader -> string -> (t, error) result
-(** [read reader content] reads the bytes [content] of one markdown file. It
-    adds a line feed at the end when [content] does not end with one. Every
-    position of the result is a place of [content].
+val read : ?texts:bool -> reader -> string -> (t, error) result
+(** [read ~texts reader content] reads the bytes [content] of one markdown file.
+    It adds a line feed at the end when [content] does not end with one. Every
+    position of the result is a place of [content]. With [~texts:false], no
+    section holds its {!field-text}; [texts] is [true] when absent.
 
     @raise Invalid_argument if [reader] or its engine is closed.
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)

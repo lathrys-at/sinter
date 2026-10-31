@@ -118,14 +118,15 @@ agreement between a person and an agent. It holds steps, and each step
 promises facts that its work will add to the repository. A plan exists
 to turn itself into **static facts**: declarations of requirements and
 decisions in prose, `@satisfies` and `@verifies` citations in the code
-and the tests, test evidence, and entries in the ledger, Sinter's record
-of judgments (section 6.4). A plan is **open** until the ledger records
-that it closed. It closes in one of two ways (section 6.3). CI records
-it as `completed` after the merge, and only when everything that it
-promised is a static fact. Or a person records it as `abandoned`. A
-closed plan can stay in the tree as a record, beside the facts that it
-produced, or its file and its journal can leave `.plans/`. The ledger,
-not the file system, says when a plan stopped being an agreement.
+and the tests, test evidence, and entries in the ledger, Sinter's
+record of judgments (section 6.4). A plan is **open** until the ledger
+records that it closed. It closes in one of two ways (section 6.3).
+The job that closes plans records it as `completed` after the merge
+that delivers its last step, and only when every step is done. Or a
+person records it as `abandoned`. A closed plan can stay in the tree
+as a record, beside the facts that it produced, or its file and its
+journal can leave `.plans/`. The ledger, not the file system, says
+when a plan stopped being an agreement.
 
 The parts of the system:
 
@@ -228,7 +229,7 @@ fn locks_after_five_failures() { ... }
 
 ### 3.3 Vocabulary
 
-The vocabulary has fifteen words, and `@pin` is designed but
+The vocabulary has sixteen words, and `@pin` is designed but
 deferred. `spec/vocabulary.md` section 7 defines each word.
 
 **Declarations** say: this text defines a thing. `@req` declares a
@@ -252,13 +253,16 @@ and the extent of the comment. A test must be addressed, because
 evidence binds to it, but the syntax tree already names the test, so
 it needs no declaration either.
 
-**Status tags** take an item out of force. `@deprecated` says that the
+**Status tags** record the state of an item. Three of them take an
+item out of force. `@deprecated` says that the
 item no longer applies and nothing replaces it. `@rejected` marks a
 decision that was considered and not chosen; its record stays, so that
 nobody argues the choice again. `@deferred` marks a decision that is not
-made yet. A status tag has effect only in the tag block of a
+made yet. These three tags have effect only in the tag block of a
 declaration, so the `@deprecated` of JSDoc in a code comment is safe.
-Sinter has no tag for "done".
+The fourth status tag, `@delivered`, marks a step of a plan that a
+branch delivered (section 6). Sinter has no tag for "done": a step is
+done when the facts say so.
 
 An item is **in force** when no status tag and no effective
 `@supersedes` retires it; otherwise it is **retired**
@@ -467,7 +471,8 @@ never fails a check for its evidence. `sinter status --done` still
 refuses. A step is done only when each of its `@verifies` edges is at an
 allowed rung, and with no evidence each edge is at `never-ran`
 (`spec/algebra.md` section 6.4). The review gate enforces the rungs, so
-a plan is checked against measured work before it merges.
+each step that a branch delivers is checked against measured work
+before the branch merges.
 
 **The coverage of each test is the expensive rung.** Rung 4 below asks
 whether this test ran that site. Only the **coverage of each test**
@@ -646,19 +651,17 @@ with the `gh` command that it already has. That read is deferred with
 ### 6.1 The plan file
 
 A plan is a markdown file under `.plans/`, for example
-`.plans/auth-lockout.md`, committed on its branch. A file that git
-ignores would not travel between worktrees, and CI could not see it, so
-the check for unplanned work would have no authority. A plan is **open**
+`.plans/auth-lockout.md`. It reaches the default branch in a pull
+request of its own, and a person reads and approves it there as one
+document. Later branches each deliver one or more of its steps, so an
+open plan on the default branch is normal while its work goes on
+(record `plans-span-branches`). A file that git ignores would not
+travel between worktrees, and CI could not see it, so the check for
+unplanned work would have no authority. A plan is **open**
 until the ledger records that it closed (section 6.3). A closed plan
 can stay as a record beside its journal, or its file and its journal
 can leave `.plans/`. `spec/vocabulary.md` section 10 gives the rules of
 plan files.
-
-One record changes parts of sections 6.1, 6.3, and 6.7, and the
-specifications do not carry it yet. Record `plans-span-branches` says
-three things. A plan reaches the default branch in a pull request of
-its own. That merge is its approval. Later branches each deliver some
-of its steps.
 
 ```markdown
 # Account lockout after failed logins
@@ -712,14 +715,33 @@ both is reported as `promise-out-of-scope`, because the scope is part of
 the agreement. A promised `@verifies` needs a passing test, so a plan
 cannot be done on a test that never ran or that failed (section 4).
 
-**The active plan.** When exactly one plan is open on the branch, it
-is active. With several, `sinter declare` names one; until then, the
-brief (section 8.1) and the check of scope have no plan to anchor on,
-and `sinter status` says why.
+**Delivery.** A branch delivers a step when its diff adds a mark of
+the step, or makes a promise of the step met. The **mark** is one tag
+line in the step's tag block, `@delivered <hash>`, and Sinter prints
+the line to add (`unmarked-step`). The hash is the first six digits of
+the step hash, which covers the scope, the promises, and the text of
+the step, so an edit of a delivered step voids its mark
+(`stale-mark`). A mark is a statement of the agent, and it changes a
+state only as a line of the diff tied to its text (record
+`agent-statements`): the person who merges sees each new mark. Sinter
+also checks each mark against the tree. A mark that the diff adds on a
+step whose scope it did not change is `mark-without-change`, and a
+mark on a step with a promise that is not met is `mark-on-unmet-step`
+(record `delivery-marks`). A delivered step keeps its slug, because the
+journals and the commit trailers name it (`renamed-step`).
+
+**The active plan.** When exactly one plan is open, it is active. An
+open plan on the default branch is on every branch, so a repository
+with several open plans has several on each branch. A branch that
+delivers a step of one of them declares that plan with
+`sinter declare`; until then, the brief (section 8.1) and the check of
+scope have no plan to anchor on, and `sinter status` says why.
 
 - **The state of a step is derived, never ticked.** A step is done
-  when its promises are met and its evidence passes. Only when every
-  step is done can the work merge.
+  when its promises are met and its evidence passes. The gate `review`
+  checks the steps that the branch delivers. A step merged in part,
+  with some promises met and some not, is the finding
+  `merged-incomplete`.
 - **The active step is the one statement of the agent that Sinter
   accepts.** It is safe, because it can only narrow what the brief
   covers and what the check of scope measures against. A wrong step
@@ -729,8 +751,9 @@ and `sinter status` says why.
   agent, gives a session id, Sinter keeps the step per session (section
   11.18), so parallel sessions in one worktree do not collide.
 - **A step with a scope and no promises is a refactor step.** By
-  default, it is done when a change touched its scope and the evidence
-  still passes. That is a weaker condition, and visibly so. A project
+  default, it is done when the plan file marks it as delivered with a
+  mark that counts, and the evidence still passes. A person reads the
+  mark in the diff, so the condition is visible. A project
   that wants more sets `proof.step`: to `"approval"`, so that a person
   approves each refactor step in the ledger, or to `"promises"`, so
   that every step needs promises and a refactor step is a finding
@@ -768,13 +791,15 @@ main reason for the rule is **approval fatigue, the real adversary**.
 A person who approves by reflex gives approvals that are worth
 nothing. Many free changes keep the approvals that remain meaningful.
 
-**To cut work early is the amendment rule at work.** To merge part of
-a plan is to approve a smaller set of promises. The half-done hunks of
-a cut step then map to no step, so `unplanned-change` reports them
-until someone reverts them or covers them honestly. Any part of the
-work that reached a declared fact stays visible as debt, in
-`untraced`. `sinter compile residual-plan` prints the unmet rest as a
-plan for a later branch.
+**To cut work early is the amendment rule at work.** A plan that
+merges step by step is normal, so to cut work applies to a step done
+in half, or to a plan that a person abandons. To cut a half-done step
+is to approve a smaller set of promises. The half-done hunks of the
+cut step then map to no step, so `unplanned-change` reports them until
+someone reverts them or covers them honestly. Any part of the work
+that reached a declared fact stays visible as debt, in `untraced`.
+`sinter compile residual-plan` prints the unmet rest of an abandoned
+plan as a new plan.
 
 ### 6.3 How a plan closes
 
@@ -782,21 +807,26 @@ A plan closes by a ledger entry, never by a change to a file, so no
 deletion needs to be arranged and no merge commit needs an edit. It
 closes as `completed` or as `abandoned` (section 6.7).
 
-**The completion gate.** A plan can complete only when everything that
-it promised is a static fact. The review gate enforces this, where
-evidence exists, with `sinter status --done`. CI on the default branch
-writes the entry: on each push, it checks each open plan that has
-merged against the **completion condition**, and appends `completed`
-for each plan that passes (`spec/ledger.md` section 8). The writer is
-CI and not a person, so that the closing rests on the tree and the
-approvals, not on anyone's report. A second run writes nothing new, so
-a lost CI run costs a retry and loses no fact.
+**The completion gate.** A plan completes when every step is done: the
+**completion condition**. The **job that closes plans** writes the
+entry. It runs on the default branch, in CI or by a person's hand, and
+it runs the same command either way and makes no judgment of its own.
+It imports the test evidence of its run first, then checks each open
+plan against the completion condition, and appends `completed` for
+each plan that passes (`spec/ledger.md` section 8). Without evidence,
+a step with a `@verifies` edge in its scope is not done, so its plan
+does not close. So a project that closes plans needs a CI job that
+imports evidence, a person who runs the job, or both. The closing
+rests on the tree, the evidence, and the approvals, not on anyone's
+report. A second run writes nothing new, so a lost run costs a retry
+and loses no fact. On a branch, `sinter status --done` exits 0 when
+the steps that the branch delivers are done.
 
-An open plan on the default branch that fails the condition is the
-blocking finding `merged-incomplete`: someone merged half a plan.
-(Under record `plans-span-branches`, an open plan on the default branch
-is normal while its work goes on.) The honest ways out are an approved
-smaller plan (section 6.2) or a revert of the merge.
+An open plan on the default branch is normal while its work goes on.
+A step with some promises met and some not is the blocking finding
+`merged-incomplete`: a step merged in part. It is computed from the
+tree alone. The honest ways out are a branch that delivers the rest of
+the step, or an approved smaller step (section 6.2).
 
 A closed plan makes no findings, holds no claim, and adds no scope. Its
 slug is free again, so a later plan, such as the plan that
@@ -947,21 +977,24 @@ against its preview.
 
 ### 6.7 Several plans at once
 
-Each plan belongs to a branch. (Record `plans-span-branches` lets a
-plan span several branches, and claims change with it.) A lead that
-runs several agents on several branches needs three things that the
-ledger can already give.
+A plan spans several branches, and several plans can be open at once.
+A lead that runs several agents on several branches needs three things
+that the ledger can already give.
 
-**Claims.** For each approved, open plan of another branch, Sinter reads
-a **claim** from the ledger ref as it was last fetched, never from the
-network. It reports an overlap of scopes as the warning
-`branch-overlap`: "plan `session-store` on branch `feat/store`, approved
-Tuesday, also claims `src/auth/**`." It is a warning and not a block,
-because two plans can rightly touch one folder. But it is the earliest
-moment to learn that two agents will conflict, days before the merge
-shows it. A claim ends when its plan completes, when a person abandons
-the plan with `sinter ledger abandon`, or when its branch is deleted
-(`spec/ledger.md` section 9, `spec/jsonl.md` section 7).
+**Claims.** A **claim** is an open plan that the ledger holds an
+approval of, and whose full form the current tree does not hold, for
+example a plan whose own pull request has not merged yet. Sinter reads
+each claim from the ledger ref as it was last fetched, never from the
+network. A claim does not depend on a branch. Sinter reports an
+overlap of scopes as the warning `branch-overlap`: "plan
+`session-store`, approved Tuesday, also claims `src/auth/**`." It is a
+warning and not a block, because two plans can rightly touch one
+folder. But it is the earliest moment to learn that two agents will
+conflict, days before the merge shows it. A claim ends when its plan
+closes: when it completes, or when a person abandons it with
+`sinter ledger abandon` (`spec/ledger.md` sections 9 and 10,
+`spec/jsonl.md` section 7). Two branches that deliver steps of one plan at the same
+time are not seen as an overlap; the roadmap notes it.
 
 **Promises across plans.** Plan B has `@satisfies auth-lockout`, and
 `auth-lockout` exists nowhere on B's branch. Without claims, that
@@ -1174,10 +1207,10 @@ has a **tier** at each gate: `off`, `warn`, or `block`. A finding at
   `review`, CI on a pull request computes every check, and binds the
   evidence again, against the plan committed on the branch. It is the
   authoritative backstop. At the gate `merged`, CI on the default branch
-  checks the promises again on the merged result. It appends the
-  `completed` entries of complete plans (section 6.3), and it runs the
-  checks that need the network. It enforces the evidence ladder when its
-  job imports evidence.
+  checks the promises again on the merged result. It runs the job that
+  closes plans, which appends the `completed` entries of complete plans
+  (section 6.3), and it runs the checks that need the network. It
+  enforces the evidence ladder when its job imports evidence.
 
 **Each check starts as a warning.** Every finding class starts as a
 warning, and becomes a block only after it proves that it rarely reports
@@ -1289,8 +1322,9 @@ Its principles:
   judge it like any other diff.
 - **Three commands change durable state.** `approve`, `decline`, and
   `ledger abandon` write the ledger. All three refuse to run under an
-  agent (section 6.4), and they share one set of refusals. CI on the
-  default branch appends the `completed` entries (section 6.3).
+  agent (section 6.4), and they share one set of refusals. The job that
+  closes plans appends the `completed` entries, in CI or by a person's
+  hand (section 6.3).
   `declare` and `evidence import` write the state of the session and
   the evidence under `.sinter/`, which git ignores and which is never
   truth.
@@ -1501,8 +1535,9 @@ touch the scope; the counts of findings; the health of the machinery,
 such as the bumps since the base and the void acks; and a hint of the
 next command, such as `sinter patch suspect`. Sinter stores none of
 it, and computes every line again from the tree, the ledger, and the
-evidence. `--done` prints nothing and exits 0 only when the plan is
-done, for a merge queue or a script: `sinter status --done && git push`.
+evidence. `--done` prints nothing and exits 0 only when the steps that
+the branch delivers are done, for a merge queue or a script:
+`sinter status --done && git push`.
 
 ### 11.3 `sinter check`
 
@@ -1632,7 +1667,7 @@ is always the same, so a diff of two compilations has meaning.
 | `spec` | a compiled specification: the declarations of a selection, with the status, revision, approval, and coverage of each. `--pending` shows only the delta that `approve` would show. `--as-of` rebuilds what was approved at a point of the ledger |
 | `coverage` | the requirements, with their sites, their tests and rungs, and the untraced items |
 | `report` | the complete account of a diff (section 8), with the changes of configuration and where the evidence came from; CI on a pull request posts it |
-| `residual-plan` | the unmet rest of a plan, with its journal, as a plan for a later branch (section 6.2) |
+| `residual-plan` | the unmet rest of an abandoned plan, with its journal, as a new plan (section 6.2) |
 | `plan-preview` | the graph after the plan, and the checks of the plan (section 6.6) |
 | `history` | the life of a subject: each approved revision and its changes, who approved it, the declines, and the plan that promised it |
 | `release-notes` | the delta of the requirements between two points of the ledger (section 6.4) |
@@ -1641,16 +1676,16 @@ is always the same, so a diff of two compilations has meaning.
 
 ### 11.13 `sinter ledger`
 
-`sinter ledger` reads and moves the ledger ref (`spec/ledger.md`). `log`
-and `show` print entries; `show` of a plan sets the approved commitment
-set beside the current one. `verify` checks that the ref only moved
-forward and that no entry changed (section 13 there), with `--signers`
-for the signatures of section 6.4; CI on the default branch runs it.
-`fetch` and `push` move the ref by fast-forward only, and
-`push --replay` recovers a lost race (section 3.2 there).
-`abandon <plan> --reason <text>` closes a plan that will never merge and
-ends its claim; it is a command for a person, with the refusals of
-`approve`.
+`sinter ledger` reads and moves the ledger ref (`spec/ledger.md`).
+`log` and `show` print entries; `show` of a plan sets the approved
+commitment set beside the current one. `verify` checks that the ref
+only moved forward and that no entry changed (section 13 there), with
+`--signers` for the signatures of section 6.4; CI on the default
+branch runs it. `fetch` and `push` move the ref by fast-forward only,
+and `push --replay` recovers a lost race (section 3.2 there).
+`abandon <plan> --reason <text>` closes a plan whose remaining steps
+no branch will deliver, and ends its claim; it is a command for a
+person, with the refusals of `approve`.
 
 ### 11.14 `sinter evidence`
 
@@ -1701,7 +1736,7 @@ overwrites a user's edit. It touches only files that the tool owns:
 | `.plans/` | the folder of plans |
 | `refs/sinter/ledger` | an empty ledger commit, when the ref is absent |
 | the settings of the harness | the hooks that call `sinter hook <event>`; for Claude Code, in `.claude/settings.json` |
-| the CI workflows | a job for pull requests: `check --diff --gate review` on the host's merge ref, against the tip of the default branch (section 3.5), the import of evidence, the report, and SARIF. A job for the default branch: `check --gate merged`, `ledger verify`, and the step that appends `completed` (section 6.3), with the right to push the ledger ref. Both jobs fetch the ledger ref, because a clone does not |
+| the CI workflows | a job for pull requests: `check --diff --gate review` on the host's merge ref, against the tip of the default branch (section 3.5), the import of evidence, the report, and SARIF. A job for the default branch: `check --gate merged`, `ledger verify`, and the job that closes plans, which imports the evidence of its run and appends `completed` (section 6.3), with the right to push the ledger ref. Both jobs fetch the ledger ref, because a clone does not |
 
 The command that runs the tests is the repository's own. `init` writes a
 marked step that it cannot fill, with the runner command that each pack

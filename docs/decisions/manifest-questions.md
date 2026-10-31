@@ -2,7 +2,7 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Cut the tables of the manifest by the question that each answers
-@decision manifest-questions
+@decision manifest-questions v2
 @cites manifest-names
 Each table of the manifest answers one question about the project, and the table `[proof]` holds what settles each item.
 
@@ -57,12 +57,13 @@ Each value in `[proof]` names the evidence that settles the item:
   names the coverage that lets a passing `@verifies` edge meet a
   promise: the coverage of the whole run, or the coverage of each
   test.
-- `proof.step` applies to a step without promises. It is `"change"`,
-  the default, `"approval"`, or `"promises"`. Under `"change"`, the
-  step is done when a hunk of the diff lands in its scope. Under
-  `"approval"`, the step is done when a person approves it in the
-  ledger. Under `"promises"`, every step must have promises, and a
-  step without promises is the finding `step-without-promises`.
+- `proof.step` applies to a step without promises. It is
+  `"delivered"`, the default, `"approval"`, or `"promises"`. Under
+  `"delivered"`, the step is done when the plan file marks it as
+  delivered (record `delivery-marks`). Under `"approval"`, the step is
+  done when a person approves it in the ledger. Under `"promises"`,
+  every step must have promises, and a step without promises is the
+  finding `step-without-promises`.
 
 The tiers stay in `[check]`. What counts as settled, and how hard a
 gap bites, stay apart: a project can change either one without the

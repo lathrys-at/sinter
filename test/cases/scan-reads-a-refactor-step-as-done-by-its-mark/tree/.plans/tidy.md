@@ -5,6 +5,7 @@
 ## Tidy the library
 
 @scope lib/**
+@delivered 38cdbc
 
 ## Tidy the binary
 
