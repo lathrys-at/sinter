@@ -103,15 +103,14 @@ Every entry carries:
 
 ### 4.2 The writers
 
-@req ledger-writers v4
+@req ledger-writers v5
 
 Four writers exist. The approval command writes `approval` entries:
 of a declaration, of a plan, and of a step. The approval of a plan
 comes with its `approved-scope` and `approved-promise` lines. The
 decline command writes `decline`. The abandon command writes
 `abandoned`. A person runs these three commands. The fourth writer is
-the CI job on the default branch, which writes `completed` (section
-8).
+the job that closes plans, which writes `completed` (section 8).
 
 ## 5. `approval`
 
@@ -224,39 +223,40 @@ when the person overrides their own earlier refusal.
 
 ### 8.1 The entry and its writer
 
-@req ledger-completed v4
+@req ledger-completed v5
 
-A `completed` entry closes a plan whose promises are all met
-([vocabulary.md](vocabulary.md) section 10.5).
+A `completed` entry closes a plan whose steps are all done
+([algebra.md](algebra.md) section 6.4).
 
-The CI job on the default branch writes the entry. The job runs on
-every push to the default branch. It finds the open plans that are now
-on that branch. It checks each of those plans against the completion
-condition below. It appends one entry for each plan that passes the
-condition.
+The job that closes plans writes the entry. The job runs on the
+default branch, in CI or by a person's hand. It runs the same command
+either way, and it makes no judgment of its own. In CI, it runs on
+each push to the default branch. The job takes these actions in
+order:
+
+1. Import the test evidence of its run.
+2. Find the open plans on the default branch.
+3. Check each of those plans against the completion condition below.
+4. Append one entry for each plan that passes the condition.
 
 | field | meaning |
 |---|---|
 | `subject` | `plan:<slug>@<id>`: the fact id of the plan, with its full form |
 | `approval` | the id of the latest `approval` entry whose subject is the plan, at the time the plan closed; omitted when the plan has no approval |
-| `merge` | the merge commit |
+| `merge` | the merge commit that delivered the last step of the plan ([vocabulary.md](vocabulary.md) section 10.7) |
 | `report` | SHA-256 of the report compiled when the plan closed |
 
 ### 8.2 The completion condition
 
-@req ledger-completion-condition v3
+@req ledger-completion-condition v4
 
-A plan passes the condition when all of these statements are true:
-
-- Every promised declaration exists.
-- Every promised edge exists, its tag target resolves, and it is not
-  suspect.
-- When the job imports evidence: every promised `verifies` edge is at
-  rung `passing`, or at rung `unmeasured` when
-  `proof.verifies` is `"whole-run"`
-  ([manifest.md](manifest.md) section 10.3).
-- When the job imports no evidence: a promised `verifies` edge can be
-  at any rung. Rung enforcement happened earlier, at the gate `review`.
+A plan passes the condition when every step of the plan is done
+(`done()`, [algebra.md](algebra.md) section 6.4). The job imports the
+test evidence of its run before it checks the condition. Without
+evidence, a `verifies` edge is at rung `never-ran`
+([algebra.md](algebra.md) section 6.7), and the step that holds the
+edge in its scope is not done. So a plan with a `verifies` edge in the
+scope of a step does not close without evidence.
 
 An open plan on the default branch that fails this condition is the
 finding `merged-incomplete`: a person merged a plan whose work is not
@@ -266,20 +266,21 @@ needs approval. The second is a revert of the merge commit.
 
 ### 8.3 A repeated run
 
-@req ledger-completion-idempotent
+@req ledger-completion-idempotent v2
 
 The job's write is idempotent: a second run for the same plan adds no
-second entry. The plan's approvals and the repository tree hold the
-facts that prove completion. A lost CI run therefore costs one repeat
-run and loses no facts.
+second entry. The plan's approvals, the repository tree, and the test
+evidence of the run hold the facts that prove completion. A lost run
+of the job therefore costs one repeat run and loses no facts.
 
 ## 9. `abandoned`
 
 ### 9.1 The fields of an abandoned entry
 
-@req ledger-abandoned v2
+@req ledger-abandoned v3
 
-An `abandoned` entry closes a plan that will never merge. A person
+An `abandoned` entry closes a plan whose remaining steps no branch
+will deliver ([vocabulary.md](vocabulary.md) section 10.7). A person
 runs the abandon command; the tool never writes this entry on its own.
 
 | field | meaning |
@@ -311,7 +312,18 @@ scope, and is not a candidate for the active plan. Its slug is free: a
 later plan can take the slug, with a new plan id. The file and the
 journal of a closed plan can leave `.plans/`.
 
-### 10.2 An absent ledger ref
+### 10.2 Claims
+
+A **claim** is an open plan that the ledger holds an approval of, and
+whose full form the current tree does not hold
+([vocabulary.md](vocabulary.md) section 4.3). A claim
+does not depend on a branch. It ends when the plan closes. Sinter
+projects each claim from the ledger as a `claim` record
+([jsonl.md](jsonl.md) section 7). An open plan that the current tree
+holds is no claim, so a branch that delivers a step of a plan on the
+default branch sees that plan as a plan, not as a claim.
+
+### 10.3 An absent ledger ref
 
 @req ledger-absent-ref v3
 
@@ -325,7 +337,12 @@ must say how to fetch the ledger.
 
 ### 11.1 The comparison of commitment sets
 
-@req ledger-plan-approval v3
+@req ledger-plan-approval v4
+
+A plan reaches the default branch in a pull request of its own
+([vocabulary.md](vocabulary.md) section 10.1). When the kind `plan`
+needs approval, a person approves the plan in the ledger before that
+pull request merges. The merge alone does not approve the plan.
 
 A plan's **commitment set** is the set of canonical facts about the
 plan: the promises of each step, the scope of each step, and the plan

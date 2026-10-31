@@ -354,18 +354,16 @@ into the evidence directory, never into the tree.
 ## 7. Ledger-projection, rule, gate, setting, ack, hunk, and tombstone records
 
 **`claim`** — unlocated. Sinter projects claim records from the
-ledger. It emits one record for each approved plan that meets all three
-conditions:
+ledger ([ledger.md](ledger.md) section 10.2). It emits one record for
+each plan that meets all three conditions:
 
-- The plan's approval was written from a branch other than the current
-  one.
+- The ledger holds an approval of the plan.
 - The plan is open ([ledger.md](ledger.md) section 10).
-- That branch existed on the remote at the last fetch.
+- The current tree holds no plan with the full form of the plan.
 
 | field | type | meaning |
 |---|---|---|
 | `plan` | string | the full form of the plan ([vocabulary.md](vocabulary.md) section 4.3) |
-| `branch` | string | the branch the approval was written from |
 | `approval` | string | the id of the latest `approval` entry whose subject is the plan |
 | `scope` | array of string | union of the approved step scopes |
 | `declares` | array of string | slugs the claim promises to declare |
@@ -506,7 +504,7 @@ Each object of `related` holds these fields:
 
 The five fields `path`, `line`, `col`, `eline`, and `ecol` are present
 together or absent together. They are absent for a place in no file,
-such as a claim on another branch. The objects are sorted by
+such as a claim. The objects are sorted by
 `(path, line, col, eline, ecol, label)`, each string in byte order.
 The objects with no `path` come after the others, sorted by `label`.
 No two objects are equal. A related place under a historical path
@@ -585,7 +583,7 @@ uses a position in the file only when no content can name the fact.
 | `run` | `run:<test-id>@<tree>` | |
 | `cov` | `cov:<test-id or *>@<site-id>` | |
 | `judgment` | `judgment:<rule>:<subject-id>@<hash>` | |
-| `claim` | `claim:<slug>@<id>@<branch>` | `<slug>@<id>` is the full form of the plan; every plan of a claim has a plan id ([ledger.md](ledger.md) section 5.1). Parse from the left: the slug ends at the first `@`, six hex digits and an `@` follow, and the rest is the branch. A branch name can contain `@` |
+| `claim` | `claim:<slug>@<id>` | `<slug>@<id>` is the full form of the plan; every plan of a claim has a plan id ([ledger.md](ledger.md) section 5.1) |
 | `decline` | `decline:<entry-id>` | |
 | `rule` | `rule:<name>` | |
 | `gate` | `gate:<gate>/<class>` | |

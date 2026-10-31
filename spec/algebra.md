@@ -242,7 +242,7 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 | `approved(S)` | any | A kind needs approval when its key `proof.<kind>` is `"approval"` ([manifest.md](manifest.md) section 10.1). The predicate keeps `f` when any one of these conditions holds: `f` is a declaration of a kind that needs approval, and the ledger holds an approval for `f`'s `(slug, rev, xh)`; `f` is a declaration of a kind that does not need approval; `f` is a plan, the kind `plan` needs approval, and `f`'s current commitment set is approved against the plan's latest approved set ([ledger.md](ledger.md) section 11); `f` is a plan, and the kind `plan` does not need approval; `f` is a step without promises, `proof.step` is `"approval"` ([manifest.md](manifest.md) section 10.4), and the ledger holds an approval of `f` that matches its current step hash ([ledger.md](ledger.md) section 5.1); `f` is a step, the plan of `f` is approved, and `f` has promises or `proof.step` is not `"approval"`; `f` is a fact of any other kind |
 | `bumped(S)` | node | `f` is a declaration, and the fact set of `B` holds no declaration with the slug of `f`, or holds one with a smaller revision. The compare is by slug, across the kinds that share the namespace ([vocabulary.md](vocabulary.md) section 9) |
 | `declined(S)` | node | `f` is a declaration or a plan with a live decline: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
-| `waiting(P)` | promise | The tag target of the promise is a slug that no declaration in `T` declares, and that some claim promises to declare. This case means that the current branch and the claim's branch are ordered, not that the promise is broken. The tool reports `waiting-on` for it, and not `dangling` |
+| `waiting(P)` | promise | The tag target of the promise is a slug that no declaration in `T` declares, and that some claim promises to declare. A claim is an open plan that the ledger holds an approval of, and whose full form `T` does not hold ([ledger.md](ledger.md) section 10.2). This case means that the work of the claim comes first, not that the promise is broken. The tool reports `waiting-on` for it, and not `dangling` |
 
 ### 6.6 Edge predicates
 
@@ -533,7 +533,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `promise-collision` | promise | *engine*: a promised declaration whose slug a claim promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise of the same plan with the same step, word, and target. A plan of `B` and a plan of `T` are the same plan when their full forms are equal ([vocabulary.md](vocabulary.md) section 4.3), or when the plan of `B` has no plan id and the two have the same slug and the same path. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered, and a plan id added to a plan makes none of its promises new. A tool that does not read the ledger has no claims, so it reports only the second case | diff | · | · | block, block, — |
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets. Two scopes intersect when a plain glob of one contains a plain glob of the other, or is contained in it, by the rule of glob containment of [ledger.md](ledger.md) section 11 | tree | · | · | warn, warn, — |
 | `waiting-on` | promise | `waiting(promises(kind(plan)))` — reported in place of `dangling`, with the claim and step named | tree | · | · | off, warn, — |
-| `branch-overlap` | step | *engine*: a step's scope intersects the scope of another branch's claim | tree | · | · | warn, warn, — |
+| `branch-overlap` | step | *engine*: a step's scope intersects the scope of a claim | tree | · | · | warn, warn, — |
 | `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - exempt`. The engine also exempts each hunk that is a mechanical repair (section 9.1). The detail is `no step of an open plan, no rule, and no exempt path covers <path>`. The finding has no fix | diff | · | · | block, block, — |
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's `expect` is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
 | `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 13.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
@@ -545,10 +545,11 @@ column to `warn`, at every gate. `sinter init` writes
 incompleteness classes. They take no tier at the gate `turn`, so a
 check at that gate never reports them. A manifest cannot give them a
 tier there ([manifest.md](manifest.md) section 11.2). `sinter status`
-reports them, and the check that closes a plan (`status --done` and
-the completion condition in [ledger.md](ledger.md)) reads them. Every
-other class is a violation, or a signal about the health of the
-repository's checking machinery.
+reports them. `status --done` exits 0 when the steps that the branch
+delivers ([vocabulary.md](vocabulary.md) section 10.7) are done. The
+job that closes plans checks the completion condition of
+[ledger.md](ledger.md) section 8. Every other class is a violation, or
+a signal about the health of the repository's checking machinery.
 
 ### 9.1 Mechanical repairs
 

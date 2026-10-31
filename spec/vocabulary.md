@@ -619,9 +619,12 @@ A bump also removes the item's approval until it is approved again (see
 
 ### 10.1 What a plan is
 
-A **plan** is an agreement that belongs to one branch. A plan holds a
-set of steps. Each step promises that certain tags will exist in the
-repository when the step is done.
+A **plan** is an agreement about a piece of work. A plan holds a set
+of steps. Each step promises that certain tags will exist in the
+repository when the step is done. A plan reaches the default branch in
+a pull request of its own. Later branches each deliver one or more of
+its steps (section 10.7). So an open plan on the default branch is
+normal while its work goes on.
 
 A plan file is a markdown file under `.plans/`. A plan is **open**
 until the ledger holds a `completed` or `abandoned` entry for its full
@@ -775,6 +778,21 @@ Plans are exempt from revision discipline. Sinter judges a plan by its
 by its text. The rules for comparing commitment sets, and for which
 amendments need a new approval, are in [ledger.md](ledger.md) section
 11.
+
+### 10.7 Delivery
+
+A branch **delivers** a step when the diff between the base and the
+working tree makes a promise of the step met: the promise is met in the
+working tree, and it is not met in the base. One branch can deliver
+several steps, of one plan or of several plans. The steps of one plan
+can take several branches.
+
+The gate `review` checks the steps that the branch delivers. The gate
+`merged` runs on the default branch, where no diff exists, and checks
+every step of each open plan ([algebra.md](algebra.md) section 9). The
+job that closes plans
+closes a plan when every step of the plan is done
+([ledger.md](ledger.md) section 8).
 
 ## 11. Rename
 
