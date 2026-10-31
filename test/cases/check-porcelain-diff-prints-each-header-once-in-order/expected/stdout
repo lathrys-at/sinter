@@ -1,0 +1,8 @@
+# porcelain 1
+# base e78b0780f026e4654538ef7958345d9681007af8
+# ledger none
+# gate none
+# mode diff
+# tool <tool>
+none	dangling	docs/a.md	4	1	4	14	cites:site:docs/a.md#a->new	no declaration has the slug new
+none	unplanned-change	docs/a.md	4	1	4	14	hunk:docs/a.md:4-4	no step of an open plan, no rule, and no exempt path covers docs/a.md

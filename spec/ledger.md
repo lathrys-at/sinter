@@ -3,7 +3,7 @@
 
 # Sinter specification: approval-ledger format
 
-Status: draft. The six specifications share one version; see [docs/versioning.md](../docs/versioning.md).
+Status: draft. The seven specifications share one version; see [docs/versioning.md](../docs/versioning.md).
 
 ## 1. Introduction
 

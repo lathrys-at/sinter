@@ -58,6 +58,24 @@ val error_text : Sinter_core.Error_text.t QCheck2.Gen.t
 val print_error_text : Sinter_core.Error_text.t QCheck2.Print.t
 (** [print_error_text] prints a value of {!error_text}. *)
 
+val porcelain_field : string QCheck2.Gen.t
+(** A string of up to 16 pieces, of any bytes: printable ASCII and [#]; the tab,
+    the line feed, the carriage return, the space, the double quote, and the
+    backslash; every byte below 0x20 and the byte 0x7F; UTF-8 characters of two,
+    three, and four bytes; and any byte. *)
+
+val porcelain_finding :
+  (Sinter_core.Finding.t * Sinter_core.Finding_class.tier option) QCheck2.Gen.t
+(** A finding and its tier: [None], [Warn], or [Block]. The finding is of any
+    class, and its subject is of any form. Its path, its subject, and its detail
+    hold the pieces of {!porcelain_field}. It has a place, from line 1 to
+    100000, or none; and a detail, or none. *)
+
+val print_porcelain_finding :
+  (Sinter_core.Finding.t * Sinter_core.Finding_class.tier option)
+  QCheck2.Print.t
+(** [print_porcelain_finding] prints a value of {!porcelain_finding}. *)
+
 val tag_block : string QCheck2.Gen.t
 (** The text of a markdown file: a heading, and a block of two citations. The
     first cites [a] or [ab-c], with or without [v1], and with or without a

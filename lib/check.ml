@@ -139,7 +139,12 @@ let record ~mode { finding; tier } =
   @ optional "detail" finding.detail
   @ fix @ place @ mark @ related @ gate
 
-type form = Full | Brief | Json
+type form =
+  | Full
+  | Brief
+  | Json
+  | Porcelain of { nul : bool; headers : Porcelain.header_lines }
+
 type notice = Line of string | Warning of string | Note of string
 
 module Names = Set.Make (String)
@@ -264,6 +269,7 @@ type output =
   | Blocks of item list
   | Lines of item list
   | Records of Jsonl.record * entry list
+  | Fields of { nul : bool; headers : string; entries : entry list }
 
 type report = {
   notices : notice list;
@@ -326,7 +332,20 @@ let write ?phases ppf report =
             Format.pp_force_newline ppf ()
           in
           line index;
-          List.iter (fun entry -> line (record ~mode:report.mode entry)) entries);
+          List.iter (fun entry -> line (record ~mode:report.mode entry)) entries
+      | Fields { nul; headers; entries } ->
+          let buffer = Buffer.create 256 in
+          let print () =
+            Format.pp_print_string ppf (Buffer.contents buffer);
+            Buffer.clear buffer
+          in
+          Format.pp_print_string ppf headers;
+          List.iter
+            (fun entry ->
+              Porcelain.add_finding buffer ~nul ~tier:(tier_of entry)
+                entry.finding;
+              print ())
+            entries);
       Format.pp_print_flush ppf ())
 
 module Paths = Map.Make (String)
@@ -451,3 +470,41 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
             Scan.index ~mode tree ~tool)
       in
       Ok (report warnings (Records (index, entries)))
+  | Porcelain { nul; headers } ->
+      let* headers =
+        match headers with
+        | Porcelain.No_headers -> Ok ""
+        | Porcelain.Headers named ->
+            Allocation.measure phases "repository" (fun () ->
+                let value = function
+                  | Porcelain.Base -> Ok (Scan.base_commit tree.base)
+                  | Porcelain.Ledger ->
+                      Result.map
+                        (Option.value ~default:"none")
+                        (Scan.ledger_commit tree)
+                  | Porcelain.Gate ->
+                      Ok
+                        (Option.fold ~none:"none" ~some:Finding_class.gate_name
+                           gate)
+                  | Porcelain.Mode -> Ok (Mode.name mode)
+                  | Porcelain.Tool -> Ok tool
+                in
+                let buffer = Buffer.create 128 in
+                Porcelain.add_header buffer ~nul "porcelain"
+                  (Int.to_string Porcelain.version);
+                let* () =
+                  List.fold_left
+                    (fun result header ->
+                      let* () = result in
+                      if List.mem header named then
+                        let* found = value header in
+                        Ok
+                          (Porcelain.add_header buffer ~nul
+                             (Porcelain.header_name header)
+                             found)
+                      else Ok ())
+                    (Ok ()) Porcelain.headers
+                in
+                Ok (Buffer.contents buffer))
+      in
+      Ok (report warnings (Fields { nul; headers; entries }))

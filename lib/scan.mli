@@ -182,11 +182,16 @@ val load_with_base :
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
 
+val ledger_commit : tree -> (string option, error) result
+(** [ledger_commit tree] is the object id of the commit that the ref
+    [refs/sinter/ledger] of the repository of [tree] names; [None] when the ref
+    names no commit ({!Git.commit_of} gives [Bad_revision]). The error is
+    [Repository] with any other error of {!Git.commit_of}. *)
+
 val ledger_warning : tree -> Facts.t -> string option
 (** [ledger_warning tree facts] is the text of the warning
     [no ledger found, so every plan counts as open] when [facts] hold at least
-    one plan and the ref [refs/sinter/ledger] of the repository of [tree] names
-    no commit ({!Git.commit_of} gives [Bad_revision]); [None] otherwise. It runs
+    one plan and {!ledger_commit} of [tree] is [None]; [None] otherwise. It runs
     git only when [facts] hold a plan. *)
 
 val index : ?mode:Mode.t -> tree -> tool:string -> (Jsonl.record, error) result

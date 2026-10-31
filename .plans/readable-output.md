@@ -1,6 +1,6 @@
 # Readable output
 @plan readable-output@222f5a
-@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, plugins/**, .claude-plugin/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, .plans/**, sinter.toml, .github/workflows/**
+@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, plugins/**, .claude-plugin/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, .plans/**, sinter.toml, .github/workflows/**, CLAUDE.md
 Make the output of Sinter clear for people and stable for programs:
 plain names for the finding classes, findings that show the source
 and their fix, a full and a brief text form, errors in one layout,
@@ -61,7 +61,7 @@ Color the output with the 16 base colors, under `--color`, `NO_COLOR`,
 the way to fetch the ledger in the help.
 
 ## Write the porcelain form
-@scope spec/**, lib/**, bin/**, test/**, docs/**
+@scope spec/**, lib/**, bin/**, test/**, docs/**, CLAUDE.md
 @decision porcelain-format
 Specify and print `-o porcelain`: a status code first, fixed columns,
 header lines, no color, and no change between versions.

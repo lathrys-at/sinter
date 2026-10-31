@@ -76,3 +76,11 @@
 (subdir
  cases/check-at-a-gate-blocks-a-step-without-promises/tree
  (dirs :standard .plans))
+
+(subdir
+ cases/check-porcelain-with-color-always-prints-no-escape-code/tree
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-porcelain-verbose-prints-only-the-warnings/tree
+ (dirs :standard .plans))

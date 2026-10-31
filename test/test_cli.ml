@@ -402,8 +402,8 @@ let usage_errors =
       "unknown option '--foo'",
       "sinter check [--help] [OPTION]\xe2\x80\xa6" );
     ( "check -o x",
-      "option '-o': invalid value 'x', expected one of 'full', 'brief' or \
-       'json'",
+      "option '-o': invalid value 'x', expected one of 'full', 'brief', 'json' \
+       or 'porcelain'",
       "sinter check [--help] [OPTION]\xe2\x80\xa6" );
     ( "nope",
       "unknown command 'nope'. Must be one of 'check', 'parse', 'scan' or \
@@ -414,6 +414,24 @@ let usage_errors =
       "sinter check [--help] [OPTION]\xe2\x80\xa6" );
     ( "check --gate",
       "option '--gate' needs an argument",
+      "sinter check [--help] [OPTION]\xe2\x80\xa6" );
+    ( "check -o porcelain --headers=base --no-headers",
+      "--headers and --no-headers exclude each other; give one of the two",
+      "sinter check [--help] [OPTION]\xe2\x80\xa6" );
+    ( "check -o json --no-headers --headers=base",
+      "--headers and --no-headers exclude each other; give one of the two",
+      "sinter check [--help] [OPTION]\xe2\x80\xa6" );
+    ( "check -z",
+      "-z works only with -o porcelain",
+      "sinter check [--help] [OPTION]\xe2\x80\xa6" );
+    ( "check -o json -z --headers=base",
+      "-z works only with -o porcelain",
+      "sinter check [--help] [OPTION]\xe2\x80\xa6" );
+    ( "check -o brief --headers=nope",
+      "--headers works only with -o porcelain",
+      "sinter check [--help] [OPTION]\xe2\x80\xa6" );
+    ( "check --no-headers",
+      "--no-headers works only with -o porcelain",
       "sinter check [--help] [OPTION]\xe2\x80\xa6" );
     ( "parse",
       "required argument FILE is missing",
@@ -432,6 +450,82 @@ let a_usage_error_is_an_error_and_a_help_line () =
         (let status, text = usage_error ~term:None arguments in
          (status, lines text)))
     usage_errors
+
+let an_unknown_header_is_an_error_that_lists_the_headers () =
+  List.iter
+    (fun (arguments, name) ->
+      Alcotest.(check (pair int (list string)))
+        arguments
+        ( 2,
+          [
+            Printf.sprintf "error: unknown header '%s'" name;
+            "  = help: give one or more of base, ledger, gate, mode, or tool, \
+             separated by commas";
+          ] )
+        (let status, text = usage_error ~term:None arguments in
+         (status, lines text)))
+    [
+      ("check -o porcelain --headers=base,all", "all");
+      ("check -o porcelain --headers=base --headers=Gate,mode", "Gate");
+      ("check -o porcelain --headers=", "");
+      ("check -o porcelain -z --headers=tool,", "");
+      ("check -o porcelain --headers=tool,,base", "");
+    ]
+
+let a_failed_read_of_the_ledger_exits_with_3 () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "sinter.toml"
+    "[scan]\npacks.markdown.files = [\"**/*.md\"]\n";
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  let tree =
+    String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD^{tree}" ])
+  in
+  let commit =
+    String.trim (Git_fixture.git repo [ "commit-tree"; "-m"; "l"; tree ])
+  in
+  ignore (Git_fixture.git repo [ "update-ref"; "refs/sinter/ledger"; commit ]);
+  let file =
+    Filename.concat (Git_fixture.root repo)
+      (Printf.sprintf ".git/objects/%s/%s" (String.sub commit 0 2)
+         (String.sub commit 2 38))
+  in
+  Unix.chmod file 0o644;
+  write file "xx";
+  let run headers =
+    shell
+      (Printf.sprintf "cd %s && env -i %s %s %s %s check -o porcelain %s"
+         (Filename.quote (Git_fixture.root repo))
+         (String.concat " "
+            (List.map Filename.quote
+               (List.filter
+                  (fun variable ->
+                    not (String.starts_with ~prefix:"NO_COLOR=" variable))
+                  (Array.to_list (Git_fixture.env repo)))))
+         "NO_COLOR=1"
+         (Filename.quote
+            ("BISECT_FILE=" ^ Filename.concat (Sys.getcwd ()) "bisect"))
+         (Filename.quote (Filename.concat (Sys.getcwd ()) sinter))
+         headers)
+  in
+  let status, text = run "--headers=ledger" in
+  let fault =
+    "error: git -C " ^ Git_fixture.root repo
+    ^ " rev-parse --verify --quiet refs/sinter/ledger^{commit} failed: "
+  in
+  Alcotest.(check (triple int bool (list string)))
+    "the exit code, the fault without the text of git, and the help"
+    ( 3,
+      true,
+      [
+        "  = help: run the same git command in the repository to see the whole \
+         message";
+      ] )
+    (match lines text with
+    | first :: rest -> (status, String.starts_with ~prefix:fault first, rest)
+    | [] -> (status, false, []));
+  Alcotest.(check (pair int string))
+    "a run that does not name the ledger" (0, "# porcelain 1\n") (run "")
 
 let a_usage_error_is_the_same_with_term_set () =
   List.iter
@@ -525,6 +619,10 @@ let tests =
       the_help_of_check_says_how_to_fetch_the_ledger;
     Alcotest.test_case "a usage error is an error and a help line" `Quick
       a_usage_error_is_an_error_and_a_help_line;
+    Alcotest.test_case "a failed read of the ledger exits with 3" `Quick
+      a_failed_read_of_the_ledger_exits_with_3;
+    Alcotest.test_case "an unknown header is an error that lists the headers"
+      `Quick an_unknown_header_is_an_error_that_lists_the_headers;
     Alcotest.test_case "a usage error is the same with TERM set" `Quick
       a_usage_error_is_the_same_with_term_set;
     Alcotest.test_case "a required option gains quotes with TERM set" `Quick

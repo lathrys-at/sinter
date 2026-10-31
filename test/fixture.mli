@@ -109,8 +109,11 @@ val run :
     leaves out every file named [.gitkeep]. The output of the run holds the real
     path of the copy as [<root>], and standard output holds the value of the
     field [tool] of each index record, a JSON line whose field [kind] is
-    [index], as [<tool>]. The run is killed after [bound] seconds; the default
-    is 10.
+    [index], as [<tool>]. It also holds the value of each porcelain header
+    [# tool <version>] as [<tool>]: the bytes after [# tool ] up to the next
+    line feed or NUL byte, or to the end, of an item that starts with [# tool ]
+    at the start of the output or after a line feed or a NUL byte. The run is
+    killed after [bound] seconds; the default is 10.
 
     The run of [binary] gets the environment [caller] without the variables
     [TERM], [NO_COLOR], [CLICOLOR_FORCE], [FORCE_COLOR], and [CLICOLOR], and

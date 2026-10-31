@@ -9,16 +9,17 @@ version numbers, because formats and code change at different speeds.
 
 ## The specifications
 
-The `spec/` directory holds six documents:
+The `spec/` directory holds seven documents:
 
 - the doctag vocabulary;
 - the query algebra;
 - the JSONL interchange schema;
 - the approval-ledger format;
 - the manifest format;
-- the language-pack format.
+- the language-pack format;
+- the porcelain form of the findings.
 
-These six documents are one coherent set, and they share one version.
+These seven documents are one coherent set, and they share one version.
 A release of the set is a git tag of the form `spec/vX.Y.Z`. The three
 parts of the version number change for different reasons:
 

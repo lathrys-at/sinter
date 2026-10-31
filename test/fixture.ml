@@ -553,7 +553,37 @@ let mask_line line =
         (close value)
   | _ -> line
 
-let mask_tool text = String.concat "" (List.map mask_line (lines text))
+let tool_header = "# tool "
+
+let mask_header text =
+  let length = String.length text in
+  let buffer = Buffer.create length in
+  let rec item_end index =
+    if index >= length || text.[index] = '\n' || text.[index] = '\000' then
+      index
+    else item_end (index + 1)
+  in
+  let rec scan index =
+    if index < length then
+      if
+        (index = 0 || text.[index - 1] = '\n' || text.[index - 1] = '\000')
+        && index + String.length tool_header <= length
+        && String.equal
+             (String.sub text index (String.length tool_header))
+             tool_header
+      then (
+        Buffer.add_string buffer tool_header;
+        Buffer.add_string buffer "<tool>";
+        scan (item_end (index + String.length tool_header)))
+      else (
+        Buffer.add_char buffer text.[index];
+        scan (index + 1))
+  in
+  scan 0;
+  Buffer.contents buffer
+
+let mask_tool text =
+  mask_header (String.concat "" (List.map mask_line (lines text)))
 
 let settle mode ~name ~expected actual =
   match mode with

@@ -181,3 +181,27 @@
   bold under `TERM=xterm` and plain with no quotes without `TERM`. The
   bold part becomes a quoted part, so this one message reads
   `'--grammar'` under `TERM=xterm` and `--grammar` without `TERM`.
+
+## Write the porcelain form
+
+- A manifest string can hold `\u0000`, and a `config-changed` subject
+  holds that string, so a field can hold a NUL. With `-z`, a field that
+  holds a NUL or starts with `"` is quoted by the rule of the tab form,
+  and every other field is written as it is (rulings of the
+  maintainer). A reader undoes the quotes exactly when a field starts
+  with `"`. The record takes the ruling.
+- `--headers` reads its value as one string and splits it at commas.
+  cmdliner's list type drops an empty name, so `--headers=` and
+  `--headers=base,,mode` would have passed; they are now an unknown
+  header `''`.
+- An unknown header name is the one usage error whose help lists the
+  header names. The other usage errors take the usage line as their
+  help, as cmdliner's own errors do.
+- The help names "the porcelain specification" and no path, because a
+  help text never names a repository file (ruling of the lead).
+- `Scan.ledger_commit` is the one lookup of the ledger ref, and
+  `ledger_warning` uses it. A run that names the header `ledger` and
+  holds a plan runs `git rev-parse` for the ref twice.
+- `Check.run` makes the header lines, so that a tool version that a
+  header cannot hold raises `Invalid_argument` before any output. Such
+  a version comes only from a build whose package version is empty.

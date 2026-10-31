@@ -1395,7 +1395,7 @@ These conventions apply to every command:
   reports every finding and exits 0. Code 2 means that the command line
   is wrong, code 3 that the command could not run here, and code 4 that
   it refused, as `approve` does for an agent.
-- **Three forms of output** for findings, which `check`, `status`,
+- **Four forms of output** for findings, which `check`, `status`,
   `query`, and the hooks print (record `output-forms`). `-o` selects
   one. The **full form**, the default, gives each finding a block in
   the layout of rustc: a headline, the location, the source line with
@@ -1436,8 +1436,16 @@ These conventions apply to every command:
   findings of `untraced`, `unmet-promise`, and `awaiting-approval` in
   one file fold into one line with a count, unless the class blocks.
   `-v` lists each finding and names the base, and `-q` prints no
-  summary and no note. The text forms are for people and can change
-  between versions; programs read `-o json`.
+  summary and no note. The **porcelain form**, `-o porcelain`, is for
+  scripts (record `porcelain-format`, `spec/porcelain.md`). Each
+  finding is one line of nine fields, separated by tabs, with the tier
+  first. A field that holds a control character, `"`, or `\` is
+  written in double quotes with C escapes, and `-z` ends each field
+  with NUL. The line `# porcelain 1` comes first, and `--headers` adds
+  the headers `base`, `ledger`, `gate`, `mode`, and `tool`. Its layout
+  never changes, and a new layout gets a new name. The text forms are
+  for people and can change between versions; programs read `-o json`
+  or `-o porcelain`.
 - **Errors.** Every failure prints on standard error a headline
   `error: <fault>` and a line `  = help: <action>` (record
   `error-layout`). An error at a place in the manifest shows its source
@@ -1457,9 +1465,9 @@ These conventions apply to every command:
   ```
 - **Color.** The full and brief forms and the messages on standard
   error use the 16 base colors of the terminal and bold (record
-  `color-settings`). JSON never has color. The option
-  `--color=auto|always|never` is on every command, and `auto` is the
-  default. The first rule that matches decides, for standard output
+  `color-settings`). JSON and the porcelain form never have color. The
+  option `--color=auto|always|never` is on every command, and `auto` is
+  the default. The first rule that matches decides, for standard output
   and for standard error apart: `--color=always` or `--color=never`;
   `NO_COLOR` set and not empty gives no color; `CLICOLOR_FORCE` set
   and not `0`, or `FORCE_COLOR` set and not empty, gives color; `TERM`
@@ -1511,8 +1519,9 @@ narrow it; `--strict` makes every finding block; `--acked` also shows
 the findings that an ack accepted; `--strict-parse` turns a parse error
 into exit code 3; `--summary` prints one line for each class; and
 `--explain` prints the definition behind each finding. `-o json`
-prints the records of `spec/jsonl.md` section 8, and `--sarif` prints
-SARIF as section 13 maps it.
+prints the records of `spec/jsonl.md` section 8, `-o porcelain` prints
+the lines of `spec/porcelain.md`, and `--sarif` prints SARIF as
+section 13 maps it.
 
 ### 11.4 `sinter query`
 

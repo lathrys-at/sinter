@@ -1,0 +1,6 @@
+check
+--diff
+-o
+porcelain
+--headers=tool,mode
+--headers=gate,base,mode,ledger

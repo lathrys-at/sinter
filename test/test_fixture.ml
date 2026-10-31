@@ -309,6 +309,17 @@ let the_tool_of_an_index_record_shows_as_tool () =
         '{\"kind\":\"req\",\"tool\":\"x\"}' '{\"kind\":\"index\"}'; printf \
         '%s' '{\"kind\":\"index\",\"tool\":\"abc\"}'")
 
+let the_tool_of_a_porcelain_header_shows_as_tool () =
+  check_run "only the value of a header # tool changes" (Ok [])
+    (case_files
+       ~stdout:
+         "# tool <tool>\n\
+          x # tool y\n\
+          # tool <tool>\000# tool <tool>\000# toolz\n\
+          # tool <tool>"
+       "printf '# tool v1 x\\nx # tool y\\n# tool a\\000# tool b\\000# \
+        toolz\\n# tool c'")
+
 let a_run_past_its_bound_is_killed () =
   with_case (case_files "exec sleep 5") (fun case ->
       Alcotest.check outcome "the run did not end"
@@ -707,6 +718,8 @@ let tests =
       a_run_of_a_grammar_puts_a_compiled_module_into_the_cache_folder;
     Alcotest.test_case "the tool of an index record shows as <tool>" `Quick
       the_tool_of_an_index_record_shows_as_tool;
+    Alcotest.test_case "the tool of a porcelain header shows as <tool>" `Quick
+      the_tool_of_a_porcelain_header_shows_as_tool;
     Alcotest.test_case "a run past its bound is killed" `Quick
       a_run_past_its_bound_is_killed;
     Alcotest.test_case "a run that a signal ends fails the case" `Quick

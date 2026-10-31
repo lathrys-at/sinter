@@ -935,8 +935,289 @@ let a_diff_compares_each_file_as_git_stores_it () =
     ]
     (diff_lines ~base:"HEAD" repo)
 
+let raw report =
+  let buffer = Buffer.create 256 in
+  let ppf = Format.formatter_of_buffer buffer in
+  Style.prepare ppf `None;
+  Check.write ppf report;
+  Buffer.contents buffer
+
+let porcelain_check ?(mode = Mode.Tree) ?gate ?(strict = false)
+    ?(verbose = false) ?(quiet = false) ?(nul = false) headers repo =
+  Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+    ~manifest:None ~base:(Some "HEAD") ~mode ~gate ~strict
+    ~form:(Check.Porcelain { nul; headers })
+    ~verbose ~quiet ~tool:"v9.9.9-dev+abc" ()
+
+let porcelain_report ?mode ?gate ?strict ?verbose ?quiet ?nul headers repo =
+  match
+    porcelain_check ?mode ?gate ?strict ?verbose ?quiet ?nul headers repo
+  with
+  | Ok report -> report
+  | Error error ->
+      Alcotest.failf "the check fails: %s"
+        (String.concat "; "
+           (List.map
+              (fun { Error_text.fault; help; _ } -> fault ^ "; " ^ help)
+              (Scan.explain error)))
+
+let porcelain_repo () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "sinter.toml" packs;
+  Git_fixture.write repo ".plans/p.md" "# P\n\n@plan p\n";
+  Git_fixture.write repo "docs/a.md"
+    "# A\n\n@cites x\n\n## R\n\n@req r\n\n## S\n\n@req s\n";
+  Git_fixture.write repo "docs/a\tb.md" "# T\n\n@cites \"y\n";
+  commit repo "c";
+  repo
+
+let header_lines report =
+  List.filter (fun line -> String.starts_with ~prefix:"#" line) (written report)
+
+let each_header_prints_alone_after_the_version () =
+  let repo = porcelain_repo () in
+  let head = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]) in
+  Alcotest.(check (list (list string)))
+    "base, ledger, gate, mode, and tool, each alone"
+    [
+      [ "# porcelain 1"; "# base " ^ head ];
+      [ "# porcelain 1"; "# ledger none" ];
+      [ "# porcelain 1"; "# gate none" ];
+      [ "# porcelain 1"; "# mode tree" ];
+      [ "# porcelain 1"; "# tool v9.9.9-dev+abc" ];
+    ]
+    (List.map
+       (fun header ->
+         header_lines (porcelain_report (Porcelain.Headers [ header ]) repo))
+       Porcelain.headers)
+
+let the_headers_print_once_each_in_their_order () =
+  let repo = porcelain_repo () in
+  let head = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]) in
+  ignore (Git_fixture.git repo [ "update-ref"; "refs/sinter/ledger"; "HEAD" ]);
+  Alcotest.(check (list string))
+    "all five, in a mixed order with a repeat, in diff mode at a gate"
+    [
+      "# porcelain 1";
+      "# base " ^ head;
+      "# ledger " ^ head;
+      "# gate merged";
+      "# mode diff";
+      "# tool v9.9.9-dev+abc";
+    ]
+    (header_lines
+       (porcelain_report ~mode:Mode.Diff ~gate:Finding_class.Merged
+          (Porcelain.Headers
+             [
+               Porcelain.Tool;
+               Porcelain.Mode;
+               Porcelain.Gate;
+               Porcelain.Tool;
+               Porcelain.Ledger;
+               Porcelain.Base;
+             ])
+          repo));
+  Alcotest.(check (list string))
+    "no header, and the version alone" [ "# porcelain 1" ]
+    (header_lines (porcelain_report Porcelain.No_headers repo)
+    @ header_lines (porcelain_report (Porcelain.Headers []) repo))
+
+let a_failed_lookup_of_the_ledger_is_an_error () =
+  let repo = porcelain_repo () in
+  let tree =
+    String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD^{tree}" ])
+  in
+  let commit =
+    String.trim (Git_fixture.git repo [ "commit-tree"; "-m"; "l"; tree ])
+  in
+  ignore (Git_fixture.git repo [ "update-ref"; "refs/sinter/ledger"; commit ]);
+  let objects =
+    Filename.concat (Git_fixture.root repo)
+      (Filename.concat ".git/objects" (String.sub commit 0 2))
+  in
+  let file = Filename.concat objects (String.sub commit 2 38) in
+  Unix.chmod file 0o644;
+  Out_channel.with_open_bin file (fun channel ->
+      Out_channel.output_string channel "xx");
+  Alcotest.(check (pair bool bool))
+    "the header ledger fails, and a run that does not name it does not"
+    (true, true)
+    ( (match porcelain_check (Porcelain.Headers [ Porcelain.Ledger ]) repo with
+      | Error (Scan.Repository _) -> true
+      | Ok _ | Error _ -> false),
+      match
+        porcelain_check
+          (Porcelain.Headers [ Porcelain.Base; Porcelain.Gate ])
+          repo
+      with
+      | Ok _ -> true
+      | Error _ -> false )
+
+let a_tool_header_that_needs_quotes_is_refused () =
+  let repo = porcelain_repo () in
+  let check tool headers =
+    Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+      ~manifest:None ~base:(Some "HEAD") ~mode:Mode.Tree ~gate:None
+      ~strict:false
+      ~form:(Check.Porcelain { nul = false; headers })
+      ~verbose:false ~quiet:false ~tool ()
+  in
+  List.iter
+    (fun tool ->
+      Alcotest.check_raises tool
+        (Invalid_argument
+           "Porcelain.add_header: a name or a value that needs quotes")
+        (fun () -> ignore (check tool (Porcelain.Headers [ Porcelain.Tool ]))))
+    [ ""; "v1 x"; "v1\n" ];
+  Alcotest.(check bool)
+    "an empty tool and no header tool" true
+    (Result.is_ok (check "" (Porcelain.Headers [ Porcelain.Base ])))
+
+let the_porcelain_form_prints_only_warnings_on_standard_error () =
+  let repo = porcelain_repo () in
+  List.iter
+    (fun (verbose, quiet, strict) ->
+      let report =
+        porcelain_report ~verbose ~quiet ~strict (Porcelain.Headers []) repo
+      in
+      Alcotest.(check (pair (list string) int))
+        (Printf.sprintf "-v %b, -q %b, --strict %b" verbose quiet strict)
+        ( [ "warning: no ledger found, so every plan counts as open" ],
+          if strict then 1 else 0 )
+        (Check.messages report, Check.code report);
+      Alcotest.(check int)
+        "the version and every finding, with none folded" 6
+        (List.length (written report)))
+    [
+      (false, false, false);
+      (true, false, false);
+      (false, true, false);
+      (true, true, true);
+    ]
+
+let run_records repo =
+  match
+    Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+      ~manifest:None ~base:(Some "HEAD") ~mode:Mode.Tree
+      ~gate:(Some Finding_class.Review) ~strict:false ~form:Check.Json
+      ~verbose:false ~quiet:false ~tool:"v1" ()
+  with
+  | Ok report -> written report
+  | Error _ -> Alcotest.fail "the check fails"
+
+let each_porcelain_line_holds_the_values_of_its_record () =
+  let repo = porcelain_repo () in
+  let json = run_records repo in
+  let lines =
+    written
+      (porcelain_report ~gate:Finding_class.Review (Porcelain.Headers []) repo)
+  in
+  let field record name =
+    match List.assoc_opt name record with
+    | Some (`String text) -> text
+    | Some (`Int number) -> Int.to_string number
+    | Some _ -> Alcotest.failf "the field %s is not a string or an int" name
+    | None -> ""
+  in
+  Alcotest.(check (list (list string)))
+    "the values of each line and of each record, in order"
+    (List.map
+       (fun record ->
+         let record =
+           match Yojson.Safe.from_string record with
+           | `Assoc fields -> fields
+           | _ -> Alcotest.fail "a record that is not an object"
+         in
+         List.map (field record)
+           [
+             "tier";
+             "class";
+             "path";
+             "line";
+             "col";
+             "eline";
+             "ecol";
+             "subject";
+             "detail";
+           ])
+       (List.tl json))
+    (List.map
+       (fun line ->
+         List.map
+           (fun item ->
+             match Test_porcelain.unquote item with
+             | Ok value -> value
+             | Error reason -> Alcotest.failf "%s in %S" reason item)
+           (String.split_on_char '\t' line))
+       (List.tl lines))
+
+let a_porcelain_line_and_a_record_hold_the_same_values =
+  property "a porcelain line and a record of one finding hold the same values"
+    Gen.(pair Generators.porcelain_finding gate_gen)
+    (fun (value, _) -> Generators.print_porcelain_finding value)
+    (fun ((finding, tier), gate) ->
+      let entry =
+        { Check.finding; tier = Option.map (fun tier -> (gate, tier)) tier }
+      in
+      let record = Check.record ~mode:Mode.Tree entry in
+      let field name =
+        match List.assoc_opt name record with
+        | Some (Jsonl.Scalar (Jsonl.String text)) -> text
+        | Some (Jsonl.Scalar (Jsonl.Int number)) -> Int.to_string number
+        | Some _ -> "?"
+        | None -> if name = "tier" then "none" else ""
+      in
+      let buffer = Buffer.create 64 in
+      Porcelain.add_finding buffer ~nul:false ~tier finding;
+      let line = Buffer.contents buffer in
+      List.map Result.ok
+        (List.map field
+           [
+             "tier";
+             "class";
+             "path";
+             "line";
+             "col";
+             "eline";
+             "ecol";
+             "subject";
+             "detail";
+           ])
+      = List.map Test_porcelain.unquote
+          (String.split_on_char '\t'
+             (String.sub line 0 (String.length line - 1))))
+
+let the_porcelain_form_with_nul_ends_each_field_with_nul () =
+  let repo = porcelain_repo () in
+  let text =
+    raw (porcelain_report ~nul:true (Porcelain.Headers [ Porcelain.Mode ]) repo)
+  in
+  Alcotest.(check (pair (list string) int))
+    "the headers, and the number of items of the findings"
+    ([ "# porcelain 1"; "# mode tree" ], 5 * 9)
+    (let items = String.split_on_char '\000' text in
+     let headers, fields =
+       List.partition (fun item -> String.starts_with ~prefix:"# " item) items
+     in
+     (headers, List.length fields - 1))
+
 let tests =
   [
+    case "each header prints alone after the version"
+      each_header_prints_alone_after_the_version;
+    case "the headers print once each in their order"
+      the_headers_print_once_each_in_their_order;
+    case "a failed lookup of the ledger is an error"
+      a_failed_lookup_of_the_ledger_is_an_error;
+    case "a tool header that needs quotes is refused"
+      a_tool_header_that_needs_quotes_is_refused;
+    case "the porcelain form prints only warnings on standard error"
+      the_porcelain_form_prints_only_warnings_on_standard_error;
+    case "each porcelain line holds the values of its record"
+      each_porcelain_line_holds_the_values_of_its_record;
+    case "the porcelain form with -z ends each field with NUL"
+      the_porcelain_form_with_nul_ends_each_field_with_nul;
+    a_porcelain_line_and_a_record_hold_the_same_values;
     case "a diff against the merge base reports what the branch adds"
       a_diff_against_the_merge_base_reports_what_the_branch_adds;
     case "a diff compares each file as git stores it"
