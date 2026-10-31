@@ -378,6 +378,17 @@ let check_cmd =
          $(b,fix:) and gives the text to paste. A finding that belongs to no \
          one file starts with $(b,-:-:-:) instead of a place.";
       `P
+        "With $(b,-o porcelain), each finding prints as one line of nine \
+         fields, separated by tabs, for a script to read: the tier, the class, \
+         the path, the line, the column, the end line, the end column, the \
+         subject, and the detail. Without $(b,--gate), the tier is $(b,none). \
+         A field that holds a control character, a double quote, or a \
+         backslash stands in double quotes, with C escapes. The first line is \
+         the header $(b,# porcelain 1). $(b,--headers) adds other header \
+         lines, $(b,--no-headers) prints none, and $(b,-z) ends each field and \
+         each header with a NUL byte. The layout of this form never changes; \
+         the porcelain specification of Sinter gives it in full.";
+      `P
         "The findings are sorted by file, line, column, and class, in every \
          form.";
       `P
@@ -390,20 +401,21 @@ let check_cmd =
       `P
         "After the findings, the full and brief forms print a summary on \
          standard error, for example $(b,8 findings in 2 files: 7 block, 1 \
-         warn; 4 have a fix). Warnings also go to standard error. The JSON \
-         form prints no summary.";
+         warn; 4 have a fix). Warnings also go to standard error. The JSON and \
+         porcelain forms print no summary.";
       `P
         "Some checks compare the working tree with a base commit. With \
          $(b,-v), the full and brief forms name the base on standard error. \
-         The JSON form names it in the first record.";
+         The JSON form names it in the first record, and the porcelain form in \
+         the header $(b,# base) with $(b,--headers=base).";
       `P
         "In the full and brief forms, the findings of the classes \
          $(b,untraced), $(b,unmet-promise), and $(b,awaiting-approval) fold \
          into one line for each class and file, with a count, when a file has \
          two or more of them. A class that blocks at the gate does not fold, \
          and nothing folds with $(b,--strict) or $(b,-v). A note on standard \
-         error says how many findings are folded. The JSON form gives every \
-         finding.";
+         error says how many findings are folded. The JSON and porcelain forms \
+         give every finding.";
       `P
         "Sinter keeps the approvals and the completed plans in a ledger, on \
          the git ref $(b,refs/sinter/ledger). When the repository has no such \
@@ -447,6 +459,10 @@ let check_cmd =
       `P "Print one line for each finding, and no summary.";
       `Pre "  sinter check -o json";
       `P "Print the findings as JSON, for a program to read.";
+      `Pre "  sinter check --gate review -o porcelain --headers=base";
+      `P
+        "Print the header lines $(b,# porcelain 1) and $(b,# base), and then \
+         one line of fields for each finding, for a script to read.";
     ]
   in
   let info =
