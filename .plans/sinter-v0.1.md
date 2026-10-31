@@ -243,6 +243,7 @@ the gate `turn`.
 ## Let a plan span branches
 @scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**, sinter.toml
 @decision delivery-marks
+@delivered 05ef56
 Carry out the records `plans-span-branches` and `delivery-marks`:
 specify that a plan reaches the default branch in its own pull
 request, that later branches deliver its steps and mark them, and
