@@ -516,7 +516,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `declined` | node | `declined(kind(req\|design\|decision\|plan))`; the detail is the reason | tree | · | · | warn, block, — |
 | `unapproved-req` | edge | `in(satisfies\|verifies, kind(req) - approved(all))`. A kind that does not need approval counts as approved, so in a repository where `proof.req` is not `"approval"` this class reports nothing | tree | · | · | block, block, block |
 | `unapproved-design` | edge | `in(satisfies\|verifies, kind(design) - approved(all))` | tree | · | · | warn, warn, warn |
-| `awaiting-approval` | node | `kind(req\|design\|decision) ^ inforce(all) - approved(all)` | tree | · | · | off, warn, warn |
+| `awaiting-approval` | node | `kind(req\|design\|decision) ^ inforce(all) - approved(all)` | tree | · | · | —, warn, warn |
 | `unapproved-plan` | plan | `kind(plan) ^ inforce(all) - approved(all)`. The engine writes the difference between the current commitment set and the approved commitment set into the finding's `detail` field | tree | · | · | warn, block, — |
 | `retired` | edge | `in(cites, all) - in(cites, inforce(all))`: the `cites` edges whose tag target resolves to a fact that is not in force — a rule's origin edge included. When the cited fact has successors ([vocabulary.md](vocabulary.md) section 8.2), the `detail` names the cited fact and then its successors, in the byte order of their ids, for example `decision:a is superseded by decision:b, decision:c`. The fix then cites a successor in place of the cited fact: it writes the slug of the successor in place of the tag target and, when the edge carries a revision, the current revision of the successor in place of that revision. With several successors, the fix has one alternative for each, in the same order. Ackable only when the cited fact has no successor; the fix then inserts the `@ack` line for the finding after the last tag line of the block | tree | A* | · | warn, block, block |
 | `stale-ack` | ack | *engine*: an `@ack` whose hash no longer matches its block, or whose tag target names neither an ackable finding nor an obligation of a rule in that block ([vocabulary.md](vocabulary.md) section 7.4) | tree | · | F | block, block, block |
@@ -526,8 +526,8 @@ column to `warn`, at every gate. `sinter init` writes
 | `unexercised` | edge | `unexercised(kind(verifies))` | tree | A | · | warn, block, block |
 | `unmeasured` | edge | `unmeasured(kind(verifies))` | tree | · | · | off, warn, warn |
 | `ambiguous-result` | node | *engine*: a test or a group that a test result binds to, when the same result also binds to a test or a group of another file or another name path ([packs.md](packs.md) section 9.2) | tree | · | · | warn, block, block |
-| `untraced` | node | `untraced(verifies) + untraced(satisfies)` — incompleteness; never blocks a turn end | tree | · | · | off, warn, warn |
-| `unmet-promise` | promise | `unmet(active)` where `unmet(p) = promises($p) - met(promises($p))` — incompleteness; enforced only by `status --done` | tree | · | · | off, off, — |
+| `untraced` | node | `untraced(verifies) + untraced(satisfies)` — incompleteness | tree | · | · | —, warn, warn |
+| `unmet-promise` | promise | `unmet(active)` where `unmet(p) = promises($p) - met(promises($p))` — incompleteness | tree | · | · | —, off, — |
 | `promise-out-of-scope` | promise | *engine*: a promise met only by facts outside its step's scope | tree | · | · | warn, warn, — |
 | `unverified-promise` | promise | *engine*: a promised `req` or `design` with no promised `verifies` of it in the same plan | tree | · | · | warn, warn, — |
 | `promise-collision` | promise | *engine*: a promised declaration whose slug a claim promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise of the same plan with the same step, word, and target. A plan of `B` and a plan of `T` are the same plan when their full forms are equal ([vocabulary.md](vocabulary.md) section 4.3), or when the plan of `B` has no plan id and the two have the same slug and the same path. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered, and a plan id added to a plan makes none of its promises new. A tool that does not read the ledger has no claims, so it reports only the second case | diff | · | · | block, block, — |
@@ -542,12 +542,13 @@ column to `warn`, at every gate. `sinter init` writes
 | `pack-mismatch` | pack | *engine*: the hash of a fetched pack in the cache does not match the hash that the lock file `sinter.lock` fixes for it. The built-in pack `markdown` is not in the lock file. The class takes no tier at any gate: the tool stops with exit code 3 | tree | · | · | — |
 
 `untraced`, `unmet-promise`, and `awaiting-approval` are the
-incompleteness classes. They exist so that `status` can report
-them, and so that the check
-that closes a plan (`status --done` and the completion condition in
-[ledger.md](ledger.md)) can read them. The turn report never lists
-them as violations. Every other class is a violation, or a signal
-about the health of the repository's checking machinery.
+incompleteness classes. They take no tier at the gate `turn`, so a
+check at that gate never reports them. A manifest cannot give them a
+tier there ([manifest.md](manifest.md) section 11.2). `sinter status`
+reports them, and the check that closes a plan (`status --done` and
+the completion condition in [ledger.md](ledger.md)) reads them. Every
+other class is a violation, or a signal about the health of the
+repository's checking machinery.
 
 ### 9.1 Mechanical repairs
 

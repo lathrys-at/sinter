@@ -170,13 +170,15 @@ let a_gate_leaves_out_a_class_that_is_off_or_has_no_tier () =
   let findings =
     [
       finding Finding_class.Untraced edge;
+      finding Finding_class.Unmeasured edge;
       finding Finding_class.Dangling edge;
       finding Finding_class.Unverified_promise edge;
       finding Finding_class.Parse_error error_node;
     ]
   in
   let tiers = Alcotest.(list (pair string (option (pair string string)))) in
-  Alcotest.check tiers "the entries at turn, where untraced is off"
+  Alcotest.check tiers
+    "the entries at turn, where untraced takes no tier and unmeasured is off"
     [
       ("dangling", Some ("turn", "block"));
       ("unverified-promise", Some ("turn", "warn"));
@@ -187,6 +189,7 @@ let a_gate_leaves_out_a_class_that_is_off_or_has_no_tier () =
     "the entries at merged, where unverified-promise takes no tier"
     [
       ("untraced", Some ("merged", "warn"));
+      ("unmeasured", Some ("merged", "warn"));
       ("dangling", Some ("merged", "block"));
       ("parse-error", Some ("merged", "warn"));
     ]

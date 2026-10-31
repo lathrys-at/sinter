@@ -294,14 +294,14 @@ let rows =
       "[check]\ntiers.review.dangling = \"warn\"\n",
       "check.tiers.review.dangling: \"block\" -> \"warn\" (weakens)",
       "check.tiers.review.dangling: \"warn\" -> \"block\" (strengthens)" );
-    ( "[check]\ntiers.turn.untraced = \"warn\"\n",
-      "[check]\ntiers.turn.untraced = \"block\"\n",
-      "check.tiers.turn.untraced: \"warn\" -> \"block\" (strengthens)",
-      "check.tiers.turn.untraced: \"block\" -> \"warn\" (weakens)" );
-    ( "[check]\ntiers.turn.untraced = \"warn\"\n",
-      "[check]\ntiers.turn.untraced = \"off\"\n",
-      "check.tiers.turn.untraced: \"warn\" -> \"off\" (weakens)",
-      "check.tiers.turn.untraced: \"off\" -> \"warn\" (strengthens)" );
+    ( "[check]\ntiers.review.untraced = \"warn\"\n",
+      "[check]\ntiers.review.untraced = \"block\"\n",
+      "check.tiers.review.untraced: \"warn\" -> \"block\" (strengthens)",
+      "check.tiers.review.untraced: \"block\" -> \"warn\" (weakens)" );
+    ( "[check]\ntiers.review.untraced = \"warn\"\n",
+      "[check]\ntiers.review.untraced = \"off\"\n",
+      "check.tiers.review.untraced: \"warn\" -> \"off\" (weakens)",
+      "check.tiers.review.untraced: \"off\" -> \"warn\" (strengthens)" );
     ( "",
       "[check]\ntiers.review.dangling = \"block\"\n",
       "check.tiers.review.dangling: \"block\" -> \"block\" (changes)",
@@ -391,9 +391,9 @@ let a_tier_applies_under_the_warn_only_of_its_side () =
     ]
     (details "[check]\nwarn-only = true\ntiers.review.dangling = \"warn\"\n" "");
   Alcotest.check strings "a tier that is not block stays under warn-only"
-    [ "check.tiers.turn.untraced: \"off\" -> \"warn\" (strengthens)" ]
+    [ "check.tiers.turn.unmeasured: \"off\" -> \"warn\" (strengthens)" ]
     (details "[check]\nwarn-only = true\n"
-       "[check]\nwarn-only = true\ntiers.turn.untraced = \"warn\"\n");
+       "[check]\nwarn-only = true\ntiers.turn.unmeasured = \"warn\"\n");
   Alcotest.check strings "the same written tier is no change" []
     (details "[check]\ntiers.review.dangling = \"warn\"\n"
        "[check]\nwarn-only = true\ntiers.review.dangling = \"warn\"\n"
@@ -658,7 +658,7 @@ let config =
              (fun (gate, cls) -> optional [ "check"; "tiers"; gate; cls ] tier)
              [
                ("review", "dangling");
-               ("turn", "untraced");
+               ("review", "untraced");
                ("merged", "cycle");
                ("turn", "suspect");
              ])
