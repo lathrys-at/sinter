@@ -336,3 +336,20 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
 - The benchmark on one checkout and on the generated trees: the peak
   memory and the instructions stay within 0.5 percent of `main`, inside
   the spread of the runs.
+
+## Keep incomplete work out of the turn report
+
+- The row of `unmet-promise` in section 9 of the algebra loses
+  "enforced only by `status --done`". A manifest can give the class
+  `block` at the gate `review`, so the words were not true.
+- Sinter reads the base manifest only to compare it, and does not
+  check it. `Config_change` already gave no entry for a pair whose
+  class takes no tier at its gate. Section 13.4 of the manifest now
+  says so. A project that removes `check.tiers.turn.untraced` after it
+  upgrades gets no `config-changed` finding for the removal.
+- The summary of `status --json` counts findings under the tiers of
+  `turn` (jsonl.md section 10). The three classes were `off` there by
+  default, and now never count. `status` is not built yet.
+- The tests that wrote a tier at `turn` for `untraced` now use the
+  gate `review`, or the class `unmeasured` where a test needs a
+  built-in `off` at `turn`.
