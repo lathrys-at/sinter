@@ -297,6 +297,56 @@ let stale_mark_is_not_ackable () =
         Alcotest.(check bool) "not ackable" false finding.ackable)
     (findings [ mark_plan "@delivered 000000\n" ])
 
+let two_promise_plan marks =
+  ( ".plans/p.md",
+    "# P\n\n@plan p\n@scope **\n\n## Do it\n\n@req a\n@req b\n" ^ marks
+    ^ "Text.\n" )
+
+let mark_on_unmet_step_sits_at_a_mark_that_counts () =
+  let hash = current_hash (two_promise_plan "") in
+  let mark = "@delivered " ^ hash ^ "\n" in
+  check Finding_class.Mark_on_unmet_step
+    [ two_promise_plan mark; ("lib/a.md", "# A\n\n@req a\n") ]
+    [
+      ".plans/p.md:10:1-10:18 | finding:mark-on-unmet-step:step:p/do-it | \
+       step:p/do-it is marked as delivered, and 1 of its 2 promises are not \
+       met";
+    ];
+  check Finding_class.Mark_on_unmet_step
+    [ two_promise_plan mark; ("lib/a.md", "# A\n\n@req a\n\n## B\n\n@req b\n") ]
+    [];
+  check Finding_class.Mark_on_unmet_step
+    [ two_promise_plan "@delivered 000000\n" ]
+    [];
+  check Finding_class.Mark_on_unmet_step [ two_promise_plan "" ] []
+
+let mark_on_unmet_step_counts_no_verifies_edge_of_a_markdown_file () =
+  let plan text =
+    ( ".plans/p.md",
+      "# P\n\n@plan p\n@scope **\n\n## Do it\n\n@req a\n@verifies a\n" ^ text )
+  in
+  let hash = current_hash (plan "") in
+  check Finding_class.Mark_on_unmet_step
+    [
+      plan ("@delivered " ^ hash ^ "\n");
+      ("lib/a.md", "# A\n\n@req a\n\n## T\n\n@verifies a v1\n");
+    ]
+    [
+      ".plans/p.md:10:1-10:18 | finding:mark-on-unmet-step:step:p/do-it | \
+       step:p/do-it is marked as delivered, and 1 of its 2 promises are not \
+       met";
+    ]
+
+let mark_on_unmet_step_is_not_ackable_and_has_no_fix () =
+  let hash = current_hash (two_promise_plan "") in
+  List.iter
+    (fun (finding : Finding.t) ->
+      if finding.finding_class = Finding_class.Mark_on_unmet_step then begin
+        Alcotest.(check bool) "not ackable" false finding.ackable;
+        Alcotest.(check bool) "no fix" true (Option.is_none finding.fix)
+      end)
+    (findings [ two_promise_plan ("@delivered " ^ hash ^ "\n") ])
+
 let duplicate_sits_at_each_later_member_of_a_group () =
   check Finding_class.Duplicate
     [
@@ -1281,6 +1331,15 @@ let stale_mark_marks_the_hash () =
     [ mark_plan "@delivered 000000\n" ]
     [ ".plans/p.md:9 / 12-18 not the step hash" ]
 
+let mark_on_unmet_step_names_each_promise_not_met () =
+  let hash = current_hash (two_promise_plan "") in
+  check_parts Finding_class.Mark_on_unmet_step
+    [ two_promise_plan ("@delivered " ^ hash ^ "\n") ]
+    [
+      ".plans/p.md:10 / 1-11 marked as delivered / not met at \
+       .plans/p.md:8:1-8:7 / not met at .plans/p.md:9:1-9:7";
+    ]
+
 let duplicate_marks_the_target_and_names_the_first () =
   check_parts Finding_class.Duplicate
     [
@@ -1789,6 +1848,12 @@ let tests =
     case "the fix of stale-mark makes the mark count"
       the_fix_of_stale_mark_makes_the_mark_count;
     case "stale-mark is not ackable" stale_mark_is_not_ackable;
+    case "mark-on-unmet-step sits at a mark that counts"
+      mark_on_unmet_step_sits_at_a_mark_that_counts;
+    case "mark-on-unmet-step counts no verifies edge of a markdown file"
+      mark_on_unmet_step_counts_no_verifies_edge_of_a_markdown_file;
+    case "mark-on-unmet-step is not ackable and has no fix"
+      mark_on_unmet_step_is_not_ackable_and_has_no_fix;
     case "merged-incomplete sits at a step with some promises met"
       merged_incomplete_sits_at_a_step_with_some_promises_met;
     case "merged-incomplete names each promise not met"
@@ -1797,6 +1862,8 @@ let tests =
       merged_incomplete_counts_no_verifies_edge_of_a_markdown_file;
     case "a bad mark marks its part" a_bad_mark_marks_its_part;
     case "stale-mark marks the hash" stale_mark_marks_the_hash;
+    case "mark-on-unmet-step names each promise not met"
+      mark_on_unmet_step_names_each_promise_not_met;
     case "merged-incomplete is not ackable and has no fix"
       merged_incomplete_is_not_ackable_and_has_no_fix;
   ]

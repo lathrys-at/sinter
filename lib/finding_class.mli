@@ -42,6 +42,7 @@ type t =
   | Scope_outside_plan
   | Step_without_promises
   | Stale_mark
+  | Mark_on_unmet_step
   | Misplaced_plan
   | Missing_plan_id
   | Unpinned

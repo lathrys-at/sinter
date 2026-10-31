@@ -978,6 +978,45 @@ let stale_marks facts =
           plan.steps)
     (Facts.plans facts)
 
+let marks_on_unmet_steps facts =
+  List.concat_map
+    (fun (plan : Facts.plan) ->
+      if not (is_open plan) then []
+      else
+        List.filter_map
+          (fun (step : Facts.step) ->
+            match Facts.mark step with
+            | Some tag when Facts.delivered step -> (
+                let standing = Facts.standing facts plan step in
+                match
+                  List.filter
+                    (fun promise -> Option.is_none (standing promise).Facts.by)
+                    step.promises
+                with
+                | [] -> None
+                | unmet ->
+                    Some
+                      (Finding.make Finding_class.Mark_on_unmet_step
+                         (step_subject plan step)
+                         ~place:(place plan.path tag.span)
+                         ~detail:
+                           (Printf.sprintf
+                              "%s is marked as delivered, and %d of its %d \
+                               promises are not met"
+                              (Facts.step_id plan step) (List.length unmet)
+                              (List.length step.promises))
+                         ?mark:
+                           (Finding.part tag Tag_line.Word "marked as delivered")
+                         ~related:
+                           (List.map
+                              (fun (promise : Facts.promise) ->
+                                related "not met" plan.path promise.span)
+                              unmet)
+                         ()))
+            | Some _ | None -> None)
+          plan.steps)
+    (Facts.plans facts)
+
 let merged_incomplete facts =
   List.concat_map
     (fun (plan : Facts.plan) ->
@@ -1082,6 +1121,7 @@ let of_facts facts ~base ~not_text =
             unverified_promises facts;
             promises_out_of_scope facts;
             stale_marks facts;
+            marks_on_unmet_steps facts;
             merged_incomplete facts;
           ]))
 

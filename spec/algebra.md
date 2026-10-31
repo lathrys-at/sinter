@@ -505,6 +505,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `scope-outside-plan` | step | *engine*: a step whose `@scope` is not contained in its plan's `@scope`. The tool decides containment on the plain globs ([manifest.md](manifest.md) section 7.2), by the rule of glob containment of [ledger.md](ledger.md) section 11: each plain glob of the step must be contained in a plain glob of the plan. A `!` glob of the step only narrows the step's scope, so it never breaks containment | tree | · | · | block, block, — |
 | `step-without-promises` | step | *engine*: a step without promises of an open plan, while `proof.step` is `"promises"` ([manifest.md](manifest.md) section 10.4). The finding sits at the heading of the step. It has no fix | tree | · | · | block, block, block |
 | `stale-mark` | step | *engine*: a step of an open plan whose mark does not count: its mark hash is not the first six hex digits of the current step hash ([vocabulary.md](vocabulary.md) section 10.8). A mark whose tag target is not a mark hash is `invalid-target` only. The finding sits at the mark. The fix writes the first six hex digits of the step hash in place of the mark hash | tree | · | F | block, block, block |
+| `mark-on-unmet-step` | step | *engine*: a step of an open plan with a mark that counts and a promise that is not met. A promise counts as met by the rule of section 9.2. The finding sits at the mark, and its related places are the promises that are not met. It has no fix | tree | · | · | block, block, block |
 | `misplaced-plan` | tag | *engine*: a `@plan` tag outside the first tag block of a file under `.plans/`, or a `@delivered` tag outside the tag block of a step. A `@plan` outside `.plans/**` and a `@plan` in a later block of a file under `.plans/` are misplaced ([vocabulary.md](vocabulary.md) section 10.1). A `@delivered` tag in a file that is not a plan file, in the first tag block of a plan file, or in a block of a step other than its tag block is misplaced ([vocabulary.md](vocabulary.md) section 10.8) | tree | · | · | block, block, block |
 | `missing-plan-id` | plan | *engine*: a plan whose `@plan` tag has no plan id ([vocabulary.md](vocabulary.md) section 4.3). The fix inserts `@` and a plan id at the end of the tag target. That plan id is the first six hex digits of the SHA-256 of three parts, as UTF-8 bytes: the object id of the base commit in lowercase hex (the field `base` of the `index` record, [jsonl.md](jsonl.md) section 10), one LF, and the path of the plan file, relative to the repository root | tree | · | F | block, block, block |
 | `unpinned` | edge | *engine*: a `satisfies`, `verifies`, `refines`, or `supersedes` edge without a revision | tree | · | F | block, block, block |
@@ -602,17 +603,18 @@ must be equal.
 
 ### 9.2 Promises without evidence
 
-The class `merged-incomplete` reads a promised `@verifies` in one more
-way. When no evidence set exists for the tree (global rule 3), a
-promised `@verifies` counts as met for the class when a `verifies` edge
-with its tag target exists inside the effective scope of the step, its
-source is a test, its tag target resolves, and it is not suspect. A
-`verifies` edge whose source is not a test is at rung `wrong-source`
-(section 6.7), and it never counts. When an evidence set exists, the
-rung decides, as [vocabulary.md](vocabulary.md) section 10.5 says. The
-rule applies to this class alone: `done()` and the completion
-condition of [ledger.md](ledger.md) section 8 read every promise as
-section 10.5 says.
+The classes `mark-on-unmet-step` and `merged-incomplete` read a
+promised `@verifies` in one more way. When no evidence set exists for
+the tree (global rule 3), a promised `@verifies` counts as met for
+these classes when a `verifies` edge with its tag target exists inside
+the effective scope of the step, its source is a test, its tag target
+resolves, and it is not suspect. A `verifies` edge whose source is not
+a test is at rung `wrong-source` (section 6.7), and it never counts.
+When an evidence set exists, the rung decides, as
+[vocabulary.md](vocabulary.md) section 10.5 says. The rule applies to
+these classes alone: `done()` and the completion condition of
+[ledger.md](ledger.md) section 8 read every promise as section 10.5
+says.
 
 ## 10. Evaluation, ordering, and errors
 
