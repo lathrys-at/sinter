@@ -494,7 +494,7 @@ let a_failed_read_of_the_ledger_exits_with_3 () =
   write file "xx";
   let run headers =
     shell
-      (Printf.sprintf "cd %s && env -i %s %s %s check -o porcelain %s"
+      (Printf.sprintf "cd %s && env -i %s %s %s %s check -o porcelain %s"
          (Filename.quote (Git_fixture.root repo))
          (String.concat " "
             (List.map Filename.quote
@@ -503,6 +503,8 @@ let a_failed_read_of_the_ledger_exits_with_3 () =
                     not (String.starts_with ~prefix:"NO_COLOR=" variable))
                   (Array.to_list (Git_fixture.env repo)))))
          "NO_COLOR=1"
+         (Filename.quote
+            ("BISECT_FILE=" ^ Filename.concat (Sys.getcwd ()) "bisect"))
          (Filename.quote (Filename.concat (Sys.getcwd ()) sinter))
          headers)
   in
