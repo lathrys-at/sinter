@@ -1,0 +1,7 @@
+error: 'untraced' takes no tier at the gate 'turn'
+ --> sinter.toml:5:12
+  |
+5 | tiers.turn.untraced = "warn"
+  |            ^^^^^^^^
+  |
+  = help: remove this key

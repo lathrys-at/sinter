@@ -1153,10 +1153,15 @@ has a **tier** at each gate: `off`, `warn`, or `block`. A finding at
   - a statement of the agent that the evidence contradicts.
 
   Incompleteness, such as an unmet promise or an untraced item, is
-  never a violation; only the completion gate enforces it. An agent
-  that cannot honestly hand back "not done yet" learns to fake that it
-  is done. So nothing mechanical holds the turn: the report goes to
-  whoever accepts the work.
+  never a violation; the completion gate enforces it. An agent that
+  cannot honestly hand back "not done yet" learns to fake that it is
+  done. So the incompleteness classes take no tier at the gate `turn`,
+  and the turn report never shows them (`spec/algebra.md` section 9).
+  Sinter never holds a turn: it prints findings and an exit code, and
+  the report goes to whoever accepts the work. A harness that wants to
+  hold a turn until the work is complete reads `sinter status`, or the
+  JSON output of `sinter check` without a gate, which holds every
+  finding. The configuration of the harness decides.
 - **A check with a fresh context**, at the time of the merge request
   and on demand. A separate agent derives the expected work again from
   the approved requirements and the plan, and reports drift in both
@@ -1806,8 +1811,8 @@ plan makes no findings.
 
 **Three classes measure incompleteness, not violations.** `untraced`,
 `unmet-promise`, and `awaiting-approval` exist so that `sinter status`
-and the closing of a plan can read them. The turn report never lists
-them as violations (section 8).
+and the closing of a plan can read them. They take no tier at the
+gate `turn`, so the turn report never shows them (section 8).
 
 **A name that matches nothing is not an error.** `req(auth-lockout)`
 gives the empty set on a branch where nobody declared `auth-lockout`

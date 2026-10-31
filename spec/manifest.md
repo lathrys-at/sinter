@@ -970,6 +970,10 @@ takes:
 
 - A key path that names a gate, a class, or a kind counts only when
   Sinter knows that name.
+- A pair of `check.tiers` counts only when section 11.2 allows it. A
+  pair whose class takes no tier at its gate, such as
+  `check.tiers.turn.untraced` ([algebra.md](algebra.md) section 9),
+  has no entry. So the removal of such a pair is no change.
 - A value counts when its TOML type is the type that the key takes.
   For a key that takes fixed words, such as a tier or a key of
   `[proof]` that takes one value, the value must also be one of those

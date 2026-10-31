@@ -229,7 +229,7 @@ let the_tier_that_applies_follows_the_three_rules () =
   check "warn-only leaves a built-in warn" (Some Finding_class.Warn)
     Finding_class.Turn Finding_class.Typo_tag;
   check "warn-only leaves a built-in off" (Some Finding_class.Off)
-    Finding_class.Turn Finding_class.Awaiting_approval;
+    Finding_class.Turn Finding_class.Unmeasured;
   check "a class with no tier at the gate" None Finding_class.Merged
     Finding_class.Scope_outside_plan;
   check "pack-mismatch takes no tier" None Finding_class.Review
@@ -741,6 +741,19 @@ let names_that_vary () =
     [
       "sinter.toml:2:1: 'scope-outside-plan' takes no tier at the gate \
        'merged'; remove this key";
+    ];
+  reports "the classes of incomplete work take no tier at turn"
+    "[check.tiers.turn]\n\
+     untraced = \"warn\"\n\
+     unmet-promise = \"off\"\n\
+     awaiting-approval = \"block\"\n"
+    [
+      "sinter.toml:2:1: 'untraced' takes no tier at the gate 'turn'; remove \
+       this key";
+      "sinter.toml:3:1: 'unmet-promise' takes no tier at the gate 'turn'; \
+       remove this key";
+      "sinter.toml:4:1: 'awaiting-approval' takes no tier at the gate 'turn'; \
+       remove this key";
     ];
   reports "config-changed, pack-mismatch, and an unknown class"
     "[check.tiers.review]\n\
@@ -1927,6 +1940,59 @@ let stops_after_its_start = function
       compare (stop.Toml.line, stop.column) (start.Toml.line, start.column) > 0
   | Manifest.No_pack -> true
 
+let a_tier_reads_where_its_class_takes_a_tier_at_the_gate =
+  property ~count:400
+    ~name:
+      "a tier reads exactly where its class takes a tier at the gate, and is \
+       an error elsewhere"
+    ~print:(fun (finding_class, gate, tier) ->
+      String.concat " "
+        [
+          Finding_class.gate_name gate;
+          Finding_class.name finding_class;
+          Finding_class.tier_name tier;
+        ])
+    Gen.(
+      triple
+        (oneof_list Finding_class.all)
+        (oneof_list Finding_class.gates)
+        (oneof_list Finding_class.[ Off; Warn; Block ]))
+    (fun (finding_class, gate, tier) ->
+      let text =
+        Printf.sprintf "%s[check.tiers.%s]\n%s = \"%s\"\n" markdown
+          (Finding_class.gate_name gate)
+          (Finding_class.name finding_class)
+          (Finding_class.tier_name tier)
+      in
+      match
+        ( finding_class,
+          Finding_class.builtin_tier finding_class gate,
+          Manifest.of_string text )
+      with
+      | ( Finding_class.Config_changed,
+          _,
+          Error [ Manifest.At (_, Manifest.Never_blocks) ] ) ->
+          true
+      | ( Finding_class.Pack_mismatch,
+          None,
+          Error [ Manifest.At (_, Manifest.No_tier_at_any_gate) ] ) ->
+          true
+      | ( _,
+          None,
+          Error
+            [
+              Manifest.At
+                (_, Manifest.No_tier_at_gate { finding_class = c; gate = g });
+            ] ) ->
+          c = finding_class && g = gate
+          && finding_class <> Finding_class.Pack_mismatch
+      | (Finding_class.Config_changed | Finding_class.Pack_mismatch), _, _ ->
+          false
+      | _, Some _, Ok manifest ->
+          Manifest.tier manifest gate finding_class = Some tier
+          && Manifest.written_tiers manifest = [ (gate, finding_class, tier) ]
+      | _ -> false)
+
 let of_string_answers_any_text =
   property ~count:400
     ~name:
@@ -2830,6 +2896,7 @@ let tests =
       load_of_a_file_it_cannot_open_is_unreadable;
     case "newer_keys names each key newer than sinter-spec"
       newer_keys_names_each_key_newer_than_sinter_spec;
+    a_tier_reads_where_its_class_takes_a_tier_at_the_gate;
     of_string_answers_any_text;
     every_form_and_order_reads_the_same;
     a_manifest_in_the_canonical_form_reads_back_its_values;

@@ -155,6 +155,7 @@ let name = function
   | Ledger_broken -> "ledger-broken"
   | Pack_mismatch -> "pack-mismatch"
 
+(* @cites incompleteness-at-turn *)
 let tiers = function
   | Parse_error -> (Some Warn, Some Block, Some Block)
   | Typo_tag -> (Some Warn, Some Warn, Some Warn)
@@ -175,7 +176,7 @@ let tiers = function
   | Declined -> (Some Warn, Some Block, None)
   | Unapproved_req -> (Some Block, Some Block, Some Block)
   | Unapproved_design -> (Some Warn, Some Warn, Some Warn)
-  | Awaiting_approval -> (Some Off, Some Warn, Some Warn)
+  | Awaiting_approval -> (None, Some Warn, Some Warn)
   | Unapproved_plan -> (Some Warn, Some Block, None)
   | Retired -> (Some Warn, Some Block, Some Block)
   | Stale_ack -> (Some Block, Some Block, Some Block)
@@ -185,8 +186,8 @@ let tiers = function
   | Unexercised -> (Some Warn, Some Block, Some Block)
   | Unmeasured -> (Some Off, Some Warn, Some Warn)
   | Ambiguous_result -> (Some Warn, Some Block, Some Block)
-  | Untraced -> (Some Off, Some Warn, Some Warn)
-  | Unmet_promise -> (Some Off, Some Off, None)
+  | Untraced -> (None, Some Warn, Some Warn)
+  | Unmet_promise -> (None, Some Off, None)
   | Promise_out_of_scope -> (Some Warn, Some Warn, None)
   | Unverified_promise -> (Some Warn, Some Warn, None)
   | Promise_collision -> (Some Block, Some Block, None)
