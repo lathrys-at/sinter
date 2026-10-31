@@ -228,3 +228,66 @@ exits with the code that `sinter check` gives in its other forms. For
 example, a finding that blocks at the gate gives code 1
 ([manifest.md](manifest.md) section 11.1).
 
+## 10. Examples
+
+This section is informative. Each example is the output of the tool
+on a test case of Sinter's test suite. In the examples, a tab stands
+between two fields.
+
+**A run at a gate.** The repository holds `sinter.toml`, which reads
+every markdown file, and `docs/guide.md`:
+
+```markdown
+# Guide
+
+@decision login v1
+@decisoin logout
+
+## Use
+
+@cites Login v1
+```
+
+The repository has no ledger ref. `sinter check -o porcelain --gate
+review --headers=base,ledger` prints this, and exits with code 1,
+because the `dangling` finding blocks:
+
+```text
+# porcelain 1
+# base 13874157f474768d6d729d049ed5475c79f01210
+# ledger none
+warn	typo-tag	docs/guide.md	4	1	4	17	line:docs/guide.md@L4	@decisoin is not a tag word of sinter
+block	dangling	docs/guide.md	8	1	8	16	cites:decision:login->Login	no declaration has the slug Login
+```
+
+**A run without a gate.** In the same repository, `sinter check -o
+porcelain` prints this, and exits with code 0:
+
+```text
+# porcelain 1
+none	typo-tag	docs/guide.md	4	1	4	17	line:docs/guide.md@L4	@decisoin is not a tag word of sinter
+none	dangling	docs/guide.md	8	1	8	16	cites:decision:login->Login	no declaration has the slug Login
+```
+
+**A path that needs quotes.** The repository holds two files that
+cite a slug that nothing declares: `docs/a<tab>tab.md`, whose name
+holds a tab, and `docs/a space.md`. `sinter check -o porcelain` prints
+this:
+
+```text
+# porcelain 1
+none	dangling	"docs/a\ttab.md"	3	1	3	15	"cites:site:docs/a\ttab.md#tab->nothing"	no declaration has the slug nothing
+none	dangling	docs/a space.md	3	1	3	15	cites:site:docs/a space.md#space->nothing	no declaration has the slug nothing
+```
+
+**The same run with `-z`.** `sinter check -o porcelain -z` prints the
+same findings with a NUL byte after each field. Here each NUL byte is
+shown as `^@`, as `cat -v` shows it, and a line break follows the NUL
+byte that ends a header line or a finding. The tab in the path is
+written as it is:
+
+```text
+# porcelain 1^@
+none^@dangling^@docs/a	tab.md^@3^@1^@3^@15^@cites:site:docs/a	tab.md#tab->nothing^@no declaration has the slug nothing^@
+none^@dangling^@docs/a space.md^@3^@1^@3^@15^@cites:site:docs/a space.md#space->nothing^@no declaration has the slug nothing^@
+```

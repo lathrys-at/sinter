@@ -1,0 +1,5 @@
+check
+-o
+porcelain
+--headers=base
+--no-headers

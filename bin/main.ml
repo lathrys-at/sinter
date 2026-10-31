@@ -96,14 +96,14 @@ let color =
   let doc =
     "When to color the output: $(b,auto), $(b,always), or $(b,never). Color \
      applies to the full and brief forms and to the messages on standard \
-     error, and never to JSON. With $(b,auto), the first of these rules that \
-     matches decides, for standard output and for standard error apart: \
-     $(b,NO_COLOR) set and not empty gives no color; $(b,CLICOLOR_FORCE) set \
-     and not $(b,0), or $(b,FORCE_COLOR) set and not empty, gives color; \
-     $(b,TERM) set to $(b,dumb), or $(b,CLICOLOR) set to $(b,0), gives no \
-     color; otherwise a stream gets color when it is a terminal. An error on \
-     the command line comes before this option is read, so it takes its color \
-     from these rules alone."
+     error, and never to JSON or porcelain. With $(b,auto), the first of these \
+     rules that matches decides, for standard output and for standard error \
+     apart: $(b,NO_COLOR) set and not empty gives no color; \
+     $(b,CLICOLOR_FORCE) set and not $(b,0), or $(b,FORCE_COLOR) set and not \
+     empty, gives color; $(b,TERM) set to $(b,dumb), or $(b,CLICOLOR) set to \
+     $(b,0), gives no color; otherwise a stream gets color when it is a \
+     terminal. An error on the command line comes before this option is read, \
+     so it takes its color from these rules alone."
   in
   Arg.(
     value
@@ -492,25 +492,49 @@ let check_cmd =
   in
   let output =
     let doc =
-      "The form of the output: $(b,full), $(b,brief), or $(b,json). The full \
-       form shows each finding with its source lines, the places that relate \
-       to it, and its fix. The brief form gives one line for each finding, and \
-       a second line for its fix. The JSON form gives one object per line, in \
-       the form that $(b,sinter scan) uses: the first record describes the \
-       run, as the first line of $(b,sinter scan) does, and each record after \
-       it is one finding."
+      "The form of the output: $(b,full), $(b,brief), $(b,json), or \
+       $(b,porcelain). The full form shows each finding with its source lines, \
+       the places that relate to it, and its fix. The brief form gives one \
+       line for each finding, and a second line for its fix. The JSON form \
+       gives one object per line, in the form that $(b,sinter scan) uses: the \
+       first record describes the run, as the first line of $(b,sinter scan) \
+       does, and each record after it is one finding. The porcelain form gives \
+       one line of fields, separated by tabs, for each finding, for a script \
+       to read; its layout never changes."
     in
     Arg.(
       value
       & opt
           (enum
              [
-               ("full", Sinter_core.Check.Full);
-               ("brief", Sinter_core.Check.Brief);
-               ("json", Sinter_core.Check.Json);
+               ("full", `Full);
+               ("brief", `Brief);
+               ("json", `Json);
+               ("porcelain", `Porcelain);
              ])
-          Sinter_core.Check.Full
+          `Full
       & info [ "o"; "output" ] ~docv:"FORM" ~doc)
+  in
+  let nul =
+    let doc =
+      "In the porcelain form, end each field and each header line with a NUL \
+       byte. Only a field that holds a NUL byte or starts with a double quote \
+       stands in double quotes."
+    in
+    Arg.(value & flag & info [ "z" ] ~doc)
+  in
+  let headers =
+    let doc =
+      "In the porcelain form, print the header lines that NAMES lists, after \
+       $(b,# porcelain 1): $(b,base), $(b,ledger), $(b,gate), $(b,mode), or \
+       $(b,tool), separated by commas. The option can be given more than once. \
+       Each header prints once, in the order of this list."
+    in
+    Arg.(value & opt_all string [] & info [ "headers" ] ~docv:"NAMES" ~doc)
+  in
+  let no_headers =
+    let doc = "In the porcelain form, print no header line." in
+    Arg.(value & flag & info [ "no-headers" ] ~doc)
   in
   let diff =
     let doc =
@@ -532,7 +556,7 @@ let check_cmd =
     in
     Arg.(value & flag & info [ "q"; "quiet" ] ~doc)
   in
-  let run color manifest base diff gate strict form verbose quiet =
+  let check color manifest base diff gate strict form verbose quiet =
     with_phases color @@ fun phases ->
     match
       Sinter_core.Check.run ?phases ~env:(Unix.environment ())
@@ -548,7 +572,11 @@ let check_cmd =
           Sinter_core.Check.write ?phases
             (Sinter_core.Style.formatter stdout
                ~color:
-                 (form <> Sinter_core.Check.Json && colored color Unix.stdout))
+                 (match form with
+                 | Sinter_core.Check.Full | Sinter_core.Check.Brief ->
+                     colored color Unix.stdout
+                 | Sinter_core.Check.Json | Sinter_core.Check.Porcelain _ ->
+                     false))
             outcome
         with
         | () -> (
@@ -563,10 +591,68 @@ let check_cmd =
             report color [ output_failure message ];
             environment_error)
   in
+  let run color manifest base diff gate strict output nul headers no_headers
+      verbose quiet =
+    let porcelain = output = `Porcelain in
+    let only option = `Error (true, option ^ " works only with -o porcelain") in
+    if headers <> [] && no_headers then
+      `Error
+        ( true,
+          "--headers and --no-headers exclude each other; give one of the two"
+        )
+    else if nul && not porcelain then only "-z"
+    else if headers <> [] && not porcelain then only "--headers"
+    else if no_headers && not porcelain then only "--no-headers"
+    else
+      let names = List.concat_map (String.split_on_char ',') headers in
+      match
+        List.find_opt
+          (fun name ->
+            Option.is_none (Sinter_core.Porcelain.header_of_name name))
+          names
+      with
+      | Some name ->
+          report color
+            [
+              failure
+                ~help:
+                  ("give one or more of "
+                  ^ (match
+                       List.rev_map Sinter_core.Porcelain.header_name
+                         Sinter_core.Porcelain.headers
+                     with
+                    | last :: others ->
+                        String.concat ", " (List.rev others) ^ ", or " ^ last
+                    | [] -> "")
+                  ^ ", separated by commas")
+                (Printf.sprintf "unknown header '%s'" name);
+            ];
+          `Ok usage_error
+      | None ->
+          let form =
+            match output with
+            | `Full -> Sinter_core.Check.Full
+            | `Brief -> Sinter_core.Check.Brief
+            | `Json -> Sinter_core.Check.Json
+            | `Porcelain ->
+                Sinter_core.Check.Porcelain
+                  {
+                    nul;
+                    headers =
+                      (if no_headers then Sinter_core.Porcelain.No_headers
+                       else
+                         Sinter_core.Porcelain.Headers
+                           (List.filter_map Sinter_core.Porcelain.header_of_name
+                              names));
+                  }
+          in
+          `Ok (check color manifest base diff gate strict form verbose quiet)
+  in
   Cmd.v info
     Term.(
-      const run $ color $ manifest $ base $ diff $ gate $ strict $ output
-      $ verbose $ quiet)
+      ret
+        (const run $ color $ manifest $ base $ diff $ gate $ strict $ output
+       $ nul $ headers $ no_headers $ verbose $ quiet))
 
 let cmd =
   let doc = "a linter for keeping your specs, plans, and code in sync" in

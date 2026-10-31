@@ -94,6 +94,10 @@ type form =
   | Full  (** the full form of each finding, {!Render.full} *)
   | Brief  (** the brief form of each finding, {!Render.brief} *)
   | Json  (** the index record, and then the record of each finding *)
+  | Porcelain of { nul : bool; headers : Porcelain.header_lines }
+      (** the header lines that [headers] names, as {!Porcelain.add_header}
+          writes them, and then the line of each finding, as
+          {!Porcelain.add_finding} writes it, each with [nul] *)
 
 type report
 (** What a check gives: the lines for standard error, the exit code, and the
@@ -108,8 +112,8 @@ val messages : report -> string list
     {!Scan.ledger_warning} of the facts of the working tree when there is one;
     then, unless the check is quiet, [note: ] and {!fold_note} of the items of
     {!fold} when there is one; then, when the check is verbose and not quiet,
-    [note: ] and {!Scan.base_note} of the base. In the form [Json]: the
-    warnings, each with [warning: ]. *)
+    [note: ] and {!Scan.base_note} of the base. In the forms [Json] and
+    [Porcelain]: the warnings, each with [warning: ]. *)
 
 val notices : Format.formatter -> report -> unit
 (** [notices ppf report] writes {!messages} of [report] to [ppf], each with a
@@ -126,8 +130,11 @@ val write : ?phases:Allocation.t -> Format.formatter -> report -> unit
     in the order of {!Finding.compare}, and flushes [ppf]. In the form [Full],
     one empty line stands between two blocks of {!Render.full}, and each file of
     a finding or of a related place is read once. In the form [Json], each
-    record is one line of {!Jsonl.to_string}. With [phases], it counts the words
-    of the writing, the reading of the files included, in the phase [output].
+    record is one line of {!Jsonl.to_string}. In the form [Porcelain], the
+    header lines come first, as {!run} makes them, and then the line of each
+    finding, as {!Porcelain.add_finding} writes it. With [phases], it counts the
+    words of the writing, the reading of the files included, in the phase
+    [output].
 
     @raise Sys_error if [ppf] cannot write. *)
 
@@ -151,7 +158,19 @@ val run :
     [env], [dir], [manifest], and [base]. [gate] is the gate of the check,
     [strict] says whether every finding counts for the exit code, [form] is the
     form of the output, [verbose] and [quiet] select the lines of {!messages},
-    and [tool] is the version of the tool, for the index record.
+    and [tool] is the version of the tool, for the index record and the header
+    [tool].
+
+    In the form [Porcelain] with [No_headers], the check makes no header line.
+    With [Headers names], it makes the header lines with
+    {!Porcelain.add_header}: [porcelain] and [1], and then each header of
+    {!Porcelain.headers} that [names] holds, in that order and once each, with
+    its {!Porcelain.header_name} and its value. The value is: for [Base], the
+    {!Scan.base_commit} of the base; for [Ledger], {!Scan.ledger_commit} of the
+    working tree, or [none]; for [Gate], the {!Finding_class.gate_name} of
+    [gate], or [none]; for [Mode], the {!Mode.name} of [mode]; for [Tool],
+    [tool]. The ledger ref is read only when [names] holds [Ledger], and an
+    error of {!Scan.ledger_commit} is the error of the check.
 
     In the mode [Tree], the findings are those of the working tree. In the mode
     [Diff], they are the findings of the working tree less the findings of the
@@ -167,10 +186,14 @@ val run :
 
     With [phases], it counts the phases of {!Scan.load_with_base}, [facts]
     ({!Facts.make}) and [findings] (the findings, their subtraction, the classes
-    that compare with the base, and their selection), and the index record in
-    [repository]. In the mode [Diff], it counts the facts of the base in
-    [base-facts] and their findings in [base-findings]. In the mode [Tree], the
-    facts of the files of the base that differ from the working tree count in
-    [findings].
+    that compare with the base, and their selection), and the index record and
+    the values of the headers of the form [Porcelain] in [repository]. In the
+    mode [Diff], it counts the facts of the base in [base-facts] and their
+    findings in [base-findings]. In the mode [Tree], the facts of the files of
+    the base that differ from the working tree count in [findings].
 
-    @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
+    @raise Sinter_bridge.Error if the bridge stops on an internal fault.
+    @raise Invalid_argument
+      if the form is [Porcelain] and its headers hold [Tool], and [tool] is
+      empty or holds a space, a byte below 0x20, the byte 0x7F, a double quote,
+      or a backslash. *)

@@ -1,0 +1,2 @@
+# porcelain 1
+none	config-changed	sinter.toml	4	15	4	25	"setting:paths.historical=a\000b"	"paths.historical: added \"a\\u0000b\" (weakens)"

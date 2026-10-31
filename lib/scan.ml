@@ -598,14 +598,19 @@ let load_with_base ?phases ~env ~dir ~manifest ~base () =
 
 let ledger_ref = "refs/sinter/ledger"
 
+let ledger_commit tree =
+  match Git.commit_of tree.repo ledger_ref with
+  | Ok commit -> Ok (Some commit)
+  | Error (Git.Bad_revision _) -> Ok None
+  | Error error -> Error (Repository error)
+
 let ledger_warning tree facts =
   match Facts.plans facts with
   | [] -> None
   | _ :: _ -> (
-      match Git.commit_of tree.repo ledger_ref with
-      | Error (Git.Bad_revision _) ->
-          Some "no ledger found, so every plan counts as open"
-      | Ok _ | Error _ -> None)
+      match ledger_commit tree with
+      | Ok None -> Some "no ledger found, so every plan counts as open"
+      | Ok (Some _) | Error _ -> None)
 
 let index ?(mode = Mode.Tree) tree ~tool =
   let* key = repository (Git.tree_key tree.repo) in

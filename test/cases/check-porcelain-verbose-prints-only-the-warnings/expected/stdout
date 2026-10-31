@@ -1,0 +1,6 @@
+# porcelain 1
+none	missing-plan-id	.plans/p.md	3	1	3	8	plan:p	the plan p has no plan id
+none	typo-tag	docs/guide.md	4	1	4	17	line:docs/guide.md@L4	@decisoin is not a tag word of sinter
+none	dangling	docs/guide.md	8	1	8	16	cites:decision:login->Login	no declaration has the slug Login
+none	untraced	docs/guide.md	12	1	12	9	req:one	nothing satisfies req:one, and nothing verifies it
+none	untraced	docs/guide.md	16	1	16	9	req:two	nothing satisfies req:two, and nothing verifies it

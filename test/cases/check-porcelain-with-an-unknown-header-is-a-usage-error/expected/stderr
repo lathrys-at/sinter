@@ -1,0 +1,2 @@
+error: unknown header 'all'
+  = help: give one or more of base, ledger, gate, mode, or tool, separated by commas

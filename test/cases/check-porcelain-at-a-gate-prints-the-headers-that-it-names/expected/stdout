@@ -1,0 +1,5 @@
+# porcelain 1
+# base 13874157f474768d6d729d049ed5475c79f01210
+# ledger none
+warn	typo-tag	docs/guide.md	4	1	4	17	line:docs/guide.md@L4	@decisoin is not a tag word of sinter
+block	dangling	docs/guide.md	8	1	8	16	cites:decision:login->Login	no declaration has the slug Login
