@@ -233,6 +233,13 @@ the rule that holds: a statement that an agent writes in a file
 changes a state only when it is a line of the diff, tied by a hash or
 a revision to the text that it is about.
 
+## Keep incomplete work out of the turn report
+@scope spec/**, docs/**, lib/**, bin/**, test/**
+@decision incompleteness-at-turn
+Carry out the record `incompleteness-at-turn`: the classes
+`untraced`, `unmet-promise`, and `awaiting-approval` take no tier at
+the gate `turn`.
+
 ## Let a plan span branches
 @scope spec/**, docs/**, lib/**, test/**, plugins/**, .claude-plugin/**
 Carry out the record `plans-span-branches`: specify that a plan
