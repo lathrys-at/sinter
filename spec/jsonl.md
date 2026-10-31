@@ -230,20 +230,65 @@ Example: this plan file gives the canonical bytes below it.
 | `met` `total` | int | *derived* promise counts |
 | `done` | bool | *derived* |
 | `csh` | string | the step hash, as the text after this table gives it |
+| `delivered` | bool | *derived*: the step has a mark that counts ([vocabulary.md](vocabulary.md) section 10.8) |
+| `mark` | string | the tag target of the mark of the step, as written; omitted when the step has no mark |
 | `approved` | bool | *derived*: the step is approved ([algebra.md](algebra.md) section 6.5) |
 | `approval` | string | *derived*: the id of the `approval` entry of the ledger that approves the step ([ledger.md](ledger.md) section 5.1); omitted when none |
 | `active` | bool | *derived* from the session; `false` when there is no session |
 
 The **step hash** (`csh` of a step) is SHA-256 over canonical bytes
-that hold the effective scope of the step. The canonical bytes are one
-JSON object in the canonical form of RFC 8785 (JCS) that section 2
-uses, with no LF at the end. The object has one key, `scope`: the
-globs of the effective scope of the step, each glob once, sorted in
-byte order, as the commitment-set hash writes the scope of a step. The
-rules of section 2 for the values of a record do not apply to this
-object. Example: a step without promises with the line
-`@scope src/auth/**, src/**, src/auth/**` has the canonical bytes
-`{"scope":["src/**","src/auth/**"]}`.
+that hold the agreement of the step: its effective scope, its
+promises, and its text ([vocabulary.md](vocabulary.md) section 10.8).
+The canonical bytes are one JSON object in the canonical form of RFC
+8785 (JCS) that section 2 uses, with no LF at the end. The object has
+three keys:
+
+- `promises`: an array with one object for each promise record of the
+  step (section 5). Each object has two keys, `word` and `target`, as
+  the promise record gives them. The objects are sorted by `word`, then
+  by `target`, each in byte order. A step without promises gives an
+  empty array.
+- `scope`: the globs of the effective scope of the step, each glob
+  once, sorted in byte order, as the commitment-set hash writes the
+  scope of a step.
+- `text`: the text of the step, as a string.
+
+The **text of a step** comes from the lines of the section of the
+step, after its heading line, in four steps:
+
+1. Take the lines of the section, with the lines of each section
+   inside it. Leave out each tag line ([vocabulary.md](vocabulary.md)
+   section 3.1). The trailing prose of a block is
+   no tag line, so it stays.
+2. Leave out the blank lines at the start and at the end. A blank line
+   holds only spaces and tabs.
+3. Normalize each line by the rules of the extent hash
+   ([vocabulary.md](vocabulary.md) section 6.1): on each heading line
+   that opens a section, remove the section number of its heading
+   text, with the spaces and tabs after it; then remove the trailing
+   whitespace.
+4. End each line with one LF. A step with no line left has the empty
+   text.
+
+So the heading of the step, each tag line, and the text of other steps
+are no part of the step hash. The rules of section 2 for the values of
+a record do not apply to this object.
+
+Example: this step gives the canonical bytes below it, and the step
+hash `23e47131fdb5…`. Its mark therefore names `23e471`.
+
+```
+## Tidy the cache
+
+@scope src/cache/**, src/**, src/cache/**
+@delivered 23e471
+Remove the dead code
+of the old cache.
+```
+
+```
+{"promises":[],"scope":["src/**","src/cache/**"],"text":"Remove the dead code\nof the old cache.\n"}
+```
 
 **`test`** — a test, or a group of tests, that a language pack finds
 ([packs.md](packs.md) section 8). The span of the record is the node

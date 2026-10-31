@@ -193,6 +193,62 @@ let misplaced_plan_sits_outside_the_first_block_of_a_plan_file () =
        is not in a file under .plans/";
     ]
 
+let mark_plan marks =
+  ( ".plans/p.md",
+    "# P\n\n@plan p\n@scope **\n\n## Do it\n\n@req a\n" ^ marks
+    ^ "Text.\n\nMore.\n" )
+
+let invalid_target_sits_at_a_mark_with_a_bad_hash () =
+  check Finding_class.Invalid_target
+    [ mark_plan "@delivered\n@delivered ABCDEF\n@delivered 12345\n" ]
+    [
+      ".plans/p.md:9:1-9:11 | finding:invalid-target:tag:.plans/p.md@L9C1 | \
+       the mark names no hash";
+      ".plans/p.md:10:1-10:18 | finding:invalid-target:tag:.plans/p.md@L10C1 | \
+       the hash ABCDEF of the mark is not six lowercase hex digits";
+      ".plans/p.md:11:1-11:17 | finding:invalid-target:tag:.plans/p.md@L11C1 | \
+       the hash 12345 of the mark is not six lowercase hex digits";
+    ]
+
+let misplaced_plan_sits_at_a_mark_outside_the_tag_block_of_a_step () =
+  check Finding_class.Misplaced_plan
+    [
+      ( ".plans/p.md",
+        "# P\n\n\
+         @plan p\n\
+         @delivered 000000\n\n\
+         ## Do it\n\n\
+         @req a\n\
+         @delivered 000000\n\n\
+         - @delivered 000000\n\n\
+         ## Prose\n\n\
+         @delivered 000000\n" );
+      ("docs/a.md", "# A\n\n@delivered 000000\n");
+    ]
+    [
+      ".plans/p.md:4:1-4:18 | finding:misplaced-plan:tag:.plans/p.md@L4C1 | \
+       @delivered 000000 is not in the tag block of a step";
+      ".plans/p.md:11:3-11:20 | finding:misplaced-plan:tag:.plans/p.md@L11C3 | \
+       @delivered 000000 is not in the tag block of a step";
+      ".plans/p.md:15:1-15:18 | finding:misplaced-plan:tag:.plans/p.md@L15C1 | \
+       @delivered 000000 is not in the tag block of a step";
+      "docs/a.md:3:1-3:18 | finding:misplaced-plan:tag:docs/a.md@L3C1 | \
+       @delivered 000000 is not in the tag block of a step";
+    ]
+
+let duplicate_sits_at_each_mark_after_the_first () =
+  check Finding_class.Duplicate
+    [ mark_plan "@delivered 000000\n@delivered 111111\n@delivered\n" ]
+    [
+      ".plans/p.md:10:1-10:18 | finding:duplicate:tag:.plans/p.md@L10C1 | \
+       step:p/do-it holds a mark earlier";
+      ".plans/p.md:11:1-11:11 | finding:duplicate:tag:.plans/p.md@L11C1 | \
+       step:p/do-it holds a mark earlier";
+    ]
+
+let a_mark_is_no_typo_tag () =
+  check Finding_class.Typo_tag [ mark_plan "@delivered 000000\n" ] []
+
 let duplicate_sits_at_each_later_member_of_a_group () =
   check Finding_class.Duplicate
     [
@@ -1155,6 +1211,23 @@ let invalid_target_marks_the_target_of_a_plan () =
       ".plans/c.md:3 / 7-16 not a valid slug";
     ]
 
+let a_bad_mark_marks_its_part () =
+  check_parts Finding_class.Invalid_target
+    [ mark_plan "@delivered\n@delivered ABCDEF\n" ]
+    [
+      ".plans/p.md:9 / 1-11 no hash";
+      ".plans/p.md:10 / 12-18 not six lowercase hex digits";
+    ];
+  check_parts Finding_class.Misplaced_plan
+    [ ("docs/a.md", "# A\n\n@delivered 000000\n") ]
+    [ "docs/a.md:3 / 1-11 not in the tag block of a step" ];
+  check_parts Finding_class.Duplicate
+    [ mark_plan "@delivered 000000\n@delivered 111111\n" ]
+    [
+      ".plans/p.md:10 / 1-11 marked again here / the mark of the step at \
+       .plans/p.md:9:1-9:18";
+    ]
+
 let duplicate_marks_the_target_and_names_the_first () =
   check_parts Finding_class.Duplicate
     [
@@ -1651,12 +1724,20 @@ let tests =
     case "step-without-promises is not ackable and has no fix"
       step_without_promises_is_not_ackable_and_has_no_fix;
     case "the findings are sorted" the_findings_are_sorted;
+    case "invalid-target sits at a mark with a bad hash"
+      invalid_target_sits_at_a_mark_with_a_bad_hash;
+    case "misplaced-plan sits at a mark outside the tag block of a step"
+      misplaced_plan_sits_at_a_mark_outside_the_tag_block_of_a_step;
+    case "duplicate sits at each mark after the first"
+      duplicate_sits_at_each_mark_after_the_first;
+    case "a mark is no typo-tag" a_mark_is_no_typo_tag;
     case "merged-incomplete sits at a step with some promises met"
       merged_incomplete_sits_at_a_step_with_some_promises_met;
     case "merged-incomplete names each promise not met"
       merged_incomplete_names_each_promise_not_met;
     case "merged-incomplete counts no verifies edge of a markdown file"
       merged_incomplete_counts_no_verifies_edge_of_a_markdown_file;
+    case "a bad mark marks its part" a_bad_mark_marks_its_part;
     case "merged-incomplete is not ackable and has no fix"
       merged_incomplete_is_not_ackable_and_has_no_fix;
   ]

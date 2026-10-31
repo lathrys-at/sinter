@@ -538,11 +538,21 @@ let auth_plan =
    ## Record the policy\n\n\
    @decision lockout-policy\n"
 
-let step_hash scope =
+let step_hash ?(promises = []) ?(text = "") scope =
+  let quoted text =
+    "\"" ^ String.concat "\\n" (String.split_on_char '\n' text) ^ "\""
+  in
   Sha256.hex
-    ("{\"scope\":["
-    ^ String.concat "," (List.map (Printf.sprintf "%S") scope)
-    ^ "]}")
+    ("{\"promises\":["
+    ^ String.concat ","
+        (List.map
+           (fun (word, target) ->
+             Printf.sprintf "{\"target\":%s,\"word\":%s}" (quoted target)
+               (quoted word))
+           promises)
+    ^ "],\"scope\":["
+    ^ String.concat "," (List.map quoted scope)
+    ^ "],\"text\":" ^ quoted text ^ "}")
 
 let a_plan_file_gives_its_plan_steps_and_promises () =
   let csh =
@@ -560,13 +570,15 @@ let a_plan_file_gives_its_plan_steps_and_promises () =
       "{\"col\":1,\"ecol\":23,\"eline\":10,\"id\":\"promise:step:auth-lockout/lock-the-account:verifies:auth-lockout\",\"kind\":\"promise\",\"line\":10,\"met\":false,\"out_of_scope\":false,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"step\":\"lock-the-account\",\"target\":\"auth-lockout\",\"v\":1,\"word\":\"verifies\"}";
       "{\"col\":1,\"ecol\":25,\"eline\":14,\"id\":\"promise:step:auth-lockout/record-the-policy:decision:lockout-policy\",\"kind\":\"promise\",\"line\":14,\"met\":false,\"out_of_scope\":false,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"step\":\"record-the-policy\",\"target\":\"lockout-policy\",\"v\":1,\"word\":\"decision\"}";
       Printf.sprintf
-        "{\"active\":false,\"approved\":true,\"col\":1,\"csh\":\"%s\",\"done\":false,\"ecol\":20,\"eline\":6,\"id\":\"step:auth-lockout/lock-the-account\",\"kind\":\"step\",\"line\":6,\"met\":0,\"own_scope\":true,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"refactor\":false,\"scope\":[\"src/auth/**\"],\"slug\":\"lock-the-account\",\"title\":\"Lock \
+        "{\"active\":false,\"approved\":true,\"col\":1,\"csh\":\"%s\",\"delivered\":false,\"done\":false,\"ecol\":20,\"eline\":6,\"id\":\"step:auth-lockout/lock-the-account\",\"kind\":\"step\",\"line\":6,\"met\":0,\"own_scope\":true,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"refactor\":false,\"scope\":[\"src/auth/**\"],\"slug\":\"lock-the-account\",\"title\":\"Lock \
          the account\",\"total\":2,\"v\":1}"
-        (step_hash [ "src/auth/**" ]);
+        (step_hash
+           ~promises:[ ("req", "auth-lockout"); ("verifies", "auth-lockout") ]
+           [ "src/auth/**" ]);
       Printf.sprintf
-        "{\"active\":false,\"approved\":true,\"col\":1,\"csh\":\"%s\",\"done\":false,\"ecol\":21,\"eline\":12,\"id\":\"step:auth-lockout/record-the-policy\",\"kind\":\"step\",\"line\":12,\"met\":0,\"own_scope\":false,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"refactor\":false,\"scope\":[\"src/**\"],\"slug\":\"record-the-policy\",\"title\":\"Record \
+        "{\"active\":false,\"approved\":true,\"col\":1,\"csh\":\"%s\",\"delivered\":false,\"done\":false,\"ecol\":21,\"eline\":12,\"id\":\"step:auth-lockout/record-the-policy\",\"kind\":\"step\",\"line\":12,\"met\":0,\"own_scope\":false,\"pack\":\"markdown\",\"path\":\".plans/auth.md\",\"plan\":\"auth-lockout\",\"refactor\":false,\"scope\":[\"src/**\"],\"slug\":\"record-the-policy\",\"title\":\"Record \
          the policy\",\"total\":1,\"v\":1}"
-        (step_hash [ "src/**" ]);
+        (step_hash ~promises:[ ("decision", "lockout-policy") ] [ "src/**" ]);
     ]
     (lines [ (".plans/auth.md", auth_plan) ])
 
@@ -1028,6 +1040,7 @@ let line =
              "deprecated";
              "rejected";
              "deferred";
+             "delivered";
              "ack";
              "pin";
              "";
@@ -1750,11 +1763,7 @@ let a_step_is_done_by_the_list_scan_of_the_verifies_edges =
                  check_field records id "done" (bool expected);
                  check_field records id "approved"
                    (bool (not (total = 0 && String.equal word "approval")));
-                 check_field records id "csh"
-                   (str
-                      (step_hash
-                         (List.sort_uniq String.compare
-                            (Facts.effective_scope plan step))));
+                 check_field records id "csh" (str step.hash);
                  true)
                plan.steps)
            (Facts.plans facts)))
@@ -1938,10 +1947,167 @@ let covering_names_each_step_whose_effective_scope_holds_a_path () =
        (fun path -> (path, covering path))
        [ "src/lib/a.ml"; "src/b.ml"; "docs/a.md"; "docs/secret.md"; "notes.md" ])
 
+let marked_plan ?(heading = "Do it") ?(mark = "") ?(scope = "lib/**")
+    ?(promise = "a") ?(prose = "Write the code.") ?(spaces = "") ?(blanks = "")
+    () =
+  "# P\n\n@plan p\n@scope **\n\n## " ^ heading ^ spaces ^ "\n\n" ^ blanks
+  ^ "@scope " ^ scope ^ "\n@req " ^ promise ^ "\n" ^ mark ^ prose ^ spaces
+  ^ "\n" ^ blanks ^ "\n## Other\n\n@req z\nOther text.\n"
+
+let step_of text =
+  match Facts.plans (facts [ (".plans/p.md", text) ]) with
+  | [ plan ] -> (
+      match plan.steps with
+      | step :: _ -> step
+      | [] -> Alcotest.fail "the plan has no step")
+  | _ -> Alcotest.fail "the text gives no plan"
+
+let the_step_hash_covers_the_scope_the_promises_and_the_text () =
+  Alcotest.(check string)
+    "the step hash"
+    (step_hash
+       ~promises:[ ("req", "a") ]
+       ~text:"Write the code.\n" [ "lib/**" ])
+    (step_of (marked_plan ())).hash
+
+let a_mark_that_names_the_step_hash_counts () =
+  let hash = Facts.mark_hash (step_of (marked_plan ())) in
+  let text = marked_plan ~mark:("@delivered " ^ hash ^ "\n") () in
+  let records = records [ (".plans/p.md", text) ] in
+  check_field records "step:p/do-it" "delivered" (bool true);
+  check_field records "step:p/do-it" "mark" (str hash);
+  check_field records "step:p/other" "delivered" (bool false);
+  check_field records "step:p/other" "mark" None
+
+let a_mark_with_another_hash_does_not_count () =
+  let records =
+    records [ (".plans/p.md", marked_plan ~mark:"@delivered 000000\n" ()) ]
+  in
+  check_field records "step:p/do-it" "delivered" (bool false);
+  check_field records "step:p/do-it" "mark" (str "000000")
+
+let the_first_mark_of_the_tag_block_is_the_mark_of_the_step () =
+  let hash = Facts.mark_hash (step_of (marked_plan ())) in
+  let step =
+    step_of
+      (marked_plan ~mark:("@delivered 000000\n@delivered " ^ hash ^ "\n") ())
+  in
+  Alcotest.(check int) "two marks" 2 (List.length step.marks);
+  Alcotest.(check (option string))
+    "the mark" (Some "000000")
+    (Option.bind (Facts.mark step) (fun (tag : Markdown.tag) -> tag.target));
+  Alcotest.(check bool) "not delivered" false (Facts.delivered step)
+
+let a_mark_outside_the_tag_block_is_no_mark_of_the_step () =
+  let step =
+    step_of (marked_plan ~prose:"Write it.\n\n@delivered 000000\n" ())
+  in
+  Alcotest.(check int) "no mark" 0 (List.length step.marks)
+
+let a_plan_file_read_without_texts_is_refused () =
+  match Markdown.read ~texts:false (Lazy.force reader) (marked_plan ()) with
+  | Error _ -> Alcotest.fail "the text gives no document"
+  | Ok document ->
+      Alcotest.check_raises "refused"
+        (Invalid_argument
+           "Facts.make: the document of a plan file holds no section text")
+        (fun () ->
+          ignore (Facts.make (manifest ()) [ (".plans/p.md", document) ]))
+
+module Variant = struct
+  type t = { heading : string; mark : string; spaces : string; blanks : string }
+
+  let gen =
+    Gen.map
+      (fun (heading, mark, spaces, blanks) -> { heading; mark; spaces; blanks })
+      (Gen.quad
+         (Gen.oneof_list [ "Do it"; "2.1 Do it"; "Something else"; "Do it ##" ])
+         (Gen.oneof_list
+            [ ""; "@delivered 000000\n"; "@delivered abcdef\n"; "@delivered\n" ])
+         (Gen.oneof_list [ ""; " "; "\t "; "  " ])
+         (Gen.oneof_list [ ""; "\n"; "\n\n" ]))
+
+  let print { heading; mark; spaces; blanks } =
+    Printf.sprintf "%S %S %S %S" heading mark spaces blanks
+end
+
+let agreement =
+  Gen.triple
+    (Gen.oneof_list [ "lib/**"; "docs/**"; "lib/**, docs/**"; "src/*.ml" ])
+    (Gen.oneof_list [ "a"; "b"; "a-b" ])
+    (Gen.map (String.concat " ")
+       (Gen.list_size (Gen.int_range 1 4)
+          (Gen.oneof_list [ "Write"; "the"; "code."; "Test"; "it" ])))
+
+let print_agreement (scope, promise, prose) =
+  Printf.sprintf "%S %S %S" scope promise prose
+
+let hash_of (scope, promise, prose) (variant : Variant.t) =
+  (step_of
+     (marked_plan ~heading:variant.heading ~mark:variant.mark
+        ~spaces:variant.spaces ~blanks:variant.blanks ~scope ~promise ~prose ()))
+    .hash
+
+let plain = { Variant.heading = "Do it"; mark = ""; spaces = ""; blanks = "" }
+
+let the_step_hash_ignores_the_heading_the_mark_and_the_whitespace =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200
+       ~name:
+         "the step hash ignores the heading, the mark, and the whitespace that \
+          the normalization removes"
+       ~print:QCheck2.Print.(pair print_agreement Variant.print)
+       (Gen.pair agreement Variant.gen)
+       (fun (agreement, variant) ->
+         String.equal (hash_of agreement variant) (hash_of agreement plain)))
+
+let the_step_hash_changes_with_the_scope_the_promises_and_the_text =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200
+       ~name:
+         "the step hash changes with any change of the scope, the promises, or \
+          the text"
+       ~print:QCheck2.Print.(pair print_agreement print_agreement)
+       (Gen.pair agreement agreement)
+       (fun (a, b) ->
+         Bool.equal (String.equal (hash_of a plain) (hash_of b plain)) (a = b)))
+
+let commitment_hash text =
+  match field "csh" (find "plan:p" (records [ (".plans/p.md", text) ])) with
+  | Some (Jsonl.Scalar (Jsonl.String hash)) -> hash
+  | _ -> Alcotest.fail "the plan has no commitment-set hash"
+
+let a_mark_never_changes_the_commitment_set_hash =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200
+       ~name:"adding or removing a mark never changes the commitment-set hash"
+       ~print:QCheck2.Print.(pair print_agreement Variant.print)
+       (Gen.pair agreement Variant.gen)
+       (fun ((scope, promise, prose), variant) ->
+         String.equal
+           (commitment_hash
+              (marked_plan ~mark:variant.mark ~scope ~promise ~prose ()))
+           (commitment_hash (marked_plan ~scope ~promise ~prose ()))))
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
   [
+    case "the step hash covers the scope, the promises, and the text"
+      the_step_hash_covers_the_scope_the_promises_and_the_text;
+    case "a mark that names the step hash counts"
+      a_mark_that_names_the_step_hash_counts;
+    case "a mark with another hash does not count"
+      a_mark_with_another_hash_does_not_count;
+    case "the first mark of the tag block is the mark of the step"
+      the_first_mark_of_the_tag_block_is_the_mark_of_the_step;
+    case "a mark outside the tag block is no mark of the step"
+      a_mark_outside_the_tag_block_is_no_mark_of_the_step;
+    case "a plan file read without texts is refused"
+      a_plan_file_read_without_texts_is_refused;
+    the_step_hash_ignores_the_heading_the_mark_and_the_whitespace;
+    the_step_hash_changes_with_the_scope_the_promises_and_the_text;
+    a_mark_never_changes_the_commitment_set_hash;
     case "a section number leaves titles and slugs"
       a_section_number_leaves_titles_and_slugs;
     case "a declaration gives its record" a_declaration_gives_its_record;

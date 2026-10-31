@@ -228,7 +228,7 @@ fn locks_after_five_failures() { ... }
 
 ### 3.3 Vocabulary
 
-The vocabulary has fifteen words, and `@pin` is designed but
+The vocabulary has sixteen words, and `@pin` is designed but
 deferred. `spec/vocabulary.md` section 7 defines each word.
 
 **Declarations** say: this text defines a thing. `@req` declares a
@@ -252,13 +252,16 @@ and the extent of the comment. A test must be addressed, because
 evidence binds to it, but the syntax tree already names the test, so
 it needs no declaration either.
 
-**Status tags** take an item out of force. `@deprecated` says that the
+**Status tags** record the state of an item. Three of them take an
+item out of force. `@deprecated` says that the
 item no longer applies and nothing replaces it. `@rejected` marks a
 decision that was considered and not chosen; its record stays, so that
 nobody argues the choice again. `@deferred` marks a decision that is not
-made yet. A status tag has effect only in the tag block of a
+made yet. These three tags have effect only in the tag block of a
 declaration, so the `@deprecated` of JSDoc in a code comment is safe.
-Sinter has no tag for "done".
+The fourth status tag, `@delivered`, marks a step of a plan that a
+branch delivered (section 6). Sinter has no tag for "done": a step is
+done when the facts say so.
 
 An item is **in force** when no status tag and no effective
 `@supersedes` retires it; otherwise it is **retired**

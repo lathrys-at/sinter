@@ -8,7 +8,9 @@ let citation_words =
 
 let vocabulary =
   declaration_words @ citation_words
-  @ [ "plan"; "deprecated"; "rejected"; "deferred"; "ack"; "scope" ]
+  @ [
+      "plan"; "deprecated"; "rejected"; "deferred"; "delivered"; "ack"; "scope";
+    ]
 
 let start_of (span : Markdown.span) = span.start
 let place path span = { Finding.path; span }
@@ -122,32 +124,74 @@ let target_problem manifest ~word target =
               target,
             "not a valid plan id" )
   else if List.mem word declaration_words then slug ()
+  else if String.equal word "delivered" then
+    if Option.is_some (Plan_target.id_of_string target) then None
+    else
+      Some
+        ( Printf.sprintf
+            "the hash %s of the mark is not six lowercase hex digits" target,
+          "not six lowercase hex digits" )
   else None
 
 let invalid_targets manifest documents =
   List.filter_map
     (fun (path, (tag : Markdown.tag)) ->
-      Option.bind tag.target (fun target ->
-          Option.map
-            (fun (detail, label) ->
-              Finding.make Finding_class.Invalid_target
-                (Finding.Tag { path; position = start_of tag.span })
-                ~place:(place path tag.span) ~detail
-                ?mark:(Finding.part tag Tag_line.Target label)
-                ())
-            (target_problem manifest ~word:tag.word target)))
+      match tag.target with
+      | None when String.equal tag.word "delivered" ->
+          Some
+            (Finding.make Finding_class.Invalid_target
+               (Finding.Tag { path; position = start_of tag.span })
+               ~place:(place path tag.span) ~detail:"the mark names no hash"
+               ?mark:(Finding.part tag Tag_line.Word "no hash")
+               ())
+      | _ ->
+          Option.bind tag.target (fun target ->
+              Option.map
+                (fun (detail, label) ->
+                  Finding.make Finding_class.Invalid_target
+                    (Finding.Tag { path; position = start_of tag.span })
+                    ~place:(place path tag.span) ~detail
+                    ?mark:(Finding.part tag Tag_line.Target label)
+                    ())
+                (target_problem manifest ~word:tag.word target)))
     (tags documents)
 
-let misplaced_plans documents =
+module Places = Set.Make (struct
+  type t = string * int
+
+  let compare = compare
+end)
+
+let marked facts =
+  List.fold_left
+    (fun places (plan : Facts.plan) ->
+      List.fold_left
+        (fun places (step : Facts.step) ->
+          List.fold_left
+            (fun places (tag : Markdown.tag) ->
+              Places.add (plan.path, tag.span.start.line) places)
+            places step.marks)
+        places plan.steps)
+    Places.empty (Facts.plans facts)
+
+let misplaced_plans facts documents =
+  let marked = lazy (marked facts) in
   List.filter_map
     (fun (path, (tag : Markdown.tag)) ->
       let written =
         match tag.target with
-        | Some target -> "@plan " ^ target
-        | None -> "@plan"
+        | Some target -> "@" ^ tag.word ^ " " ^ target
+        | None -> "@" ^ tag.word
       in
       let detail =
-        if not (String.equal tag.word "plan") then None
+        if String.equal tag.word "delivered" then
+          if Places.mem (path, tag.span.start.line) (Lazy.force marked) then
+            None
+          else
+            Some
+              ( Printf.sprintf "%s is not in the tag block of a step" written,
+                "not in the tag block of a step" )
+        else if not (String.equal tag.word "plan") then None
         else if not (String.starts_with ~prefix:".plans/" path) then
           Some
             ( Printf.sprintf "%s is not in a file under .plans/" written,
@@ -266,6 +310,29 @@ let duplicates facts =
           ~related:[ related first_declared first.path first.span ]
           ())
       plans
+  @ List.concat_map
+      (fun (plan : Facts.plan) ->
+        List.concat_map
+          (fun (step : Facts.step) ->
+            match step.marks with
+            | first :: later ->
+                List.map
+                  (fun (again : Markdown.tag) ->
+                    Finding.make Finding_class.Duplicate
+                      (tag plan.path again.span)
+                      ~place:(place plan.path again.span)
+                      ~detail:
+                        (Printf.sprintf "%s holds a mark earlier"
+                           (Facts.step_id plan step))
+                      ?mark:
+                        (Finding.part again Tag_line.Word "marked again here")
+                      ~related:
+                        [ related "the mark of the step" plan.path first.span ]
+                      ())
+                  later
+            | [] -> [])
+          plan.steps)
+      (Facts.plans facts)
   @ List.concat_map
       (fun (plan : Facts.plan) ->
         List.map
@@ -964,7 +1031,7 @@ let of_facts facts ~base ~not_text =
             typo_tags documents;
             ignored_tags documents;
             invalid_targets manifest documents;
-            misplaced_plans documents;
+            misplaced_plans facts documents;
             duplicates facts;
             missing_plan_ids facts ~base;
             unpinned facts;

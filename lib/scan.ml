@@ -321,7 +321,7 @@ let documents ?phases reader ~root files =
       | Ok content -> (
           match
             Allocation.measure phases "parse" (fun () ->
-                Markdown.read reader content)
+                Markdown.read ~texts:(Facts.may_hold_plan file) reader content)
           with
           | Ok document -> Ok ((file, document) :: documents, not_text)
           | Error (Markdown.Not_utf_8 offset) ->
@@ -447,7 +447,9 @@ let read_blobs reader repo wanted ~manifest =
     | Ok (documents, not_text, [], _) ->
         Ok (documents, not_text, [], Some content)
     | Ok (documents, not_text, file :: rest, found) -> (
-        match Markdown.read reader content with
+        match
+          Markdown.read ~texts:(Facts.may_hold_plan file) reader content
+        with
         | Ok document ->
             Ok ((file, document) :: documents, not_text, rest, found)
         | Error (Markdown.Not_utf_8 offset) ->
