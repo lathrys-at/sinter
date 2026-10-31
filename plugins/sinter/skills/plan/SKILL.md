@@ -8,11 +8,13 @@ argument-hint: "[path to a plan file; omit to use the plan just approved]"
 # Turn an approved plan into a Sinter plan
 
 A Sinter plan is a markdown file under `.plans/`. It records an
-agreement between the user and the agent for one branch. The plan
-holds a set of steps. Each step promises that certain tagged items
-exist when the step is done. The tool later checks the promises
-against the repository. This skill writes the plan file from a plan
-that the user approved.
+agreement between the user and the agent about a piece of work. The
+plan holds a set of steps. Each step promises that certain tagged
+items exist when the step is done. The plan reaches the default
+branch in a pull request of its own. Later branches each deliver one
+or more of its steps, and the tool checks the promises against the
+repository. This skill writes the plan file from a plan that the user
+approved, and says how a later branch marks a step that it delivers.
 
 The full specification is at
 <https://github.com/lathrys-at/sinter/blob/main/spec/vocabulary.md>,
@@ -82,10 +84,10 @@ characters, each from `0` to `9` or from `a` to `f`.
 ### 2. Map the plan to steps
 
 Each unit of work in the plan becomes one step. A unit of work is
-usually one pull request, one branch, or one numbered phase. A step
-is a `##` heading and the tag block after it. Derive the step slug
-from the heading text with the same rule as the plan slug. Two steps
-in one plan must not produce the same slug.
+usually what one later branch delivers in one pull request, or one
+numbered phase. A step is a `##` heading and the tag block after it.
+Derive the step slug from the heading text with the same rule as the
+plan slug. Two steps in one plan must not produce the same slug.
 
 Some sections of the plan hold only context, out-of-scope notes, or
 verification notes. These sections do not become steps. Keep them out
@@ -120,9 +122,12 @@ A step with a scope and no promises is a refactor step. The manifest
 key `proof.step` in `sinter.toml` says when a refactor step is done.
 Read it before you write one:
 
-- `"change"`, or no key: the step is done when the change touches its
-  scope. Tell the user when you write a refactor step, because the
-  tool then checks only whether the step touched its scope.
+- `"delivered"`, or no key: the step is done when the plan file marks
+  it as delivered (section "Deliver a step" below). A mark on a step
+  whose scope the branch did not change is a finding. So give a
+  refactor step a narrow scope, the files that its work changes, or
+  give it a promise. A broad scope, such as `lib/**`, lets the mark
+  pass after a change that did not do the step's work.
 - `"approval"`: the step is done when a person approves it in the
   ledger. Tell the user that the step needs that approval.
 - `"promises"`: every step needs a promise, and the tool reports each
@@ -193,15 +198,43 @@ never reports findings on a journal.
 ### 6. Show the result
 
 Print the plan file. Then print a list with one line for each
-promise: `<step slug>: <word> <target>`. Tell the user that the
-branch agrees to deliver these promises. Tell the user that a later
-change to a promise needs the user's approval.
+promise: `<step slug>: <word> <target>`. Tell the user that the plan
+reaches the default branch in a pull request of its own, and that
+later branches deliver its steps. Tell the user that a later change to
+a promise needs the user's approval.
 
 When you quote the plan, or any of its tag lines, on GitHub (in an
 issue, a pull request, or a comment), put the text in a fenced code
 block. GitHub reads `@word` outside code as a mention of the account
 `word`, and most tag words, such as `req`, `plan`, and `cites`, are
 GitHub accounts, so a bare tag line notifies strangers.
+
+## Deliver a step
+
+A branch that delivers a step marks the step in the plan file with
+one tag line, `@delivered <hash>`, in the tag block of the step: the
+tag lines right after its heading. `<hash>` is the first six hex
+digits of the step hash, which covers the step's scope, its promises,
+and its text. Do these steps on the branch that delivers the step:
+
+1. Do the work of the step, and meet its promises.
+2. Run `sinter check --diff`. For a step with promises that the branch
+   makes met, Sinter reports `unmarked-step` and prints the line to
+   add. Add that line after the last tag line of the step, as printed.
+3. For a step without promises, Sinter prints no such line. Run
+   `sinter scan`, find the record of the step (`"kind":"step"`), and
+   take the first six digits of its field `csh`.
+4. Run `sinter check --diff` again, and fix what it reports.
+
+Keep the heading and the text of a delivered step. A rename, a split,
+a merge, or a removal of a delivered step is the finding
+`renamed-step`. An edit of the scope, a promise, or the text of a
+delivered step changes its hash, and the old mark is the finding
+`stale-mark`. Write the new hash that Sinter prints. The person who
+merges the branch sees the edit and the new mark together.
+
+Mark only the steps that the branch delivers. Never mark a step whose
+work the branch did not do.
 
 ## Writing rules
 
@@ -234,4 +267,5 @@ follow them too.
 - Every step scope sits inside the plan scope.
 - Every promised item's kind can exist inside its step's scope.
 - Every step has a promise when `proof.step` is `"promises"`.
+- Every refactor step has a narrow scope or a promise.
 - The journal file exists.
