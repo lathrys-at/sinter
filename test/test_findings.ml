@@ -249,6 +249,54 @@ let duplicate_sits_at_each_mark_after_the_first () =
 let a_mark_is_no_typo_tag () =
   check Finding_class.Typo_tag [ mark_plan "@delivered 000000\n" ] []
 
+let current_hash (path, text) =
+  match Facts.plans (Facts.make (manifest "") [ (path, document text) ]) with
+  | [ { steps = step :: _; _ } ] -> Facts.mark_hash step
+  | _ -> Alcotest.fail "the plan has no step"
+
+let stale_mark_sits_at_a_mark_that_does_not_count () =
+  let hash = current_hash (mark_plan "") in
+  check Finding_class.Stale_mark
+    [ mark_plan "@delivered 000000\n" ]
+    [
+      Printf.sprintf
+        ".plans/p.md:9:1-9:18 | finding:stale-mark:step:p/do-it | the mark of \
+         step:p/do-it names 000000, and the step hash starts with %s | fix: \
+         @delivered %s"
+        hash hash;
+    ];
+  check Finding_class.Stale_mark [ mark_plan ("@delivered " ^ hash ^ "\n") ] [];
+  check Finding_class.Stale_mark
+    [ mark_plan "@delivered ABCDEF\n"; mark_plan "@delivered\n" ]
+    [];
+  check Finding_class.Stale_mark [ mark_plan "" ] []
+
+let the_fix_of_stale_mark_makes_the_mark_count () =
+  let plan = mark_plan "@delivered 000000\n" in
+  match
+    List.filter
+      (fun (finding : Finding.t) ->
+        finding.finding_class = Finding_class.Stale_mark)
+      (findings [ plan ])
+  with
+  | [ { fix = Some fix; _ } ] ->
+      let text = Edits.apply (snd plan) (List.hd (Fix.alternatives fix)) in
+      check Finding_class.Stale_mark [ (fst plan, text) ] [];
+      Alcotest.(check bool)
+        "the fix is no ack" false
+        (List.exists
+           (fun (finding : Finding.t) ->
+             finding.finding_class = Finding_class.Stale_ack)
+           (findings [ (fst plan, text) ]))
+  | _ -> Alcotest.fail "one stale-mark with a fix"
+
+let stale_mark_is_not_ackable () =
+  List.iter
+    (fun (finding : Finding.t) ->
+      if finding.finding_class = Finding_class.Stale_mark then
+        Alcotest.(check bool) "not ackable" false finding.ackable)
+    (findings [ mark_plan "@delivered 000000\n" ])
+
 let duplicate_sits_at_each_later_member_of_a_group () =
   check Finding_class.Duplicate
     [
@@ -1228,6 +1276,11 @@ let a_bad_mark_marks_its_part () =
        .plans/p.md:9:1-9:18";
     ]
 
+let stale_mark_marks_the_hash () =
+  check_parts Finding_class.Stale_mark
+    [ mark_plan "@delivered 000000\n" ]
+    [ ".plans/p.md:9 / 12-18 not the step hash" ]
+
 let duplicate_marks_the_target_and_names_the_first () =
   check_parts Finding_class.Duplicate
     [
@@ -1731,6 +1784,11 @@ let tests =
     case "duplicate sits at each mark after the first"
       duplicate_sits_at_each_mark_after_the_first;
     case "a mark is no typo-tag" a_mark_is_no_typo_tag;
+    case "stale-mark sits at a mark that does not count"
+      stale_mark_sits_at_a_mark_that_does_not_count;
+    case "the fix of stale-mark makes the mark count"
+      the_fix_of_stale_mark_makes_the_mark_count;
+    case "stale-mark is not ackable" stale_mark_is_not_ackable;
     case "merged-incomplete sits at a step with some promises met"
       merged_incomplete_sits_at_a_step_with_some_promises_met;
     case "merged-incomplete names each promise not met"
@@ -1738,6 +1796,7 @@ let tests =
     case "merged-incomplete counts no verifies edge of a markdown file"
       merged_incomplete_counts_no_verifies_edge_of_a_markdown_file;
     case "a bad mark marks its part" a_bad_mark_marks_its_part;
+    case "stale-mark marks the hash" stale_mark_marks_the_hash;
     case "merged-incomplete is not ackable and has no fix"
       merged_incomplete_is_not_ackable_and_has_no_fix;
   ]

@@ -14,6 +14,7 @@ type t =
     }
   | Plan_id of { tag : Markdown.tag; id : Plan_target.id }
   | Ack of { last : Markdown.tag; block : Markdown.block; target : string }
+  | Mark_hash of { tag : Markdown.tag; hash : string }
 
 let fail reason = invalid_arg ("Fix: " ^ reason)
 
@@ -48,6 +49,10 @@ let successors tag first others =
 let plan_id tag id =
   targeted tag;
   Plan_id { tag; id }
+
+let mark_hash tag hash =
+  targeted tag;
+  Mark_hash { tag; hash }
 
 let ack (document : Markdown.t) ~block ~target =
   let block = document.blocks.(block) in
@@ -94,7 +99,8 @@ let ack_line target (block : Markdown.block) =
 let alternatives = function
   | Word { tag; word } -> [ [ replace tag Tag_line.Word ("@" ^ word) ] ]
   | Pin { tag; rev } | Bump { tag; rev } -> [ [ revision tag rev ] ]
-  | Spelling { tag; target } -> [ [ replace tag Tag_line.Target target ] ]
+  | Spelling { tag; target } | Mark_hash { tag; hash = target } ->
+      [ [ replace tag Tag_line.Target target ] ]
   | Plan_id { tag; id } ->
       let _, ecol = columns tag Tag_line.Target in
       let line = tag.span.start.line in
@@ -135,6 +141,8 @@ let help = function
   | Successors { others = _ :: _; _ } ->
       "cite one of the successors in place of the retired item"
   | Ack _ -> "if the citation still holds, accept the finding with an @ack line"
+  | Mark_hash _ ->
+      "check that the step is still delivered, then write its current hash"
 
 let head (tag : Markdown.tag) target rev =
   Printf.sprintf "@%s %s%s" tag.word target
@@ -154,3 +162,4 @@ let text = function
              head tag slug (Option.map (fun _ -> rev) tag.rev))
            (first :: others))
   | Ack { block; target; _ } -> ack_line target block
+  | Mark_hash { tag; hash } -> head tag hash None

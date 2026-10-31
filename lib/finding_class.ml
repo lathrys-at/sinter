@@ -26,6 +26,7 @@ type t =
   | Duplicate
   | Scope_outside_plan
   | Step_without_promises
+  | Stale_mark
   | Misplaced_plan
   | Missing_plan_id
   | Unpinned
@@ -72,6 +73,7 @@ let all =
     Duplicate;
     Scope_outside_plan;
     Step_without_promises;
+    Stale_mark;
     Misplaced_plan;
     Missing_plan_id;
     Unpinned;
@@ -118,6 +120,7 @@ let name = function
   | Duplicate -> "duplicate"
   | Scope_outside_plan -> "scope-outside-plan"
   | Step_without_promises -> "step-without-promises"
+  | Stale_mark -> "stale-mark"
   | Misplaced_plan -> "misplaced-plan"
   | Missing_plan_id -> "missing-plan-id"
   | Unpinned -> "unpinned"
@@ -164,6 +167,7 @@ let tiers = function
   | Duplicate -> (Some Block, Some Block, Some Block)
   | Scope_outside_plan -> (Some Block, Some Block, None)
   | Step_without_promises -> (Some Block, Some Block, Some Block)
+  | Stale_mark -> (Some Block, Some Block, Some Block)
   | Misplaced_plan -> (Some Block, Some Block, Some Block)
   | Missing_plan_id -> (Some Block, Some Block, Some Block)
   | Unpinned -> (Some Block, Some Block, Some Block)

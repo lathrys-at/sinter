@@ -947,6 +947,37 @@ let promises_out_of_scope facts =
         plan.steps)
     (Facts.plans facts)
 
+let step_subject plan (step : Facts.step) =
+  Finding.Fact { id = Facts.step_id plan step; ack_name = step.slug }
+
+let stale_marks facts =
+  List.concat_map
+    (fun (plan : Facts.plan) ->
+      if not (is_open plan) then []
+      else
+        List.filter_map
+          (fun (step : Facts.step) ->
+            match Facts.mark step with
+            | Some ({ target = Some target; _ } as tag)
+              when Option.is_some (Plan_target.id_of_string target)
+                   && not (Facts.delivered step) ->
+                let hash = Facts.mark_hash step in
+                Some
+                  (Finding.make Finding_class.Stale_mark
+                     (step_subject plan step) ~place:(place plan.path tag.span)
+                     ~detail:
+                       (Printf.sprintf
+                          "the mark of %s names %s, and the step hash starts \
+                           with %s"
+                          (Facts.step_id plan step) target hash)
+                     ~fix:(Fix.mark_hash tag hash)
+                     ?mark:
+                       (Finding.part tag Tag_line.Target "not the step hash")
+                     ())
+            | Some _ | None -> None)
+          plan.steps)
+    (Facts.plans facts)
+
 let merged_incomplete facts =
   List.concat_map
     (fun (plan : Facts.plan) ->
@@ -1050,6 +1081,7 @@ let of_facts facts ~base ~not_text =
             scope_overlaps facts;
             unverified_promises facts;
             promises_out_of_scope facts;
+            stale_marks facts;
             merged_incomplete facts;
           ]))
 

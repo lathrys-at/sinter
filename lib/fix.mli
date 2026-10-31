@@ -61,6 +61,12 @@ val plan_id : Markdown.tag -> Plan_target.id -> t
 
     @raise Invalid_argument if [tag] has no target. *)
 
+val mark_hash : Markdown.tag -> string -> t
+(** [mark_hash tag hash] is the fix of [stale-mark]: the mark hash [hash] in
+    place of the target of the [@delivered] tag [tag].
+
+    @raise Invalid_argument if [tag] has no target. *)
+
 val ack : Markdown.t -> block:int -> target:string -> t
 (** [ack document ~block ~target] is the fix of [retired] when the cited item
     has no successor: the line [@ack retired <target> <hash>] after the last tag
@@ -91,6 +97,7 @@ val alternatives : t -> edit list list
       or, when the tag has no revision, the empty span at the end of its target,
       with a space, [v], and the revision.
     - {!spelling}: the target, with the new target.
+    - {!mark_hash}: the target, with the new mark hash.
     - {!plan_id}: the empty span at the end of the target, with [@] and the plan
       id.
     - {!rename} and each successor of {!successors}: the target, with the slug;
@@ -109,6 +116,6 @@ val help : t -> string
 val text : t -> string
 (** [text fix] is the fix in one string: [@] and the word for {!word}; the head
     of the new tag line, [@<word> <target>] with [ v<rev>] when the new line has
-    a revision, for {!pin}, {!bump}, {!spelling}, {!rename}, and {!plan_id};
-    that head for each successor, joined by [" or "], for {!successors}; and the
-    [@ack] line for {!ack}. *)
+    a revision, for {!pin}, {!bump}, {!spelling}, {!rename}, {!plan_id}, and
+    {!mark_hash}; that head for each successor, joined by [" or "], for
+    {!successors}; and the [@ack] line for {!ack}. *)

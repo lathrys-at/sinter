@@ -116,6 +116,15 @@ let ack_inserts_a_line_after_the_last_tag_line () =
     (Fix.ack document ~block:1 ~target:"z")
     [ [ Printf.sprintf "7:9-7:9 \"\\n@ack retired z %s\"" hash ] ]
 
+let mark_hash_replaces_the_target () =
+  let fix =
+    Fix.mark_hash
+      (tag "# P\n\n## S\n\n@req a\n@delivered 000000 Why.\n" 1)
+      "3e1f0a"
+  in
+  check_alternatives fix [ [ "6:12-6:18 \"3e1f0a\"" ] ];
+  check_text fix "@delivered 3e1f0a"
+
 let refuses name gives =
   Alcotest.(check bool)
     name true
@@ -127,6 +136,7 @@ let a_fix_needs_a_target () =
   refuses "bump" (fun () -> Fix.bump bare 2);
   refuses "spelling" (fun () -> Fix.spelling bare "a");
   refuses "rename" (fun () -> Fix.rename bare "a" 1);
+  refuses "mark_hash" (fun () -> Fix.mark_hash bare "abcdef");
   refuses "successors" (fun () -> Fix.successors bare ("a", 1) []);
   refuses "plan_id" (fun () ->
       Fix.plan_id bare (Plan_target.derive ~base:"" ~path:""))
@@ -164,6 +174,7 @@ let fixes text =
     Fix.successors tag ("b", 2) [ ("c", 1) ];
     Fix.plan_id tag (Plan_target.derive ~base:"" ~path:"");
     Fix.ack document ~block:0 ~target:"a";
+    Fix.mark_hash tag "abcdef";
   ]
 
 let help_is_one_constant_for_each_form () =
@@ -191,6 +202,7 @@ let help_messages_are_fixed () =
       "cite one of the successors in place of the retired item";
       "give the plan an id after its slug";
       "if the citation still holds, accept the finding with an @ack line";
+      "check that the step is still delivered, then write its current hash";
     ]
     (List.map Fix.help (fixes "# A\n@cites a\n@cites b v1\n"))
 
@@ -361,6 +373,8 @@ let tests =
     every_edit_lies_on_the_line_of_the_first_edit;
     Alcotest.test_case "Word replaces the tag word" `Quick
       word_replaces_the_tag_word;
+    Alcotest.test_case "Mark_hash replaces the target" `Quick
+      mark_hash_replaces_the_target;
     Alcotest.test_case "Pin without a revision inserts after the target" `Quick
       pin_without_a_revision_inserts_after_the_target;
     Alcotest.test_case "Pin with a revision replaces it" `Quick
