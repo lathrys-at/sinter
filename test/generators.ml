@@ -1332,3 +1332,75 @@ let tag_block =
          "@cites b v1";
          (if last then ending else "");
        ])
+
+let porcelain_field =
+  let open Gen in
+  map (String.concat "")
+    (list_size (int_bound 16)
+       (oneof_weighted
+          [
+            (5, oneof_list [ "a"; "/"; "."; "1"; "-"; "#" ]);
+            (4, oneof_list [ "\t"; "\n"; "\r"; " "; "\""; "\\" ]);
+            ( 2,
+              map
+                (fun code -> String.make 1 (Char.chr code))
+                (oneof [ int_range 0 0x1F; return 0x7F ]) );
+            ( 2,
+              oneof_list
+                [
+                  "\xc3\xa9"; "\xe6\x97\xa5"; "\xf0\x9f\xa6\x80"; "\xe2\x80\xae";
+                ] );
+            (1, map (String.make 1) char);
+          ]))
+
+let porcelain_position =
+  Gen.map2
+    (fun line column -> { Markdown.line; column })
+    (Gen.int_range 1 100000) (Gen.int_range 1 1000)
+
+let porcelain_subject =
+  let open Gen in
+  oneof
+    [
+      map2
+        (fun id ack_name -> Finding.Fact { id; ack_name })
+        porcelain_field porcelain_field;
+      map (fun path -> Finding.File path) porcelain_field;
+      map2
+        (fun path position -> Finding.Error_node { path; position })
+        porcelain_field porcelain_position;
+      map2
+        (fun path line -> Finding.Line { path; line })
+        porcelain_field (int_range 1 100000);
+      map2
+        (fun path position -> Finding.Tag { path; position })
+        porcelain_field porcelain_position;
+    ]
+
+let porcelain_finding =
+  let open Gen in
+  let* finding_class = oneof_list Finding_class.all in
+  let* subject = porcelain_subject in
+  let* place =
+    option
+      (map3
+         (fun path start stop ->
+           { Finding.path; span = { Markdown.start; stop } })
+         porcelain_field porcelain_position porcelain_position)
+  in
+  let* detail = option porcelain_field in
+  let* tier =
+    oneof_list [ None; Some Finding_class.Warn; Some Finding_class.Block ]
+  in
+  let detail = match detail with Some "" -> None | detail -> detail in
+  return (Finding.make finding_class subject ?place ?detail (), tier)
+
+let print_porcelain_finding ((finding : Finding.t), tier) =
+  Printf.sprintf "%s %s %S %S %S"
+    (Option.fold ~none:"none" ~some:Finding_class.tier_name tier)
+    (Finding_class.name finding.finding_class)
+    (Option.fold ~none:"-"
+       ~some:(fun ({ path; _ } : Finding.place) -> path)
+       finding.place)
+    (Finding.subject_id finding.subject)
+    (Option.value finding.detail ~default:"-")
