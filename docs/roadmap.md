@@ -59,6 +59,10 @@
   step is done when the plan it names is completed. For example, a
   step of `sinter-v0.1` would name the plan `readable-output`. Not
   designed.
+- **Branches that deliver one plan at the same time** — two branches
+  that deliver steps of one plan at once are not reported as an
+  overlap, because the plan is no claim on either branch (record
+  `plans-span-branches`). Not designed.
 - **Commit trailers** — read the `Step:`, `Record:`, `Issue:`, and
   `Meets:` trailers of the commits on a branch (record
   `commit-messages`) and check them against the plan and the diff.
