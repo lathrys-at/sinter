@@ -347,22 +347,6 @@ let done_of_steps text =
       | _ -> None)
     (lines text)
 
-let the_scan_of_a_jj_state_counts_each_changed_scope () =
-  let _, (status, text) = Lazy.force scans in
-  Alcotest.(check (pair int (list (pair string bool))))
-    "the exit code, and the done of each step"
-    ( 0,
-      [
-        ("step:work@4a7b20/edit", true);
-        ("step:work@4a7b20/gone", true);
-        ("step:work@4a7b20/new", true);
-        ("step:work@4a7b20/back", true);
-        ("step:work@4a7b20/parent", true);
-        ("step:work@4a7b20/late", true);
-        ("step:work@4a7b20/same", false);
-      ] )
-    (status, done_of_steps text)
-
 let checks =
   lazy
     (both (fun repo ->
@@ -466,8 +450,6 @@ let tests =
       a_tree_key_leaves_the_intent_to_add_entries_in_the_index;
     case "a jj state gives the same scan records"
       a_jj_state_gives_the_same_scan_records;
-    case "the scan of a jj state counts each changed scope"
-      the_scan_of_a_jj_state_counts_each_changed_scope;
     case "a jj state gives the same check findings"
       a_jj_state_gives_the_same_check_findings;
     case "the check of a jj state reports the findings of new files"

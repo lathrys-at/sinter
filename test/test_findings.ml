@@ -602,7 +602,7 @@ let step_without_promises_sits_at_each_step_without_promises () =
     ];
   List.iter
     (fun extra -> check ~extra Finding_class.Step_without_promises files [])
-    [ ""; "[proof]\nstep = \"change\"\n"; "[proof]\nstep = \"approval\"\n" ]
+    [ ""; "[proof]\nstep = \"delivered\"\n"; "[proof]\nstep = \"approval\"\n" ]
 
 let step_without_promises_is_not_ackable_and_has_no_fix () =
   List.iter

@@ -188,23 +188,6 @@ let the_index_of_a_tree_is_the_first_record_of_its_scan () =
   | Error _, _ -> Alcotest.fail "the index fails"
   | Ok _, [] -> Alcotest.fail "the scan gives no record"
 
-let a_deleted_file_changes_the_tree_and_a_new_mode_does_not () =
-  let _, _, { Scan.records; _ } = Lazy.force shared in
-  let done_ id =
-    match
-      List.find_opt
-        (fun record -> List.assoc_opt "id" record = Some (Jsonl.string id))
-        records
-    with
-    | Some record -> List.assoc_opt "done" record
-    | None -> None
-  in
-  Alcotest.(check (list (option bool)))
-    "the done of the two steps" [ Some true; Some false ]
-    (List.map
-       (fun id -> Option.map (fun value -> value = Jsonl.bool true) (done_ id))
-       [ "step:p/gone"; "step:p/mode" ])
-
 let edited () =
   let repo =
     repository
@@ -252,10 +235,10 @@ let a_scan_runs_no_git_command_twice () =
              (Scan.run ~env ~dir:(Git_fixture.root repo) ~manifest:None
                 ~base:None ~tool:"v1" ())))
   in
-  Alcotest.(check bool)
-    "the scan ran the tree key and the diff" true
-    (List.exists (contains "write-tree") commands
-    && List.exists (contains "--no-ext-diff") commands);
+  Alcotest.(check (pair bool bool))
+    "the scan ran the tree key, and no diff" (true, false)
+    ( List.exists (contains "write-tree") commands,
+      List.exists (contains "--no-ext-diff") commands );
   Alcotest.(check (list string)) "the repeated commands" [] (repeated commands)
 
 let a_check_runs_no_git_command_twice () =
@@ -1128,8 +1111,6 @@ let tests =
       a_tree_with_a_base_names_its_revision;
     case "the index of a tree is the first record of its scan"
       the_index_of_a_tree_is_the_first_record_of_its_scan;
-    case "a deleted file changes the tree, and a new mode does not"
-      a_deleted_file_changes_the_tree_and_a_new_mode_does_not;
     case "a scan writes no file under the git directory"
       a_scan_writes_no_file_under_the_git_directory;
     case "a scan runs no git command twice" a_scan_runs_no_git_command_twice;

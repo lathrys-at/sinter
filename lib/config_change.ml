@@ -167,9 +167,9 @@ let whole_run = Manifest.verifies_name Manifest.Whole_run
 let each_test = Manifest.verifies_name Manifest.Each_test
 
 let steps =
-  List.map Manifest.step_name Manifest.[ Change; Step_approval; Promises ]
+  List.map Manifest.step_name Manifest.[ Delivered; Step_approval; Promises ]
 
-let change = Manifest.step_name Manifest.Change
+let delivered = Manifest.step_name Manifest.Delivered
 let promises = Manifest.step_name Manifest.Promises
 
 let read_entries ~plan_file ~location document =
@@ -225,7 +225,7 @@ let defaults =
     ([ "default-branch" ], String "main", Neutral);
     ([ "check"; "warn-only" ], Boolean false, Toward (Boolean false));
     ([ "proof"; "verifies" ], String whole_run, Toward (String each_test));
-    ([ "proof"; "step" ], String change, Strictest (String promises));
+    ([ "proof"; "step" ], String delivered, Strictest (String promises));
   ]
   @ List.map
       (fun kind ->

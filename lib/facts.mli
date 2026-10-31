@@ -64,20 +64,13 @@ val iter_identities :
     [within] is [true], and on each external id that an edge of such a path
     names. [within] is [true] for every path when absent. *)
 
-val needs_changes : t -> bool
-(** [needs_changes facts] is [true] when [proof.step] is ["change"] and a step
-    of a plan has no promise. Only then does {!records} read its argument
-    [changed]. *)
-
-val records : t -> changed:string list -> Jsonl.record list
-(** [records facts ~changed] is every record of [facts], in the order of
+val records : t -> Jsonl.record list
+(** [records facts] is every record of [facts], in the order of
     [(kind, path, line, col, id)], with each record that has no path after the
-    others, in the order of their ids. [changed] is the paths of the files that
-    the diff between the base and the working tree changes, of every pack and of
-    no pack. A step with no promise is done only when [proof.step] is ["change"]
-    and a path of [changed] is in its scope. The record of each step holds its
-    step hash, [csh]: the SHA-256 of the canonical JSON object [{"scope":[...]}]
-    with the globs of its effective scope, each once, sorted in byte order.
+    others, in the order of their ids. A step with no promise is done only when
+    [proof.step] is ["delivered"] and the step has a mark that counts
+    ({!delivered}). The record of each step holds its step hash, [csh], as
+    {!step.hash} gives it.
 
     Every string of the result is valid UTF-8 when every path of [make] is. *)
 

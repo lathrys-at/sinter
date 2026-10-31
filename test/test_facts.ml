@@ -28,12 +28,8 @@ let facts ?(extra = "") files =
   Facts.make (manifest ~extra ())
     (List.map (fun (path, text) -> (path, document text)) files)
 
-let records ?extra ?(changed = []) files =
-  Facts.records (facts ?extra files) ~changed
-
-let lines ?extra ?changed files =
-  List.map Jsonl.to_string (records ?extra ?changed files)
-
+let records ?extra files = Facts.records (facts ?extra files)
+let lines ?extra files = List.map Jsonl.to_string (records ?extra files)
 let field name record = List.assoc_opt name record
 
 let id record =
@@ -674,12 +670,23 @@ let a_verifies_promise_is_never_met_in_markdown () =
 
 let refactor = "# P\n\n@plan p\n\n## Clean\n\n@scope lib/**\n"
 
-let a_step_with_no_promise_is_done_when_the_diff_changes_its_scope () =
+let marked_refactor =
+  let hash =
+    match Facts.plans (facts [ (".plans/p.md", refactor) ]) with
+    | [ { steps = [ step ]; _ } ] -> Facts.mark_hash step
+    | _ -> Alcotest.fail "the refactor plan has no step"
+  in
+  refactor ^ "@delivered " ^ hash ^ "\n"
+
+let a_step_with_no_promise_is_done_when_its_mark_counts () =
   check_field
-    (records ~changed:[ "bin/x.ml"; "lib/y.ml" ] [ (".plans/p.md", refactor) ])
+    (records [ (".plans/p.md", marked_refactor) ])
     "step:p/clean" "done" (bool true);
   check_field
-    (records ~changed:[ "bin/x.ml" ] [ (".plans/p.md", refactor) ])
+    (records [ (".plans/p.md", refactor ^ "@delivered 000000\n") ])
+    "step:p/clean" "done" (bool false);
+  check_field
+    (records [ (".plans/p.md", refactor) ])
     "step:p/clean" "done" (bool false);
   check_field
     (records [ (".plans/p.md", refactor) ])
@@ -698,9 +705,9 @@ let an_external_id_meets_a_promised_citation () =
 
 let only_a_verifies_edge_in_the_scope_keeps_a_step_from_done () =
   check_field
-    (records ~changed:[ "lib/y.ml" ]
+    (records
        [
-         (".plans/p.md", refactor);
+         (".plans/p.md", marked_refactor);
          ("lib/a.md", "# A\n\n@cites x v1\n");
          ("doc/a.md", "# A\n\n@verifies x v1\n");
        ])
@@ -708,33 +715,18 @@ let only_a_verifies_edge_in_the_scope_keeps_a_step_from_done () =
 
 let a_verifies_edge_in_the_scope_keeps_a_step_from_done () =
   check_field
-    (records ~changed:[ "lib/y.ml" ]
-       [ (".plans/p.md", refactor); ("lib/a.md", "# A\n\n@verifies x v1\n") ])
+    (records
+       [
+         (".plans/p.md", marked_refactor);
+         ("lib/a.md", "# A\n\n@verifies x v1\n");
+       ])
     "step:p/clean" "done" (bool false)
-
-let only_a_step_with_no_promise_needs_the_changes () =
-  Alcotest.(check (list bool))
-    "a plan with a refactor step, and one without" [ true; false ]
-    (List.map
-       (fun text -> Facts.needs_changes (facts [ (".plans/p.md", text) ]))
-       [ refactor; auth_plan ]);
-  Alcotest.(check (list bool))
-    "a refactor step under each value of proof.step" [ true; false; false ]
-    (List.map
-       (fun word ->
-         Facts.needs_changes
-           (facts
-              ~extra:(Printf.sprintf "[proof]\nstep = %S\n" word)
-              [ (".plans/p.md", refactor) ]))
-       [ "change"; "approval"; "promises" ])
 
 let proof_step word = Printf.sprintf "[proof]\nstep = %S\n" word
 
 let a_step_with_no_promise_follows_proof_step () =
-  let step word changed =
-    let records =
-      records ~extra:(proof_step word) ~changed [ (".plans/p.md", refactor) ]
-    in
+  let step word text =
+    let records = records ~extra:(proof_step word) [ (".plans/p.md", text) ] in
     match
       ( field "done" (find "step:p/clean" records),
         field "approved" (find "step:p/clean" records) )
@@ -744,15 +736,15 @@ let a_step_with_no_promise_follows_proof_step () =
   in
   let pair = Alcotest.(pair string string) in
   let yes = show (bool true) and no = show (bool false) in
-  Alcotest.check pair "change, with a change in the scope" (yes, yes)
-    (step "change" [ "lib/y.ml" ]);
-  Alcotest.check pair "change, with no change in the scope" (no, yes)
-    (step "change" [ "bin/x.ml" ]);
+  Alcotest.check pair "delivered, with a mark that counts" (yes, yes)
+    (step "delivered" marked_refactor);
+  Alcotest.check pair "delivered, with no mark" (no, yes)
+    (step "delivered" refactor);
   Alcotest.check pair "approval: no ledger, so not approved and not done"
     (no, no)
-    (step "approval" [ "lib/y.ml" ]);
+    (step "approval" marked_refactor);
   Alcotest.check pair "promises: never done" (no, yes)
-    (step "promises" [ "lib/y.ml" ])
+    (step "promises" marked_refactor)
 
 let proof_step_leaves_a_step_with_promises () =
   let files =
@@ -769,7 +761,7 @@ let proof_step_leaves_a_step_with_promises () =
         "done" (bool true);
       check_field ~message:word records "step:auth-lockout/record-the-policy"
         "approved" (bool true))
-    [ "change"; "approval"; "promises" ]
+    [ "delivered"; "approval"; "promises" ]
 
 let a_step_is_approved_when_its_plan_is () =
   let records =
@@ -1096,7 +1088,7 @@ let rec sorted = function
 
 let records_come_in_their_order =
   property "the records come in the order of kind, path, line, col, and id"
-    (fun files -> sorted (List.map key (records ~changed:[ "a.md" ] files)))
+    (fun files -> sorted (List.map key (records files)))
 
 let every_reference_names_a_record =
   property "every src, dst, block, and by names a record, or a rule"
@@ -1708,26 +1700,18 @@ let scope_set globs =
   | Ok set -> set
   | Error _ -> Alcotest.failf "a bad scope: %s" (String.concat ", " globs)
 
-let changed_paths =
-  Gen.list_size (Gen.int_bound 2)
-    (Gen.oneof_list [ "a.md"; "src/b.md"; "lib/c.md"; "src/z.md"; "z.md" ])
-
-let print_lookup_case = QCheck2.Print.(pair print_tree (list string))
-
 let a_step_is_done_by_the_list_scan_of_the_verifies_edges =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count:200
        ~name:
          "a step is done when no verifies edge is in its scope, by the list \
           scan, and its promises are met or proof.step lets it be done"
-       ~print:(fun ((files, changed), word) ->
-         print_lookup_case (files, changed) ^ "\nproof.step = " ^ word)
-       (Gen.pair
-          (Gen.pair lookup_tree changed_paths)
-          (Gen.oneof_list [ "change"; "approval"; "promises" ]))
-       (fun ((files, changed), word) ->
+       ~print:(fun (files, word) -> print_tree files ^ "\nproof.step = " ^ word)
+       (Gen.pair lookup_tree
+          (Gen.oneof_list [ "delivered"; "approval"; "promises" ]))
+       (fun (files, word) ->
          let facts = facts ~extra:(lookup_extra ^ proof_step word) files in
-         let records = Facts.records facts ~changed in
+         let records = Facts.records facts in
          List.for_all
            (fun (plan : Facts.plan) ->
              List.for_all
@@ -1756,7 +1740,7 @@ let a_step_is_done_by_the_list_scan_of_the_verifies_edges =
                    verified
                    &&
                    if total = 0 then
-                     String.equal word "change" && List.exists in_scope changed
+                     String.equal word "delivered" && Facts.delivered step
                    else met = total
                  in
                  let id = Facts.step_id plan step in
@@ -2201,16 +2185,14 @@ let tests =
     case "a dangling edge meets no promise" a_dangling_edge_meets_no_promise;
     case "a verifies promise is never met in markdown"
       a_verifies_promise_is_never_met_in_markdown;
-    case "a step with no promise is done when the diff changes its scope"
-      a_step_with_no_promise_is_done_when_the_diff_changes_its_scope;
+    case "a step with no promise is done when its mark counts"
+      a_step_with_no_promise_is_done_when_its_mark_counts;
     case "an external id meets a promised citation"
       an_external_id_meets_a_promised_citation;
     case "only a verifies edge in the scope keeps a step from done"
       only_a_verifies_edge_in_the_scope_keeps_a_step_from_done;
     case "a verifies edge in the scope keeps a step from done"
       a_verifies_edge_in_the_scope_keeps_a_step_from_done;
-    case "only a step with no promise needs the changes"
-      only_a_step_with_no_promise_needs_the_changes;
     case "a step with no promise follows proof.step"
       a_step_with_no_promise_follows_proof_step;
     case "proof.step leaves a step with promises"

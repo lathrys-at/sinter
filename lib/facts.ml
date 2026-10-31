@@ -709,13 +709,6 @@ let make manifest files =
            Blocks.empty (List.rev acks));
   }
 
-let needs_changes facts =
-  Manifest.step facts.manifest = Manifest.Change
-  && List.exists
-       (fun plan ->
-         List.exists (fun (step : step) -> step.promises = []) plan.steps)
-       facts.plans
-
 type fact = {
   key : string * string * int * int * string;
   record : Jsonl.record;
@@ -962,7 +955,7 @@ let delivered step =
   | Some { target = Some target; _ } -> String.equal target (mark_hash step)
   | Some { target = None; _ } | None -> false
 
-let plan_records facts ~changed plan =
+let plan_records facts plan =
   let plan_approved = not (needs_approval facts.manifest Manifest.Plan) in
   let plan_record =
     located ~kind:"plan" ~id:(plan_fact_id plan) ~path:plan.path ~span:plan.span
@@ -1007,7 +1000,7 @@ let plan_records facts ~changed plan =
       if total > 0 then met = total
       else
         match Manifest.step facts.manifest with
-        | Manifest.Change -> List.exists in_scope changed
+        | Manifest.Delivered -> delivered step
         | Manifest.Step_approval -> approved
         | Manifest.Promises -> false
     in
@@ -1051,7 +1044,7 @@ let plan_records facts ~changed plan =
   in
   plan_record :: List.concat_map step_records plan.steps
 
-let records facts ~changed =
+let records facts =
   let approved = approved facts.manifest facts.declarations in
   let inforce = facts.inforce in
   List.map
@@ -1064,7 +1057,7 @@ let records facts ~changed =
             edge_records facts;
             site_records facts;
             ack_records facts;
-            List.concat_map (plan_records facts ~changed) facts.plans;
+            List.concat_map (plan_records facts) facts.plans;
           ]))
   @ external_records facts
 

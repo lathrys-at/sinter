@@ -20,7 +20,7 @@ val side : plan_file:(string -> bool) -> location:string -> Toml.table -> side
     - one entry for each of [default-branch], [proof.req], [proof.design],
       [proof.decision], [proof.plan], [proof.verifies], [proof.step], and
       [check.warn-only]: the value that [document] writes, else the default
-      ["main"], ["declaration"] for each kind, ["whole-run"], ["change"], or
+      ["main"], ["declaration"] for each kind, ["whole-run"], ["delivered"], or
       [false];
     - one entry for each other key of one value: [scan.packs.<name>.version],
       [scan.namespaces.<ns>], and [check.tiers.<gate>.<class>], whose id is
@@ -126,7 +126,7 @@ val changes : base:side -> side -> change list
     - [proof.verifies]: ["each-test"] in the working tree strengthens,
       ["whole-run"] weakens;
     - [proof.step]: ["promises"] in the working tree strengthens, ["promises"]
-      in the base weakens, and a change between ["change"] and ["approval"]
+      in the base weakens, and a change between ["delivered"] and ["approval"]
       changes. *)
 
 val detail : change -> string

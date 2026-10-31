@@ -777,8 +777,8 @@ when both conditions hold: the first condition that the manifest key
 and every `@verifies` edge in its scope is at an allowed rung. The
 first condition is one of these:
 
-- `"change"`, the default: a hunk of the diff changes a file inside
-  the scope of the step.
+- `"delivered"`, the default: the step has a mark that counts
+  (section 10.8).
 - `"approval"`: the ledger holds an approval of the step that matches
   its current step hash ([ledger.md](ledger.md) section 5.1).
 - `"promises"`: the condition never holds. A refactor step is never

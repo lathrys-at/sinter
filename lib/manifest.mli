@@ -56,9 +56,9 @@ val verifies_name : verifies -> string
 
 (** When a step without promises is done: the value of [proof.step]. *)
 type step =
-  | Change
-      (** when a hunk of the diff changes a file inside the scope of the step:
-          ["change"] *)
+  | Delivered
+      (** when the plan file holds a mark of the step that counts: ["delivered"]
+      *)
   | Step_approval
       (** when the ledger holds an approval of the step that matches its step
           hash: ["approval"] *)
@@ -68,7 +68,7 @@ type step =
 
 val step_name : step -> string
 (** [step_name step] is the word that [proof.step] writes for [step]:
-    ["change"], ["approval"], or ["promises"]. *)
+    ["delivered"], ["approval"], or ["promises"]. *)
 
 (** {1 Errors} *)
 
@@ -318,4 +318,4 @@ val verifies : t -> verifies
 (** [verifies manifest] is the value of [proof.verifies], or [Whole_run]. *)
 
 val step : t -> step
-(** [step manifest] is the value of [proof.step], or [Change]. *)
+(** [step manifest] is the value of [proof.step], or [Delivered]. *)

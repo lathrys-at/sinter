@@ -732,8 +732,9 @@ and `sinter status` says why.
   agent, gives a session id, Sinter keeps the step per session (section
   11.18), so parallel sessions in one worktree do not collide.
 - **A step with a scope and no promises is a refactor step.** By
-  default, it is done when a change touched its scope and the evidence
-  still passes. That is a weaker condition, and visibly so. A project
+  default, it is done when the plan file marks it as delivered with a
+  mark that counts, and the evidence still passes. A person reads the
+  mark in the diff, so the condition is visible. A project
   that wants more sets `proof.step`: to `"approval"`, so that a person
   approves each refactor step in the ledger, or to `"promises"`, so
   that every step needs promises and a refactor step is a finding
