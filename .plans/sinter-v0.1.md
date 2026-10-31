@@ -241,12 +241,15 @@ Carry out the record `incompleteness-at-turn`: the classes
 the gate `turn`.
 
 ## Let a plan span branches
-@scope spec/**, docs/**, lib/**, test/**, plugins/**, .claude-plugin/**
-Carry out the record `plans-span-branches`: specify that a plan
-reaches the default branch in its own pull request, that later
-branches deliver its steps, and that an open plan on the default
-branch is normal while its work goes on; change or remove
-`merged-incomplete` to match; and let the plan skill say so.
+@scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**, sinter.toml
+@decision delivery-marks
+Carry out the records `plans-span-branches` and `delivery-marks`:
+specify that a plan reaches the default branch in its own pull
+request, that later branches deliver its steps and mark them, and
+that an open plan on the default branch is normal while its work goes
+on; add the mark `@delivered` and its checks; redefine
+`merged-incomplete`; report a delivered step that loses its slug; and
+let the plan skill say so.
 
 ## Release the binaries
 @scope .github/workflows/**, README.md, docs/**, THIRD_PARTY.md, REUSE.toml, LICENSES/**
