@@ -867,6 +867,14 @@ let diff_lines ?base repo =
               (fun { Error_text.fault; help; _ } -> fault ^ "; " ^ help)
               (Scan.explain error)))
 
+let contains_text part text =
+  let length = String.length part in
+  let rec from index =
+    index + length <= String.length text
+    && (String.sub text index length = part || from (index + 1))
+  in
+  from 0
+
 let commit repo message =
   ignore (Git_fixture.git repo [ "add"; "-A" ]);
   ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; message ])
@@ -892,6 +900,32 @@ let a_diff_against_the_merge_base_reports_what_the_branch_adds () =
       "docs/a.md:8:1: dangling no declaration has the slug new";
     ]
     (diff_lines repo)
+
+let a_mark_that_the_branch_adds_needs_a_change_in_its_scope () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "sinter.toml" packs;
+  let plan marks =
+    "# P\n\n@plan p@0a1b2c\n@scope lib/**\n\n## A\n\n@scope lib/a/**\n" ^ marks
+    ^ "Do a.\n\n## B\n\n@scope lib/b/**\n" ^ marks ^ "Do b.\n"
+  in
+  Git_fixture.write repo ".plans/p.md" (plan "");
+  Git_fixture.write repo "lib/a/x.md" "# X\n";
+  Git_fixture.write repo "lib/b/y.md" "# Y\n";
+  commit repo "main";
+  ignore (Git_fixture.git repo [ "checkout"; "-q"; "-b"; "work" ]);
+  Git_fixture.write repo ".plans/p.md" (plan "@delivered 000000\n");
+  Git_fixture.write repo "lib/a/x.md" "# X\n\nMore.\n";
+  Git_fixture.make_executable repo "lib/b/y.md";
+  commit repo "work";
+  Alcotest.(check (list string))
+    "the mark of the step whose scope the branch does not change"
+    [
+      ".plans/p.md:15:1: mark-without-change the diff adds the mark of \
+       step:p@0a1b2c/b, and it changes no file in the scope of the step";
+    ]
+    (List.filter
+       (fun line -> contains_text "mark-without-change" line)
+       (diff_lines repo))
 
 let a_diff_compares_each_file_as_git_stores_it () =
   let repo = Git_fixture.init () in
@@ -1218,6 +1252,8 @@ let tests =
     case "the porcelain form with -z ends each field with NUL"
       the_porcelain_form_with_nul_ends_each_field_with_nul;
     a_porcelain_line_and_a_record_hold_the_same_values;
+    case "a mark that the branch adds needs a change in its scope"
+      a_mark_that_the_branch_adds_needs_a_change_in_its_scope;
     case "a diff against the merge base reports what the branch adds"
       a_diff_against_the_merge_base_reports_what_the_branch_adds;
     case "a diff compares each file as git stores it"

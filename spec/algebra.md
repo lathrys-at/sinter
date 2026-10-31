@@ -429,9 +429,9 @@ A finding that exists at the base and still exists in the working tree
 is pre-existing; diff mode does not report it. A finding absent at the
 base is what the diff introduced. The diff-relative classes —
 `unbumped`, `unplanned-change`, `config-changed`, `code-drift`,
-`renamed`, `promise-collision` — have `F(b) = ∅` by construction and
-appear in both modes. So a check in tree mode also reads the base, and
-reports these classes.
+`renamed`, `promise-collision`, `mark-without-change` — have
+`F(b) = ∅` by construction and appear in both modes. So a check in
+tree mode also reads the base, and reports these classes.
 
 ## 9. Built-in finding classes
 
@@ -505,6 +505,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `scope-outside-plan` | step | *engine*: a step whose `@scope` is not contained in its plan's `@scope`. The tool decides containment on the plain globs ([manifest.md](manifest.md) section 7.2), by the rule of glob containment of [ledger.md](ledger.md) section 11: each plain glob of the step must be contained in a plain glob of the plan. A `!` glob of the step only narrows the step's scope, so it never breaks containment | tree | · | · | block, block, — |
 | `step-without-promises` | step | *engine*: a step without promises of an open plan, while `proof.step` is `"promises"` ([manifest.md](manifest.md) section 10.4). The finding sits at the heading of the step. It has no fix | tree | · | · | block, block, block |
 | `stale-mark` | step | *engine*: a step of an open plan whose mark does not count: its mark hash is not the first six hex digits of the current step hash ([vocabulary.md](vocabulary.md) section 10.8). A mark whose tag target is not a mark hash is `invalid-target` only. The finding sits at the mark. The fix writes the first six hex digits of the step hash in place of the mark hash | tree | · | F | block, block, block |
+| `mark-without-change` | step | *engine*: a step whose mark the diff adds ([vocabulary.md](vocabulary.md) section 10.7), when no hunk of the diff lies in the effective scope of the step, apart from the hunks of the plan file. A new mark hash on a step whose mark counts in `B` is no added mark, so the repair of a stale mark gives no finding. The finding sits at the mark. It has no fix | diff | · | · | block, block, — |
 | `mark-on-unmet-step` | step | *engine*: a step of an open plan with a mark that counts and a promise that is not met. A promise counts as met by the rule of section 9.2. The finding sits at the mark, and its related places are the promises that are not met. It has no fix | tree | · | · | block, block, block |
 | `misplaced-plan` | tag | *engine*: a `@plan` tag outside the first tag block of a file under `.plans/`, or a `@delivered` tag outside the tag block of a step. A `@plan` outside `.plans/**` and a `@plan` in a later block of a file under `.plans/` are misplaced ([vocabulary.md](vocabulary.md) section 10.1). A `@delivered` tag in a file that is not a plan file, in the first tag block of a plan file, or in a block of a step other than its tag block is misplaced ([vocabulary.md](vocabulary.md) section 10.8) | tree | · | · | block, block, block |
 | `missing-plan-id` | plan | *engine*: a plan whose `@plan` tag has no plan id ([vocabulary.md](vocabulary.md) section 4.3). The fix inserts `@` and a plan id at the end of the tag target. That plan id is the first six hex digits of the SHA-256 of three parts, as UTF-8 bytes: the object id of the base commit in lowercase hex (the field `base` of the `index` record, [jsonl.md](jsonl.md) section 10), one LF, and the path of the plan file, relative to the repository root | tree | · | F | block, block, block |

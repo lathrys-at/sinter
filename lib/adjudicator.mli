@@ -32,14 +32,16 @@ val tombstones :
 
 val classes :
   ?same:(string -> bool) ->
+  ?changed:string list ->
   base:Facts.t ->
   Facts.t ->
   Finding.t list ->
   Finding.t list
-(** [classes ~same ~base facts findings] is [findings] with the findings of the
-    classes that compare the working tree with the base, sorted by
-    {!Finding.compare}. [same] and [base] are as {!tombstones} takes them. The
-    classes are:
+(** [classes ~same ~changed ~base facts findings] is [findings] with the
+    findings of the classes that compare the working tree with the base, sorted
+    by {!Finding.compare}. [same] and [base] are as {!tombstones} takes them.
+    [changed] is the path of each file to which the diff between the base and
+    the working tree gives a hunk; it is empty when absent. The classes are:
 
     - [unbumped]: a declaration of the kind [req], [design], or [decision] whose
       slug the base declares, in one of these kinds, when no such declaration of
@@ -66,6 +68,14 @@ val classes :
       the same slug and the same path. The detail names the first such
       declaration of the base in the order of their paths and lines. The ledger
       is absent, so no claim counts.
+
+    - [mark-without-change]: a step of a plan of the working tree whose mark the
+      diff adds, when no path of [changed] other than the path of the plan file
+      is in the effective scope of the step. The diff adds the mark when the
+      step has a mark, and the same plan of the base, by the rule of
+      [promise-collision], has no step of the same slug, or that step has no
+      mark, or its mark does not count in the base and names another hash. The
+      finding sits at the mark.
 
     No finding of these classes sits under a historical path. *)
 

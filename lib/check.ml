@@ -406,7 +406,13 @@ let compare_with_base ?phases ~mode (tree : Scan.tree)
   in
   Allocation.measure phases "findings" (fun () ->
       List.merge Finding.compare
-        (Adjudicator.classes ~same ~base facts
+        (Adjudicator.classes ~same
+           ~changed:
+             (List.filter_map
+                (fun (path, change) ->
+                  if Git.hunks change = [] then None else Some path)
+                compared.diff)
+           ~base facts
            (findings
            @ Unplanned.findings ~same ~base
                ~manifest:

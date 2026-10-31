@@ -56,6 +56,69 @@ let compared ?(findings = []) base tree =
 
 let strings = Alcotest.(list string)
 
+let marked ?(changed = []) base tree =
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) ->
+         finding.finding_class = Finding_class.Mark_without_change)
+       (Adjudicator.classes ~changed ~base:(facts base) (facts tree) []))
+
+let mark_plan ?(id = "p@0a1b2c") ?(text = "Text.") mark =
+  ( ".plans/p.md",
+    "# P\n\n@plan " ^ id ^ "\n@scope **\n\n## Do it\n\n@scope lib/**\n" ^ mark
+    ^ text ^ "\n" )
+
+let hash_of (path, text) =
+  match Facts.plans (facts [ (path, text) ]) with
+  | [ { steps = step :: _; _ } ] -> Facts.mark_hash step
+  | _ -> Alcotest.fail "the plan has no step"
+
+let mark_without_change_sits_at_a_mark_with_no_change_in_scope () =
+  let hash = hash_of (mark_plan "") in
+  let mark = mark_plan ("@delivered " ^ hash ^ "\n") in
+  let finding =
+    [
+      ".plans/p.md:9 | finding:mark-without-change:step:p@0a1b2c/do-it | the \
+       diff adds the mark of step:p@0a1b2c/do-it, and it changes no file in \
+       the scope of the step";
+    ]
+  in
+  Alcotest.check strings "no change" finding
+    (marked ~changed:[ ".plans/p.md"; "docs/a.md" ] [ mark_plan "" ] [ mark ]);
+  Alcotest.check strings "a change in the scope" []
+    (marked ~changed:[ ".plans/p.md"; "lib/a.ml" ] [ mark_plan "" ] [ mark ]);
+  Alcotest.check strings "a new plan" finding (marked [] [ mark ]);
+  Alcotest.check strings "the mark was there" [] (marked [ mark ] [ mark ]);
+  Alcotest.check strings "the mark was there, beside another plan" []
+    (marked
+       [ (".plans/a.md", "# A\n\n@plan a@111111\n\n## One\n\n@req z\n"); mark ]
+       [ mark ])
+
+let a_new_hash_on_a_mark_that_counted_is_no_added_mark () =
+  let edited mark = mark_plan ~text:"Other text." mark in
+  let new_hash = hash_of (edited "") in
+  let old_hash = hash_of (mark_plan "") in
+  Alcotest.(check bool)
+    "the edit changes the hash" false
+    (String.equal new_hash old_hash);
+  Alcotest.check strings "a repair of a mark that counted" []
+    (marked
+       [ mark_plan ("@delivered " ^ old_hash ^ "\n") ]
+       [ edited ("@delivered " ^ new_hash ^ "\n") ]);
+  Alcotest.check strings "a new hash on a mark that was stale"
+    [
+      ".plans/p.md:9 | finding:mark-without-change:step:p@0a1b2c/do-it | the \
+       diff adds the mark of step:p@0a1b2c/do-it, and it changes no file in \
+       the scope of the step";
+    ]
+    (marked
+       [ mark_plan "@delivered 000000\n" ]
+       [ edited ("@delivered " ^ new_hash ^ "\n") ]);
+  Alcotest.check strings "the same plan without its id in the base" []
+    (marked
+       [ mark_plan ~id:"p" ("@delivered " ^ old_hash ^ "\n") ]
+       [ mark_plan ("@delivered " ^ old_hash ^ "\n") ])
+
 let a_tombstone_names_each_fact_that_the_working_tree_lacks () =
   let base =
     facts
@@ -672,6 +735,11 @@ let case name f = Alcotest.test_case name `Quick f
 
 let tests =
   [
+    Alcotest.test_case
+      "mark-without-change sits at a mark with no change in scope" `Quick
+      mark_without_change_sits_at_a_mark_with_no_change_in_scope;
+    Alcotest.test_case "a new hash on a mark that counted is no added mark"
+      `Quick a_new_hash_on_a_mark_that_counted_is_no_added_mark;
     case "unbumped marks the revision or the word"
       unbumped_marks_the_revision_or_the_word;
     case "renamed marks the target and names the new declaration"
