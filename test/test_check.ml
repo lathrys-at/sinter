@@ -154,6 +154,11 @@ let a_check_reports_a_class_only_where_it_has_a_tier () =
          Some Finding_class.Merged;
        ]);
   Alcotest.(check (list bool))
+    "renamed-step at review and at merged" [ true; false ]
+    (List.map
+       (fun gate -> Check.reports plain (Some gate) Finding_class.Renamed_step)
+       Finding_class.[ Review; Merged ]);
+  Alcotest.(check (list bool))
     "a class that is off, that warns, and that blocks at turn"
     [ false; true; true ]
     (List.map

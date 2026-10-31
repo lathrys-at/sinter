@@ -386,7 +386,8 @@ An amendment is **free** when the plan stays approved after it and no
 new approval is needed. The consequences of the three clauses:
 
 - Renaming a step is free, because clause 3 matches by promise and not
-  by step name.
+  by step name. A delivered step keeps its slug all the same
+  ([vocabulary.md](vocabulary.md) section 10.3).
 - Reordering steps is free.
 - Splitting a step is free when each new step keeps or narrows the
   scope of the original step.

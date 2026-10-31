@@ -47,8 +47,8 @@ val classes :
     facts of every file of the base tree, as {!Facts.make} gives them; it is
     [base] when absent, so give it when [base] leaves out the facts of a file by
     [same]. The function forces it only when a class needs it. The result holds
-    no finding of [unmarked-step] when [wanted Unmarked_step] is [false];
-    [wanted] is [true] for every class when absent. The classes are:
+    no finding of [unmarked-step] or [renamed-step] when [wanted] is [false] for
+    the class; [wanted] is [true] for every class when absent. The classes are:
 
     - [unbumped]: a declaration of the kind [req], [design], or [decision] whose
       slug the base declares, in one of these kinds, when no such declaration of
@@ -69,7 +69,7 @@ val classes :
     - [promise-collision]: a promise of a declaration of the kind [req],
       [design], or [decision] whose tag target is the slug of a declaration of
       the base of one of these kinds, when the base has no promise of the same
-      plan with the same step slug, word, and tag target. A plan of the base is
+      plan with the same word and tag target, in any step. A plan of the base is
       the same plan as a plan of the working tree when their {!Facts.full_form}s
       are equal, or when the plan of the base has no plan id and the two have
       the same slug and the same path. The detail names the first such
@@ -90,6 +90,14 @@ val classes :
       effective scope of the step. No plan of the base is needed. The finding
       sits at the heading of the step. Its fix is {!Fix.mark_line} on the tag
       block of the step, with {!Facts.mark_hash}.
+
+    - [renamed-step]: a step of a plan of [base] whose file is not [same], when
+      the same plan of the working tree, by the rule of [promise-collision], has
+      no step of its slug, and the step is delivered in the base: its mark
+      counts there, or {!Facts.met_within} [whole_base] meets one of its
+      promises with the effective scope of the step in the base. The finding
+      sits at the tag line of [@plan] of the plan of the working tree, one for
+      each slug.
 
     No finding of these classes sits under a historical path. *)
 

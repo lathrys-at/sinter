@@ -429,9 +429,10 @@ A finding that exists at the base and still exists in the working tree
 is pre-existing; diff mode does not report it. A finding absent at the
 base is what the diff introduced. The diff-relative classes —
 `unbumped`, `unplanned-change`, `config-changed`, `code-drift`,
-`renamed`, `promise-collision`, `mark-without-change`, `unmarked-step`
-— have `F(b) = ∅` by construction and appear in both modes. So a check
-in tree mode also reads the base, and reports these classes.
+`renamed`, `promise-collision`, `mark-without-change`,
+`unmarked-step`, `renamed-step` — have `F(b) = ∅` by construction and
+appear in both modes. So a check in tree mode also reads the base, and
+reports these classes.
 
 ## 9. Built-in finding classes
 
@@ -534,7 +535,8 @@ column to `warn`, at every gate. `sinter init` writes
 | `unmet-promise` | promise | `unmet(active)` where `unmet(p) = promises($p) - met(promises($p))` — incompleteness | tree | · | · | —, off, — |
 | `promise-out-of-scope` | promise | *engine*: a promise met only by facts outside its step's scope | tree | · | · | warn, warn, — |
 | `unverified-promise` | promise | *engine*: a promised `req` or `design` with no promised `verifies` of it in the same plan | tree | · | · | warn, warn, — |
-| `promise-collision` | promise | *engine*: a promised declaration whose slug a claim promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise of the same plan with the same step, word, and target. A plan of `B` and a plan of `T` are the same plan when their full forms are equal ([vocabulary.md](vocabulary.md) section 4.3), or when the plan of `B` has no plan id and the two have the same slug and the same path. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered, and a plan id added to a plan makes none of its promises new. A tool that does not read the ledger has no claims, so it reports only the second case | diff | · | · | block, block, — |
+| `promise-collision` | promise | *engine*: a promised declaration whose slug a claim promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise of the same plan with the same word and target, in any step, so that a rename of a step gives no finding of this class. A plan of `B` and a plan of `T` are the same plan when their full forms are equal ([vocabulary.md](vocabulary.md) section 4.3), or when the plan of `B` has no plan id and the two have the same slug and the same path. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered, and a plan id added to a plan makes none of its promises new. A tool that does not read the ledger has no claims, so it reports only the second case | diff | · | · | block, block, — |
+| `renamed-step` | step | *engine*: a step of a plan of `B` that is delivered in `B`, when the same plan of `T`, by the rule of `promise-collision`, has no step of its slug: a rename, a split, a merge, or a removal lost the slug. A step is delivered in `B` when its mark counts in `B`, or when a promise of the step is met in `B`; a promise counts as met by the rule of section 9.2. Each lost slug gives one finding. Its subject is the step of `B`, and it sits at the `@plan` tag of the plan of `T`. It has no fix | diff | · | · | block, block, — |
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets. Two scopes intersect when a plain glob of one contains a plain glob of the other, or is contained in it, by the rule of glob containment of [ledger.md](ledger.md) section 11 | tree | · | · | warn, warn, — |
 | `waiting-on` | promise | `waiting(promises(kind(plan)))` — reported in place of `dangling`, with the claim and step named | tree | · | · | off, warn, — |
 | `branch-overlap` | step | *engine*: a step's scope intersects the scope of a claim | tree | · | · | warn, warn, — |
@@ -605,7 +607,7 @@ must be equal.
 
 ### 9.2 Promises without evidence
 
-The classes `mark-on-unmet-step`, `unmarked-step`, and
+The classes `mark-on-unmet-step`, `unmarked-step`, `renamed-step`, and
 `merged-incomplete` read a promised `@verifies` in one more way. When
 no evidence set exists for the tree (global rule 3), a promised
 `@verifies` counts as met for these classes when a `verifies` edge

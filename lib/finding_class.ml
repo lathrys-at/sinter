@@ -57,6 +57,7 @@ type t =
   | Promise_out_of_scope
   | Unverified_promise
   | Promise_collision
+  | Renamed_step
   | Scope_overlap
   | Waiting_on
   | Branch_overlap
@@ -107,6 +108,7 @@ let all =
     Promise_out_of_scope;
     Unverified_promise;
     Promise_collision;
+    Renamed_step;
     Scope_overlap;
     Waiting_on;
     Branch_overlap;
@@ -157,6 +159,7 @@ let name = function
   | Promise_out_of_scope -> "promise-out-of-scope"
   | Unverified_promise -> "unverified-promise"
   | Promise_collision -> "promise-collision"
+  | Renamed_step -> "renamed-step"
   | Scope_overlap -> "scope-overlap"
   | Waiting_on -> "waiting-on"
   | Branch_overlap -> "branch-overlap"
@@ -207,6 +210,7 @@ let tiers = function
   | Promise_out_of_scope -> (Some Warn, Some Warn, None)
   | Unverified_promise -> (Some Warn, Some Warn, None)
   | Promise_collision -> (Some Block, Some Block, None)
+  | Renamed_step -> (Some Block, Some Block, None)
   | Scope_overlap -> (Some Warn, Some Warn, None)
   | Waiting_on -> (Some Off, Some Warn, None)
   | Branch_overlap -> (Some Warn, Some Warn, None)

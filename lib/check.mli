@@ -34,7 +34,8 @@ val reports : Manifest.t -> Finding_class.gate option -> Finding_class.t -> bool
 (** [reports manifest gate finding_class] is [true] when a check at [gate] can
     report a finding of [finding_class]: with [None] always, and with
     [Some gate] when {!Manifest.tier} gives the class [Warn] or [Block] at the
-    gate. The check computes [unmarked-step] only when it can report it. *)
+    gate. The check computes [unmarked-step] and [renamed-step] only when it can
+    report them. *)
 
 val exit_code : strict:bool -> entry list -> int
 (** [exit_code ~strict entries] is {!Exit_code.findings} when an entry has the

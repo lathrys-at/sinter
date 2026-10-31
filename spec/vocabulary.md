@@ -718,6 +718,13 @@ Example: `## Verify against the reqs` becomes
 `verify-against-the-reqs`. Two steps of one plan with the same slug
 are an error (`duplicate`).
 
+A step is **delivered** in a tree when its mark counts there (section
+10.8), or when a promise of the step is met there. A step that is
+delivered in the base keeps its slug. A rename, a split, a merge, or a
+removal of such a step loses its slug, and it is an error (finding
+class `renamed-step`). A step with no mark that counts and no met
+promise can be renamed freely.
+
 Steps are unordered facts. The order of steps in the document is
 advice, not a constraint.
 

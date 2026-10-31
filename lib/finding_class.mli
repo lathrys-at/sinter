@@ -72,6 +72,7 @@ type t =
   | Promise_out_of_scope
   | Unverified_promise
   | Promise_collision
+  | Renamed_step
   | Scope_overlap
   | Waiting_on
   | Branch_overlap

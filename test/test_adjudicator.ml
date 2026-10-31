@@ -847,8 +847,88 @@ let the_fix_of_unmarked_step_makes_a_mark_that_counts () =
       | _ -> Alcotest.fail "one plan with one step")
   | _ -> Alcotest.fail "one unmarked-step with a fix"
 
+let renamed_steps ?same ?whole_base base tree =
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) ->
+         finding.finding_class = Finding_class.Renamed_step
+         || finding.finding_class = Finding_class.Promise_collision)
+       (Adjudicator.classes ?same ?whole_base ~base:(facts base) (facts tree) []))
+
+let steps_plan steps =
+  (".plans/p.md", "# P\n\n@plan p@0a1b2c\n@scope **\n" ^ steps)
+
+let lost slug =
+  Printf.sprintf
+    ".plans/p.md:3 | finding:renamed-step:step:p@0a1b2c/%s | the base delivers \
+     step:p@0a1b2c/%s, and the plan has no step with the slug %s now"
+    slug slug slug
+
+let renamed_step_reports_each_lost_slug_of_a_delivered_step () =
+  let a = ("docs/a.md", "# A\n\n@req a\n\n## B\n\n@req b\n") in
+  let one = steps_plan "\n## Do it\n\n@req a\n@req b\n" in
+  Alcotest.check strings "a rename"
+    [ lost "do-it" ]
+    (renamed_steps [ one; a ]
+       [ steps_plan "\n## Do that\n\n@req a\n@req b\n"; a ]);
+  Alcotest.check strings "a split"
+    [ lost "do-it" ]
+    (renamed_steps [ one; a ]
+       [ steps_plan "\n## Do a\n\n@req a\n\n## Do b\n\n@req b\n"; a ]);
+  Alcotest.check strings "a removal"
+    [ lost "do-it" ]
+    (renamed_steps [ one; a ] [ steps_plan "\n## Other\n\n@req c\n"; a ]);
+  Alcotest.check strings "a step that is not delivered" []
+    (renamed_steps [ one ] [ steps_plan "\n## Do that\n\n@req a\n@req b\n" ]);
+  Alcotest.check strings "the slug stays" []
+    (renamed_steps [ one; a ]
+       [ steps_plan "\n## Do it\n\n@req a\n@req b\nMore.\n"; a ]);
+  Alcotest.check strings "another plan: a collision, and no renamed-step"
+    [
+      ".plans/p.md:8 | \
+       finding:promise-collision:promise:step:p@111111/do-that:req:a | the \
+       base already declares req:a";
+    ]
+    (renamed_steps [ one; a ]
+       [
+         ( ".plans/p.md",
+           "# P\n\n@plan p@111111\n@scope **\n\n## Do that\n\n@req a\n" );
+         a;
+       ])
+
+let renamed_step_reads_the_mark_of_a_step_without_promises () =
+  let refactor mark =
+    steps_plan ("\n## Tidy\n\n@scope lib/**\n" ^ mark ^ "Tidy it.\n")
+  in
+  let hash = hash_of (refactor "") in
+  Alcotest.check strings "a mark that counts"
+    [ lost "tidy" ]
+    (renamed_steps
+       [ refactor ("@delivered " ^ hash ^ "\n") ]
+       [ steps_plan "\n## Tidy more\n\n@scope lib/**\nTidy it.\n" ]);
+  Alcotest.check strings "a stale mark" []
+    (renamed_steps
+       [ refactor "@delivered 000000\n" ]
+       [ steps_plan "\n## Tidy more\n\n@scope lib/**\nTidy it.\n" ])
+
+let renamed_step_reads_the_unchanged_files_of_the_base () =
+  let a = ("docs/a.md", "# A\n\n@req a\n") in
+  let one = steps_plan "\n## Do it\n\n@req a\n" in
+  Alcotest.check strings "the meeting fact sits in an unchanged file"
+    [ lost "do-it" ]
+    (renamed_steps ~same:(String.equal "docs/a.md")
+       ~whole_base:(lazy (facts [ one; a ]))
+       [ one ]
+       [ steps_plan "\n## Do that\n\n@req a\n"; a ])
+
 let tests =
   [
+    Alcotest.test_case "renamed-step reports each lost slug of a delivered step"
+      `Quick renamed_step_reports_each_lost_slug_of_a_delivered_step;
+    Alcotest.test_case "renamed-step reads the mark of a step without promises"
+      `Quick renamed_step_reads_the_mark_of_a_step_without_promises;
+    Alcotest.test_case "renamed-step reads the unchanged files of the base"
+      `Quick renamed_step_reads_the_unchanged_files_of_the_base;
     Alcotest.test_case "unmarked-step sits at a step that the diff makes met"
       `Quick unmarked_step_sits_at_a_step_that_the_diff_makes_met;
     Alcotest.test_case "unmarked-step reads the unchanged files of the base"

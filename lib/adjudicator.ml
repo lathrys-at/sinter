@@ -265,8 +265,7 @@ module Keys = Set.Make (struct
   let compare = List.compare String.compare
 end)
 
-let promise_key (step : Facts.step) (promise : Facts.promise) =
-  [ step.slug; promise.word; promise.target ]
+let promise_key (promise : Facts.promise) = [ promise.word; promise.target ]
 
 let promise_collisions ~base ~same facts =
   let candidates =
@@ -292,7 +291,7 @@ let promise_collisions ~base ~same facts =
           (fun keys (step : Facts.step) ->
             List.fold_left
               (fun keys promise ->
-                let key = promise_key step promise in
+                let key = promise_key promise in
                 let keys = Keys.add (Facts.full_form plan :: key) keys in
                 match plan.id with
                 | None -> Keys.add ("" :: plan.slug :: plan.path :: key) keys
@@ -305,8 +304,8 @@ let promise_collisions ~base ~same facts =
           (fun (plan : Facts.plan) -> same plan.path)
           (Facts.plans facts))
   in
-  let held (plan : Facts.plan) step promise =
-    let key = promise_key step promise in
+  let held (plan : Facts.plan) promise =
+    let key = promise_key promise in
     Keys.mem (Facts.full_form plan :: key) promised
     || Keys.mem ("" :: plan.slug :: plan.path :: key) promised
   in
@@ -320,7 +319,7 @@ let promise_collisions ~base ~same facts =
   List.filter_map
     (fun ((plan : Facts.plan), step, (promise : Facts.promise)) ->
       match Names.find_opt promise.target declared with
-      | Some (first :: _) when not (held plan step promise) ->
+      | Some (first :: _) when not (held plan promise) ->
           let id = Facts.promise_id plan step promise in
           Some
             (Finding.make Finding_class.Promise_collision
@@ -447,6 +446,52 @@ let unmarked_steps ~whole_base facts =
              ?fix ()))
     candidates
 
+let renamed_steps ~base ~same ~whole_base facts =
+  let plans = Facts.plans facts in
+  List.concat_map
+    (fun (old : Facts.plan) ->
+      if same old.path then []
+      else
+        match List.find_opt (same_plan old) plans with
+        | None -> []
+        | Some (plan : Facts.plan) ->
+            let lost =
+              List.filter
+                (fun (step : Facts.step) ->
+                  not
+                    (List.exists
+                       (fun (other : Facts.step) ->
+                         String.equal other.slug step.slug)
+                       plan.steps))
+                old.steps
+            in
+            let delivered (step : Facts.step) =
+              Facts.delivered step
+              || List.exists
+                   (fun (promise : Facts.promise) ->
+                     Facts.met_within (Lazy.force whole_base)
+                       ~scope:(Facts.effective_scope old step)
+                       ~word:promise.word ~target:promise.target)
+                   step.promises
+            in
+            List.filter_map
+              (fun (step : Facts.step) ->
+                if delivered step then
+                  let id = Facts.step_id old step in
+                  Some
+                    (Finding.make Finding_class.Renamed_step
+                       (Finding.Fact { id; ack_name = step.slug })
+                       ~place:{ Finding.path = plan.path; span = plan.span }
+                       ~detail:
+                         (Printf.sprintf
+                            "the base delivers %s, and the plan has no step \
+                             with the slug %s now"
+                            id step.slug)
+                       ())
+                else None)
+              lost)
+    (Facts.plans base)
+
 let renamed_to ?(same = fun _ -> false) ~base facts =
   let resolve = lazy (Facts.resolve facts)
   and successor =
@@ -488,7 +533,10 @@ let classes ?(same = fun _ -> false) ?(changed = []) ?whole_base
         (unbumped ~base ~same facts @ renamed
         @ promise_collisions ~base ~same facts
         @ marks_without_change ~base ~same ~changed facts
+        @ (if wanted Finding_class.Unmarked_step then
+             unmarked_steps ~whole_base facts
+           else [])
         @
-        if wanted Finding_class.Unmarked_step then
-          unmarked_steps ~whole_base facts
+        if wanted Finding_class.Renamed_step then
+          renamed_steps ~base ~same ~whole_base facts
         else []))

@@ -42,6 +42,14 @@
  (dirs :standard .plans))
 
 (subdir
+ cases/check-porcelain-diff-reports-the-classes-of-delivery/base
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-porcelain-diff-reports-the-classes-of-delivery/tree
+ (dirs :standard .plans))
+
+(subdir
  cases/check-under-warn-only-blocks-nothing/tree
  (dirs :standard .plans))
 
