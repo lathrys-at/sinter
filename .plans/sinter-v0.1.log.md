@@ -353,3 +353,43 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
 - The tests that wrote a tier at `turn` for `untraced` now use the
   gate `review`, or the class `unmeasured` where a test needs a
   built-in `off` at `turn`.
+
+## Let a plan span branches
+
+- Rulings of the lead on details that the brief left open:
+  - Without evidence, a promised `@verifies` counts as met for
+    `merged-incomplete`, `mark-on-unmet-step`, `unmarked-step`, and
+    `renamed-step` when a `verifies` edge with its target sits in the
+    step's scope, resolves, is not suspect, and has a test as its
+    source. An edge whose source is not a test is at rung
+    `wrong-source`, which no evidence changes. Markdown gives no test,
+    so today no `@verifies` counts. `done()` and the completion
+    condition stay strict.
+  - A mark with a bad hash or no hash is `invalid-target`, a mark
+    outside the tag block of a step is `misplaced-plan`, and each mark
+    after the first in one tag block is a `duplicate`. The tag block of
+    a step is the block of its first tag line. The other status tags
+    stay inert.
+  - A new hash on a step whose mark counts in the base repairs the
+    mark and is no added mark. A base mark that was already stale gives
+    no such exemption.
+  - `renamed-step` reads "delivered in the base" as a mark that counts
+    or a met promise there, as ruling N1 says. Vocabulary section 10.3
+    defines it once.
+- `unmarked-step` first read "not met in the base" from the same step
+  of the same plan in the base. A plan whose promises the base already
+  met then gave `unmarked-step` in its own pull request, and the fix
+  gave `mark-without-change`. It now reads the facts of the base alone,
+  with the scope of the step (`Facts.met_within`).
+- The markdown reader gives the text of a section only when the caller
+  asks; the scan asks for the files under `.plans/`, so other files
+  cost nothing.
+- A step that has a mark gives no `unmarked-step`: `stale-mark` or
+  `invalid-target` reports that mark, and a second fix line would be a
+  `duplicate`.
+- The check computes `unmarked-step` and `renamed-step` only at a gate
+  that can report them, because in tree mode they build the facts of
+  the whole base.
+- Left for later: no class prints the mark line of a step without
+  promises, so the plan skill reads the hash from `sinter scan`. A
+  plan file removed while its plan is open gives no `renamed-step`.
