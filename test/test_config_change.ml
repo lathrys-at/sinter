@@ -179,6 +179,11 @@ let what_the_base_side_leaves_out =
        merged.code-drift = \"warn\"\n\
        turn.config-changed = \"off\"\n\
        review.pack-mismatch = \"warn\"\n" );
+    ( "a tier at turn for each class of incomplete work",
+      "[check.tiers]\n\
+       turn.untraced = \"block\"\n\
+       turn.unmet-promise = \"warn\"\n\
+       turn.awaiting-approval = \"off\"\n" );
     ("a gate of the wrong type", "[check.tiers]\nmerged = \"warn\"\n");
     ("a tier table of the wrong type", "[check]\ntiers = 3\n");
     ( "locations of no kind",

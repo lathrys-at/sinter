@@ -1,0 +1,2 @@
+config-changed: check.tiers.review.untraced: "block" -> "warn" (weakens)
+ --> sinter.toml:3:1
