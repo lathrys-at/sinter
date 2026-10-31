@@ -398,6 +398,55 @@ let marks_without_change ~base ~same ~changed facts =
           plan.steps)
     (Facts.plans facts)
 
+let met_in facts plan step =
+  let standing = Facts.standing facts plan step in
+  fun promise -> Option.is_some (standing promise).Facts.by
+
+let met_in_base whole_base plan step (promise : Facts.promise) =
+  Facts.met_within whole_base
+    ~scope:(Facts.effective_scope plan step)
+    ~word:promise.word ~target:promise.target
+
+let unmarked_steps ~whole_base facts =
+  let candidates =
+    List.concat_map
+      (fun (plan : Facts.plan) ->
+        List.filter_map
+          (fun (step : Facts.step) ->
+            if
+              step.promises <> []
+              && Option.is_none (Facts.mark step)
+              && List.for_all (met_in facts plan step) step.promises
+            then Some (plan, step)
+            else None)
+          plan.steps)
+      (Facts.plans facts)
+  in
+  List.filter_map
+    (fun ((plan : Facts.plan), (step : Facts.step)) ->
+      let met_before = met_in_base (Lazy.force whole_base) plan step in
+      if List.for_all met_before step.promises then None
+      else
+        let id = Facts.step_id plan step in
+        let fix =
+          Option.map
+            (fun document ->
+              Fix.mark_line document ~block:step.block
+                ~hash:(Facts.mark_hash step))
+            (List.assoc_opt plan.path (Facts.files facts))
+        in
+        Some
+          (Finding.make Finding_class.Unmarked_step
+             (Finding.Fact { id; ack_name = step.slug })
+             ~place:{ Finding.path = plan.path; span = step.span }
+             ~detail:
+               (Printf.sprintf
+                  "the diff makes the promises of %s met, and the step has no \
+                   mark"
+                  id)
+             ?fix ()))
+    candidates
+
 let renamed_to ?(same = fun _ -> false) ~base facts =
   let resolve = lazy (Facts.resolve facts)
   and successor =
@@ -416,7 +465,9 @@ let historical facts (finding : Finding.t) =
   | Some place -> Manifest.is_historical (Facts.manifest facts) place.path
   | None -> false
 
-let classes ?(same = fun _ -> false) ?(changed = []) ~base facts findings =
+let classes ?(same = fun _ -> false) ?(changed = []) ?whole_base
+    ?(wanted = fun _ -> true) ~base facts findings =
+  let whole_base = Option.value whole_base ~default:(lazy base) in
   let tombstones = tombstones ~same ~base facts in
   let renamed = renamed ~base ~same ~tombstones facts in
   let replaced =
@@ -436,4 +487,8 @@ let classes ?(same = fun _ -> false) ?(changed = []) ~base facts findings =
         (fun finding -> not (historical facts finding))
         (unbumped ~base ~same facts @ renamed
         @ promise_collisions ~base ~same facts
-        @ marks_without_change ~base ~same ~changed facts))
+        @ marks_without_change ~base ~same ~changed facts
+        @
+        if wanted Finding_class.Unmarked_step then
+          unmarked_steps ~whole_base facts
+        else []))

@@ -130,6 +130,14 @@ let refuses name gives =
     name true
     (match gives () with exception Invalid_argument _ -> true | _ -> false)
 
+let mark_line_inserts_a_line_after_the_last_tag_line () =
+  let document = document "# P\n\n## S\n\n  @req a\r\n  @req b\r\nText.\r\n" in
+  let fix = Fix.mark_line document ~block:0 ~hash:"3e1f0a" in
+  check_alternatives fix [ [ "6:9-6:9 \"\\r\\n  @delivered 3e1f0a\"" ] ];
+  check_text fix "@delivered 3e1f0a";
+  refuses "a block that does not exist" (fun () ->
+      Fix.mark_line document ~block:1 ~hash:"3e1f0a")
+
 let a_fix_needs_a_target () =
   let bare = tag "# A\n@cites\n" 0 in
   refuses "pin" (fun () -> Fix.pin bare 2);
@@ -175,6 +183,7 @@ let fixes text =
     Fix.plan_id tag (Plan_target.derive ~base:"" ~path:"");
     Fix.ack document ~block:0 ~target:"a";
     Fix.mark_hash tag "abcdef";
+    Fix.mark_line document ~block:0 ~hash:"abcdef";
   ]
 
 let help_is_one_constant_for_each_form () =
@@ -203,6 +212,7 @@ let help_messages_are_fixed () =
       "give the plan an id after its slug";
       "if the citation still holds, accept the finding with an @ack line";
       "check that the step is still delivered, then write its current hash";
+      "mark the step as delivered with this line";
     ]
     (List.map Fix.help (fixes "# A\n@cites a\n@cites b v1\n"))
 
@@ -375,6 +385,8 @@ let tests =
       word_replaces_the_tag_word;
     Alcotest.test_case "Mark_hash replaces the target" `Quick
       mark_hash_replaces_the_target;
+    Alcotest.test_case "Mark_line inserts a line after the last tag line" `Quick
+      mark_line_inserts_a_line_after_the_last_tag_line;
     Alcotest.test_case "Pin without a revision inserts after the target" `Quick
       pin_without_a_revision_inserts_after_the_target;
     Alcotest.test_case "Pin with a revision replaces it" `Quick

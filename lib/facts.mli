@@ -321,6 +321,16 @@ val standing : t -> plan -> step -> promise -> standing
       of [plan], when it is applied to [step]; and if [promise] is not one of
       the promises of [step], when it is applied to [promise]. *)
 
+val met_within : t -> scope:string list -> word:string -> target:string -> bool
+(** [met_within facts ~scope ~word ~target] is [true] when a fact of [facts]
+    meets a promise of the word [word] and the tag target [target] of a step
+    whose effective scope is [scope], by the rule of {!standing}: a declaration
+    of the kind [word] and the slug [target] in [scope] or in the default
+    location of its kind, or an edge of the word [word] and the tag target
+    [target] in [scope] whose tag target resolves and that is not suspect. No
+    edge of the word [verifies] meets it. The step need not be a step of a plan
+    of [facts]. *)
+
 val index :
   tree:string ->
   base:string ->

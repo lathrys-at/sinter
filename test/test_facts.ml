@@ -28,6 +28,7 @@ let facts ?(extra = "") files =
   Facts.make (manifest ~extra ())
     (List.map (fun (path, text) -> (path, document text)) files)
 
+let facts_of_files files = facts files
 let records ?extra files = Facts.records (facts ?extra files)
 let lines ?extra files = List.map Jsonl.to_string (records ?extra files)
 let field name record = List.assoc_opt name record
@@ -2073,12 +2074,53 @@ let a_mark_never_changes_the_commitment_set_hash =
               (marked_plan ~mark:variant.mark ~scope ~promise ~prose ()))
            (commitment_hash (marked_plan ~scope ~promise ~prose ()))))
 
+let met_within_reads_the_facts_with_the_scope_of_a_step () =
+  let facts =
+    facts ~extra:"[paths]\ndecision = [\"docs/decisions/\"]\n"
+      [
+        ( "lib/a.md",
+          "# A\n\n\
+           @req a\n\
+           @cites a v1\n\
+           @cites a v2\n\
+           @verifies a v1\n\
+           @cites gh/1\n\
+           @cites b\n" );
+        ("docs/decisions/d.md", "# D\n\n@decision d\n");
+        ("src/b.md", "# B\n\n@req b\n@cites gone\n");
+      ]
+  in
+  let met word target =
+    Facts.met_within facts ~scope:[ "lib/**" ] ~word ~target
+  in
+  Alcotest.(check (list bool))
+    "req a, req b outside, decision d in its location, cites a, cites gone, \
+     verifies a, an external id, a citation with no revision"
+    [ true; false; true; true; false; false; true; true ]
+    [
+      met "req" "a";
+      met "req" "b";
+      met "decision" "d";
+      met "cites" "a";
+      Facts.met_within facts ~scope:[ "src/**" ] ~word:"cites" ~target:"gone";
+      met "verifies" "a";
+      met "cites" "gh/1";
+      met "cites" "b";
+    ];
+  Alcotest.(check bool)
+    "only a suspect citation" false
+    (Facts.met_within
+       (facts_of_files [ ("lib/a.md", "# A\n\n@req a v1\n@cites a v2\n") ])
+       ~scope:[ "lib/**" ] ~word:"cites" ~target:"a")
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
   [
     case "the step hash covers the scope, the promises, and the text"
       the_step_hash_covers_the_scope_the_promises_and_the_text;
+    case "met_within reads the facts with the scope of a step"
+      met_within_reads_the_facts_with_the_scope_of_a_step;
     case "a mark that names the step hash counts"
       a_mark_that_names_the_step_hash_counts;
     case "a mark with another hash does not count"

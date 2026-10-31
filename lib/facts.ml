@@ -935,6 +935,34 @@ let standing facts plan step =
       invalid_arg "Facts.standing: the promise is not one of this step";
     standing_within facts ~in_scope promise
 
+let met_within facts ~scope ~word ~target =
+  let in_scope = Path_set.mem (path_set scope) in
+  if List.mem word declaration_words then
+    let location =
+      Option.bind (manifest_kind word) (Manifest.location facts.manifest)
+    in
+    Array.exists
+      (fun (d : declaration) ->
+        String.equal d.kind word && String.equal d.slug target
+        && (in_scope d.path
+           || Option.fold ~none:false
+                ~some:(fun set -> Path_set.mem set d.path)
+                location))
+      facts.declarations
+  else
+    (not (String.equal word "verifies"))
+    && List.exists2
+         (fun (edge : edge) resolved ->
+           String.equal edge.word word
+           && String.equal edge.target_text target
+           && in_scope edge.path
+           &&
+           match (resolved, edge.rev) with
+           | Declaration index, Some rev -> facts.declarations.(index).rev = rev
+           | Declaration _, None | External _, _ -> true
+           | Unresolved _, _ -> false)
+         facts.edges facts.targets
+
 let full_form (plan : plan) =
   Plan_target.to_string { slug = plan.slug; id = plan.id }
 

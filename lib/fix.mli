@@ -76,6 +76,14 @@ val ack : Markdown.t -> block:int -> target:string -> t
     @raise Invalid_argument
       if [block] is not an index of {!Markdown.t.blocks} of [document]. *)
 
+val mark_line : Markdown.t -> block:int -> hash:string -> t
+(** [mark_line document ~block ~hash] is the fix of [unmarked-step]: the line
+    [@delivered <hash>] after the last tag line of the block at index [block] of
+    [document].
+
+    @raise Invalid_argument
+      if [block] is not an index of {!Markdown.t.blocks} of [document]. *)
+
 (** {1 Output} *)
 
 type edit = { line : int; col : int; eline : int; ecol : int; text : string }
@@ -105,7 +113,9 @@ val alternatives : t -> edit list list
       revision, with [v] and the new revision.
     - {!ack}: the empty span at the end of the last tag line of the block,
       before its line ending, with {!Markdown.block.new_line} of the block and
-      then the [@ack] line. *)
+      then the [@ack] line.
+    - {!mark_line}: the same empty span, with {!Markdown.block.new_line} of the
+      block and then the [@delivered] line. *)
 
 val help : t -> string
 (** [help fix] is the help message of [fix], one line for the person who reads
@@ -118,4 +128,5 @@ val text : t -> string
     of the new tag line, [@<word> <target>] with [ v<rev>] when the new line has
     a revision, for {!pin}, {!bump}, {!spelling}, {!rename}, {!plan_id}, and
     {!mark_hash}; that head for each successor, joined by [" or "], for
-    {!successors}; and the [@ack] line for {!ack}. *)
+    {!successors}; the [@ack] line for {!ack}; and the [@delivered] line for
+    {!mark_line}. *)

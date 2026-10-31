@@ -429,9 +429,9 @@ A finding that exists at the base and still exists in the working tree
 is pre-existing; diff mode does not report it. A finding absent at the
 base is what the diff introduced. The diff-relative classes —
 `unbumped`, `unplanned-change`, `config-changed`, `code-drift`,
-`renamed`, `promise-collision`, `mark-without-change` — have
-`F(b) = ∅` by construction and appear in both modes. So a check in
-tree mode also reads the base, and reports these classes.
+`renamed`, `promise-collision`, `mark-without-change`, `unmarked-step`
+— have `F(b) = ∅` by construction and appear in both modes. So a check
+in tree mode also reads the base, and reports these classes.
 
 ## 9. Built-in finding classes
 
@@ -507,6 +507,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `stale-mark` | step | *engine*: a step of an open plan whose mark does not count: its mark hash is not the first six hex digits of the current step hash ([vocabulary.md](vocabulary.md) section 10.8). A mark whose tag target is not a mark hash is `invalid-target` only. The finding sits at the mark. The fix writes the first six hex digits of the step hash in place of the mark hash | tree | · | F | block, block, block |
 | `mark-without-change` | step | *engine*: a step whose mark the diff adds ([vocabulary.md](vocabulary.md) section 10.7), when no hunk of the diff lies in the effective scope of the step, apart from the hunks of the plan file. A new mark hash on a step whose mark counts in `B` is no added mark, so the repair of a stale mark gives no finding. The finding sits at the mark. It has no fix | diff | · | · | block, block, — |
 | `mark-on-unmet-step` | step | *engine*: a step of an open plan with a mark that counts and a promise that is not met. A promise counts as met by the rule of section 9.2. The finding sits at the mark, and its related places are the promises that are not met. It has no fix | tree | · | · | block, block, block |
+| `unmarked-step` | step | *engine*: a step with promises and no mark, when the diff makes its promises met: each promise is met in `T`, and some promise is not met in `B`. A promise counts as met by the rule of section 9.2. A promise is met in `B` when the fact set of `B` holds a fact that meets it inside the effective scope of the step in `T`, or inside the default location of its kind ([vocabulary.md](vocabulary.md) section 10.5); no plan of `B` is needed. So a plan whose promises the base already meets gives no finding in the pull request that brings the plan. A step that has a mark gives no finding, because `stale-mark` or `invalid-target` reports that mark. The finding sits at the heading of the step. The fix inserts the line `@delivered <hash>` after the last tag line of the tag block of the step, where `<hash>` is the first six hex digits of the step hash | diff | · | F | —, block, — |
 | `misplaced-plan` | tag | *engine*: a `@plan` tag outside the first tag block of a file under `.plans/`, or a `@delivered` tag outside the tag block of a step. A `@plan` outside `.plans/**` and a `@plan` in a later block of a file under `.plans/` are misplaced ([vocabulary.md](vocabulary.md) section 10.1). A `@delivered` tag in a file that is not a plan file, in the first tag block of a plan file, or in a block of a step other than its tag block is misplaced ([vocabulary.md](vocabulary.md) section 10.8) | tree | · | · | block, block, block |
 | `missing-plan-id` | plan | *engine*: a plan whose `@plan` tag has no plan id ([vocabulary.md](vocabulary.md) section 4.3). The fix inserts `@` and a plan id at the end of the tag target. That plan id is the first six hex digits of the SHA-256 of three parts, as UTF-8 bytes: the object id of the base commit in lowercase hex (the field `base` of the `index` record, [jsonl.md](jsonl.md) section 10), one LF, and the path of the plan file, relative to the repository root | tree | · | F | block, block, block |
 | `unpinned` | edge | *engine*: a `satisfies`, `verifies`, `refines`, or `supersedes` edge without a revision | tree | · | F | block, block, block |
@@ -604,18 +605,18 @@ must be equal.
 
 ### 9.2 Promises without evidence
 
-The classes `mark-on-unmet-step` and `merged-incomplete` read a
-promised `@verifies` in one more way. When no evidence set exists for
-the tree (global rule 3), a promised `@verifies` counts as met for
-these classes when a `verifies` edge with its tag target exists inside
-the effective scope of the step, its source is a test, its tag target
-resolves, and it is not suspect. A `verifies` edge whose source is not
-a test is at rung `wrong-source` (section 6.7), and it never counts.
-When an evidence set exists, the rung decides, as
-[vocabulary.md](vocabulary.md) section 10.5 says. The rule applies to
-these classes alone: `done()` and the completion condition of
-[ledger.md](ledger.md) section 8 read every promise as section 10.5
-says.
+The classes `mark-on-unmet-step`, `unmarked-step`, and
+`merged-incomplete` read a promised `@verifies` in one more way. When
+no evidence set exists for the tree (global rule 3), a promised
+`@verifies` counts as met for these classes when a `verifies` edge
+with its tag target exists inside the effective scope of the step, its
+source is a test, its tag target resolves, and it is not suspect. A
+`verifies` edge whose source is not a test is at rung `wrong-source`
+(section 6.7), and it never counts. When an evidence set exists, the
+rung decides, as [vocabulary.md](vocabulary.md) section 10.5 says. The
+rule applies to these classes alone: `done()` and the completion
+condition of [ledger.md](ledger.md) section 8 read every promise as
+section 10.5 says.
 
 ## 10. Evaluation, ordering, and errors
 

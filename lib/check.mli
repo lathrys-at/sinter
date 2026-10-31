@@ -30,6 +30,12 @@ val select :
     [Warn] or [Block], with that tier: a class whose tier is [Off], or that
     takes no tier at the gate, reports nothing. *)
 
+val reports : Manifest.t -> Finding_class.gate option -> Finding_class.t -> bool
+(** [reports manifest gate finding_class] is [true] when a check at [gate] can
+    report a finding of [finding_class]: with [None] always, and with
+    [Some gate] when {!Manifest.tier} gives the class [Warn] or [Block] at the
+    gate. The check computes [unmarked-step] only when it can report it. *)
+
 val exit_code : strict:bool -> entry list -> int
 (** [exit_code ~strict entries] is {!Exit_code.findings} when an entry has the
     tier [Block], or when [strict] is [true] and an entry has a class other than

@@ -44,6 +44,7 @@ type t =
   | Stale_mark
   | Mark_without_change
   | Mark_on_unmet_step
+  | Unmarked_step
   | Misplaced_plan
   | Missing_plan_id
   | Unpinned

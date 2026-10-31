@@ -446,9 +446,13 @@ let collisions ~base:(base_path, base_target) (path, target) =
   in
   let declared = ("docs/a.md", "# A\n\n@req taken v1\n") in
   List.length
-    (compared
-       [ declared; (base_path, plan base_target) ]
-       [ declared; (path, plan target) ])
+    (List.filter
+       (fun (finding : Finding.t) ->
+         finding.finding_class = Finding_class.Promise_collision)
+       (Adjudicator.classes
+          ~base:(facts [ declared; (base_path, plan base_target) ])
+          (facts [ declared; (path, plan target) ])
+          []))
 
 let the_same_plan_across_the_base_holds_its_promises () =
   Alcotest.(check (list int))
@@ -580,7 +584,10 @@ let a_base_without_the_same_files_gives_the_same_classes =
       let found = Findings.of_facts tree ~base:base_commit ~not_text:[] in
       let tombstone (t : Adjudicator.tombstone) = t.was in
       List.map show (Adjudicator.classes ~base:full tree found)
-      = List.map show (Adjudicator.classes ~same ~base:part tree found)
+      = List.map show
+          (Adjudicator.classes ~same
+             ~whole_base:(lazy full)
+             ~base:part tree found)
       && List.map tombstone (Adjudicator.tombstones ~base:full tree)
          = List.map tombstone (Adjudicator.tombstones ~same ~base:part tree))
 
@@ -733,8 +740,121 @@ let promise_collision_marks_the_target () =
 
 let case name f = Alcotest.test_case name `Quick f
 
+let unmarked ?same ?whole_base base tree =
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) ->
+         finding.finding_class = Finding_class.Unmarked_step)
+       (Adjudicator.classes ?same ?whole_base ~base:(facts base) (facts tree) []))
+
+let promise_plan mark =
+  ( ".plans/p.md",
+    "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Do it\n\n@req a\n" ^ mark
+    ^ "Text.\n" )
+
+let declared = ("docs/a.md", "# A\n\n@req a\n")
+
+let scoped_plan mark =
+  ( ".plans/p.md",
+    "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Do it\n\n@scope docs/**\n@req a\n"
+    ^ mark ^ "Text.\n" )
+
+let unmarked_step_sits_at_a_step_that_the_diff_makes_met () =
+  let hash = hash_of (promise_plan "") in
+  Alcotest.check strings "the diff declares a"
+    [
+      Printf.sprintf
+        ".plans/p.md:6 | finding:unmarked-step:step:p@0a1b2c/do-it | the diff \
+         makes the promises of step:p@0a1b2c/do-it met, and the step has no \
+         mark | fix: @delivered %s"
+        hash;
+    ]
+    (unmarked [ promise_plan "" ] [ promise_plan ""; declared ]);
+  Alcotest.check strings "a new plan with its promise met"
+    [
+      Printf.sprintf
+        ".plans/p.md:6 | finding:unmarked-step:step:p@0a1b2c/do-it | the diff \
+         makes the promises of step:p@0a1b2c/do-it met, and the step has no \
+         mark | fix: @delivered %s"
+        hash;
+    ]
+    (unmarked [] [ promise_plan ""; declared ]);
+  Alcotest.check strings "a mark that counts" []
+    (unmarked
+       [ promise_plan "" ]
+       [ promise_plan ("@delivered " ^ hash ^ "\n"); declared ]);
+  Alcotest.check strings "a stale mark" []
+    (unmarked
+       [ promise_plan "" ]
+       [ promise_plan "@delivered 000000\n"; declared ]);
+  Alcotest.check strings "a new plan whose promise the base meets" []
+    (unmarked [ declared ] [ promise_plan ""; declared ]);
+  Alcotest.check strings "a new plan whose citation the base holds" []
+    (unmarked
+       [ ("docs/guide.md", "# G\n\n@cites gh/1\n") ]
+       [
+         ( ".plans/p.md",
+           "# P\n\n@plan p@0a1b2c\n@scope docs/**\n\n## Do it\n\n@cites gh/1\n"
+         );
+         ("docs/guide.md", "# G\n\n@cites gh/1\n");
+       ]);
+  Alcotest.check strings "the base meets it outside the scope of the step"
+    [
+      ".plans/p.md:6 | finding:unmarked-step:step:p@0a1b2c/do-it | the diff \
+       makes the promises of step:p@0a1b2c/do-it met, and the step has no mark \
+       | fix: @delivered "
+      ^ hash_of (scoped_plan "");
+    ]
+    (unmarked
+       [ scoped_plan ""; ("lib/a.md", "# A\n\n@req a\n") ]
+       [ scoped_plan ""; ("docs/a.md", "# A\n\n@req a\n") ]);
+  Alcotest.check strings "met in the base already" []
+    (unmarked [ promise_plan ""; declared ] [ promise_plan ""; declared ]);
+  Alcotest.check strings "not met in the tree" []
+    (unmarked [ promise_plan "" ] [ promise_plan "" ])
+
+let unmarked_step_reads_the_unchanged_files_of_the_base () =
+  let base_plan = promise_plan "" in
+  let tree_plan =
+    let path, text = promise_plan "" in
+    (path, text ^ "More text.\n")
+  in
+  let unchanged path = String.equal path "docs/a.md" in
+  Alcotest.check strings "the meeting fact sits in an unchanged file" []
+    (unmarked ~same:unchanged
+       ~whole_base:(lazy (facts [ base_plan; declared ]))
+       [ base_plan ] [ tree_plan; declared ])
+
+let the_fix_of_unmarked_step_makes_a_mark_that_counts () =
+  let path, text = promise_plan "" in
+  match
+    List.filter
+      (fun (finding : Finding.t) ->
+        finding.finding_class = Finding_class.Unmarked_step)
+      (Adjudicator.classes
+         ~base:(facts [ (path, text) ])
+         (facts [ (path, text); declared ])
+         [])
+  with
+  | [ { fix = Some fix; _ } ] -> (
+      let marked = Edits.apply text (List.hd (Fix.alternatives fix)) in
+      Alcotest.(check bool)
+        "one more line" true
+        (String.length marked > String.length text);
+      match Facts.plans (facts [ (path, marked) ]) with
+      | [ { steps = [ step ]; _ } ] ->
+          Alcotest.(check bool) "the mark counts" true (Facts.delivered step)
+      | _ -> Alcotest.fail "one plan with one step")
+  | _ -> Alcotest.fail "one unmarked-step with a fix"
+
 let tests =
   [
+    Alcotest.test_case "unmarked-step sits at a step that the diff makes met"
+      `Quick unmarked_step_sits_at_a_step_that_the_diff_makes_met;
+    Alcotest.test_case "unmarked-step reads the unchanged files of the base"
+      `Quick unmarked_step_reads_the_unchanged_files_of_the_base;
+    Alcotest.test_case "the fix of unmarked-step makes a mark that counts"
+      `Quick the_fix_of_unmarked_step_makes_a_mark_that_counts;
     Alcotest.test_case
       "mark-without-change sits at a mark with no change in scope" `Quick
       mark_without_change_sits_at_a_mark_with_no_change_in_scope;

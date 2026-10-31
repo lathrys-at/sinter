@@ -141,6 +141,26 @@ let only_a_parse_error_at_an_error_node_changes_its_tier =
       Check.tier manifest gate finding
       = if lowered then Some Finding_class.Warn else applies)
 
+let a_check_reports_a_class_only_where_it_has_a_tier () =
+  Alcotest.(check (list bool))
+    "unmarked-step with no gate, and at turn, review, and merged"
+    [ true; false; true; false ]
+    (List.map
+       (fun gate -> Check.reports plain gate Finding_class.Unmarked_step)
+       [
+         None;
+         Some Finding_class.Turn;
+         Some Finding_class.Review;
+         Some Finding_class.Merged;
+       ]);
+  Alcotest.(check (list bool))
+    "a class that is off, that warns, and that blocks at turn"
+    [ false; true; true ]
+    (List.map
+       (fun finding_class ->
+         Check.reports plain (Some Finding_class.Turn) finding_class)
+       Finding_class.[ Unmeasured; Typo_tag; Dangling ])
+
 let entries_of = List.map (fun (entry : Check.entry) -> entry.finding)
 
 let with_no_gate_every_finding_counts_with_no_tier () =
@@ -927,6 +947,34 @@ let a_mark_that_the_branch_adds_needs_a_change_in_its_scope () =
        (fun line -> contains_text "mark-without-change" line)
        (diff_lines repo))
 
+let tree_lines repo =
+  match
+    Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+      ~manifest:None ~base:None ~mode:Mode.Tree ~gate:None ~strict:false
+      ~form:Check.Brief ~verbose:false ~quiet:false ~tool:"v1" ()
+  with
+  | Ok report -> written report
+  | Error _ -> Alcotest.fail "the check fails"
+
+let unmarked_step_reads_the_promises_that_the_base_meets_in_both_modes () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "sinter.toml" packs;
+  let plan text =
+    "# P\n\n@plan p@0a1b2c\n@scope docs/**\n\n## Do it\n\n@req a\n" ^ text
+  in
+  Git_fixture.write repo ".plans/p.md" (plan "Text.\n");
+  Git_fixture.write repo "docs/a.md" "# A\n\n@req a\n";
+  commit repo "main";
+  ignore (Git_fixture.git repo [ "checkout"; "-q"; "-b"; "work" ]);
+  Git_fixture.write repo ".plans/p.md" (plan "Other text.\n");
+  commit repo "work";
+  let unmarked lines =
+    List.filter (fun line -> contains_text "unmarked-step" line) lines
+  in
+  Alcotest.(check (pair (list string) (list string)))
+    "no unmarked-step in tree mode and in diff mode" ([], [])
+    (unmarked (tree_lines repo), unmarked (diff_lines repo))
+
 let a_diff_compares_each_file_as_git_stores_it () =
   let repo = Git_fixture.init () in
   Git_fixture.write repo "sinter.toml" packs;
@@ -1254,6 +1302,10 @@ let tests =
     a_porcelain_line_and_a_record_hold_the_same_values;
     case "a mark that the branch adds needs a change in its scope"
       a_mark_that_the_branch_adds_needs_a_change_in_its_scope;
+    case "unmarked-step reads the promises that the base meets in both modes"
+      unmarked_step_reads_the_promises_that_the_base_meets_in_both_modes;
+    case "a check reports a class only where it has a tier"
+      a_check_reports_a_class_only_where_it_has_a_tier;
     case "a diff against the merge base reports what the branch adds"
       a_diff_against_the_merge_base_reports_what_the_branch_adds;
     case "a diff compares each file as git stores it"

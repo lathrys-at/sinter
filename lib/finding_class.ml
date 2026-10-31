@@ -29,6 +29,7 @@ type t =
   | Stale_mark
   | Mark_without_change
   | Mark_on_unmet_step
+  | Unmarked_step
   | Misplaced_plan
   | Missing_plan_id
   | Unpinned
@@ -78,6 +79,7 @@ let all =
     Stale_mark;
     Mark_without_change;
     Mark_on_unmet_step;
+    Unmarked_step;
     Misplaced_plan;
     Missing_plan_id;
     Unpinned;
@@ -127,6 +129,7 @@ let name = function
   | Stale_mark -> "stale-mark"
   | Mark_without_change -> "mark-without-change"
   | Mark_on_unmet_step -> "mark-on-unmet-step"
+  | Unmarked_step -> "unmarked-step"
   | Misplaced_plan -> "misplaced-plan"
   | Missing_plan_id -> "missing-plan-id"
   | Unpinned -> "unpinned"
@@ -176,6 +179,7 @@ let tiers = function
   | Stale_mark -> (Some Block, Some Block, Some Block)
   | Mark_without_change -> (Some Block, Some Block, None)
   | Mark_on_unmet_step -> (Some Block, Some Block, Some Block)
+  | Unmarked_step -> (None, Some Block, None)
   | Misplaced_plan -> (Some Block, Some Block, Some Block)
   | Missing_plan_id -> (Some Block, Some Block, Some Block)
   | Unpinned -> (Some Block, Some Block, Some Block)

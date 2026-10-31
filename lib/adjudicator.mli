@@ -33,6 +33,8 @@ val tombstones :
 val classes :
   ?same:(string -> bool) ->
   ?changed:string list ->
+  ?whole_base:Facts.t Lazy.t ->
+  ?wanted:(Finding_class.t -> bool) ->
   base:Facts.t ->
   Facts.t ->
   Finding.t list ->
@@ -41,7 +43,12 @@ val classes :
     findings of the classes that compare the working tree with the base, sorted
     by {!Finding.compare}. [same] and [base] are as {!tombstones} takes them.
     [changed] is the path of each file to which the diff between the base and
-    the working tree gives a hunk; it is empty when absent. The classes are:
+    the working tree gives a hunk; it is empty when absent. [whole_base] is the
+    facts of every file of the base tree, as {!Facts.make} gives them; it is
+    [base] when absent, so give it when [base] leaves out the facts of a file by
+    [same]. The function forces it only when a class needs it. The result holds
+    no finding of [unmarked-step] when [wanted Unmarked_step] is [false];
+    [wanted] is [true] for every class when absent. The classes are:
 
     - [unbumped]: a declaration of the kind [req], [design], or [decision] whose
       slug the base declares, in one of these kinds, when no such declaration of
@@ -76,6 +83,13 @@ val classes :
       [promise-collision], has no step of the same slug, or that step has no
       mark, or its mark does not count in the base and names another hash. The
       finding sits at the mark.
+
+    - [unmarked-step]: a step of a plan of the working tree with promises and no
+      mark, whose promises {!Facts.standing} meets in the working tree, and some
+      of whose promises {!Facts.met_within} [whole_base] does not meet with the
+      effective scope of the step. No plan of the base is needed. The finding
+      sits at the heading of the step. Its fix is {!Fix.mark_line} on the tag
+      block of the step, with {!Facts.mark_hash}.
 
     No finding of these classes sits under a historical path. *)
 
