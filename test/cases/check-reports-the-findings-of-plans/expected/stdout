@@ -10,6 +10,16 @@ help: give the plan an id after its slug
   |           +++++++
   |
 
+merged-incomplete: step:work/write-the-login-req has 1 of its 2 promises met
+  --> .plans/work.md:6:1
+   |
+ 6 | ## Write the login req
+   | ^^^^^^^^^^^^^^^^^^^^^^
+...
+10 | @verifies login
+   | --------------- not met
+   |
+
 scope-outside-plan: step:work/write-the-logout-req has src/** in its scope, outside the scope of the plan
   --> .plans/work.md:12:1
    |

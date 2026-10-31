@@ -1241,6 +1241,66 @@ let wrong_source_marks_the_word () =
       "docs/b.md:5 / 3-11 needs a declaration that holds it";
     ]
 
+let merged_incomplete_sits_at_a_step_with_some_promises_met () =
+  check Finding_class.Merged_incomplete
+    [
+      plan
+        "\n\
+         ## Part\n\n\
+         @req a\n\
+         @req b\n\
+         @decision c\n\n\
+         ## Whole\n\n\
+         @req a\n\n\
+         ## None\n\n\
+         @req b\n\n\
+         ## Bare\n\n\
+         @scope lib/**\n";
+      ("lib/a.md", "# A\n\n@req a\n");
+    ]
+    [
+      ".plans/p.md:6:1-6:8 | finding:merged-incomplete:step:p/part | \
+       step:p/part has 1 of its 3 promises met";
+    ]
+
+let merged_incomplete_names_each_promise_not_met () =
+  check_parts Finding_class.Merged_incomplete
+    [
+      plan "\n## Part\n\n@req b\n@req a\n@decision c\n";
+      ("lib/a.md", "# A\n\n@req a\n");
+    ]
+    [
+      ".plans/p.md:6 / no mark / not met at .plans/p.md:8:1-8:7 / not met at \
+       .plans/p.md:10:1-10:12";
+    ]
+
+let merged_incomplete_counts_no_verifies_edge_of_a_markdown_file () =
+  let part =
+    [
+      ".plans/p.md:6:1-6:8 | finding:merged-incomplete:step:p/part | \
+       step:p/part has 1 of its 2 promises met";
+    ]
+  in
+  List.iter
+    (fun verifies ->
+      check Finding_class.Merged_incomplete
+        [
+          plan "\n## Part\n\n@req a\n@verifies a\n";
+          ("lib/a.md", "# A\n\n@req a\n" ^ verifies);
+        ]
+        part)
+    [ ""; "\n## T\n\n@verifies a v1\n" ]
+
+let merged_incomplete_is_not_ackable_and_has_no_fix () =
+  List.iter
+    (fun (finding : Finding.t) ->
+      if finding.finding_class = Finding_class.Merged_incomplete then begin
+        Alcotest.(check bool) "not ackable" false finding.ackable;
+        Alcotest.(check bool) "no fix" true (Option.is_none finding.fix)
+      end)
+    (findings
+       [ plan "\n## Part\n\n@req a\n@req b\n"; ("lib/a.md", "# A\n\n@req a\n") ])
+
 let untraced_marks_the_target () =
   check_parts Finding_class.Untraced
     [
@@ -1591,4 +1651,12 @@ let tests =
     case "step-without-promises is not ackable and has no fix"
       step_without_promises_is_not_ackable_and_has_no_fix;
     case "the findings are sorted" the_findings_are_sorted;
+    case "merged-incomplete sits at a step with some promises met"
+      merged_incomplete_sits_at_a_step_with_some_promises_met;
+    case "merged-incomplete names each promise not met"
+      merged_incomplete_names_each_promise_not_met;
+    case "merged-incomplete counts no verifies edge of a markdown file"
+      merged_incomplete_counts_no_verifies_edge_of_a_markdown_file;
+    case "merged-incomplete is not ackable and has no fix"
+      merged_incomplete_is_not_ackable_and_has_no_fix;
   ]

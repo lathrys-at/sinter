@@ -197,7 +197,7 @@ let tiers = function
   | Unplanned_change -> (Some Block, Some Block, None)
   | Unmet_rule -> (Some Warn, Some Block, Some Block)
   | Config_changed -> (Some Warn, Some Warn, Some Warn)
-  | Merged_incomplete -> (None, None, Some Block)
+  | Merged_incomplete -> (None, Some Block, Some Block)
   | Ledger_broken -> (None, None, Some Block)
   | Pack_mismatch -> (None, None, None)
 

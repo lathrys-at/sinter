@@ -258,11 +258,10 @@ evidence, a `verifies` edge is at rung `never-ran`
 edge in its scope is not done. So a plan with a `verifies` edge in the
 scope of a step does not close without evidence.
 
-An open plan on the default branch that fails this condition is the
-finding `merged-incomplete`: a person merged a plan whose work is not
-complete. Two corrections remove the finding. The first is a smaller
-commitment set for the plan, with a new approval when the kind `plan`
-needs approval. The second is a revert of the merge commit.
+An open plan that fails this condition is normal while its work goes
+on. A step merged in part, with some of its promises met and some not,
+is the finding `merged-incomplete` ([algebra.md](algebra.md) section
+9).
 
 ### 8.3 A repeated run
 

@@ -537,7 +537,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `unplanned-change` | hunk | `kind(hunk) ^ changed(base) - scope(inforce(kind(plan))) - scope(triggered(kind(rule))) - exempt`. The engine also exempts each hunk that is a mechanical repair (section 9.1). The detail is `no step of an open plan, no rule, and no exempt path covers <path>`. The finding has no fix | diff | · | · | block, block, — |
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's `expect` is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
 | `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 13.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
-| `merged-incomplete` | plan | *engine*: an open plan on the default branch that fails the completion condition ([ledger.md](ledger.md) section 8): a person merged it before its work was complete | tree | · | · | —, —, block |
+| `merged-incomplete` | step | *engine*: a step of an open plan with some of its promises met and some not: a step merged in part. A promise counts as met by the rule of section 9.2. The finding sits at the heading of the step, and its related places are the promises that are not met. It has no fix | tree | · | · | —, block, block |
 | `ledger-broken` | ledger | *engine*: ledger verification fails | tree | · | · | —, —, block |
 | `pack-mismatch` | pack | *engine*: the hash of a fetched pack in the cache does not match the hash that the lock file `sinter.lock` fixes for it. The built-in pack `markdown` is not in the lock file. The class takes no tier at any gate: the tool stops with exit code 3 | tree | · | · | — |
 
@@ -596,6 +596,20 @@ a bump of a declaration can write any higher revision, and an added
 plan id can be any six lowercase hex digits. The column of
 the `@` and the rest of each line of the pair, the inline description,
 must be equal.
+
+### 9.2 Promises without evidence
+
+The class `merged-incomplete` reads a promised `@verifies` in one more
+way. When no evidence set exists for the tree (global rule 3), a
+promised `@verifies` counts as met for the class when a `verifies` edge
+with its tag target exists inside the effective scope of the step, its
+source is a test, its tag target resolves, and it is not suspect. A
+`verifies` edge whose source is not a test is at rung `wrong-source`
+(section 6.7), and it never counts. When an evidence set exists, the
+rung decides, as [vocabulary.md](vocabulary.md) section 10.5 says. The
+rule applies to this class alone: `done()` and the completion
+condition of [ledger.md](ledger.md) section 8 read every promise as
+section 10.5 says.
 
 ## 10. Evaluation, ordering, and errors
 

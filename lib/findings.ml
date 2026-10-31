@@ -880,6 +880,40 @@ let promises_out_of_scope facts =
         plan.steps)
     (Facts.plans facts)
 
+let merged_incomplete facts =
+  List.concat_map
+    (fun (plan : Facts.plan) ->
+      if not (is_open plan) then []
+      else
+        List.filter_map
+          (fun (step : Facts.step) ->
+            let standing = Facts.standing facts plan step in
+            let met, unmet =
+              List.partition
+                (fun promise -> Option.is_some (standing promise).Facts.by)
+                step.promises
+            in
+            match (met, unmet) with
+            | _ :: _, _ :: _ ->
+                Some
+                  (Finding.make Finding_class.Merged_incomplete
+                     (Finding.Fact
+                        { id = Facts.step_id plan step; ack_name = step.slug })
+                     ~place:(place plan.path step.span)
+                     ~detail:
+                       (Printf.sprintf "%s has %d of its %d promises met"
+                          (Facts.step_id plan step) (List.length met)
+                          (List.length step.promises))
+                     ~related:
+                       (List.map
+                          (fun (promise : Facts.promise) ->
+                            related "not met" plan.path promise.span)
+                          unmet)
+                     ())
+            | [], _ | _, [] -> None)
+          plan.steps)
+    (Facts.plans facts)
+
 let ack_target target =
   let blank = function ' ' | '\t' -> true | _ -> false in
   let length = String.length target in
@@ -949,6 +983,7 @@ let of_facts facts ~base ~not_text =
             scope_overlaps facts;
             unverified_promises facts;
             promises_out_of_scope facts;
+            merged_incomplete facts;
           ]))
 
 let tree ?phases manifest documents ~base ~not_text =
