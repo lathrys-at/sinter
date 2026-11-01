@@ -112,6 +112,14 @@ let matches glob path =
   start.(0) <- true;
   walk start glob.segments
 
+let leading_names glob =
+  let rec names = function
+    | Name name :: rest when not (String.contains name '*') ->
+        name :: names rest
+    | Name _ :: _ | Any_names :: _ | [] -> []
+  in
+  names glob.segments
+
 let error_offset = function
   | Empty | Leading_slash -> 0
   | Empty_segment offset

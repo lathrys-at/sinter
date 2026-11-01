@@ -24,13 +24,13 @@ let finding path (h : Git.hunk) =
 
 let findings ?same ~base ~manifest facts diff =
   let config = Facts.manifest facts in
-  let covering = Facts.covering facts in
+  let covers = Facts.covers facts in
   let plan_files =
     Names.of_list (Facts.plan_files facts @ Facts.plan_files base)
   in
   let covered path =
     Manifest.is_historical config path
-    || covering path <> []
+    || covers path
     || Manifest.is_exempt config
          ~plan_file:(fun path -> Names.mem path plan_files)
          ~manifest path

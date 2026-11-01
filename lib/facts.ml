@@ -1227,20 +1227,72 @@ let acks facts = facts.acks
 let plans facts = facts.plans
 let plan_files facts = facts.plan_files
 
-let covering facts =
-  let scopes =
+module Scopes = Map.Make (struct
+  type t = string list
+
+  let compare = compare
+end)
+
+type coverage = {
+  index : Path_index.t;
+  steps : (string * int) array;
+  by_scope : int list array;
+}
+
+let coverage facts =
+  let steps =
     List.concat_map
       (fun plan ->
         List.map
           (fun step ->
-            (step_id plan step, path_set (effective_scope plan step)))
+            (step_id plan step, canonical (effective_scope plan step)))
           plan.steps)
       facts.plans
   in
+  let positions, scopes, count =
+    List.fold_left
+      (fun ((positions, scopes, count) as kept) (_, scope) ->
+        if Scopes.mem scope positions then kept
+        else (Scopes.add scope count positions, scope :: scopes, count + 1))
+      (Scopes.empty, [], 0) steps
+  in
+  let steps =
+    Array.of_list
+      (List.map (fun (id, scope) -> (id, Scopes.find scope positions)) steps)
+  in
+  let by_scope = Array.make count [] in
+  for step = Array.length steps - 1 downto 0 do
+    let scope = snd steps.(step) in
+    by_scope.(scope) <- step :: by_scope.(scope)
+  done;
+  { index = Path_index.make (List.rev_map path_set scopes); steps; by_scope }
+
+let covering facts =
+  let { index; steps; by_scope } = coverage facts in
   fun path ->
-    List.filter_map
-      (fun (id, scope) -> if Path_set.mem scope path then Some id else None)
-      scopes
+    List.map
+      (fun step -> fst steps.(step))
+      (List.sort Int.compare
+         (List.concat_map
+            (fun scope -> by_scope.(scope))
+            (Path_index.holders index path)))
+
+let covers facts =
+  let { index; _ } = coverage facts in
+  fun path -> Path_index.holders index path <> []
+
+let covered facts paths =
+  let { index; steps; by_scope } = coverage facts in
+  let held = Array.make (Array.length by_scope) false in
+  List.iter
+    (fun path ->
+      List.iter
+        (fun scope -> held.(scope) <- true)
+        (Path_index.holders index path))
+    paths;
+  List.filter_map
+    (fun (id, scope) -> if held.(scope) then Some id else None)
+    (Array.to_list steps)
 
 let index ~tree ~base ~default_branch ~manifest ~tool ~mode =
   [

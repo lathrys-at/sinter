@@ -280,11 +280,32 @@ let each_uncovered_hunk_gives_one_finding_at_its_place =
 
 let case name f = Alcotest.test_case name `Quick f
 
+let the_findings_grow_in_proportion_to_the_steps_and_the_paths () =
+  let base = facts [] in
+  Counted_work.check_growth ~margin:1.5 ~sizes:(100, 1_600)
+    ~input:(fun count ->
+      ( facts
+          [
+            ( ".plans/p.md",
+              "# P\n\n@plan p\n\n"
+              ^ String.concat ""
+                  (List.init count (fun index ->
+                       Printf.sprintf
+                         "## S%d\n\n@scope docs/%d/**\n@req r%d\n\n" index index
+                         index)) );
+          ],
+        List.init count (fun index ->
+            (Printf.sprintf "docs/%d/a.md" index, edit ~added:1 ())) ))
+    (fun (tree, diff) ->
+      Unplanned.findings ~base ~manifest:(Some "sinter.toml") tree diff)
+
 let tests =
   [
     case "a step covers the paths of its effective scope"
       a_step_covers_the_paths_of_its_effective_scope;
     case "a plan with no step covers nothing" a_plan_with_no_step_covers_nothing;
+    case "the findings grow in proportion to the steps and the paths"
+      the_findings_grow_in_proportion_to_the_steps_and_the_paths;
     case "an exempt path needs no step" an_exempt_path_needs_no_step;
     case "the manifest is exempt only inside the repository"
       the_manifest_is_exempt_only_inside_the_repository;

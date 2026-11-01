@@ -477,12 +477,9 @@ let deliveries_without_change ~counted ~changed ~base facts =
       (let plan_files =
          Ids.of_list (Facts.plan_files facts @ Facts.plan_files base)
        in
-       let covering = Facts.covering facts in
-       List.fold_left
-         (fun covered path ->
-           if Ids.mem path plan_files then covered
-           else List.fold_left (Fun.flip Ids.add) covered (covering path))
-         Ids.empty changed)
+       Ids.of_list
+         (Facts.covered facts
+            (List.filter (fun path -> not (Ids.mem path plan_files)) changed)))
   in
   List.filter_map
     (fun ( (plan : Facts.plan),

@@ -2014,7 +2014,24 @@ let covering_names_each_step_whose_effective_scope_holds_a_path () =
     ]
     (List.map
        (fun path -> (path, covering path))
-       [ "src/lib/a.ml"; "src/b.ml"; "docs/a.md"; "docs/secret.md"; "notes.md" ])
+       [ "src/lib/a.ml"; "src/b.ml"; "docs/a.md"; "docs/secret.md"; "notes.md" ]);
+  let covers =
+    Facts.covers
+      (facts_of_files
+         [
+           ( ".plans/p.md",
+             "# P\n\n@plan p\n\n## A\n\n@scope src/**, !src/x.ml\n@req x\n" );
+         ])
+  in
+  Alcotest.(check (list bool))
+    "whether a step covers each path" [ true; false; false ]
+    (List.map covers [ "src/a.ml"; "src/x.ml"; "docs/a.md" ]);
+  Alcotest.(check (list string))
+    "the steps that cover one or more paths, each once and in order"
+    [ "step:p/own"; "step:p/inherits"; "step:r/all" ]
+    (Facts.covered facts [ "docs/a.md"; "src/lib/a.ml"; "src/b.ml" ]);
+  Alcotest.(check (list string))
+    "the steps that cover no path" [] (Facts.covered facts [])
 
 let step_plan ?(heading = "Do it") ?(tag = "") ?(scope = "lib/**")
     ?(promise = "a") ?(prose = "Write the code.") ?(spaces = "") ?(blanks = "")

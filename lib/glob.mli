@@ -51,6 +51,12 @@ val matches : t -> string -> bool
     The time is at most the product of the number of segments and the length of
     [path], times the length of the longest segment. *)
 
+val leading_names : t -> string list
+(** [leading_names glob] is the segments at the start of [glob] that hold no
+    [*], in order. Each path that [glob] matches starts with these names, the
+    first of them at the start of the path, each name followed by [/] or by the
+    end of the path. *)
+
 val error_offset : error -> int
 (** [error_offset error] is the offset that [error] names. It is [0] for [Empty]
     and [Leading_slash]. *)

@@ -302,8 +302,20 @@ val covering : t -> string -> string list
 (** [covering facts path] is the id of each step of each plan of [facts] whose
     effective scope holds [path], in the order of {!plans} and then of the
     steps. The steps of every plan count. A glob of a scope that is not valid
-    holds no path. [covering facts] builds the path set of each step once, and
-    gives a function that each path can share. *)
+    holds no path. [covering facts] builds one path set for each scope that one
+    or more steps have, and an index of them ({!Path_index}), and gives a
+    function that each path can share. *)
+
+val covers : t -> string -> bool
+(** [covers facts path] is [true] when {!covering} [facts path] is not empty.
+    [covers facts] builds its index once, and gives a function that each path
+    can share. *)
+
+val covered : t -> string list -> string list
+(** [covered facts paths] is the id of each step of each plan of [facts] whose
+    effective scope holds one or more of [paths], in the order of {!plans} and
+    then of the steps. It is the ids of {!covering} for each of [paths], each id
+    once. *)
 
 type meeting_fact = private { id : string; path : string; span : Markdown.span }
 (** A fact that would meet a promise: its id, its path, and its span. *)
