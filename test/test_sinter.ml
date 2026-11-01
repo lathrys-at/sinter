@@ -81,6 +81,7 @@ let () =
                    [ Sinter_core.Mode.Tree; Sinter_core.Mode.Diff ]));
         ] );
       ("fixture", Test_fixture.tests);
+      ("unreadable", Test_unreadable.tests);
       ("allocation", Test_allocation.tests);
       ("generated tree", Test_generated_tree.tests);
       ("bench", Test_bench.tests);

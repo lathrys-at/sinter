@@ -350,14 +350,15 @@ let a_shallow_clone_with_no_merge_base_is_an_error () =
 let a_file_that_does_not_read_is_an_error () =
   let repo = repository [ ("sinter.toml", manifest); ("a.md", "# A\n") ] in
   let path = Filename.concat (Git_fixture.root repo) "a.md" in
-  Unix.chmod path 0o000;
-  Fun.protect
-    ~finally:(fun () -> Unix.chmod path 0o644)
-    (fun () ->
-      match scan ~base:"HEAD" repo with
-      | Error (Scan.Unreadable_file { file; _ }) ->
-          Alcotest.(check string) "the file" "a.md" file
-      | Ok _ | Error _ -> Alcotest.fail "the scan does not fail on the file")
+  match Unreadable.with_unreadable path (fun () -> scan ~base:"HEAD" repo) with
+  | Some (Error (Scan.Unreadable_file { file; _ })) ->
+      Alcotest.(check string) "the file" "a.md" file
+  | Some (Ok _ | Error _) -> Alcotest.fail "the scan does not fail on the file"
+  | None ->
+      print_endline
+        "skipped: this user reads a file that has no permissions, and the file \
+         set holds only regular files, so no file of the scan can fail to read";
+      Alcotest.skip ()
 
 let a_byte_outside_utf_8_shows_as_hex () =
   Alcotest.(check (list string))
