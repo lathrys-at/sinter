@@ -28,8 +28,8 @@ line to add only for a step with promises.
   the first 6 hexadecimal digits of the step hash. Sinter gives the
   line for each step.
 - The **step hash** covers the agreement of the step: its effective
-  scope, its promises, and its text, as record `delivery-marks` fixed
-  it.
+  scope, its promises, and its prose, the lines of its section that
+  are not its heading or a tag line.
 - On a branch, Sinter reads the delivery lines in the messages of the
   commits of the change, from the base to the head. It never reads the
   history of the default branch.
