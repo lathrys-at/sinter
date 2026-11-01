@@ -854,10 +854,15 @@ let spans (file : Markdown.t) =
       List.map (fun span -> (span, None)) file.errors;
     ]
 
+let content_lines text =
+  Line_index.make
+    ~open_end:(text <> "" && not (String.ends_with ~suffix:"\n" text))
+    (Text_file.with_final_line_feed text)
+
 let spans_stay_inside_the_text =
   property ~name:"every span lies inside the text, on characters"
     ~print:String.escaped markdown_text (fun text ->
-      let lines = Line_index.make (Text_file.with_final_line_feed text) in
+      let lines = content_lines text in
       let width line =
         List.length (characters_of (Line_index.content lines line))
       in
@@ -886,7 +891,7 @@ let spans_stay_inside_the_text =
 let parts_sit_at_their_columns =
   property ~name:"the characters at the columns of each part are the part"
     ~print:String.escaped markdown_text (fun text ->
-      let lines = Line_index.make (Text_file.with_final_line_feed text) in
+      let lines = content_lines text in
       List.for_all
         (fun (tag : Markdown.tag) ->
           let characters =
@@ -947,7 +952,7 @@ let structure_holds_together =
   property ~name:"sections, tags, blocks, and extents agree with each other"
     ~print:String.escaped markdown_text (fun text ->
       let file = file text in
-      let lines = Line_index.make (Text_file.with_final_line_feed text) in
+      let lines = content_lines text in
       let tags = file.tags
       and blocks = file.blocks
       and sections = file.sections in
@@ -1249,7 +1254,7 @@ let new_line_ends_the_last_tag_line_and_reaches_its_at =
   property ~name:"the new line of a block holds the line ending and the indent"
     ~print:String.escaped markdown_text (fun text ->
       let file = file text in
-      let lines = Line_index.make (Text_file.with_final_line_feed text) in
+      let lines = content_lines text in
       let original = Line_index.make text in
       Array.for_all
         (fun (block : Markdown.block) ->
@@ -1349,10 +1354,22 @@ let unterminated_is_the_last_line_without_a_line_feed () =
       ("", None);
     ]
 
+let a_carriage_return_with_no_line_feed_after_it_is_in_the_span () =
+  let first = file "@req a v1 x\r" in
+  Alcotest.(check string)
+    "the span of the tag line" "1:1-1:13" (span first.tags.(0).span);
+  let file = file "# A\r\n\r\n@cites x\r" in
+  Alcotest.(check string)
+    "the new line after the tag line" "\n" file.blocks.(0).new_line;
+  Alcotest.(check string) "the rest of the tag line" " x\r" file.tags.(0).rest
+
 let tests =
   [
     Alcotest.test_case "unterminated is the last line without a line feed"
       `Quick unterminated_is_the_last_line_without_a_line_feed;
+    Alcotest.test_case
+      "a carriage return with no line feed after it is in the span" `Quick
+      a_carriage_return_with_no_line_feed_after_it_is_in_the_span;
     Alcotest.test_case
       "the text of a section leaves out its heading and its tag lines" `Quick
       the_text_of_a_section_leaves_out_its_heading_and_its_tag_lines;

@@ -18,9 +18,12 @@ type position = { line : int; column : int }
 type t
 (** The lines of one text. The value holds the text. *)
 
-val make : string -> t
-(** [make text] finds the lines of [text]. The time is linear in the length of
-    [text]. *)
+val make : ?open_end:bool -> string -> t
+(** [make ~open_end text] finds the lines of [text]. With [~open_end:true], the
+    last byte of [text] is a line feed added after the end of a content that
+    does not end with one: a CR right before that line feed is a character of
+    the last line, as it is in the content. [open_end] is [false] when absent.
+    The time is linear in the length of [text]. *)
 
 val text : t -> string
 (** [text index] is the text that {!make} took. *)

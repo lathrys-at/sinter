@@ -1043,9 +1043,9 @@ let a_lone_carriage_return_stays_in_one_line () =
   Alcotest.(check (list string))
     "the findings of a file with carriage returns for line endings"
     [
-      "docs/a.md:1:6-1:32 | finding:invalid-target:tag:docs/a.md@L1C6 | \
+      "docs/a.md:1:6-1:33 | finding:invalid-target:tag:docs/a.md@L1C6 | \
        x.\\r\\r## is not a valid slug";
-      "docs/a.md:1:23-1:32 | finding:untraced:req:b | nothing satisfies req:b, \
+      "docs/a.md:1:23-1:33 | finding:untraced:req:b | nothing satisfies req:b, \
        and nothing verifies it";
     ]
     (all [ ("docs/a.md", "# A\r\r@cites x.\r\r## B\r\r@req b v1\r") ])
