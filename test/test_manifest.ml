@@ -2792,6 +2792,14 @@ let a_glob_fault_keeps_a_segment_with_a_semicolon_whole () =
        name" )
     (fault_and_help "[scan]\npacks.markdown.files = [\"a; **b\"]\n")
 
+let no_key_of_markdown_suggests_a_key_that_markdown_refuses () =
+  reports "a near name of version"
+    (markdown ^ "packs.markdown.versoin = \"1.0\"\n")
+    [
+      "sinter.toml:3:16: unknown key 'versoin' in [scan.packs.markdown]; \
+       remove this key, or correct its name";
+    ]
+
 let case name test = Alcotest.test_case name `Quick test
 
 let the_document_keeps_every_key_with_its_place () =
@@ -2943,4 +2951,6 @@ let tests =
       a_syntax_fault_keeps_a_key_with_a_semicolon_whole;
     case "a glob fault keeps a segment with a semicolon whole"
       a_glob_fault_keeps_a_segment_with_a_semicolon_whole;
+    case "no key of markdown suggests a key that markdown refuses"
+      no_key_of_markdown_suggests_a_key_that_markdown_refuses;
   ]
