@@ -58,9 +58,12 @@ let with_phases setting run =
       let phases = Sinter_core.Allocation.create () in
       let code = run (Some phases) in
       try
-        Out_channel.with_open_bin path (fun channel ->
-            Out_channel.output_string channel
-              (Sinter_core.Allocation.to_string phases));
+        let channel = open_out_bin path in
+        Fun.protect
+          ~finally:(fun () -> close_out_noerr channel)
+          (fun () ->
+            output_string channel (Sinter_core.Allocation.to_string phases);
+            close_out channel);
         code
       with Sys_error message ->
         report setting
