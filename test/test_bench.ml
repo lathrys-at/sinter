@@ -1300,7 +1300,7 @@ let run_stops_with_exit_2 () =
   let memory =
     budgets_file "[scan]\nallocation-growth = 1\npeak-memory-kib = 90000\n"
   in
-  let outside = Git_fixture.temp_dir () in
+  let outside = "/" in
   let not_json = budgets_file "{" in
   let not_json_message =
     match Yojson.Basic.from_string "{" with
