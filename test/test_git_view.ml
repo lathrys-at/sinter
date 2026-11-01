@@ -511,6 +511,29 @@ let the_tree_key_is_the_tree_of_git_add_all =
          List.iteri (apply repo) steps;
          String.equal (tree_of_git_add_all repo) (key repo)))
 
+let tree_with_flag_cleared repo flag path =
+  let copy = Repo.copy repo in
+  ignore (Repo.git copy [ "update-index"; flag; path ]);
+  tree_of_git_add_all copy
+
+let the_tree_key_holds_the_edit_of_an_assume_unchanged_file () =
+  let repo = with_base [ ("au.txt", "1\n") ] in
+  ignore (Repo.git repo [ "update-index"; "--assume-unchanged"; "au.txt" ]);
+  Repo.write repo "au.txt" "changed\n";
+  Alcotest.(check string)
+    "the tree of the disk"
+    (tree_with_flag_cleared repo "--no-assume-unchanged" "au.txt")
+    (key repo)
+
+let the_tree_key_leaves_out_a_skip_worktree_file_that_is_not_on_disk () =
+  let repo = with_base [ ("a.txt", "a\n"); ("sw.txt", "s\n") ] in
+  ignore (Repo.git repo [ "update-index"; "--skip-worktree"; "sw.txt" ]);
+  Repo.remove repo "sw.txt";
+  Alcotest.(check string)
+    "the tree of the disk"
+    (tree_with_flag_cleared repo "--no-skip-worktree" "sw.txt")
+    (key repo)
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -550,4 +573,8 @@ let tests =
     case "the tree key writes no file under the git directory"
       the_tree_key_writes_no_file_under_the_git_directory;
     the_tree_key_is_the_tree_of_git_add_all;
+    case "the tree key holds the edit of an assume-unchanged file"
+      the_tree_key_holds_the_edit_of_an_assume_unchanged_file;
+    case "the tree key leaves out a skip-worktree file that is not on disk"
+      the_tree_key_leaves_out_a_skip_worktree_file_that_is_not_on_disk;
   ]
