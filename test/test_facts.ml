@@ -2169,6 +2169,27 @@ let met_within_reads_the_facts_with_the_scope_of_a_step () =
        (facts_of_files [ ("lib/a.md", "# A\n\n@req a v1\n@cites a v2\n") ])
        ~scope:[ "lib/**" ] ~word:"cites" ~target:"a")
 
+let bound = 5.0
+
+let check_quick_make name files =
+  let documents = List.map (fun (path, text) -> (path, document text)) files in
+  let manifest = manifest () in
+  let start = Unix.gettimeofday () in
+  ignore (Facts.make manifest documents);
+  let seconds = Unix.gettimeofday () -. start in
+  Alcotest.(check bool)
+    (Printf.sprintf "%s: made in %.3f s, under %.0f s" name seconds bound)
+    true (seconds < bound)
+
+let a_chain_of_2000_supersedes_edges_is_made_quickly () =
+  check_quick_make "a chain of 2,000 supersedes edges"
+    (List.init 2_000 (fun index ->
+         ( Printf.sprintf "docs/d%04d.md" index,
+           if index = 0 then "# D\n\n@decision d0\n"
+           else
+             Printf.sprintf "# D\n\n@decision d%d\n@supersedes d%d v1\n" index
+               (index - 1) )))
+
 let case name f = Alcotest.test_case name `Quick f
 
 let a_plan_of_many_steps_makes_its_facts_quickly () =
@@ -2394,4 +2415,6 @@ let tests =
       resolve_names_what_a_tag_target_would_resolve_to;
     case "covering names each step whose effective scope holds a path"
       covering_names_each_step_whose_effective_scope_holds_a_path;
+    case "a chain of 2,000 supersedes edges is made quickly"
+      a_chain_of_2000_supersedes_edges_is_made_quickly;
   ]
