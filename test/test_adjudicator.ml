@@ -990,6 +990,47 @@ let delivery_without_change_sits_at_a_step_with_no_change_in_scope () =
     "a line that does not count" []
     (without_change [] "Delivers: p@0a1b2c/a 000000\n")
 
+let bound = 5.0
+
+let delivery_without_change_is_quick_for_many_steps_and_paths () =
+  let plan i =
+    ( Printf.sprintf ".plans/p%d.md" i,
+      Printf.sprintf "# P\n\n@plan p%d@%06x\n@scope docs/%d/**\n\n%s" i i i
+        (String.concat ""
+           (List.init 10 (fun step ->
+                Printf.sprintf "## Step %d\n\n@scope docs/%d/%d/**\nWork.\n\n"
+                  step i step))) )
+  in
+  let tree = facts (List.init 30 plan) in
+  let message =
+    String.concat "\n"
+      (List.concat_map
+         (fun (plan : Facts.plan) ->
+           List.filter_map
+             (fun step ->
+               Option.map Delivery_line.to_string (Facts.delivery plan step))
+             plan.steps)
+         (Facts.plans tree))
+  in
+  let changed = List.init 1000 (Printf.sprintf "src/file%d.c") in
+  let start = Unix.gettimeofday () in
+  let found =
+    List.filter
+      (fun (finding : Finding.t) ->
+        finding.finding_class = Finding_class.Delivery_without_change)
+      (Adjudicator.classes ~changed
+         ~deliveries:(Delivery_line.read ~commit message)
+         ~base:(facts []) tree [])
+  in
+  let seconds = Unix.gettimeofday () -. start in
+  Alcotest.(check int) "one finding for each step" 300 (List.length found);
+  Alcotest.(check bool)
+    (Printf.sprintf
+       "300 delivered steps and 1000 changed paths: compared in %.3f s, under \
+        %.0f s"
+       seconds bound)
+    true (seconds < bound)
+
 let delivery_without_change_warns_and_has_no_fix () =
   Alcotest.(check (list (option string)))
     "the tiers at turn, review, and merged"
@@ -1141,6 +1182,8 @@ let tests =
       delivery_without_change_sits_at_a_step_with_no_change_in_scope;
     case "delivery-without-change warns and has no fix"
       delivery_without_change_warns_and_has_no_fix;
+    case "delivery-without-change is quick for many steps and paths"
+      delivery_without_change_is_quick_for_many_steps_and_paths;
     case "delivery-on-unmet-step sits at a step with an unmet promise"
       delivery_on_unmet_step_sits_at_a_step_with_an_unmet_promise;
     case "delivery-on-unmet-step names each promise not met"
