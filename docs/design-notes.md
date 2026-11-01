@@ -1392,7 +1392,7 @@ base, and every surface of the tool is a saved expression.
   the order of a hash table. Bazel added `--order_output` after an
   unstable order broke the scripts of its users;
 - `--json`, for JSONL facts;
-- `--sarif`, for findings, so that CI on a pull request gets annotations
+- `-o sarif`, for findings, so that CI on a pull request gets annotations
   at each file and line from GitHub code scanning with no work of
   integration, as CodeQL and Semgrep showed;
 - `--dot`, for anything that has the shape of a graph;
@@ -1570,8 +1570,8 @@ the findings that an ack accepted; `--strict-parse` turns a parse error
 into exit code 3; `--summary` prints one line for each class; and
 `--explain` prints the definition behind each finding. `-o json`
 prints the records of `spec/jsonl.md` section 8, `-o porcelain` prints
-the lines of `spec/porcelain.md`, and `--sarif` prints SARIF as
-section 13 maps it.
+the lines of `spec/porcelain.md`, and `-o sarif` prints SARIF at a
+gate, as section 13 maps it.
 
 ### 11.4 `sinter query`
 
@@ -1751,7 +1751,7 @@ overwrites a user's edit. It touches only files that the tool owns:
 | `.plans/` | the folder of plans |
 | `refs/sinter/ledger` | an empty ledger commit, when the ref is absent |
 | the settings of the harness | the hooks that call `sinter hook <event>`; for Claude Code, in `.claude/settings.json` |
-| the CI workflows | a job for pull requests: `check --diff --gate review` on the host's merge ref, against the tip of the default branch (section 3.5), the import of evidence, the report, and SARIF. A job for the default branch: `check --gate merged`, `ledger verify`, and the steps of the job on the default branch (section 6.3): it fetches the commits since its last entry, imports the evidence of its run, and appends the `delivered` entries and `completed`, with the right to push the ledger ref. Both jobs fetch the ledger ref, because a clone does not |
+| the CI workflows | a job for pull requests: `check --diff --gate review` on the host's merge ref, against the tip of the default branch (section 3.5), the import of evidence, the report, and the upload of SARIF from `check --gate review -o sarif`, a run in tree mode. A job for the default branch: `check --gate merged`, `ledger verify`, and the steps of the job on the default branch (section 6.3): it fetches the commits since its last entry, imports the evidence of its run, and appends the `delivered` entries and `completed`, with the right to push the ledger ref. Both jobs fetch the ledger ref, because a clone does not |
 
 The command that runs the tests is the repository's own. `init` writes a
 marked step that it cannot fill, with the runner command that each pack
@@ -1960,19 +1960,19 @@ decided by structure and with caution: what the check cannot prove
 counts as a wider scope. So the check errs toward asking the person,
 which is the right direction for an approval.
 
-**SARIF output.** No specification covers SARIF yet. The design maps a
-finding to SARIF as follows:
+**SARIF output.** `sinter check -o sarif` writes the findings of one
+gate as one SARIF 2.1.0 run (record `sarif-output`). The interface of
+the writer, `lib/sarif.mli`, gives the mapping in full. In short:
 
 | finding | SARIF |
 |---|---|
-| class | `ruleId` |
-| tier | `level`: `warn` is `warning`, `block` is `error`, and `off` is not written |
-| location | `physicalLocation`, with `artifactLocation.uri` and `region` |
-| id | `partialFingerprints.sinterId/v1` |
-| mechanical fix | `fixes[]`, with the hunk of the patch |
-| detail | `message.text` |
+| class | `ruleId` and `ruleIndex`; one rule for each class, with its sentence |
+| tier at the gate | `level`: `warn` is `warning`, and `block` is `error` |
+| place and mark | `locations`: the mark as `region` and the place as `contextRegion`, or the place as `region`; none for a finding with no place |
+| id | `partialFingerprints["sinterFindingId/v1"]` |
+| fix | `fixes`: one fix for each alternative, with one replacement for each edit |
+| detail | `message.text`, with a link to each related place |
 | related places | `relatedLocations` (record `related-places`) |
-| fix of an ackable finding | a second line of the message |
 
 ## 14. Manifest reference
 
