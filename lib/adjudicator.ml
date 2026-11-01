@@ -343,48 +343,60 @@ let same_plan (old : Facts.plan) (plan : Facts.plan) =
 
 let renamed_steps ~base ~same ~whole_base facts =
   let plans = Facts.plans facts in
-  List.concat_map
-    (fun (old : Facts.plan) ->
-      if same old.path then []
-      else
-        match List.find_opt (same_plan old) plans with
-        | None -> []
-        | Some (plan : Facts.plan) ->
-            let lost =
-              List.filter
+  let lost =
+    List.concat_map
+      (fun (old : Facts.plan) ->
+        if same old.path then []
+        else
+          match List.find_opt (same_plan old) plans with
+          | None -> []
+          | Some (plan : Facts.plan) ->
+              let started (step : Facts.step) =
+                List.exists
+                  (fun (promise : Facts.promise) ->
+                    Facts.met_within (Lazy.force whole_base)
+                      ~scope:(Facts.effective_scope old step)
+                      ~word:promise.word ~target:promise.target)
+                  step.promises
+              in
+              List.filter_map
                 (fun (step : Facts.step) ->
-                  not
-                    (List.exists
-                       (fun (other : Facts.step) ->
-                         String.equal other.slug step.slug)
-                       plan.steps))
-                old.steps
-            in
-            let started (step : Facts.step) =
-              List.exists
-                (fun (promise : Facts.promise) ->
-                  Facts.met_within (Lazy.force whole_base)
-                    ~scope:(Facts.effective_scope old step)
-                    ~word:promise.word ~target:promise.target)
-                step.promises
-            in
-            List.filter_map
-              (fun (step : Facts.step) ->
-                if started step then
-                  let id = Facts.step_id old step in
-                  Some
-                    (Finding.make Finding_class.Renamed_step
-                       (Finding.Fact { id; ack_name = step.slug })
-                       ~place:{ Finding.path = plan.path; span = plan.span }
-                       ~detail:
-                         (Printf.sprintf
-                            "%s is started in the base, and the plan has no \
-                             step with the slug %s now"
-                            id step.slug)
-                       ())
-                else None)
-              lost)
-    (Facts.plans base)
+                  if
+                    List.exists
+                      (fun (other : Facts.step) ->
+                        String.equal other.slug step.slug)
+                      plan.steps
+                    || not (started step)
+                  then None
+                  else Some (plan, old, step))
+                old.steps)
+      (Facts.plans base)
+  in
+  let key ((plan : Facts.plan), _, (step : Facts.step)) =
+    (plan.path, plan.span.start.line, step.slug)
+  in
+  let seen = Hashtbl.create 8 in
+  List.filter_map
+    (fun ((plan : Facts.plan), old, (step : Facts.step)) ->
+      if Hashtbl.mem seen (key (plan, old, step)) then None
+      else (
+        Hashtbl.add seen (key (plan, old, step)) ();
+        let id = Facts.step_id old step in
+        Some
+          (Finding.make Finding_class.Renamed_step
+             (Finding.Fact { id; ack_name = step.slug })
+             ~place:{ Finding.path = plan.path; span = plan.span }
+             ~detail:
+               (Printf.sprintf
+                  "%s is started in the base, and the plan has no step with \
+                   the slug %s now"
+                  id step.slug)
+             ())))
+    (List.stable_sort
+       (fun (_, (a : Facts.plan), (x : Facts.step))
+            (_, (b : Facts.plan), (y : Facts.step)) ->
+         compare (a.path, x.span.start.line) (b.path, y.span.start.line))
+       lost)
 
 let short commit = String.sub commit 0 (min 7 (String.length commit))
 
