@@ -7,7 +7,7 @@ Fix the 34 defects that the review of `main` at 39ab7b8 found
 into its own commits and makes them pass.
 
 ## Correct the messages of the manifest
-@scope lib/**, test/**, spec/**
+@scope lib/**, bridge/**, test/**, spec/**
 Keep a quoted name that holds "; " whole in a manifest error, name the
 last header table on the path of a dotted key, and never suggest a key
 of `[scan.packs.markdown]` that markdown refuses.
