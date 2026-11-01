@@ -195,6 +195,17 @@ let a_file_that_cannot_be_written_is_an_environment_error () =
         words )
     (status, without_warnings errors)
 
+let a_file_on_a_full_disk_is_an_environment_error () =
+  if not (Sys.file_exists "/dev/full") then Alcotest.skip ();
+  let repo = repository () in
+  let status, errors = run repo ~words:"/dev/full" "scan" in
+  Alcotest.(check (pair int bool))
+    "the exit code, and an error that names the words of the phases"
+    (3, true)
+    ( status,
+      String.starts_with ~prefix:"error: cannot write the words of the phases: "
+        (without_warnings errors) )
+
 let tests =
   [
     case "a phase counts the words that it allocates"
@@ -213,4 +224,6 @@ let tests =
     case "an empty variable writes nothing" an_empty_variable_writes_nothing;
     case "a file that cannot be written is an environment error"
       a_file_that_cannot_be_written_is_an_environment_error;
+    case "a file on a full disk is an environment error"
+      a_file_on_a_full_disk_is_an_environment_error;
   ]
