@@ -533,6 +533,29 @@ let a_tracked_file_is_compared_like_an_untracked_file_of_its_content () =
     ]
     (shown repo)
 
+let repo_under_a_colon () =
+  let dir = Filename.concat (Repo.temp_dir ()) "a:b" in
+  Unix.mkdir dir 0o700;
+  let repo = Repo.init_in dir in
+  Repo.write repo "a.txt" "1\n";
+  Repo.write repo "same.txt" "same\n";
+  let same = Filename.concat (Repo.root repo) "same.txt" in
+  Unix.utimes same old_time old_time;
+  ignore (Repo.git repo [ "add"; "-A" ]);
+  ignore (Repo.git repo [ "commit"; "-q"; "-m"; "base" ]);
+  Repo.write repo "a.txt" "2\n";
+  repo
+
+let a_repository_under_a_name_with_a_colon_gives_its_diff () =
+  let repo = repo_under_a_colon () in
+  Alcotest.check strings "the change"
+    [ show "a.txt" (Git.Modified (Git.Text [ hunk 1 1 2 1 1 1 ])) ]
+    (shown repo)
+
+let a_repository_under_a_name_with_a_colon_gives_its_tree_key () =
+  let repo = repo_under_a_colon () in
+  Alcotest.(check string) "the key" (tree_of_git_add_all repo) (key repo)
+
 let tree_with_flag_cleared repo flag path =
   let copy = Repo.copy repo in
   ignore (Repo.git copy [ "update-index"; flag; path ]);
@@ -597,6 +620,10 @@ let tests =
     the_tree_key_is_the_tree_of_git_add_all;
     case "a tracked file is compared like an untracked file of its content"
       a_tracked_file_is_compared_like_an_untracked_file_of_its_content;
+    case "a repository under a name with a colon gives its diff"
+      a_repository_under_a_name_with_a_colon_gives_its_diff;
+    case "a repository under a name with a colon gives its tree key"
+      a_repository_under_a_name_with_a_colon_gives_its_tree_key;
     case "the tree key holds the edit of an assume-unchanged file"
       the_tree_key_holds_the_edit_of_an_assume_unchanged_file;
     case "the tree key leaves out a skip-worktree file that is not on disk"
