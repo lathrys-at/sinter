@@ -190,6 +190,148 @@ let record_with_a_string_that_is_not_utf_8 =
   | _ ->
       insert fields index (name, Jsonl.Objects [ [ ("s", Jsonl.String bad) ] ])
 
+let json_leaf =
+  Gen.oneof
+    [
+      Gen.return Json.Null;
+      Gen.map (fun b -> Json.Bool b) Gen.bool;
+      Gen.map (fun i -> Json.Int i) jsonl_int;
+      Gen.map (fun s -> Json.String s) utf_8_string;
+    ]
+
+let json_sized =
+  Gen.fix (fun self depth ->
+      if depth <= 0 then json_leaf
+      else
+        Gen.oneof_weighted
+          [
+            (2, json_leaf);
+            ( 1,
+              Gen.map
+                (fun items -> Json.Array items)
+                (Gen.list_size (Gen.int_range 0 3) (self (depth - 1))) );
+            ( 1,
+              Gen.map
+                (fun members -> Json.Object (with_distinct_names members))
+                (Gen.list_size (Gen.int_range 0 3)
+                   (Gen.pair record_key (self (depth - 1)))) );
+          ])
+
+let json = json_sized 3
+
+let fresh_key key members =
+  let rec grow key =
+    if List.mem_assoc key members then grow (key ^ "\xef\xbf\xbd") else key
+  in
+  grow key
+
+let json_with_a_fault =
+  let open Gen in
+  let fault =
+    oneof
+      [
+        map
+          (fun value ->
+            (Json.Int value, Json.Out_of_range { path = []; value }))
+          jsonl_int_out_of_range;
+        map
+          (fun text -> (Json.String text, Json.Not_utf_8 { path = []; text }))
+          not_utf_8_string;
+        (let* members =
+           map with_distinct_names
+             (list_size (int_range 0 3) (pair record_key json))
+         in
+         let* text = not_utf_8_string in
+         let* value = json in
+         let+ index = int_range 0 (List.length members) in
+         ( Json.Object (insert members index (text, value)),
+           Json.Not_utf_8 { path = [ Json.Key text ]; text } ));
+        (let* members =
+           map with_distinct_names
+             (list_size (int_range 1 4) (pair record_key json))
+         in
+         let* which = int_range 0 (List.length members - 1) in
+         let* value = json in
+         let+ index = int_range 0 (List.length members) in
+         let key, _ = List.nth members which in
+         ( Json.Object (insert members index (key, value)),
+           Json.Repeated_key { path = []; key } ));
+      ]
+  in
+  let within step = function
+    | Json.Repeated_key { path; key } ->
+        Json.Repeated_key { path = step :: path; key }
+    | Json.Out_of_range { path; value } ->
+        Json.Out_of_range { path = step :: path; value }
+    | Json.Not_utf_8 { path; text } ->
+        Json.Not_utf_8 { path = step :: path; text }
+  in
+  fix
+    (fun self depth ->
+      if depth <= 0 then fault
+      else
+        oneof_weighted
+          [
+            (1, fault);
+            ( 1,
+              let* before = list_size (int_range 0 2) json in
+              let* broken, error = self (depth - 1) in
+              let+ after = list_size (int_range 0 2) json in
+              ( Json.Array (before @ (broken :: after)),
+                within (Json.Index (List.length before)) error ) );
+            ( 1,
+              let* members =
+                map with_distinct_names
+                  (list_size (int_range 0 3) (pair record_key json))
+              in
+              let* key = record_key in
+              let* broken, error = self (depth - 1) in
+              let+ index = int_range 0 (List.length members) in
+              let key = fresh_key key members in
+              ( Json.Object (insert members index (key, broken)),
+                within (Json.Key key) error ) );
+          ])
+    3
+
+let rec print_json = function
+  | Json.Null -> "Null"
+  | Json.Bool b -> Printf.sprintf "Bool %b" b
+  | Json.Int i -> Printf.sprintf "Int %d" i
+  | Json.String s -> Printf.sprintf "String %S" s
+  | Json.Array items ->
+      "Array [" ^ String.concat "; " (List.map print_json items) ^ "]"
+  | Json.Object members ->
+      "Object ["
+      ^ String.concat "; "
+          (List.map
+             (fun (key, value) ->
+               Printf.sprintf "(%S, %s)" key (print_json value))
+             members)
+      ^ "]"
+
+let print_path path =
+  "["
+  ^ String.concat "; "
+      (List.map
+         (function
+           | Json.Key key -> Printf.sprintf "Key %S" key
+           | Json.Index index -> Printf.sprintf "Index %d" index)
+         path)
+  ^ "]"
+
+let print_json_error = function
+  | Json.Repeated_key { path; key } ->
+      Printf.sprintf "Repeated_key { path = %s; key = %S }" (print_path path)
+        key
+  | Json.Out_of_range { path; value } ->
+      Printf.sprintf "Out_of_range { path = %s; value = %d }" (print_path path)
+        value
+  | Json.Not_utf_8 { path; text } ->
+      Printf.sprintf "Not_utf_8 { path = %s; text = %S }" (print_path path) text
+
+let print_json_with_a_fault (value, error) =
+  print_json value ^ " refused with " ^ print_json_error error
+
 let print_scalar = function
   | Jsonl.String s -> Printf.sprintf "String %S" s
   | Jsonl.Int i -> Printf.sprintf "Int %d" i
@@ -1265,6 +1407,119 @@ let print_rendered (content, (finding : Finding.t), tier) =
               (Option.fold ~none:"none" ~some:print_place place))
           finding.related))
     (Option.fold ~none:"none" ~some:Fix.text finding.fix)
+
+let sarif_text =
+  let open Gen in
+  map (String.concat "")
+    (list_size (int_range 1 12)
+       (oneof_list
+          [
+            "a";
+            " ";
+            "{";
+            "}";
+            "{{";
+            "[";
+            "]";
+            "](";
+            "\\";
+            "(";
+            ")";
+            "%";
+            "\t";
+            "\n";
+            "\xc3\xa9";
+            "\xe6\x97\xa5";
+            "\xf0\x9f\xa6\x80";
+          ]))
+
+let sarif_path =
+  let open Gen in
+  map (String.concat "")
+    (list_size (int_range 1 8)
+       (oneof_list
+          [
+            "a";
+            "/";
+            ".";
+            "-";
+            "_";
+            "~";
+            "Z";
+            "9";
+            " ";
+            "%";
+            "#";
+            "?";
+            ":";
+            "+";
+            "{";
+            "[";
+            "\"";
+            "\\";
+            "\xc3\xa9";
+            "\xf0\x9f\xa6\x80";
+          ]))
+
+let sarif_place =
+  let open Gen in
+  let* place = rendered_place in
+  let+ path = sarif_path in
+  { place with Finding.path }
+
+let sarif_finding =
+  let open Gen in
+  let* finding_class = oneof_list Finding_class.all in
+  let* tier =
+    oneof_list [ Finding_class.Off; Finding_class.Warn; Finding_class.Block ]
+  in
+  let* detail = option sarif_text in
+  let* place = option sarif_place in
+  let* mark =
+    match place with
+    | Some place ->
+        let* mark = rendered_mark place in
+        let+ label = sarif_text in
+        Option.map (fun (mark : Finding.mark) -> { mark with label }) mark
+    | None -> return None
+  in
+  let* places = list_size (int_range 0 3) (option sarif_place) in
+  let* label = sarif_text in
+  let related =
+    List.mapi
+      (fun index place ->
+        { Finding.label = label ^ " " ^ string_of_int index; place })
+      places
+  in
+  let* fix =
+    match place with
+    | None -> return None
+    | Some _ ->
+        oneof_list
+          [
+            None;
+            Some (fun () -> Edits.word_fix "req");
+            Some (fun () -> Fix.pin (Edits.tag "@cites a v1\n") 2);
+            Some (fun () -> Fix.pin (Edits.tag "@cites a\n") 2);
+            Some (fun () -> Fix.spelling (Edits.tag "@cites a\n") "");
+            Some
+              (fun () ->
+                Fix.successors (Edits.tag "@cites a v1\n") ("b", 2) [ ("c", 3) ]);
+            Some
+              (fun () ->
+                Fix.ack (Edits.document "@cites a\r\n") ~block:0 ~target:"a");
+          ]
+  in
+  return
+    ( Finding.make finding_class
+        (Finding.Line { path = "a.md"; line = 1 })
+        ?place ?detail ?mark ~related
+        ?fix:(Option.map (fun make -> make ()) fix)
+        (),
+      tier )
+
+let print_sarif_finding ((finding : Finding.t), tier) =
+  print_rendered ("", finding, Some tier)
 
 let error_text =
   let open Gen in

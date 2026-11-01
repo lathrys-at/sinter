@@ -96,9 +96,9 @@ let color =
   let doc =
     "When to color the output: $(b,auto), $(b,always), or $(b,never). Color \
      applies to the full and brief forms and to the messages on standard \
-     error, and never to JSON or porcelain. With $(b,auto), the first of these \
-     rules that matches decides, for standard output and for standard error \
-     apart: $(b,NO_COLOR) set and not empty gives no color; \
+     error, and never to JSON, porcelain, or SARIF. With $(b,auto), the first \
+     of these rules that matches decides, for standard output and for standard \
+     error apart: $(b,NO_COLOR) set and not empty gives no color; \
      $(b,CLICOLOR_FORCE) set and not $(b,0), or $(b,FORCE_COLOR) set and not \
      empty, gives color; $(b,TERM) set to $(b,dumb), or $(b,CLICOLOR) set to \
      $(b,0), gives no color; otherwise a stream gets color when it is a \
@@ -389,6 +389,22 @@ let check_cmd =
          each header with a NUL byte. The layout of this form never changes; \
          the porcelain specification of Sinter gives it in full.";
       `P
+        "With $(b,-o sarif), the command writes the findings as one SARIF \
+         2.1.0 log on one line, for GitHub code scanning and other tools that \
+         read SARIF. This form needs $(b,--gate). The level of each result is \
+         the tier of the finding at the gate: $(b,warning) for $(b,warn), and \
+         $(b,error) for $(b,block). $(b,--strict) changes the exit code and \
+         not the level.";
+      `P
+        "To upload the log to GitHub code scanning, run the check in tree \
+         mode, without $(b,--diff). GitHub takes at most 25,000 results in one \
+         run, and at most 10 MB for the compressed file. GitHub does not show \
+         a result that has no place in a file, so a workflow that uploads the \
+         log should also print the findings with $(b,-o brief), or read the \
+         exit code in its log. A finding that blocks makes the command exit \
+         with code 1, so the step that uploads must run with $(b,if: \
+         always()), as in the example below.";
+      `P
         "The findings are sorted by file, line, column, and class, in every \
          form.";
       `P
@@ -401,8 +417,8 @@ let check_cmd =
       `P
         "After the findings, the full and brief forms print a summary on \
          standard error, for example $(b,8 findings in 2 files: 7 block, 1 \
-         warn; 4 have a fix). Warnings also go to standard error. The JSON and \
-         porcelain forms print no summary.";
+         warn; 4 have a fix). Warnings also go to standard error. The JSON, \
+         porcelain, and SARIF forms print no summary.";
       `P
         "Some checks compare the working tree with a base commit. With \
          $(b,-v), the full and brief forms name the base on standard error. \
@@ -414,8 +430,8 @@ let check_cmd =
          into one line for each class and file, with a count, when a file has \
          two or more of them. A class that blocks at the gate does not fold, \
          and nothing folds with $(b,--strict) or $(b,-v). A note on standard \
-         error says how many findings are folded. The JSON and porcelain forms \
-         give every finding.";
+         error says how many findings are folded. The JSON, porcelain, and \
+         SARIF forms give every finding.";
       `P
         "Sinter keeps the approvals and the completed plans in a ledger, on \
          the git ref $(b,refs/sinter/ledger). When the repository has no such \
@@ -463,6 +479,18 @@ let check_cmd =
       `P
         "Print the header lines $(b,# porcelain 1) and $(b,# base), and then \
          one line of fields for each finding, for a script to read.";
+      `Pre "  sinter check --gate review -o sarif > sinter.sarif";
+      `P "Write the findings that matter before a merge as SARIF.";
+      `Pre
+        "  - run: sinter check --gate review -o sarif > sinter.sarif\n\
+        \  - if: always()\n\
+        \    uses: github/codeql-action/upload-sarif@v4\n\
+        \    with:\n\
+        \      sarif_file: sinter.sarif";
+      `P
+        "Two steps of a GitHub Actions workflow: check the tree, and upload \
+         the log to code scanning, also when the check exits with code 1. The \
+         job needs the permission $(b,security-events: write).";
     ]
   in
   let info =
@@ -508,15 +536,17 @@ let check_cmd =
   in
   let output =
     let doc =
-      "The form of the output: $(b,full), $(b,brief), $(b,json), or \
-       $(b,porcelain). The full form shows each finding with its source lines, \
-       the places that relate to it, and its fix. The brief form gives one \
-       line for each finding, and a second line for its fix. The JSON form \
-       gives one object per line, in the form that $(b,sinter scan) uses: the \
-       first record describes the run, as the first line of $(b,sinter scan) \
-       does, and each record after it is one finding. The porcelain form gives \
-       one line of fields, separated by tabs, for each finding, for a script \
-       to read; its layout never changes."
+      "The form of the output: $(b,full), $(b,brief), $(b,json), \
+       $(b,porcelain), or $(b,sarif). The full form shows each finding with \
+       its source lines, the places that relate to it, and its fix. The brief \
+       form gives one line for each finding, and a second line for its fix. \
+       The JSON form gives one object per line, in the form that $(b,sinter \
+       scan) uses: the first record describes the run, as the first line of \
+       $(b,sinter scan) does, and each record after it is one finding. The \
+       porcelain form gives one line of fields, separated by tabs, for each \
+       finding, for a script to read; its layout never changes. The SARIF form \
+       gives one SARIF 2.1.0 log on one line, for GitHub code scanning and \
+       other tools that read SARIF, and needs $(b,--gate)."
     in
     Arg.(
       value
@@ -527,6 +557,7 @@ let check_cmd =
                ("brief", `Brief);
                ("json", `Json);
                ("porcelain", `Porcelain);
+               ("sarif", `Sarif);
              ])
           `Full
       & info [ "o"; "output" ] ~docv:"FORM" ~doc)
@@ -591,7 +622,8 @@ let check_cmd =
                  (match form with
                  | Sinter_core.Check.Full | Sinter_core.Check.Brief ->
                      colored color Unix.stdout
-                 | Sinter_core.Check.Json | Sinter_core.Check.Porcelain _ ->
+                 | Sinter_core.Check.Json | Sinter_core.Check.Porcelain _
+                 | Sinter_core.Check.Sarif ->
                      false))
             outcome
         with
@@ -619,6 +651,13 @@ let check_cmd =
     else if nul && not porcelain then only "-z"
     else if headers <> [] && not porcelain then only "--headers"
     else if no_headers && not porcelain then only "--no-headers"
+    else if output = `Sarif && Option.is_none gate then (
+      report color
+        [
+          failure ~help:"add --gate turn, review, or merged"
+            "-o sarif needs a gate";
+        ];
+      `Ok usage_error)
     else
       let names = List.concat_map (String.split_on_char ',') headers in
       match
@@ -650,6 +689,7 @@ let check_cmd =
             | `Full -> Sinter_core.Check.Full
             | `Brief -> Sinter_core.Check.Brief
             | `Json -> Sinter_core.Check.Json
+            | `Sarif -> Sinter_core.Check.Sarif
             | `Porcelain ->
                 Sinter_core.Check.Porcelain
                   {

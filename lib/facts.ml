@@ -723,9 +723,13 @@ let optional name = function None -> [] | Some value -> [ (name, value) ]
 let text_unless_empty name text =
   if String.equal text "" then [] else [ (name, Jsonl.string text) ]
 
-let json_strings strings =
-  let wrapped = Jsonl.to_string [ ("a", Jsonl.strings strings) ] in
-  String.sub wrapped 5 (String.length wrapped - 6)
+let canonical_bytes value =
+  match Json.to_string value with
+  | Ok text -> text
+  | Error _ -> invalid_arg "Sinter_core.Facts: a glob or a slug is not UTF-8"
+
+let globs_json globs =
+  Json.Array (List.map (fun glob -> Json.String glob) globs)
 
 let canonical globs = List.sort_uniq String.compare globs
 
@@ -736,21 +740,21 @@ let commitment_hash plan =
   let promises =
     List.concat_map
       (fun (step : step) ->
-        let scope = canonical (effective_scope plan step) in
+        let scope = globs_json (canonical (effective_scope plan step)) in
         List.map
           (fun (promise : promise) ->
-            (promise.word, promise.target, json_strings scope, scope))
+            (promise.word, promise.target, canonical_bytes scope, scope))
           step.promises)
       plan.steps
   in
   let objects =
     List.map
       (fun (word, target, _, scope) ->
-        Jsonl.to_string
+        Json.Object
           [
-            ("scope", Jsonl.strings scope);
-            ("target", Jsonl.string target);
-            ("word", Jsonl.string word);
+            ("scope", scope);
+            ("target", Json.String target);
+            ("word", Json.String word);
           ])
       (List.sort
          (fun (w1, t1, s1, _) (w2, t2, s2, _) ->
@@ -758,9 +762,12 @@ let commitment_hash plan =
          promises)
   in
   Sha256.hex
-    ("{\"promises\":[" ^ String.concat "," objects ^ "],\"scope\":"
-    ^ json_strings (canonical plan.scope)
-    ^ "}")
+    (canonical_bytes
+       (Json.Object
+          [
+            ("promises", Json.Array objects);
+            ("scope", globs_json (canonical plan.scope));
+          ]))
 
 let needs_approval manifest kind =
   Manifest.approval manifest kind = Manifest.Approval

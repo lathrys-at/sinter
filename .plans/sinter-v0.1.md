@@ -208,8 +208,11 @@ and report `never-ran` and `failed`. Write JUnit XML from Sinter's own
 test suite.
 
 ## Write SARIF
-@scope lib/**, bin/**, test/**, docs/decisions/**
-Write the findings of `sinter check` as SARIF.
+@scope lib/**, bin/**, test/**, docs/decisions/**, docs/design-notes.md, docs/roadmap.md
+@decision sarif-output
+Carry out the records `sarif-output` and `json-handling` v4: write the
+findings of `sinter check` as SARIF, with one JSON printer for all of
+Sinter's output and one sentence for each finding class.
 
 ## Give each plan an id
 @scope spec/**, docs/**, lib/**, test/**, plugins/**, .claude-plugin/**

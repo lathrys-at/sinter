@@ -435,3 +435,31 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
 - Left for later: Sinter reads no ledger, so on the default branch no
   step without promises is done. The job on the default branch is not
   built.
+
+## Write SARIF
+
+- Rulings of the lead on details that the brief left open:
+  - The example in the help names `github/codeql-action/upload-sarif@v4`,
+    the newest major tag of the action.
+- `Json.compare_keys` compares code points and puts U+E000 to U+FFFF
+  after the code points at U+10000 and above, which is the order of
+  UTF-16 code units. It builds no list of code units, so the output
+  phase of `sinter scan` on Sinter's own tree allocates 260,000 words
+  in place of 820,000. The sort breaks a tie of two keys that are not
+  UTF-8 by their bytes, so a repeated key among them sits beside its
+  twin and the printer finds it.
+- `commitment_hash` builds its canonical bytes as a `Json` value. The
+  `csh` of every fixture stays the same.
+- SARIF 3.29.5 needs a context region that is a proper superset of the
+  region, so a mark that covers the whole place gives no
+  `contextRegion`.
+- The message of a result is the detail, then the related places in
+  parentheses, joined by `; `. A related place in no file is plain
+  text, with only its braces doubled, because SARIF escapes brackets
+  only in the text of a link.
+- `Check.run` refuses the form `Sarif` with no gate before it reads the
+  tree; the command line refuses it first, with exit code 2.
+- Left for later: no upload to GitHub has run, so whether GitHub undoes
+  the doubled braces, accepts an empty region, and reads `columnKind`
+  stays unknown. A finding with no place shows in SARIF only as a
+  result with no location, which GitHub does not show.

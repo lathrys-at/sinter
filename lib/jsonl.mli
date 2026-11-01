@@ -3,9 +3,9 @@
 
 (* @cites json-handling *)
 
-(** The canonical form of one JSON Lines record. A record is a JSON object. Its
-    keys are sorted by UTF-16 code units. The line holds no insignificant
-    whitespace, and it ends with LF.
+(** The canonical form of one JSON Lines record, a typed layer over {!Json}. A
+    record is a JSON object. Its keys are sorted by UTF-16 code units. The line
+    holds no insignificant whitespace, and it ends with LF.
 
     A value is a string, an integer, a boolean, a flat array of one of those
     three, or an array of flat objects. A flat object holds fields whose values
@@ -57,8 +57,9 @@ val output : out_channel -> record -> unit
       flush of it. *)
 
 val compare_keys : string -> string -> int
-(** [compare_keys a b] orders two field names by their UTF-16 code units. This
-    is the order of the keys in a canonical record.
+(** [compare_keys a b] orders two field names by their UTF-16 code units, as
+    {!Json.compare_keys} does. This is the order of the keys in a canonical
+    record.
 
     A byte that is not part of a valid UTF-8 sequence counts as U+FFFD, so two
     names that are not valid UTF-8 can compare equal while they differ. On names

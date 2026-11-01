@@ -1,0 +1,6 @@
+check
+--gate
+review
+-o
+sarif
+--color=always

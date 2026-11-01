@@ -105,6 +105,9 @@ type form =
       (** the header lines that [headers] names, as {!Porcelain.add_header}
           writes them, and then the line of each finding, as
           {!Porcelain.add_finding} writes it, each with [nul] *)
+  | Sarif
+      (** one SARIF log of the findings at the gate of the check, as
+          {!Sarif.to_string} writes it *)
 
 type report
 (** What a check gives: the lines for standard error, the exit code, and the
@@ -119,8 +122,8 @@ val messages : report -> string list
     {!Scan.ledger_warning} of the facts of the working tree when there is one;
     then, unless the check is quiet, [note: ] and {!fold_note} of the items of
     {!fold} when there is one; then, when the check is verbose and not quiet,
-    [note: ] and {!Scan.base_note} of the base. In the forms [Json] and
-    [Porcelain]: the warnings, each with [warning: ]. *)
+    [note: ] and {!Scan.base_note} of the base. In the forms [Json],
+    [Porcelain], and [Sarif]: the warnings, each with [warning: ]. *)
 
 val notices : Format.formatter -> report -> unit
 (** [notices ppf report] writes {!messages} of [report] to [ppf], each with a
@@ -139,9 +142,11 @@ val write : ?phases:Allocation.t -> Format.formatter -> report -> unit
     a finding or of a related place is read once. In the form [Json], each
     record is one line of {!Jsonl.to_string}. In the form [Porcelain], the
     header lines come first, as {!run} makes them, and then the line of each
-    finding, as {!Porcelain.add_finding} writes it. With [phases], it counts the
-    words of the writing, the reading of the files included, in the phase
-    [output].
+    finding, as {!Porcelain.add_finding} writes it. In the form [Sarif], the log
+    is one line of {!Sarif.to_string}, with [tool], the mode and the gate of the
+    check, the {!Scan.base_commit} of the base, and each finding with its tier.
+    With [phases], it counts the words of the writing, the reading of the files
+    included, in the phase [output].
 
     @raise Sys_error if [ppf] cannot write. *)
 
@@ -201,6 +206,7 @@ val run :
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault.
     @raise Invalid_argument
-      if the form is [Porcelain] and its headers hold [Tool], and [tool] is
-      empty or holds a space, a byte below 0x20, the byte 0x7F, a double quote,
-      or a backslash. *)
+      if the form is [Sarif] and [gate] is [None], before the check reads the
+      tree; or if the form is [Porcelain] and its headers hold [Tool], and
+      [tool] is empty or holds a space, a byte below 0x20, the byte 0x7F, a
+      double quote, or a backslash. *)

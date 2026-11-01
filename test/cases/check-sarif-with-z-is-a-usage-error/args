@@ -1,0 +1,6 @@
+check
+--gate
+turn
+-o
+sarif
+-z

@@ -48,6 +48,20 @@ val print_rendered :
   QCheck2.Print.t
 (** [print_rendered] prints a value of {!rendered_finding}. *)
 
+val sarif_finding :
+  (Sinter_core.Finding.t * Sinter_core.Finding_class.tier) QCheck2.Gen.t
+(** A finding of any class and a tier: [Off], [Warn], or [Block]. Its detail,
+    the label of its mark, and the labels of its related places hold braces,
+    brackets, backslashes, tabs, line feeds, and characters of two, three, and
+    four bytes. Its place, when it has one, and each related place in a file
+    have a path that needs percent-encoding at times. A finding with a place can
+    have a mark, and a fix of one alternative or of two, an insert, or a
+    deletion. Every string is valid UTF-8. *)
+
+val print_sarif_finding :
+  (Sinter_core.Finding.t * Sinter_core.Finding_class.tier) QCheck2.Print.t
+(** [print_sarif_finding] prints a value of {!sarif_finding}. *)
+
 val error_text : Sinter_core.Error_text.t QCheck2.Gen.t
 (** An error whose fault, help, path, and line hold the pieces of
     {!terminal_text}. The help is sometimes empty. The place, when there is one,
@@ -123,6 +137,31 @@ val record_with_a_string_that_is_not_utf_8 :
 
 val print_record : Sinter_core.Jsonl.record QCheck2.Print.t
 (** The printer for a counterexample of type {!Sinter_core.Jsonl.record}. *)
+
+(** {1 JSON values} *)
+
+val json : Sinter_core.Json.t QCheck2.Gen.t
+(** A JSON value that nests at most three deep: a null, a boolean, an integer in
+    range, a string of valid UTF-8, an array of at most three values, or an
+    object of at most three members whose keys are distinct and valid UTF-8.
+    {!Sinter_core.Json.to_string} never refuses it. *)
+
+val json_with_a_fault :
+  (Sinter_core.Json.t * Sinter_core.Json.error) QCheck2.Gen.t
+(** A JSON value with one fault, and the error that names it: a repeated key, an
+    integer out of range, or a string or a key that is not valid UTF-8, at a
+    depth of at most three arrays and objects. Every other part of the value is
+    as {!json} makes it, so the error is the only one. *)
+
+val print_json : Sinter_core.Json.t QCheck2.Print.t
+(** The printer for a counterexample of type {!Sinter_core.Json.t}. *)
+
+val print_json_error : Sinter_core.Json.error QCheck2.Print.t
+(** The printer for a value of type {!Sinter_core.Json.error}. *)
+
+val print_json_with_a_fault :
+  (Sinter_core.Json.t * Sinter_core.Json.error) QCheck2.Print.t
+(** The printer for a counterexample of {!json_with_a_fault}. *)
 
 (** {1 The result buffer of the bridge} *)
 

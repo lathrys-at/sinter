@@ -29,6 +29,7 @@ let () =
   Alcotest.run "sinter"
     [
       ("version", Test_version.tests);
+      ("json", Test_json.tests);
       ("jsonl", Test_jsonl.tests);
       ("utf-8", Test_utf_8.tests);
       ("text file", Test_text_file.tests);
@@ -50,6 +51,7 @@ let () =
       ("style", Test_style.tests);
       ("render", Test_render.tests);
       ("porcelain", Test_porcelain.tests);
+      ("sarif", Test_sarif.tests);
       ("usage", Test_usage.tests);
       ("tag line", Test_tag_line.tests);
       ("slug", Test_slug.tests);
