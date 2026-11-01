@@ -392,22 +392,20 @@ let rec step_section (document : Markdown.t) index =
   | _ -> Option.bind section.parent (step_section document)
 
 let promises_of (document : Markdown.t) indices =
-  List.rev
-    (List.fold_left
-       (fun found index ->
-         let tag = document.tags.(index) in
-         match tag.target with
-         | Some target
-           when List.mem tag.word promise_words
-                && not
-                     (List.exists
-                        (fun (promise : promise) ->
-                          String.equal promise.word tag.word
-                          && String.equal promise.target target)
-                        found) ->
-             { word = tag.word; target; span = tag.span; tag } :: found
-         | Some _ | None -> found)
-       [] indices)
+  let found, _ =
+    List.fold_left
+      (fun (found, seen) index ->
+        let tag = document.tags.(index) in
+        match tag.target with
+        | Some target
+          when List.mem tag.word promise_words
+               && not (Pairs.mem (tag.word, target) seen) ->
+            ( { word = tag.word; target; span = tag.span; tag } :: found,
+              Pairs.add (tag.word, target) () seen )
+        | Some _ | None -> (found, seen))
+      ([], Pairs.empty) indices
+  in
+  List.rev found
 
 let step_hash ~scope promises prose =
   Sha256.hex
@@ -434,9 +432,11 @@ let plan_file ~path (document : Markdown.t) plan_index =
   match Option.map Plan_target.parse plan_tag.target with
   | Some (Ok { slug; id }) ->
       let first_block = document.blocks.(0).tags in
+      let in_first_block = Array.make (Array.length document.tags) false in
+      List.iter (fun index -> in_first_block.(index) <- true) first_block;
       let later =
         List.filter
-          (fun index -> not (List.mem index first_block))
+          (fun index -> not in_first_block.(index))
           (List.init (Array.length document.tags) Fun.id)
       in
       let plan_scope =

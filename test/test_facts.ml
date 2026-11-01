@@ -2264,6 +2264,59 @@ let a_file_grows_in_proportion_to_its_declarations () =
       ])
     (Facts.make manifest)
 
+let a_step_grows_in_proportion_to_its_promises () =
+  let manifest = manifest () in
+  Timed_work.check_growth ~margin:3. ~runs:3 ~sizes:(2_000, 16_000)
+    ~input:(fun count ->
+      [
+        ( ".plans/p.md",
+          document
+            ("# P\n\n@plan p@abcdef\n@scope docs/**\n\n## Step\n\n"
+            ^ String.concat ""
+                (List.init count (fun index ->
+                     Printf.sprintf "@cites c%d\n" index))) );
+      ])
+    (Facts.make manifest)
+
+let the_first_block_of_a_plan_belongs_to_no_step () =
+  match
+    Facts.plans
+      (facts_of_files
+         [
+           ( ".plans/p.md",
+             "## Head\n\n@plan p\n@scope src/**\n@req x\n\n## Work\n\n@req y\n"
+           );
+         ])
+  with
+  | [ plan ] ->
+      Alcotest.(check (list (pair string (list string))))
+        "the steps and their promises"
+        [ ("work", [ "req y" ]) ]
+        (List.map
+           (fun (step : Facts.step) ->
+             ( step.slug,
+               List.map
+                 (fun (promise : Facts.promise) ->
+                   promise.word ^ " " ^ promise.target)
+                 step.promises ))
+           plan.steps)
+  | _ -> Alcotest.fail "the file gives one plan"
+
+let a_plan_grows_in_proportion_to_its_first_block () =
+  let manifest = manifest () in
+  Timed_work.check_growth ~margin:3. ~runs:3 ~sizes:(2_000, 16_000)
+    ~input:(fun count ->
+      [
+        ( ".plans/p.md",
+          document
+            ("# P\n\n@plan p@abcdef\n"
+            ^ String.concat ""
+                (List.init count (fun index ->
+                     Printf.sprintf "@cites c%d\n" index))
+            ^ "\n## Step\n\n@req x\n") );
+      ])
+    (Facts.make manifest)
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -2357,6 +2410,12 @@ let tests =
       a_plan_grows_in_proportion_to_its_steps;
     case "a file grows in proportion to its declarations"
       a_file_grows_in_proportion_to_its_declarations;
+    case "a step grows in proportion to its promises"
+      a_step_grows_in_proportion_to_its_promises;
+    case "a plan grows in proportion to its first block"
+      a_plan_grows_in_proportion_to_its_first_block;
+    case "the first block of a plan belongs to no step"
+      the_first_block_of_a_plan_belongs_to_no_step;
     case "a supersedes edge from a site is not effective"
       a_supersedes_edge_from_a_site_is_not_effective;
     case "an ack names the fact of its block" an_ack_names_the_fact_of_its_block;
