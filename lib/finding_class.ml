@@ -29,6 +29,7 @@ type t =
   | Stale_delivery
   | Delivery_without_change
   | Delivery_on_unmet_step
+  | Missing_delivery
   | Misplaced_plan
   | Missing_plan_id
   | Unpinned
@@ -79,6 +80,7 @@ let all =
     Stale_delivery;
     Delivery_without_change;
     Delivery_on_unmet_step;
+    Missing_delivery;
     Misplaced_plan;
     Missing_plan_id;
     Unpinned;
@@ -129,6 +131,7 @@ let name = function
   | Stale_delivery -> "stale-delivery"
   | Delivery_without_change -> "delivery-without-change"
   | Delivery_on_unmet_step -> "delivery-on-unmet-step"
+  | Missing_delivery -> "missing-delivery"
   | Misplaced_plan -> "misplaced-plan"
   | Missing_plan_id -> "missing-plan-id"
   | Unpinned -> "unpinned"
@@ -179,6 +182,7 @@ let tiers = function
   | Stale_delivery -> (Some Block, Some Block, None)
   | Delivery_without_change -> (Some Warn, Some Warn, None)
   | Delivery_on_unmet_step -> (Some Block, Some Block, None)
+  | Missing_delivery -> (None, Some Block, None)
   | Misplaced_plan -> (Some Block, Some Block, Some Block)
   | Missing_plan_id -> (Some Block, Some Block, Some Block)
   | Unpinned -> (Some Block, Some Block, Some Block)

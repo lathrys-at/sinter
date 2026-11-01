@@ -44,6 +44,7 @@ type t =
   | Stale_delivery
   | Delivery_without_change
   | Delivery_on_unmet_step
+  | Missing_delivery
   | Misplaced_plan
   | Missing_plan_id
   | Unpinned

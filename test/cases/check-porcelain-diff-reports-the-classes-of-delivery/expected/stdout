@@ -1,6 +1,7 @@
 block	renamed-step	.plans/p.md	3	1	3	15	step:p@0a1b2c/old-name	step:p@0a1b2c/old-name is started in the base, and the plan has no step with the slug old-name now
 block	merged-incomplete	.plans/p.md	11	1	11	8	step:p@0a1b2c/part	step:p@0a1b2c/part has 1 of its 2 promises met
 warn	delivery-without-change	.plans/p.md	17	1	17	8	step:p@0a1b2c/tidy	commit 727ceb2 delivers step:p@0a1b2c/tidy, and the diff changes no file in the scope of the step
+block	missing-delivery	.plans/p.md	22	1	22	11	step:p@0a1b2c/write-d	"the diff makes the promises of step:p@0a1b2c/write-d met, and no delivery line of the change counts for it; add the line \"Delivers: p@0a1b2c/write-d fad413\" to a commit message"
 block	delivery-on-unmet-step	.plans/p.md	32	1	32	17	step:p@0a1b2c/write-e-and-f	commit 727ceb2 delivers step:p@0a1b2c/write-e-and-f, and 1 of its 2 promises are not met
 block	merged-incomplete	.plans/p.md	32	1	32	17	step:p@0a1b2c/write-e-and-f	step:p@0a1b2c/write-e-and-f has 1 of its 2 promises met
 block	stale-delivery						message:727ceb29207f82f655006433fef8dc5e90572894@L10	"the line \"Delivers: p@0a1b2c/gone 000000\" of commit 727ceb2 names no step of an open plan"

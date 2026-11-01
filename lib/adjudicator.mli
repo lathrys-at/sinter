@@ -49,8 +49,9 @@ val classes :
     [base] when absent, so give it when [base] leaves out the facts of a file by
     [same]. The function forces it only when a class needs it. [deliveries] is
     the delivery lines of the change; it is empty when absent. The result holds
-    no finding of [renamed-step] when [wanted] is [false] for the class;
-    [wanted] is [true] for every class when absent. The classes are:
+    no finding of [missing-delivery] or [renamed-step] when [wanted] is [false]
+    for the class; [wanted] is [true] for every class when absent. The classes
+    are:
 
     - [unbumped]: a declaration of the kind [req], [design], or [decision] whose
       slug the base declares, in one of these kinds, when no such declaration of
@@ -104,6 +105,13 @@ val classes :
       promise of the step. The finding sits at the heading of the step, its
       related places are the promises that are not met, and the detail names the
       commit of the first line of [deliveries] that counts for the step.
+
+    - [missing-delivery]: a step of a plan of the working tree with promises,
+      for which no line of [deliveries] counts, whose promises {!Facts.standing}
+      meets in the working tree, and some of whose promises {!Facts.met_within}
+      [whole_base] does not meet with the effective scope of the step. No plan
+      of the base is needed. The finding sits at the heading of the step, and
+      the detail ends with the text of {!Facts.delivery} of the step.
 
     No finding of these classes sits under a historical path. *)
 

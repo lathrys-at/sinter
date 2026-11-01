@@ -997,6 +997,47 @@ let a_delivery_line_needs_a_change_in_the_scope_of_its_step () =
     (expected, expected)
     (without_change (tree_lines repo), without_change (diff_lines repo))
 
+let missing_delivery_reads_the_promises_that_the_base_meets_in_both_modes () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "sinter.toml" packs;
+  let plan text =
+    "# P\n\n@plan p@0a1b2c\n@scope docs/**\n\n## Do it\n\n@req a\n" ^ text
+  in
+  Git_fixture.write repo ".plans/p.md" (plan "Text.\n");
+  Git_fixture.write repo "docs/a.md" "# A\n\n@req a\n";
+  commit repo "main";
+  ignore (Git_fixture.git repo [ "checkout"; "-q"; "-b"; "work" ]);
+  Git_fixture.write repo ".plans/p.md" (plan "Other text.\n");
+  commit repo "work";
+  let missing lines =
+    List.filter (fun line -> contains_text "missing-delivery" line) lines
+  in
+  Alcotest.(check (pair (list string) (list string)))
+    "no missing-delivery in tree mode and in diff mode" ([], [])
+    (missing (tree_lines repo), missing (diff_lines repo))
+
+let a_delivery_line_in_a_commit_clears_missing_delivery_in_both_modes () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "sinter.toml" packs;
+  Git_fixture.write repo ".plans/p.md"
+    "# P\n\n@plan p@0a1b2c\n@scope docs/**\n\n## Do it\n\n@req a\nText.\n";
+  commit repo "main";
+  ignore (Git_fixture.git repo [ "checkout"; "-q"; "-b"; "work" ]);
+  Git_fixture.write repo "docs/a.md" "# A\n\n@req a\n";
+  commit repo "Declare a";
+  let missing lines =
+    List.filter (fun line -> contains_text "missing-delivery" line) lines
+  in
+  Alcotest.(check (pair int int))
+    "one finding in each mode with no line" (1, 1)
+    ( List.length (missing (tree_lines repo)),
+      List.length (missing (diff_lines repo)) );
+  Git_fixture.write repo "docs/b.md" "# B\n";
+  commit repo ("Finish a\n\n" ^ delivery_line repo "do-it");
+  Alcotest.(check (pair (list string) (list string)))
+    "no finding with the line" ([], [])
+    (missing (tree_lines repo), missing (diff_lines repo))
+
 let a_diff_compares_each_file_as_git_stores_it () =
   let repo = Git_fixture.init () in
   Git_fixture.write repo "sinter.toml" packs;
@@ -1307,6 +1348,10 @@ let the_porcelain_form_with_nul_ends_each_field_with_nul () =
 
 let tests =
   [
+    case "missing-delivery reads the promises that the base meets in both modes"
+      missing_delivery_reads_the_promises_that_the_base_meets_in_both_modes;
+    case "a delivery line in a commit clears missing-delivery in both modes"
+      a_delivery_line_in_a_commit_clears_missing_delivery_in_both_modes;
     case "a delivery line needs a change in the scope of its step"
       a_delivery_line_needs_a_change_in_the_scope_of_its_step;
     case "each header prints alone after the version"

@@ -519,6 +519,59 @@ let deliveries_on_unmet_steps ~counted facts =
                ()))
     counted
 
+let met_in facts plan step =
+  let standing = Facts.standing facts plan step in
+  fun promise -> Option.is_some (standing promise).Facts.by
+
+let met_in_base whole_base plan step (promise : Facts.promise) =
+  Facts.met_within whole_base
+    ~scope:(Facts.effective_scope plan step)
+    ~word:promise.word ~target:promise.target
+
+let missing_deliveries ~counted ~whole_base facts =
+  let delivered =
+    List.map
+      (fun ((plan : Facts.plan), (step : Facts.step), _) ->
+        Facts.step_id plan step)
+      counted
+  in
+  let candidates =
+    List.concat_map
+      (fun (plan : Facts.plan) ->
+        List.filter_map
+          (fun (step : Facts.step) ->
+            if
+              step.promises <> []
+              && (not (List.mem (Facts.step_id plan step) delivered))
+              && List.for_all (met_in facts plan step) step.promises
+            then Some (plan, step)
+            else None)
+          plan.steps)
+      (Facts.plans facts)
+  in
+  List.filter_map
+    (fun ((plan : Facts.plan), (step : Facts.step)) ->
+      let met_before = met_in_base (Lazy.force whole_base) plan step in
+      if List.for_all met_before step.promises then None
+      else
+        let id = Facts.step_id plan step in
+        Some
+          (Finding.make Finding_class.Missing_delivery
+             (Finding.Fact { id; ack_name = step.slug })
+             ~place:{ Finding.path = plan.path; span = step.span }
+             ~detail:
+               (Printf.sprintf
+                  "the diff makes the promises of %s met, and no delivery line \
+                   of the change counts for it%s"
+                  id
+                  (match Facts.delivery plan step with
+                  | Some line ->
+                      Printf.sprintf "; add the line \"%s\" to a commit message"
+                        (Delivery_line.to_string line)
+                  | None -> ""))
+             ()))
+    candidates
+
 let renamed_to ?(same = fun _ -> false) ~base facts =
   let resolve = lazy (Facts.resolve facts)
   and successor =
@@ -563,6 +616,9 @@ let classes ?(same = fun _ -> false) ?(changed = []) ?whole_base
         @ stale_deliveries ~deliveries facts
         @ deliveries_without_change ~counted ~changed ~base facts
         @ deliveries_on_unmet_steps ~counted facts
+        @ (if wanted Finding_class.Missing_delivery then
+             missing_deliveries ~counted ~whole_base facts
+           else [])
         @
         if wanted Finding_class.Renamed_step then
           renamed_steps ~base ~same ~whole_base facts

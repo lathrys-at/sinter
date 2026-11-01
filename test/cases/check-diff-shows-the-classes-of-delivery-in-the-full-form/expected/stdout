@@ -22,6 +22,13 @@ warn[delivery-without-change]: commit 727ceb2 delivers step:p@0a1b2c/tidy, and t
    | ^^^^^^^
    |
 
+block[missing-delivery]: the diff makes the promises of step:p@0a1b2c/write-d met, and no delivery line of the change counts for it; add the line "Delivers: p@0a1b2c/write-d fad413" to a commit message
+  --> .plans/p.md:22:1
+   |
+22 | ## Write d
+   | ^^^^^^^^^^
+   |
+
 block[delivery-on-unmet-step]: commit 727ceb2 delivers step:p@0a1b2c/write-e-and-f, and 1 of its 2 promises are not met
   --> .plans/p.md:32:1
    |

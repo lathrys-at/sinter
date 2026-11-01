@@ -442,9 +442,10 @@ is pre-existing; diff mode does not report it. A finding absent at the
 base is what the diff introduced. The diff-relative classes —
 `unbumped`, `unplanned-change`, `config-changed`, `code-drift`,
 `renamed`, `promise-collision`, `renamed-step`, `stale-delivery`,
-`delivery-without-change`, `delivery-on-unmet-step` — have `F(b) = ∅`
-by construction and appear in both modes. So a check in tree mode
-also reads the base, and reports these classes.
+`delivery-without-change`, `delivery-on-unmet-step`,
+`missing-delivery` — have `F(b) = ∅` by construction and appear in
+both modes. So a check in tree mode also reads the base, and reports
+these classes.
 
 ## 9. Built-in finding classes
 
@@ -520,6 +521,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `stale-delivery` | message line | *engine*: a delivery line of the change that does not count ([vocabulary.md](vocabulary.md) section 10.8): it does not match the form `Delivers: <plan>/<step> <hash>`, it names no step of an open plan of `T`, or its hash is not the first six hex digits of the step hash of that step. The subject is the line of the commit message ([jsonl.md](jsonl.md) section 9), and the finding has no place. When the step exists, the related place of the finding is the heading of the step, and the `detail` gives the delivery line of the step. The finding has no fix, because a commit message is no file of the tree | diff | · | · | block, block, — |
 | `delivery-without-change` | step | *engine*: a step of an open plan of `T` for which a delivery line of the change counts ([vocabulary.md](vocabulary.md) section 10.8), when no hunk of the diff lies in the effective scope of the step, apart from the hunks of the plan files of `T` and of `B`. The work of the step can be in an earlier change, so the finding warns, and the person who merges reads the line. The finding sits at the heading of the step, and the `detail` names the commit of the first delivery line that counts for the step. It has no fix | diff | · | · | warn, warn, — |
 | `delivery-on-unmet-step` | step | *engine*: a step of an open plan of `T` for which a delivery line of the change counts ([vocabulary.md](vocabulary.md) section 10.8), when a promise of the step is not met. A promise counts as met by the rule of section 9.2. The finding sits at the heading of the step, and its related places are the promises that are not met. The `detail` names the commit of the first delivery line that counts for the step. It has no fix | diff | · | · | block, block, — |
+| `missing-delivery` | step | *engine*: a step with promises for which no delivery line of the change counts ([vocabulary.md](vocabulary.md) section 10.8), when the diff makes its promises met: each promise is met in `T`, and some promise is not met in `B`. A promise counts as met by the rule of section 9.2. A promise is met in `B` when the fact set of `B` holds a fact that meets it inside the effective scope of the step in `T`, or inside the default location of its kind ([vocabulary.md](vocabulary.md) section 10.5); no plan of `B` is needed. So a plan whose promises the base already meets gives no finding in the pull request that brings the plan. The finding sits at the heading of the step. It has no fix, because a commit message is no file of the tree: the `detail` gives the delivery line to add to a commit message | diff | · | · | —, block, — |
 | `misplaced-plan` | tag | *engine*: a `@plan` tag that does not stand in the first tag block of a file under `.plans/`: a `@plan` outside `.plans/**`, or a `@plan` in a later block of a file under `.plans/` ([vocabulary.md](vocabulary.md) section 10.1) | tree | · | · | block, block, block |
 | `missing-plan-id` | plan | *engine*: a plan whose `@plan` tag has no plan id ([vocabulary.md](vocabulary.md) section 4.3). The fix inserts `@` and a plan id at the end of the tag target. That plan id is the first six hex digits of the SHA-256 of three parts, as UTF-8 bytes: the object id of the base commit in lowercase hex (the field `base` of the `index` record, [jsonl.md](jsonl.md) section 10), one LF, and the path of the plan file, relative to the repository root | tree | · | F | block, block, block |
 | `unpinned` | edge | *engine*: a `satisfies`, `verifies`, `refines`, or `supersedes` edge without a revision | tree | · | F | block, block, block |
@@ -616,18 +618,18 @@ must be equal.
 
 ### 9.2 Promises without evidence
 
-The classes `delivery-on-unmet-step`, `renamed-step`, and
-`merged-incomplete` read a promised `@verifies` in one more way. When
-no evidence set exists for the tree (global rule 3), a promised
-`@verifies` counts as met for these classes when a `verifies` edge
-with its tag target exists inside the effective scope of the step, its
-source is a test, its tag target resolves, and it is not suspect. A
-`verifies` edge whose source is not a test is at rung `wrong-source`
-(section 6.7), and it never counts. When an evidence set exists, the
-rung decides, as [vocabulary.md](vocabulary.md) section 10.5 says. The
-rule applies to these classes alone: `done()` and the completion
-condition of [ledger.md](ledger.md) section 8 read every promise as
-section 10.5 says.
+The classes `delivery-on-unmet-step`, `missing-delivery`,
+`renamed-step`, and `merged-incomplete` read a promised `@verifies` in
+one more way. When no evidence set exists for the tree (global rule
+3), a promised `@verifies` counts as met for these classes when a
+`verifies` edge with its tag target exists inside the effective scope
+of the step, its source is a test, its tag target resolves, and it is
+not suspect. A `verifies` edge whose source is not a test is at rung
+`wrong-source` (section 6.7), and it never counts. When an evidence
+set exists, the rung decides, as [vocabulary.md](vocabulary.md)
+section 10.5 says. The rule applies to these classes alone: `done()`
+and the completion condition of [ledger.md](ledger.md) section 8 read
+every promise as section 10.5 says.
 
 ## 10. Evaluation, ordering, and errors
 

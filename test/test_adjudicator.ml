@@ -1014,8 +1014,129 @@ let delivery_without_change_warns_and_has_no_fix () =
   | findings ->
       Alcotest.failf "one finding was expected, not %d" (List.length findings)
 
+let missing ?same ?whole_base ?(message = "") base tree =
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) ->
+         finding.finding_class = Finding_class.Missing_delivery)
+       (Adjudicator.classes ?same ?whole_base
+          ~deliveries:(Delivery_line.read ~commit message)
+          ~base:(facts base) (facts tree) []))
+
+let promise_plan =
+  ( ".plans/p.md",
+    "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Do it\n\n@req a\nText.\n" )
+
+let declared = ("docs/a.md", "# A\n\n@req a\n")
+
+let scoped_plan =
+  ( ".plans/p.md",
+    "# P\n\n\
+     @plan p@0a1b2c\n\
+     @scope **\n\n\
+     ## Do it\n\n\
+     @scope docs/**\n\
+     @req a\n\
+     Text.\n" )
+
+let missing_finding plan =
+  ".plans/p.md:6 | finding:missing-delivery:step:p@0a1b2c/do-it | the diff \
+   makes the promises of step:p@0a1b2c/do-it met, and no delivery line of the \
+   change counts for it; add the line \"" ^ line_of plan "do-it"
+  ^ "\" to a commit message"
+
+let missing_delivery_sits_at_a_step_that_the_diff_makes_met () =
+  let line = line_of promise_plan "do-it" in
+  Alcotest.check strings "the diff declares a"
+    [ missing_finding promise_plan ]
+    (missing [ promise_plan ] [ promise_plan; declared ]);
+  Alcotest.check strings "a new plan with its promise met"
+    [ missing_finding promise_plan ]
+    (missing [] [ promise_plan; declared ]);
+  Alcotest.check strings "a line that counts" []
+    (missing
+       ~message:("Do it\n\n" ^ line ^ "\n")
+       [ promise_plan ] [ promise_plan; declared ]);
+  Alcotest.check strings "a line that does not count"
+    [ missing_finding promise_plan ]
+    (missing ~message:"Delivers: p@0a1b2c/do-it 000000\n" [ promise_plan ]
+       [ promise_plan; declared ]);
+  Alcotest.check strings "a new plan whose promise the base meets" []
+    (missing [ declared ] [ promise_plan; declared ]);
+  Alcotest.check strings "a new plan whose citation the base holds" []
+    (missing
+       [ ("docs/guide.md", "# G\n\n@cites gh/1\n") ]
+       [
+         ( ".plans/p.md",
+           "# P\n\n@plan p@0a1b2c\n@scope docs/**\n\n## Do it\n\n@cites gh/1\n"
+         );
+         ("docs/guide.md", "# G\n\n@cites gh/1\n");
+       ]);
+  Alcotest.check strings "the base meets it outside the scope of the step"
+    [ missing_finding scoped_plan ]
+    (missing
+       [ scoped_plan; ("lib/a.md", "# A\n\n@req a\n") ]
+       [ scoped_plan; ("docs/a.md", "# A\n\n@req a\n") ]);
+  Alcotest.check strings "met in the base already" []
+    (missing [ promise_plan; declared ] [ promise_plan; declared ]);
+  Alcotest.check strings "not met in the tree" []
+    (missing [ promise_plan ] [ promise_plan ]);
+  Alcotest.check strings "a step without promises" []
+    (missing [] [ refactor_plan ])
+
+let missing_delivery_reads_the_unchanged_files_of_the_base () =
+  let tree_plan =
+    let path, text = promise_plan in
+    (path, text ^ "More text.\n")
+  in
+  let unchanged path = String.equal path "docs/a.md" in
+  Alcotest.check strings "the meeting fact sits in an unchanged file" []
+    (missing ~same:unchanged
+       ~whole_base:(lazy (facts [ promise_plan; declared ]))
+       [ promise_plan ] [ tree_plan; declared ])
+
+let missing_delivery_has_no_fix_and_takes_no_tier_at_turn () =
+  Alcotest.(check (list (option string)))
+    "the tiers at turn, review, and merged"
+    [ None; Some "block"; None ]
+    (List.map
+       (fun gate ->
+         Option.map Finding_class.tier_name
+           (Finding_class.builtin_tier Finding_class.Missing_delivery gate))
+       Finding_class.gates);
+  match
+    List.filter
+      (fun (finding : Finding.t) ->
+        finding.finding_class = Finding_class.Missing_delivery)
+      (Adjudicator.classes ~base:(facts [])
+         (facts [ promise_plan; declared ])
+         [])
+  with
+  | [ finding ] ->
+      Alcotest.(check bool) "no fix" true (Option.is_none finding.fix);
+      Alcotest.(check bool) "not ackable" false finding.ackable
+  | findings ->
+      Alcotest.failf "one finding was expected, not %d" (List.length findings)
+
+let missing_delivery_needs_wanted () =
+  Alcotest.check strings "not wanted" []
+    (List.map show
+       (Adjudicator.classes
+          ~wanted:(fun finding_class ->
+            finding_class <> Finding_class.Missing_delivery)
+          ~base:(facts [])
+          (facts [ promise_plan; declared ])
+          []))
+
 let tests =
   [
+    case "missing-delivery sits at a step that the diff makes met"
+      missing_delivery_sits_at_a_step_that_the_diff_makes_met;
+    case "missing-delivery reads the unchanged files of the base"
+      missing_delivery_reads_the_unchanged_files_of_the_base;
+    case "missing-delivery has no fix and takes no tier at turn"
+      missing_delivery_has_no_fix_and_takes_no_tier_at_turn;
+    case "missing-delivery needs wanted" missing_delivery_needs_wanted;
     case "delivery-without-change sits at a step with no change in scope"
       delivery_without_change_sits_at_a_step_with_no_change_in_scope;
     case "delivery-without-change warns and has no fix"
