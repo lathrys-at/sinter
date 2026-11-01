@@ -544,6 +544,16 @@ let a_deleted_path_gives_the_run_of_a_deletion () =
     [ show "x" (Git.Deleted (Git.Text [ hunk 1 1 1 1 0 3 ])) ]
     (shown repo)
 
+let a_diff_driver_of_the_configuration_does_not_change_the_runs () =
+  let repo =
+    with_base [ (".gitattributes", "b.md diff=foo\n"); ("b.md", "1\n2\n3\n") ]
+  in
+  Repo.append_config repo "[diff \"foo\"]\n\tbinary = true\n";
+  Repo.write repo "b.md" "1\n2\nX\n";
+  Alcotest.check strings "the text run"
+    [ show "b.md" (Git.Modified (Git.Text [ hunk 3 3 2 3 1 1 ])) ]
+    (shown repo)
+
 let a_file_behind_a_symbolic_link_is_not_in_the_file_set () =
   let repo = with_base [ ("d/x", "in\n") ] in
   let outside = Repo.temp_dir () in
@@ -644,6 +654,8 @@ let tests =
       a_tracked_file_is_compared_like_an_untracked_file_of_its_content;
     case "a deleted path gives the run of a deletion"
       a_deleted_path_gives_the_run_of_a_deletion;
+    case "a diff driver of the configuration does not change the runs"
+      a_diff_driver_of_the_configuration_does_not_change_the_runs;
     case "a file behind a symbolic link is not in the file set"
       a_file_behind_a_symbolic_link_is_not_in_the_file_set;
     case "a repository under a name with a colon gives its diff"
