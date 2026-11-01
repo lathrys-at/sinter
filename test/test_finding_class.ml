@@ -108,6 +108,49 @@ let tiers_have_their_names () =
     "blocks" true
     (Finding_class.tier_of_name "blocks" = None)
 
+let contains text piece =
+  let size = String.length piece in
+  let rec scan index =
+    index + size <= String.length text
+    && (String.equal (String.sub text index size) piece || scan (index + 1))
+  in
+  scan 0
+
+let each_class_has_one_sentence () =
+  List.iter
+    (fun finding_class ->
+      let name = Finding_class.name finding_class in
+      let sentence = Finding_class.summary finding_class in
+      let length = String.length sentence in
+      Alcotest.(check bool) (name ^ ": not empty") true (length > 0);
+      Alcotest.(check bool) (name ^ ": at most 1024 bytes") true (length <= 1024);
+      Alcotest.(check bool)
+        (name ^ ": starts with a capital letter or @")
+        true
+        (match sentence.[0] with 'A' .. 'Z' | '@' -> true | _ -> false);
+      Alcotest.(check char)
+        (name ^ ": ends with a full stop")
+        '.'
+        sentence.[length - 1];
+      Alcotest.(check bool)
+        (name ^ ": one sentence") false
+        (contains (String.sub sentence 0 (length - 1)) ".");
+      Alcotest.(check bool)
+        (name ^ ": printable ASCII only")
+        true
+        (String.for_all (fun c -> c >= ' ' && c <= '~') sentence);
+      Alcotest.(check bool)
+        (name ^ ": no brace") false
+        (String.contains sentence '{' || String.contains sentence '}'))
+    Finding_class.all
+
+let no_two_classes_share_a_sentence () =
+  let sentences = List.map Finding_class.summary Finding_class.all in
+  Alcotest.(check int)
+    "one sentence for each class"
+    (List.length Finding_class.all)
+    (List.length (List.sort_uniq String.compare sentences))
+
 let case name test = Alcotest.test_case name `Quick test
 
 let tests =
@@ -120,4 +163,6 @@ let tests =
     case "of_name refuses other names" of_name_refuses_other_names;
     case "gates have their names" gates_have_their_names;
     case "tiers have their names" tiers_have_their_names;
+    case "each class has one sentence" each_class_has_one_sentence;
+    case "no two classes share a sentence" no_two_classes_share_a_sentence;
   ]
