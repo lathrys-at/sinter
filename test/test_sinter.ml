@@ -69,6 +69,7 @@ let () =
       ("git objects", Test_git_objects.tests);
       ("commitment set", Test_commitment_set.tests);
       ("ledger", Test_ledger.tests);
+      ("ledger commands", Test_ledger_cli.tests);
       ("git diff", Test_git_diff.tests);
       ("git view", Test_git_view.tests);
       ("baseline", Test_baseline.tests);

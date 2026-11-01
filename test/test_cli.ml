@@ -637,8 +637,8 @@ let usage_errors =
        'json', 'porcelain' or 'sarif'",
       "sinter check [--help] [OPTION]\xe2\x80\xa6" );
     ( "nope",
-      "unknown command 'nope'. Must be one of 'check', 'parse', 'scan' or \
-       'serve'",
+      "unknown command 'nope'. Must be one of 'check', 'ledger', 'parse', \
+       'scan' or 'serve'",
       "sinter [--help] [COMMAND] \xe2\x80\xa6" );
     ( "check extra",
       "too many arguments, don't know what to do with 'extra'",
