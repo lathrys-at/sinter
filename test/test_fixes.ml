@@ -490,6 +490,19 @@ let every_fix_of_the_probe_touches_only_its_place () =
         (touches_only_its_place change))
     (Lazy.force probe_changes)
 
+let largest = "# A\n\n@req a v9007199254740991\n"
+
+let every_fix_at_the_largest_revision_repairs_its_finding () =
+  let base = [ ("docs/a.md", largest ^ "Old.\n") ]
+  and files = [ ("docs/a.md", largest ^ "New.\n") ] in
+  List.iter
+    (fun change ->
+      Alcotest.(check bool)
+        (Finding.id change.finding)
+        true
+        (repairs ~base files change))
+    (changes ~base files)
+
 let edit_of (fields : Jsonl.flat) =
   match
     List.map
@@ -575,4 +588,6 @@ let tests =
       every_fix_of_the_probe_is_a_mechanical_repair;
     Alcotest.test_case "every fix of the probe touches only its place" `Quick
       every_fix_of_the_probe_touches_only_its_place;
+    Alcotest.test_case "every fix at the largest revision repairs its finding"
+      `Quick every_fix_at_the_largest_revision_repairs_its_finding;
   ]
