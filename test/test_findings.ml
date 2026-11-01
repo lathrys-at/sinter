@@ -484,6 +484,15 @@ let untraced_names_what_is_missing () =
     ]
     [ "docs/a.md:3:1-3:7 | finding:untraced:req:a | nothing satisfies req:a" ]
 
+let untraced_reports_no_declaration_whose_slug_an_edge_names () =
+  check Finding_class.Untraced
+    [
+      ("docs/a.md", "# A\n\n@req x v1\n");
+      ("docs/b.md", "# B\n\n@req x v1\n");
+      ("docs/c.md", "# C\n\nText.\n\n- @satisfies x v1\n- @verifies x v1\n");
+    ]
+    []
+
 let plan steps =
   ( ".plans/p.md",
     "# P\n\n@plan p\n@scope lib/**, docs/, bin/main.ml, src/*/**, !lib/x/**\n"
@@ -1626,6 +1635,8 @@ let tests =
     case "wrong-source sits at a citation without its source"
       wrong_source_sits_at_a_citation_without_its_source;
     case "untraced names what is missing" untraced_names_what_is_missing;
+    case "untraced reports no declaration whose slug an edge names"
+      untraced_reports_no_declaration_whose_slug_an_edge_names;
     case "scope-outside-plan names the globs outside the plan"
       scope_outside_plan_names_the_globs_outside_the_plan;
     case "scope-overlap sits at the later step"

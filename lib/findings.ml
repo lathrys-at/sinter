@@ -624,22 +624,23 @@ let wrong_sources facts =
     (Facts.edges facts)
 
 let untraced facts =
-  let count = List.length (Facts.declarations facts) in
-  let satisfied = Array.make count false
-  and verified = Array.make count false in
-  List.iter
-    (fun ((edge : Facts.edge), target) ->
-      match (edge.word, target) with
-      | "satisfies", Facts.Declaration index -> satisfied.(index) <- true
-      | "verifies", Facts.Declaration index -> verified.(index) <- true
-      | _ -> ())
-    (Facts.edges facts);
+  let declarations = Array.of_list (Facts.declarations facts) in
+  let cited word =
+    List.fold_left
+      (fun ids ((edge : Facts.edge), target) ->
+        match target with
+        | Facts.Declaration index when String.equal edge.word word ->
+            Keys.add (Facts.declaration_id declarations.(index)) () ids
+        | Facts.Declaration _ | Facts.External _ | Facts.Unresolved _ -> ids)
+      Keys.empty (Facts.edges facts)
+  in
+  let satisfied = cited "satisfies" and verified = cited "verifies" in
   List.filter_map Fun.id
     (List.mapi
        (fun index (declaration : Facts.declaration) ->
          let item = Facts.declaration_id declaration in
          let found =
-           match (satisfied.(index), verified.(index)) with
+           match (Keys.mem item satisfied, Keys.mem item verified) with
            | false, false ->
                Some
                  ( Printf.sprintf
