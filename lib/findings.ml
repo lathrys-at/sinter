@@ -709,27 +709,59 @@ let intersect a b =
         (plain b))
     (plain a)
 
+module Promises = Map.Make (struct
+  type t = string * string
+
+  let compare = compare
+end)
+
+module Steps = Set.Make (Int)
+
 let scope_overlaps facts =
   List.concat_map
     (fun (plan : Facts.plan) ->
-      let shares (a : Facts.step) (b : Facts.step) =
-        intersect (Facts.effective_scope plan a) (Facts.effective_scope plan b)
-        && List.exists
-             (fun (promise : Facts.promise) ->
-               List.exists
-                 (fun (other : Facts.promise) ->
-                   String.equal promise.word other.word
-                   && String.equal promise.target other.target)
-                 b.promises)
-             a.promises
+      let steps = Array.of_list plan.steps in
+      let keys (step : Facts.step) =
+        List.map
+          (fun (promise : Facts.promise) -> (promise.word, promise.target))
+          step.promises
       in
-      let rec walk earlier = function
+      let rec walk index earlier = function
         | [] -> []
         | (step : Facts.step) :: rest -> (
+            let candidates =
+              List.fold_left
+                (fun found key ->
+                  Steps.union found
+                    (Option.value
+                       (Promises.find_opt key earlier)
+                       ~default:Steps.empty))
+                Steps.empty (keys step)
+            in
+            let earlier =
+              List.fold_left
+                (fun earlier key ->
+                  Promises.update key
+                    (fun found ->
+                      Some
+                        (Steps.add index
+                           (Option.value found ~default:Steps.empty)))
+                    earlier)
+                earlier (keys step)
+            in
             match
-              List.filter (fun other -> shares other step) (List.rev earlier)
+              List.filter_map
+                (fun other ->
+                  let other = steps.(other) in
+                  if
+                    intersect
+                      (Facts.effective_scope plan other)
+                      (Facts.effective_scope plan step)
+                  then Some other
+                  else None)
+                (Steps.elements candidates)
             with
-            | [] -> walk (step :: earlier) rest
+            | [] -> walk (index + 1) earlier rest
             | others ->
                 Finding.make Finding_class.Scope_overlap
                   (Finding.Fact
@@ -747,9 +779,9 @@ let scope_overlaps facts =
                            other.span)
                        others)
                   ()
-                :: walk (step :: earlier) rest)
+                :: walk (index + 1) earlier rest)
       in
-      walk [] plan.steps)
+      walk 0 Promises.empty plan.steps)
     (Facts.plans facts)
 
 let promise_subject plan step promise =
