@@ -1136,6 +1136,25 @@ let a_manifest_that_links_out_of_the_repository_is_not_read () =
     | Error error ->
         List.filter (contains "hidden-value") (error_texts error))
 
+let each_record_of_a_manifest_link_to_a_path_not_utf_8_is_jsonl () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "conf\xff.toml" manifest;
+  Git_fixture.write repo "a.md" "# A\n";
+  Git_fixture.symlink repo ~target:"conf\xff.toml" "sinter.toml";
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  Alcotest.(check (list string))
+    "the records that Jsonl.to_string refuses" []
+    (match scan ~base:"HEAD" repo with
+    | Error _ -> []
+    | Ok { Scan.records; _ } ->
+        List.filter_map
+          (fun record ->
+            match Jsonl.to_string record with
+            | _ -> None
+            | exception Invalid_argument reason -> Some reason)
+          records)
+
 let case name f = Alcotest.test_case name `Quick f
 
 let a_manifest_whose_path_is_not_utf_8_gives_an_answer () =
@@ -1232,4 +1251,6 @@ let tests =
       each_error_says_what_is_wrong_and_what_to_do;
     case "a manifest that links out of the repository is not read"
       a_manifest_that_links_out_of_the_repository_is_not_read;
+    case "each record of a manifest link to a path not UTF-8 is JSONL"
+      each_record_of_a_manifest_link_to_a_path_not_utf_8_is_jsonl;
   ]
