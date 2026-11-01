@@ -34,7 +34,11 @@ let colored setting descriptor =
   Sinter_core.Style.color setting ~getenv:Sys.getenv_opt
     ~terminal:(Unix.isatty descriptor)
 
+let settle_output () =
+  try flush stdout with Sys_error _ -> close_out_noerr stdout
+
 let report setting errors =
+  settle_output ();
   let ppf =
     Sinter_core.Style.formatter stderr ~color:(colored setting Unix.stderr)
   in
@@ -771,9 +775,17 @@ let () =
   let buffer = Buffer.create 256 in
   let err = Format.formatter_of_buffer buffer in
   Sinter_core.Style.prepare err `None;
-  let code = Cmd.eval' ~err ~term_err:usage_error cmd in
-  Format.pp_print_flush err ();
-  if Buffer.length buffer > 0 then
-    report Sinter_core.Style.Auto
-      [ Sinter_core.Usage.error (Buffer.contents buffer) ];
-  exit (if code = Cmd.Exit.cli_error then usage_error else code)
+  let run () =
+    let code = Cmd.eval' ~err ~term_err:usage_error cmd in
+    (match Buffer.contents buffer with
+    | "" -> ()
+    | text -> report Sinter_core.Style.Auto [ Sinter_core.Usage.error text ]);
+    Format.pp_print_flush Format.std_formatter ();
+    if code = Cmd.Exit.cli_error then usage_error else code
+  in
+  exit
+    (match run () with
+    | code -> code
+    | exception Sys_error message ->
+        report Sinter_core.Style.Auto [ output_failure message ];
+        environment_error)
