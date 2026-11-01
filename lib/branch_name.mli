@@ -40,3 +40,9 @@ val error_offset : error -> int
 val message : error -> string
 (** [message error] says which rule the name breaks. It is one line, without the
     name itself and without a full stop at the end. *)
+
+val parts : error -> string * string option
+(** [parts error] is {!message} in two parts: the rule that the name breaks, and
+    what to write instead when the message says it. [message error] is the first
+    part when the second is [None], and the two parts joined with ["; "]
+    otherwise. *)

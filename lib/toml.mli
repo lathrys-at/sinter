@@ -199,6 +199,12 @@ val error_position : error -> position
 val error_message : error -> string
 (** [error_message error] says what is wrong, in one line, without the place. *)
 
+val error_parts : error -> string * string option
+(** [error_parts error] is {!error_message} in two parts: what is wrong, and
+    what to write instead when the message says it. [error_message error] is the
+    first part when the second is [None], and the two parts joined with ["; "]
+    otherwise. *)
+
 val parse : string -> (table, error) result
 (** [parse text] reads [text] as a TOML 1.1.0 document and gives its top-level
     table. A dotted key whose path goes into a table that an earlier table

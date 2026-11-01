@@ -1521,6 +1521,30 @@ let any_bytes_give_a_document_or_an_error =
           place_is_inside text (Toml.error_position error)
           && one_line (Toml.error_message error))
 
+let a_message_is_its_parts_joined =
+  property ~count:500 ~name:"a message is its parts joined with '; '"
+    ~print:String.escaped damaged_document (fun text ->
+      match Toml.parse text with
+      | Ok _ -> true
+      | Error error -> (
+          let message = Toml.error_message error in
+          match Toml.error_parts error with
+          | fault, None -> String.equal message fault
+          | fault, Some help -> String.equal message (fault ^ "; " ^ help)))
+
+let the_fault_keeps_a_name_with_a_semicolon_whole () =
+  let parts text = Toml.error_parts (parse_error text) in
+  Alcotest.(check (pair string (option string)))
+    "a key defined twice"
+    ("the key 'a; b' is already defined", None)
+    (parts "\"a; b\" = 1\n\"a; b\" = 2\n");
+  Alcotest.(check (pair string (option string)))
+    "a dotted key into a header table"
+    ( "the dotted key 'c.x' adds a key to the table '\"a; b\".c', which a \
+       table header made",
+      Some "write 'x' under the header [\"a; b\".c]" )
+    (parts "[\"a; b\".c]\nz = 9\n[\"a; b\"]\nc.x = 1\n")
+
 let render_path_reads_back =
   property ~name:"render_path gives a key path that reads back"
     ~print:QCheck2.Print.(list string)
@@ -1670,6 +1694,9 @@ let tests =
     a_generated_document_reads_back;
     a_damaged_document_gives_a_document_or_an_error_inside_it;
     any_bytes_give_a_document_or_an_error;
+    a_message_is_its_parts_joined;
+    Alcotest.test_case "the fault keeps a name with a semicolon whole" `Quick
+      the_fault_keeps_a_name_with_a_semicolon_whole;
     render_path_reads_back;
     string_position_points_at_each_character;
   ]

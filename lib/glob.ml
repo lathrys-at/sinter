@@ -127,31 +127,32 @@ let suggestion segment =
     if contains_double_star rest then None else Some ("**/*" ^ rest)
   else None
 
-let message = function
-  | Empty -> "a glob cannot be empty"
+let parts = function
+  | Empty -> ("a glob cannot be empty", None)
   | Leading_slash ->
-      "a glob cannot start with '/'; write the path from the repository root, \
-       without the '/'"
-  | Empty_segment _ -> "a glob cannot hold two '/' together"
+      ( "a glob cannot start with '/'",
+        Some "write the path from the repository root, without the '/'" )
+  | Empty_segment _ -> ("a glob cannot hold two '/' together", None)
   | Dot_segment { segment; _ } ->
-      Printf.sprintf "a glob cannot hold the segment '%s'" segment
-  | Double_star_in_segment { segment; _ } -> (
-      let start =
-        Printf.sprintf "the segment %s holds '**' and other characters"
-          (Toml.quote segment)
-      in
-      match suggestion segment with
-      | Some better -> Printf.sprintf "%s; write %s" start (Toml.quote better)
-      | None ->
-          start
-          ^ "; write '**' as a whole segment, or '*' for the characters inside \
-             one name")
+      (Printf.sprintf "a glob cannot hold the segment '%s'" segment, None)
+  | Double_star_in_segment { segment; _ } ->
+      ( Printf.sprintf "the segment %s holds '**' and other characters"
+          (Toml.quote segment),
+        Some
+          (match suggestion segment with
+          | Some better -> Printf.sprintf "write %s" (Toml.quote better)
+          | None ->
+              "write '**' as a whole segment, or '*' for the characters inside \
+               one name") )
   | Forbidden_character { character; _ } ->
-      let advice =
+      ( Printf.sprintf "a glob cannot hold '%c'" character,
         match character with
-        | '?' -> "; write '*', which matches any characters inside one name"
-        | '[' | ']' -> "; write one glob for each name"
-        | '{' | '}' -> "; write one glob for each choice"
-        | _ -> ""
-      in
-      Printf.sprintf "a glob cannot hold '%c'%s" character advice
+        | '?' -> Some "write '*', which matches any characters inside one name"
+        | '[' | ']' -> Some "write one glob for each name"
+        | '{' | '}' -> Some "write one glob for each choice"
+        | _ -> None )
+
+let message error =
+  match parts error with
+  | fault, None -> fault
+  | fault, Some help -> fault ^ "; " ^ help

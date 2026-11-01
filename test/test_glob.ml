@@ -393,6 +393,32 @@ let a_message_is_one_line =
           let message = Glob.message e in
           not (String.contains message '\n' || String.contains message '\r'))
 
+let a_message_is_its_parts_joined =
+  property ~name:"a message is its parts joined with '; '"
+    ~print:QCheck2.Print.string any_glob_text (fun text ->
+      match Glob.of_string text with
+      | Ok _ -> true
+      | Error e -> (
+          let message = Glob.message e in
+          match Glob.parts e with
+          | fault, None -> String.equal message fault
+          | fault, Some help -> String.equal message (fault ^ "; " ^ help)))
+
+let the_fault_keeps_a_segment_with_a_semicolon_whole () =
+  Alcotest.(check (pair string (option string)))
+    "the parts"
+    ( "the segment 'a; **b' holds '**' and other characters",
+      Some
+        "write '**' as a whole segment, or '*' for the characters inside one \
+         name" )
+    (Glob.parts
+       (Glob.Double_star_in_segment { offset = 0; segment = "a; **b" }));
+  Alcotest.(check (pair string (option string)))
+    "the parts of a suggestion"
+    ( "the segment '**; b' holds '**' and other characters",
+      Some "write '**/*; b'" )
+    (Glob.parts (Glob.Double_star_in_segment { offset = 0; segment = "**; b" }))
+
 let matches_answers_any_path =
   property ~name:"matches answers any string as a path"
     ~print:QCheck2.Print.(pair string string)
@@ -594,6 +620,9 @@ let tests =
     of_string_agrees_with_the_rules;
     of_string_answers_any_bytes;
     a_message_is_one_line;
+    a_message_is_its_parts_joined;
+    case "the fault keeps a segment with a semicolon whole"
+      the_fault_keeps_a_segment_with_a_semicolon_whole;
     matches_answers_any_path;
     case "a path in a plain glob is in the set"
       a_path_in_a_plain_glob_is_in_the_set;

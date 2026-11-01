@@ -102,3 +102,9 @@ val message : error -> string
 (** [message error] says what is wrong with the pattern and, when it can, what
     to write instead. It is one line, without the pattern itself and without a
     full stop at the end. *)
+
+val parts : error -> string * string option
+(** [parts error] is {!message} in two parts: what is wrong with the pattern,
+    and what to write instead when the message says it. [message error] is the
+    first part when the second is [None], and the two parts joined with ["; "]
+    otherwise. *)

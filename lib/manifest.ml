@@ -187,21 +187,13 @@ let nearest_or ~quote nearest otherwise =
 
 let remove = "remove this key"
 
-let split ~otherwise message =
-  let length = String.length message in
-  let rec find index =
-    if index + 1 >= length then (message, otherwise)
-    else if message.[index] = ';' && message.[index + 1] = ' ' then
-      ( String.sub message 0 index,
-        String.sub message (index + 2) (length - index - 2) )
-    else find (index + 1)
-  in
-  find 0
+let with_help ~otherwise (fault, help) =
+  (fault, Option.value help ~default:otherwise)
 
 let problem_text = function
   | Syntax error ->
-      split ~otherwise:"write the text here as TOML 1.1.0 allows"
-        (Toml.error_message error)
+      with_help ~otherwise:"write the text here as TOML 1.1.0 allows"
+        (Toml.error_parts error)
   | Not_a_version { key; text } ->
       ( Printf.sprintf "%s takes %s, not %s"
           (Toml.quote (last key))
@@ -304,16 +296,16 @@ let problem_text = function
         "write the member as a string" )
   | Not_a_branch { name; error } ->
       let reason, help =
-        split ~otherwise:"write the name of the default branch"
-          (Branch_name.message error)
+        with_help ~otherwise:"write the name of the default branch"
+          (Branch_name.parts error)
       in
       ( Printf.sprintf "%s is not a branch name; %s" (Toml.basic_string name)
           reason,
         help )
   | Bad_glob { member; error } ->
       let reason, help =
-        split ~otherwise:"write a glob such as \"docs/**/*.md\""
-          (Glob.message error)
+        with_help ~otherwise:"write a glob such as \"docs/**/*.md\""
+          (Glob.parts error)
       in
       ( Printf.sprintf "%s is not a glob: %s" (Toml.basic_string member) reason,
         help )
@@ -338,11 +330,11 @@ let problem_text = function
         Printf.sprintf "add 'version' to the pack %s, such as \"1.0\""
           (Toml.render_path [ pack ]) )
   | Bad_id_pattern { namespace; error } ->
-      split
+      with_help
         ~otherwise:
           (Printf.sprintf "correct the id pattern of the namespace %s"
              (Toml.quote namespace))
-        (Id_pattern.message error)
+        (Id_pattern.parts error)
   | Unknown_value { key; value; choices; nearest } ->
       ( Printf.sprintf "%s takes %s, not %s"
           (Toml.quote (last key))
