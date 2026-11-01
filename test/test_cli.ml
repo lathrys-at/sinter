@@ -289,6 +289,24 @@ let a_closed_standard_output_ends_any_command () =
        (Printf.sprintf "exec %s --help=plain >&-" (Filename.quote sinter))
        ~input:"" ~bound:10.)
 
+let a_full_standard_output_exits_with_3_and_names_the_failure () =
+  if not (Sys.file_exists "/dev/full") then Alcotest.skip ();
+  Alcotest.(check (pair string (list string)))
+    "the exit code and the lines of standard error"
+    ( "exited 3",
+      [
+        "error: cannot write the output: No space left on device";
+        "  = help: check that the output stays open and that the disk has \
+         space";
+      ] )
+    (let outcome, text =
+       outcome_and_errors
+         (Printf.sprintf "exec %s parse --grammar %s --tree %s >/dev/full"
+            (Filename.quote sinter) grammar sample)
+         ~input:""
+     in
+     (outcome, lines text))
+
 let a_closed_standard_input_reads_as_no_request () =
   Alcotest.(check (pair string string))
     "the run ends clean and writes no error" ("exited 0", "")
@@ -651,6 +669,9 @@ let tests =
       `Quick a_closed_standard_output_ends_a_run_that_writes_nothing;
     Alcotest.test_case "a closed standard output ends any command" `Quick
       a_closed_standard_output_ends_any_command;
+    Alcotest.test_case
+      "a full standard output exits with 3 and names the failure" `Quick
+      a_full_standard_output_exits_with_3_and_names_the_failure;
     Alcotest.test_case "a closed standard input reads as no request" `Quick
       a_closed_standard_input_reads_as_no_request;
     Alcotest.test_case "a failed read names the input" `Quick
