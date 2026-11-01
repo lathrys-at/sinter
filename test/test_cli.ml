@@ -381,6 +381,43 @@ let a_closed_standard_error_keeps_the_exit_code () =
           (Filename.quote sinter) query sample)
        ~input:"" ~bound:10.)
 
+let with_deep_query work =
+  let path = Filename.temp_file "sinter-deep" ".scm" in
+  Fun.protect
+    ~finally:(fun () -> Sys.remove path)
+    (fun () ->
+      let depth = 1_000_000 in
+      write path
+        (String.make depth '(' ^ "document" ^ String.make depth ')' ^ " @x\n");
+      work path)
+
+let exited outcome = String.starts_with ~prefix:"exited " outcome
+
+let a_deeply_nested_query_ends_parse_with_an_exit_code () =
+  with_deep_query (fun path ->
+      let outcome =
+        outcome_within
+          (Printf.sprintf "exec %s parse --grammar %s --query %s %s"
+             (Filename.quote sinter) grammar (Filename.quote path) sample)
+          ~input:"" ~bound:10.
+      in
+      Alcotest.(check bool)
+        (Printf.sprintf "the run exits, and is not %s" outcome)
+        true (exited outcome))
+
+let a_deeply_nested_query_does_not_end_serve () =
+  with_deep_query (fun path ->
+      let outcome =
+        outcome_within
+          (Printf.sprintf "exec %s serve" (Filename.quote sinter))
+          ~input:
+            (parse_request "1"
+               (Printf.sprintf {|"query":"%s","files":["%s"]|} path sample)
+            ^ "\n")
+          ~bound:10.
+      in
+      Alcotest.(check string) "the loop exits clean" "exited 0" outcome)
+
 let the_help_of_serve_names_only_the_codes_it_returns () =
   let status, text = run "serve --help=plain" in
   code "the exit code is 0" 0 status;
@@ -728,6 +765,10 @@ let tests =
       a_failed_read_names_the_input;
     Alcotest.test_case "a closed standard error keeps the exit code" `Quick
       a_closed_standard_error_keeps_the_exit_code;
+    Alcotest.test_case "a deeply nested query ends parse with an exit code"
+      `Quick a_deeply_nested_query_ends_parse_with_an_exit_code;
+    Alcotest.test_case "a deeply nested query does not end serve" `Quick
+      a_deeply_nested_query_does_not_end_serve;
     Alcotest.test_case "the help of serve names only the codes it returns"
       `Quick the_help_of_serve_names_only_the_codes_it_returns;
     Alcotest.test_case "the help of serve names the request id" `Quick
