@@ -307,6 +307,16 @@ let a_full_standard_output_exits_with_3_and_names_the_failure () =
      in
      (outcome, lines text))
 
+let a_current_folder_that_is_gone_is_an_environment_error () =
+  let folder = Filename.temp_dir "sinter-gone" "" in
+  Alcotest.(check string)
+    "the run ends with the environment code" "exited 3"
+    (outcome_within
+       (Printf.sprintf "cd %s && rmdir %s && exec %s scan"
+          (Filename.quote folder) (Filename.quote folder)
+          (Filename.quote (Filename.concat (Sys.getcwd ()) sinter)))
+       ~input:"" ~bound:10.)
+
 let a_closed_standard_input_reads_as_no_request () =
   Alcotest.(check (pair string string))
     "the run ends clean and writes no error" ("exited 0", "")
@@ -672,6 +682,9 @@ let tests =
     Alcotest.test_case
       "a full standard output exits with 3 and names the failure" `Quick
       a_full_standard_output_exits_with_3_and_names_the_failure;
+    Alcotest.test_case
+      "a current folder that is gone is an environment error" `Quick
+      a_current_folder_that_is_gone_is_an_environment_error;
     Alcotest.test_case "a closed standard input reads as no request" `Quick
       a_closed_standard_input_reads_as_no_request;
     Alcotest.test_case "a failed read names the input" `Quick
