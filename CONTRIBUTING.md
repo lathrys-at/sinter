@@ -553,8 +553,13 @@ this file.
 - End the message with the trailers of
   `docs/decisions/commit-messages.md`, before the sign-off: one
   `Step:`, `Record:`, or `Issue:` line that names what allows the
-  change, and one `Meets:` line for each promise of the step
-  that the commit carries out.
+  change; one `Meets:` line for each promise of the step that the
+  commit carries out; and one `Delivers: <plan>/<step> <hash>` line for
+  each step that the commit completes. Take that line from the field
+  `delivery` of the record of the step that `sinter scan` gives. A step
+  without promises needs the line too. Sinter reads every line of a
+  message that starts with `Delivers: `, so start no other line with
+  those words.
 - Do not commit build output. `.gitignore` covers `_build/`.
 
 ### Changes written by agents

@@ -14,7 +14,7 @@ items exist when the step is done. The plan reaches the default
 branch in a pull request of its own. Later branches each deliver one
 or more of its steps, and the tool checks the promises against the
 repository. This skill writes the plan file from a plan that the user
-approved, and says how a later branch marks a step that it delivers.
+approved, and says how a commit names a step that it delivers.
 
 The full specification is at
 <https://github.com/lathrys-at/sinter/blob/main/spec/vocabulary.md>,
@@ -122,12 +122,12 @@ A step with a scope and no promises is a refactor step. The manifest
 key `proof.step` in `sinter.toml` says when a refactor step is done.
 Read it before you write one:
 
-- `"delivered"`, or no key: the step is done when the plan file marks
-  it as delivered (section "Deliver a step" below). A mark on a step
-  whose scope the branch did not change is a finding. So give a
-  refactor step a narrow scope, the files that its work changes, or
-  give it a promise. A broad scope, such as `lib/**`, lets the mark
-  pass after a change that did not do the step's work.
+- `"delivered"`, or no key: the step is done when a commit names it
+  with its delivery line (section "Deliver a step" below). A delivery
+  line on a step whose scope the branch did not change is a warning.
+  So give a refactor step a narrow scope, the files that its work
+  changes, or give it a promise. A broad scope, such as `lib/**`, lets
+  the line pass after a change that did not do the step's work.
 - `"approval"`: the step is done when a person approves it in the
   ledger. Tell the user that the step needs that approval.
 - `"promises"`: every step needs a promise, and the tool reports each
@@ -211,30 +211,41 @@ GitHub accounts, so a bare tag line notifies strangers.
 
 ## Deliver a step
 
-A branch that delivers a step marks the step in the plan file with
-one tag line, `@delivered <hash>`, in the tag block of the step: the
-tag lines right after its heading. `<hash>` is the first six hex
-digits of the step hash, which covers the step's scope, its promises,
-and its text. Do these steps on the branch that delivers the step:
+The commit that completes a step names the step in its message with
+one **delivery line**: `Delivers: <plan>/<step> <hash>`. `<plan>` is
+the full form of the plan, `<step>` the slug of the step, and
+`<hash>` the first six hex digits of the step hash. The step hash
+covers the scope of the step, its promises, and its prose: the lines
+of its section after its heading line, without its tag lines. A step
+without promises needs the line too. Do these steps
+on the branch that delivers the step:
 
 1. Do the work of the step, and meet its promises.
-2. Run `sinter check --diff`. For a step with promises that the branch
-   makes met, Sinter reports `unmarked-step` and prints the line to
-   add. Add that line after the last tag line of the step, as printed.
-3. For a step without promises, Sinter prints no such line. Run
-   `sinter scan`, find the record of the step (`"kind":"step"`), and
-   take the first six digits of its field `csh`.
-4. Run `sinter check --diff` again, and fix what it reports.
+2. Run `sinter scan` on the final tree of the step. Find the record of
+   the step (`"kind":"step"`), and take the line from its field
+   `delivery`.
+3. Write that line in the message of the commit that completes the
+   step, at the start of a line of its own, in the trailers of the
+   message.
+4. Run `sinter check --diff --gate review`, and fix what it reports.
+   For a step with promises that the branch makes met and no delivery
+   line, Sinter reports `missing-delivery` and prints the line to add.
+   A line that does not count is `stale-delivery`: write the line that
+   Sinter prints in place of it, in the message of that commit. Use
+   `git commit --amend` for the last commit, and an interactive rebase
+   for an earlier commit.
 
-Keep the heading and the text of a delivered step. A rename, a split,
-a merge, or a removal of a delivered step is the finding
-`renamed-step`. An edit of the scope, a promise, or the text of a
-delivered step changes its hash, and the old mark is the finding
-`stale-mark`. Write the new hash that Sinter prints. The person who
-merges the branch sees the edit and the new mark together.
+Keep the heading of a started step: a step with a met promise, or a
+step whose delivery the ledger records. A rename, a split, a merge,
+or a removal of a started step is the finding `renamed-step`. An edit
+of the scope, a promise, or the prose of a step changes its hash, so
+a delivery line written before the edit no longer counts. Take the
+line again from `sinter scan`.
 
-Mark only the steps that the branch delivers. Never mark a step whose
-work the branch did not do.
+Name only the steps that the commit delivers. Never name a step whose
+work the branch did not do. Sinter reads every line of a message that
+starts with `Delivers: `, so start no other line of a message with
+those words.
 
 ## Writing rules
 
