@@ -130,6 +130,16 @@ let long_ids_answer_quickly () =
        (pattern "((a{0,255}){0,255}){0,255}b")
        (String.make 2_000 'a'))
 
+let a_lower_count_over_a_body_that_matches_empty_answers_quickly () =
+  let text = "((((a?){120}){120}){120}){120}b" in
+  let start = Unix.gettimeofday () in
+  let matched = Id_pattern.matches (pattern text) "b" in
+  let seconds = Unix.gettimeofday () -. start in
+  Alcotest.(check bool) (Printf.sprintf "%S against \"b\"" text) true matched;
+  Alcotest.(check bool)
+    (Printf.sprintf "%S against \"b\" in %.3f s, under 5 s" text seconds)
+    true (seconds < 5.0)
+
 let deep_groups_answer_quickly () =
   let deep = String.make 10_000 '(' ^ "a" ^ String.make 10_000 ')' in
   check_match deep "a" true;
@@ -545,6 +555,8 @@ let tests =
     case "an id with a space or a control character matches nothing"
       an_id_with_a_space_or_a_control_character_matches_nothing;
     case "nested quantifiers answer quickly" nested_quantifiers_answer_quickly;
+    case "a lower count over a body that matches empty answers quickly"
+      a_lower_count_over_a_body_that_matches_empty_answers_quickly;
     case "deep groups answer quickly" deep_groups_answer_quickly;
     case "long ids answer quickly" long_ids_answer_quickly;
     case "to_string gives the text back" to_string_gives_the_text_back;
