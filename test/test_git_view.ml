@@ -533,6 +533,17 @@ let a_tracked_file_is_compared_like_an_untracked_file_of_its_content () =
     ]
     (shown repo)
 
+let a_file_behind_a_symbolic_link_is_not_in_the_file_set () =
+  let repo = with_base [ ("d/x", "in\n") ] in
+  let outside = Repo.temp_dir () in
+  Out_channel.with_open_bin (Filename.concat outside "x") (fun channel ->
+      Out_channel.output_string channel "outside\n");
+  Repo.remove repo "d";
+  Repo.symlink repo ~target:outside "d";
+  match Git.files (opened repo) with
+  | Error _ -> Alcotest.fail "the file set fails"
+  | Ok files -> Alcotest.check strings "no path" [] (Git.paths files)
+
 let repo_under_a_colon () =
   let dir = Filename.concat (Repo.temp_dir ()) "a:b" in
   Unix.mkdir dir 0o700;
@@ -620,6 +631,8 @@ let tests =
     the_tree_key_is_the_tree_of_git_add_all;
     case "a tracked file is compared like an untracked file of its content"
       a_tracked_file_is_compared_like_an_untracked_file_of_its_content;
+    case "a file behind a symbolic link is not in the file set"
+      a_file_behind_a_symbolic_link_is_not_in_the_file_set;
     case "a repository under a name with a colon gives its diff"
       a_repository_under_a_name_with_a_colon_gives_its_diff;
     case "a repository under a name with a colon gives its tree key"
