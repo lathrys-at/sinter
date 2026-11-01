@@ -262,6 +262,12 @@ it delivers with a `Delivers:` line, Sinter checks the delivery lines
 of a branch, the job on the default branch records each delivery
 line in the ledger, and the mark `@delivered` goes away.
 
+## Upload Sinter's findings to code scanning
+@scope .github/workflows/**
+Write Sinter's findings on itself as SARIF at the gate `review` in CI,
+on each pull request from the repository and each push to the default
+branch, and upload them to GitHub code scanning in one category.
+
 ## Release the binaries
 @scope .github/workflows/**, README.md, docs/**, THIRD_PARTY.md, REUSE.toml, LICENSES/**
 Build release binaries for Linux x86-64 and macOS arm64 on a version
