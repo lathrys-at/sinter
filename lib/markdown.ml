@@ -454,17 +454,18 @@ let read_paragraph lines tags blocks paragraph =
   close ()
 
 let extent_lines lines ~holes first last =
-  let all =
-    List.filter
-      (fun line ->
-        not (List.exists (fun (low, high) -> low <= line && line <= high) holes))
-      (List.init (last - first + 1) (fun offset -> first + offset))
+  let count = Array.length holes in
+  let rec collect line hole found =
+    if line > last then found
+    else if hole < count && fst holes.(hole) <= line then
+      collect (max line (snd holes.(hole) + 1)) (hole + 1) found
+    else collect (line + 1) hole (line :: found)
   in
   let rec drop_blank = function
     | line :: rest when is_blank_line lines line -> drop_blank rest
     | kept -> kept
   in
-  List.rev (drop_blank (List.rev all))
+  List.rev (drop_blank (collect first 0 []))
 
 let plain_line lines ~numbered line =
   let content = Line_index.content lines line in
@@ -616,6 +617,9 @@ let assemble lines ~open_end ~texts walk errors =
         in
         up container.parent)
     containers;
+  let holes =
+    Array.map (fun holes -> Array.of_list (List.sort compare holes)) holes
+  in
   let count = Line_index.count lines in
   let at_line = Array.make (count + 1) None in
   Array.iteri (fun index tag -> at_line.(tag.line) <- Some (index, tag)) pending;
