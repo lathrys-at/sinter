@@ -194,6 +194,10 @@ val declaration_id : declaration -> string
 val edge_id : edge -> string
 (** [edge_id edge] is [<word>:<src>-><tag target>]. *)
 
+val ack_id : ack -> string
+(** [ack_id ack] is [ack:<block>:<target>], with {!ack.block} and {!ack.target}.
+*)
+
 val short_hash : step -> string
 (** [short_hash step] is the first six digits of {!step.hash}. *)
 

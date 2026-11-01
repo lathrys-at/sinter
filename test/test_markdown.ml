@@ -1336,8 +1336,23 @@ let a_read_without_texts_gives_no_text () =
           Alcotest.(check (option string)) "no text" None section.text)
         file.sections
 
+let unterminated_is_the_last_line_without_a_line_feed () =
+  List.iter
+    (fun (text, expected) ->
+      Alcotest.(check (option int))
+        (String.escaped text) expected (file text).unterminated)
+    [
+      ("@req a v1\n", None);
+      ("@req a v1", Some 1);
+      ("# A\r\n\r\n@req a v1", Some 3);
+      ("# A\n\n@req a v1\r\n", None);
+      ("", None);
+    ]
+
 let tests =
   [
+    Alcotest.test_case "unterminated is the last line without a line feed"
+      `Quick unterminated_is_the_last_line_without_a_line_feed;
     Alcotest.test_case
       "the text of a section leaves out its heading and its tag lines" `Quick
       the_text_of_a_section_leaves_out_its_heading_and_its_tag_lines;

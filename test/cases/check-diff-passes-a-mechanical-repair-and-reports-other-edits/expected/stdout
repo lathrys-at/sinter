@@ -20,6 +20,17 @@ help: cite the successor in place of the retired item
 3 + @cites next v2
   |
 
+stale-ack: the @ack names the hash 0123abcd, and its block has the hash 62671b3a
+ --> notes/ack.md:4:1
+  |
+4 | @ack retired 0123abcd
+  |              ^^^^^^^^ does not match the block
+  |
+help: remove the @ack line, check the block, and write a new @ack if the finding still applies
+  |
+4 - @ack retired 0123abcd
+  |
+
 unplanned-change: no step of an open plan, no rule, and no exempt path covers notes/cites-pin.md
  --> notes/cites-pin.md:3:1
   |

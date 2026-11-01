@@ -119,16 +119,30 @@ let first_seen lines =
          else line :: kept)
        [] lines)
 
-type block = { marker : string; indent : string; lines : line list }
+type block = {
+  marker : string;
+  indent : string;
+  lines : line list;
+  acks : string list;
+}
 
 let block =
   Gen.(
-    map2
-      (fun (marker, indent) lines ->
-        { marker; indent; lines = first_seen lines })
+    map3
+      (fun (marker, indent) lines acks ->
+        { marker; indent; lines = first_seen lines; acks })
       (oneof_list
          [ ("", ""); ("- ", "  "); ("- [ ] ", "      "); ("10. ", "    ") ])
-      (list_size (int_range 1 3) line))
+      (list_size (int_range 1 3) line)
+      (oneof_list
+         [
+           [];
+           [ "@ack retired dep 00000000" ];
+           [ "@ack nothing 00000000 \t" ];
+           [ "@ack retired login 00000000" ];
+           [ "@ack retired dep 00000000"; "@ack retired dep 1111" ];
+           [ "@ack nothing 00000000"; "@ack retired dep 00000000" ];
+         ]))
 
 let render_guide ending final blocks =
   String.concat ending
@@ -143,7 +157,8 @@ let render_guide ending final blocks =
                    (fun position line ->
                      (if position = 0 then block.marker else block.indent)
                      ^ render_line line)
-                   block.lines)
+                   block.lines
+              @ List.map (fun ack -> block.indent ^ ack) block.acks)
             blocks))
   ^ if final then ending else ""
 
@@ -194,9 +209,14 @@ let repairs ~base files change =
          String.equal (Finding.id finding) (Finding.id change.finding))
        (findings ~base (edited files change)))
 
+let file_lines text =
+  match List.rev (String.split_on_char '\n' text) with
+  | "" :: lines -> List.rev lines
+  | lines -> List.rev lines
+
 let hunk before after =
-  let old = Array.of_list (String.split_on_char '\n' before)
-  and fresh = Array.of_list (String.split_on_char '\n' after) in
+  let old = Array.of_list (file_lines before)
+  and fresh = Array.of_list (file_lines after) in
   let shorter = min (Array.length old) (Array.length fresh) in
   let rec prefix count =
     if count < shorter && String.equal old.(count) fresh.(count) then
@@ -247,12 +267,29 @@ let touches_only_its_place change =
   let old = Edits.document change.before
   and fresh = Edits.document change.after in
   let before = lines change.before and after = lines change.after in
-  let same_tag_line =
+  let same_tag_line () =
     let o = tag_at old line and n = tag_at fresh line in
     o.span.start.column = n.span.start.column && String.equal o.desc n.desc
   in
-  match change.finding.ackable with
-  | true ->
+  match (change.finding.finding_class, change.finding.ackable) with
+  | Finding_class.Stale_ack, _ ->
+      let before = file_lines change.before
+      and after = file_lines change.after in
+      let removed =
+        List.map (fun (edit : Fix.edit) -> edit.eline) change.edits
+      in
+      List.mem line removed
+      && List.length after = List.length before - List.length removed
+      && List.filteri (fun index _ -> not (List.mem (index + 1) removed)) before
+         = after
+      && List.for_all
+           (fun (edit : Fix.edit) ->
+             String.equal (tag_at old edit.eline).word "ack"
+             && (edit.line = edit.eline - 1
+                || (edit.line = edit.eline && edit.col = 1))
+             && edit.text = "")
+           change.edits
+  | _, true ->
       let edge = tag_at old line in
       let last =
         List.fold_left
@@ -265,14 +302,14 @@ let touches_only_its_place change =
       && String.equal ack.word "ack"
       && ack.block = edge.block
       && ack.span.start.column = (tag_at old last).span.start.column
-      && same_tag_line
-  | false ->
+      && same_tag_line ()
+  | _, false ->
       List.length after = List.length before
       && List.for_all Fun.id
            (List.mapi
               (fun index (o, n) -> index = line - 1 || String.equal o n)
               (List.combine before after))
-      && same_tag_line
+      && same_tag_line ()
       && List.for_all
            (fun (edit : Fix.edit) -> edit.line = line && edit.eline = line)
            change.edits
@@ -338,6 +375,22 @@ let probe_guide =
    @satisfies moved\n\
    @refines moved v2 Why.\n"
 
+let stale_guide =
+  "# Stale\n\n\
+   @cites login v2\n\
+   @ack retired login 00000000\n\n\
+   ## Item\n\n\
+   - @cites dep\n\
+  \  @ack retired dep 00000000 Why.\n\
+  \  @ack nothing 00000000\n\n\
+   ## First\n\n\
+   - @ack retired dep 00000000\n\
+  \  @cites dep\n\n\
+   ## Twice\n\n\
+   @cites dep\n\
+   @ack retired dep 00000000\n\
+   @ack retired dep 485e\n"
+
 let probe =
   [
     ("docs/decisions.md", decisions);
@@ -356,6 +409,8 @@ let probe =
        @cites dep v2  \r\n" );
     ("docs/end.md", "# End\n\n@cites login v2\n@cites dep caf\xc3\xa9");
     ("docs/bom.md", "\xef\xbb\xbf@cites dep\n@cites Login\n");
+    ("docs/stale.md", stale_guide);
+    ("docs/last.md", "# Last\r\n\r\n@cites login v2\r\n@ack suspect 00000000");
     (".plans/p.md", "# P\n\n- @plan p Why.\n");
   ]
 
@@ -452,7 +507,12 @@ let the_fix_line_is_the_line_of_170c04b () =
           (String.split_on_char '\n' (Buffer.contents buffer)))
       (List.filter
          (fun (finding : Finding.t) ->
-           finding.finding_class <> Finding_class.Missing_plan_id)
+           finding.finding_class <> Finding_class.Missing_plan_id
+           && not
+                (List.exists
+                   (fun (place : Finding.place) ->
+                     List.mem place.path [ "docs/stale.md"; "docs/last.md" ])
+                   (Option.to_list finding.place)))
          (findings ~base probe))
   in
   Alcotest.(check (list (pair string string)))
@@ -489,6 +549,35 @@ let every_fix_of_the_probe_touches_only_its_place () =
         true
         (touches_only_its_place change))
     (Lazy.force probe_changes)
+
+let the_probe_removes_each_stale_ack () =
+  Alcotest.(check (list string))
+    "the stale-ack fixes"
+    [
+      "docs/last.md:4 4:1-4:22 \"\"";
+      "docs/stale.md:4 3:16-4:28 \"\"";
+      "docs/stale.md:9 8:13-9:33 \"\"";
+      "docs/stale.md:10 9:33-10:24 \"\"";
+      "docs/stale.md:14 no fix";
+      "docs/stale.md:20 19:11-20:26 \"\"; 20:26-21:22 \"\"";
+    ]
+    (List.filter_map
+       (fun (finding : Finding.t) ->
+         match (finding.finding_class, finding.place) with
+         | Finding_class.Stale_ack, Some place ->
+             Some
+               (Printf.sprintf "%s:%d %s" place.path place.span.start.line
+                  (match finding.fix with
+                  | None -> "no fix"
+                  | Some fix ->
+                      String.concat "; "
+                        (List.map
+                           (fun (edit : Fix.edit) ->
+                             Printf.sprintf "%d:%d-%d:%d %S" edit.line edit.col
+                               edit.eline edit.ecol edit.text)
+                           (List.concat (Fix.alternatives fix)))))
+         | _ -> None)
+       (findings ~base probe))
 
 let edit_of (fields : Jsonl.flat) =
   match
@@ -575,4 +664,6 @@ let tests =
       every_fix_of_the_probe_is_a_mechanical_repair;
     Alcotest.test_case "every fix of the probe touches only its place" `Quick
       every_fix_of_the_probe_touches_only_its_place;
+    Alcotest.test_case "the probe removes each stale ack" `Quick
+      the_probe_removes_each_stale_ack;
   ]

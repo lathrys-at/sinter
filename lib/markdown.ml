@@ -73,6 +73,7 @@ type t = {
   blocks : block array;
   unread : span list;
   errors : span list;
+  unterminated : int option;
 }
 
 type error = Not_utf_8 of int | No_tree of Sinter_bridge.Tree.error
@@ -725,7 +726,14 @@ let assemble lines ~open_end ~texts walk errors =
         { section with extent; text })
       (Dynarray.to_array walk.sections)
   in
-  { sections; tags; blocks; unread = Dynarray.to_list walk.unread; errors }
+  {
+    sections;
+    tags;
+    blocks;
+    unread = Dynarray.to_list walk.unread;
+    errors;
+    unterminated = (if open_end then Some (Line_index.count lines) else None);
+  }
 
 let columns (tag : tag) part =
   let start = tag.span.start.column in
@@ -764,5 +772,7 @@ let read ?(texts = true) reader content =
               in
               Ok
                 (assemble lines
-                   ~open_end:(String.length text <> String.length content)
+                   ~open_end:
+                     (content <> ""
+                     && String.length text <> String.length content)
                    ~texts (structure lines captures) errors)))

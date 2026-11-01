@@ -81,6 +81,17 @@ wrong-source: @refines store needs a declaration that holds it
   | ^^^^^^^^ needs a declaration that holds it
   |
 
+stale-ack: the @ack names the hash 00000000, and its block has the hash 34f77c51
+  --> docs/guide.md:10:1
+   |
+10 | @ack retired logout 00000000
+   |                     ^^^^^^^^ does not match the block
+   |
+help: remove the @ack line, check the block, and write a new @ack if the finding still applies
+   |
+10 - @ack retired logout 00000000
+   |
+
 cycle: decision:new-store is in a cycle with decision:old-store
   --> docs/records.md:19:1
    |

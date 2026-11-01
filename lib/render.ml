@@ -188,6 +188,7 @@ type diff =
   | Added of { anchor : int; lines : string list }
   | Inserted of { anchor : int; line : string; marks : (int * int) list }
   | Replaced of { anchor : int; old : string; lines : string list }
+  | Removed of (int * string) list
 
 let offset raw column =
   let rec walk offset column =
@@ -244,9 +245,33 @@ let insertions line inserted =
       (Display.width (String.sub line 0 at), max 1 (Display.width text)))
     inserted
 
-let diff source path = function
-  | [] -> None
-  | (first : Fix.edit) :: _ as edits ->
+let ends raw column = offset raw column = Some (String.length raw)
+
+let removal source path (edit : Fix.edit) =
+  let line = Source.line source path in
+  match (edit.text, line edit.eline) with
+  | "", Some old when ends old edit.ecol ->
+      if edit.eline = edit.line + 1 then
+        Option.bind (line edit.line) (fun before ->
+            if ends before edit.col then Some (edit.eline, old) else None)
+      else if
+        edit.eline = edit.line && edit.col = 1 && old <> ""
+        && Option.is_none (line (edit.eline + 1))
+      then Some (edit.eline, old)
+      else None
+  | _ -> None
+
+let rec removals source path = function
+  | [] -> Some []
+  | edit :: rest ->
+      Option.bind (removal source path edit) (fun line ->
+          Option.map (fun lines -> line :: lines) (removals source path rest))
+
+let diff source path edits =
+  match (edits, removals source path edits) with
+  | [], _ -> None
+  | _ :: _, Some lines -> Some (Removed lines)
+  | ((first : Fix.edit) :: _ as edits), None ->
       let anchor = first.line in
       if
         List.exists
@@ -292,6 +317,8 @@ let last_number = function
   | Added { anchor; lines } -> anchor + List.length lines
   | Inserted { anchor; _ } -> anchor
   | Replaced { anchor; lines; _ } -> anchor + List.length lines - 1
+  | Removed lines ->
+      List.fold_left (fun top (number, _) -> max top number) 0 lines
 
 let signed ppf width number sign style text =
   Style.string Style.Frame ppf (Printf.sprintf "%*d " width number);
@@ -327,6 +354,10 @@ let diff_rows ppf width = function
       List.iteri
         (fun index line ->
           signed ppf width (anchor + index) "+" Style.Inserted line)
+        lines
+  | Removed lines ->
+      List.iter
+        (fun (number, old) -> signed ppf width number "-" Style.Removed old)
         lines
 
 let help ppf fix =

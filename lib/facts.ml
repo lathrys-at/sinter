@@ -127,6 +127,8 @@ type ack = {
   block_index : int;
 }
 
+let ack_id (ack : ack) = "ack:" ^ ack.block ^ ":" ^ ack.target
+
 type promise = {
   word : string;
   target : string;
@@ -871,9 +873,7 @@ let site_records facts =
 let ack_records facts =
   List.map
     (fun (ack : ack) ->
-      located ~kind:"ack"
-        ~id:("ack:" ^ ack.block ^ ":" ^ ack.target)
-        ~path:ack.path ~span:ack.span
+      located ~kind:"ack" ~id:(ack_id ack) ~path:ack.path ~span:ack.span
         [
           ("block", Jsonl.string ack.block);
           ("target", Jsonl.string ack.target);
@@ -1133,8 +1133,7 @@ let iter_identities ?(within = fun _ -> true) facts f =
     (fun (site : site) -> at "site" site.id site.path site.span)
     facts.sites;
   List.iter
-    (fun (ack : ack) ->
-      at "ack" ("ack:" ^ ack.block ^ ":" ^ ack.target) ack.path ack.span)
+    (fun (ack : ack) -> at "ack" (ack_id ack) ack.path ack.span)
     facts.acks;
   List.iter
     (fun plan ->

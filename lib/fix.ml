@@ -1,6 +1,8 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
+type removal = { previous : Markdown.tag; ack : Markdown.tag; last : bool }
+
 type t =
   | Word of { tag : Markdown.tag; word : string }
   | Pin of { tag : Markdown.tag; rev : int }
@@ -14,6 +16,7 @@ type t =
     }
   | Plan_id of { tag : Markdown.tag; id : Plan_target.id }
   | Ack of { last : Markdown.tag; block : Markdown.block; target : string }
+  | Remove_acks of removal list
 
 let fail reason = invalid_arg ("Fix: " ^ reason)
 
@@ -54,6 +57,27 @@ let ack (document : Markdown.t) ~block ~target =
   let last = List.nth block.tags (List.length block.tags - 1) in
   Ack { last = document.tags.(last); block; target }
 
+let removal (document : Markdown.t) ((previous : Markdown.tag), ack) =
+  if not (String.equal ack.Markdown.word "ack") then fail "the tag is no @ack";
+  if previous.span.stop.line + 1 <> ack.span.start.line then
+    fail "the tag is not on the line before the @ack";
+  { previous; ack; last = document.unterminated = Some ack.span.start.line }
+
+let remove_acks document pairs =
+  let removals =
+    List.sort
+      (fun a b -> Int.compare a.ack.span.start.line b.ack.span.start.line)
+      (List.map (removal document) pairs)
+  in
+  let rec apart = function
+    | first :: (second :: _ as rest) ->
+        first.ack.span.start.line < second.ack.span.start.line && apart rest
+    | [ _ ] | [] -> true
+  in
+  if removals = [] then fail "no @ack to remove";
+  if not (apart removals) then fail "an @ack comes twice";
+  Remove_acks removals
+
 type edit = { line : int; col : int; eline : int; ecol : int; text : string }
 
 let columns (tag : Markdown.tag) part =
@@ -91,6 +115,15 @@ let retarget (tag : Markdown.tag) (slug, rev) =
 let ack_line target (block : Markdown.block) =
   Printf.sprintf "@ack retired %s %s" target (String.sub block.hash 0 8)
 
+let written (tag : Markdown.tag) =
+  let rest = tag.rest in
+  let rec stop index =
+    if index > 0 && (rest.[index - 1] = ' ' || rest.[index - 1] = '\t') then
+      stop (index - 1)
+    else index
+  in
+  "@" ^ tag.word ^ String.sub rest 0 (stop (String.length rest))
+
 let alternatives = function
   | Word { tag; word } -> [ [ replace tag Tag_line.Word ("@" ^ word) ] ]
   | Pin { tag; rev } | Bump { tag; rev } -> [ [ revision tag rev ] ]
@@ -119,6 +152,20 @@ let alternatives = function
           };
         ];
       ]
+  | Remove_acks removals ->
+      [
+        List.map
+          (fun { previous; ack; last } ->
+            {
+              line =
+                (if last then ack.span.start.line else previous.span.stop.line);
+              col = (if last then 1 else previous.span.stop.column);
+              eline = ack.span.stop.line;
+              ecol = ack.span.stop.column;
+              text = "";
+            })
+          removals;
+      ]
 
 let help = function
   | Word _ -> "replace the tag word with the nearest tag word that Sinter knows"
@@ -135,6 +182,9 @@ let help = function
   | Successors { others = _ :: _; _ } ->
       "cite one of the successors in place of the retired item"
   | Ack _ -> "if the citation still holds, accept the finding with an @ack line"
+  | Remove_acks _ ->
+      "remove the @ack line, check the block, and write a new @ack if the \
+       finding still applies"
 
 let head (tag : Markdown.tag) target rev =
   Printf.sprintf "@%s %s%s" tag.word target
@@ -154,3 +204,7 @@ let text = function
              head tag slug (Option.map (fun _ -> rev) tag.rev))
            (first :: others))
   | Ack { block; target; _ } -> ack_line target block
+  | Remove_acks removals ->
+      "remove "
+      ^ String.concat " and "
+          (List.map (fun { ack; _ } -> written ack) removals)

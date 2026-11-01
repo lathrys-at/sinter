@@ -70,6 +70,16 @@ val ack : Markdown.t -> block:int -> target:string -> t
     @raise Invalid_argument
       if [block] is not an index of {!Markdown.t.blocks} of [document]. *)
 
+val remove_acks : Markdown.t -> (Markdown.tag * Markdown.tag) list -> t
+(** [remove_acks document pairs] is the fix of [stale-ack]: each [@ack] line of
+    [pairs] removed from [document]. Each pair is the tag line right before an
+    [@ack] line, and that [@ack] line.
+
+    @raise Invalid_argument
+      if [pairs] is empty, if the word of an [@ack] line is not [ack], if the
+      tag line of a pair does not stop on the line before its [@ack] line, or if
+      two pairs name one line. *)
+
 (** {1 Output} *)
 
 type edit = { line : int; col : int; eline : int; ecol : int; text : string }
@@ -83,8 +93,9 @@ val alternatives : t -> edit list list
     alternative, or one for each successor of {!successors}, in their order. The
     edits of one alternative are sorted by their spans, do not overlap, and are
     never none. Each edit of one alternative starts and stops on one line, the
-    line of the first edit of the alternative. An edit covers only the part of
-    the tag line that changes:
+    line of the first edit of the alternative, except the edits of
+    {!remove_acks}: each of them stops on its [@ack] line. An edit covers only
+    the part of the tag line that changes:
 
     - {!word}: the tag word, with [@] and the word.
     - {!pin} and {!bump}: the revision of the tag, with [v] and the revision;
@@ -98,7 +109,13 @@ val alternatives : t -> edit list list
       revision, with [v] and the new revision.
     - {!ack}: the empty span at the end of the last tag line of the block,
       before its line ending, with {!Markdown.block.new_line} of the block and
-      then the [@ack] line. *)
+      then the [@ack] line.
+    - {!remove_acks}: one edit with an empty text for each [@ack] line, in the
+      order of the lines: from the end of the tag line before the [@ack] line to
+      the end of the [@ack] line, each end before the line ending of its line;
+      or, when the [@ack] line is the last line of a file that does not end with
+      an LF ({!Markdown.t.unterminated}), from column 1 of the [@ack] line to
+      its end. *)
 
 val help : t -> string
 (** [help fix] is the help message of [fix], one line for the person who reads
@@ -111,4 +128,5 @@ val text : t -> string
     of the new tag line, [@<word> <target>] with [ v<rev>] when the new line has
     a revision, for {!pin}, {!bump}, {!spelling}, {!rename}, and {!plan_id};
     that head for each successor, joined by [" or "], for {!successors}; and the
-    [@ack] line for {!ack}. *)
+    [@ack] line for {!ack}; and [remove ] and each [@ack] line, without the
+    spaces and tabs at its end, joined by [" and "], for {!remove_acks}. *)

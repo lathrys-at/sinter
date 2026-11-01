@@ -603,6 +603,19 @@ ending, then a prefix, then the `@ack` line:
 A file that does not end with LF still does not end with LF after the
 edit.
 
+The fix of a `stale-ack` finding removes `@ack` lines: each void
+`@ack` line with the id of the finding ([algebra.md](algebra.md)
+section 9). It has one edit for each line, and each edit has an empty
+`text`. An edit starts at the end of the tag line before the `@ack`
+line, before the line ending of that tag line. It ends at the end of
+the `@ack` line, before the line ending of the `@ack` line. So the
+line ending of the `@ack` line becomes the line ending of the line
+before it. When the `@ack` line is the last line of a file that does
+not end with LF, the edit starts at column 1 of the `@ack` line. An
+`@ack` on the first tag line of its block gets no edit, because on the
+first line of a list item the line also holds the list marker. So a
+finding with such a line has no fix.
+
 The objects of `edits` are sorted by
 `(alt, path, line, col, eline, ecol, text)`, each string in byte
 order. No two objects are equal.
