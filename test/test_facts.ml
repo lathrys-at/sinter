@@ -2190,6 +2190,17 @@ let a_chain_of_2000_supersedes_edges_is_made_quickly () =
              Printf.sprintf "# D\n\n@decision d%d\n@supersedes d%d v1\n" index
                (index - 1) )))
 
+let a_file_of_24000_declarations_is_made_quickly () =
+  check_quick_make "a file of 24,000 declarations"
+    [
+      ( "docs/a.md",
+        String.concat ""
+          (List.init 24_000 (fun index ->
+               Printf.sprintf "## H%d\n\n@req r%d\n@cites r%d v1\n\n" index
+                 index
+                 ((index + 1) mod 24_000))) );
+    ]
+
 let case name f = Alcotest.test_case name `Quick f
 
 let a_plan_of_many_steps_makes_its_facts_quickly () =
@@ -2417,4 +2428,6 @@ let tests =
       covering_names_each_step_whose_effective_scope_holds_a_path;
     case "a chain of 2,000 supersedes edges is made quickly"
       a_chain_of_2000_supersedes_edges_is_made_quickly;
+    case "a file of 24,000 declarations is made quickly"
+      a_file_of_24000_declarations_is_made_quickly;
   ]
