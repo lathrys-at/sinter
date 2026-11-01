@@ -176,7 +176,8 @@ pub(crate) struct HeaderTableError {
     /// The byte span of the whole dotted key, as the text writes it.
     pub(crate) start: usize,
     pub(crate) end: usize,
-    /// The names of the table that a header made, from the top level.
+    /// The names of the last table on the path of the dotted key that a
+    /// header made, from the top level.
     pub(crate) table: Vec<String>,
     /// Whether that table is the last table of an array of tables.
     pub(crate) array: bool,
@@ -362,7 +363,8 @@ fn names_of(parts: &[KeyPart]) -> Vec<String> {
 }
 
 /// The error of a dotted key that adds a key to a table that a table
-/// header made, when `error` is that case.
+/// header made, when `error` is that case. The error names the last table
+/// on the path of the dotted key that a table header made.
 pub(crate) fn header_table_error(text: &str, error: &TomlError) -> Option<HeaderTableError> {
     if error.message() != "duplicate key" {
         return None;
@@ -376,13 +378,13 @@ pub(crate) fn header_table_error(text: &str, error: &TomlError) -> Option<Header
     let (mut table, mut names) = current_table(before.as_table());
     for (index, (part, _)) in parts[..leaf].iter().enumerate() {
         names.push(part.clone());
-        let (named, array) = match table.get(part)? {
-            Item::Table(child) if !child.is_implicit() => (index, false),
+        let (named, array, below) = match table.get(part)? {
+            Item::Table(child) if !child.is_implicit() => (index, false, Some(child)),
             Item::Table(child) => {
                 table = child;
                 continue;
             }
-            Item::ArrayOfTables(_) if index + 1 == leaf => (leaf, true),
+            Item::ArrayOfTables(_) if index + 1 == leaf => (leaf, true, None),
             Item::ArrayOfTables(array) => {
                 table = array.iter().last()?;
                 continue;
@@ -392,15 +394,43 @@ pub(crate) fn header_table_error(text: &str, error: &TomlError) -> Option<Header
         if named != named_at {
             return None;
         }
+        let (more, array) = below
+            .and_then(|child| last_header_table(child, &parts[index + 1..leaf]))
+            .unwrap_or((0, array));
+        let last = index + more;
+        names.extend(names_of(&parts[index + 1..=last]));
         return Some(HeaderTableError {
             start,
             end: parts[leaf].1.end,
             table: names,
             array,
-            rest: names_of(&parts[index + 1..]),
+            rest: names_of(&parts[last + 1..]),
         });
     }
     None
+}
+
+fn last_header_table(mut table: &Table, parts: &[KeyPart]) -> Option<(usize, bool)> {
+    let mut last = None;
+    for (index, (part, _)) in parts.iter().enumerate() {
+        match table.get(part) {
+            Some(Item::Table(child)) => {
+                if !child.is_implicit() {
+                    last = Some((index + 1, false));
+                }
+                table = child;
+            }
+            Some(Item::ArrayOfTables(tables)) => match tables.iter().last() {
+                Some(child) => {
+                    last = Some((index + 1, true));
+                    table = child;
+                }
+                None => break,
+            },
+            _ => break,
+        }
+    }
+    last
 }
 
 fn put_header_table(
@@ -507,6 +537,45 @@ mod tests {
         assert_eq!(found.table, names(&["a", "b", "c", "d"]));
         assert_eq!(found.rest, names(&["k", "t"]));
         assert_eq!(&text[found.start..found.end], "b.c.d.k.t");
+    }
+
+    #[test]
+    fn a_dotted_key_through_two_named_tables_names_the_last() {
+        let text = "[a.b.c]\n[a.b]\n[a]\nb.c.x = 1\n";
+        let found = header_table_error_of(text).expect("the case is found");
+        assert_eq!(found.table, names(&["a", "b", "c"]));
+        assert!(!found.array);
+        assert_eq!(found.rest, names(&["x"]));
+        assert_eq!(&text[found.start..found.end], "b.c.x");
+    }
+
+    #[test]
+    fn a_table_that_a_header_only_made_above_another_is_not_the_last() {
+        let text = "[a.b.c.d]\n[a.b]\n[a]\nb.c.d.x = 1\n";
+        let found = header_table_error_of(text).expect("the case is found");
+        assert_eq!(found.table, names(&["a", "b", "c", "d"]));
+        assert_eq!(found.rest, names(&["x"]));
+        let text = "[a.b.c.d]\n[a.b]\n[a]\nb.c.y = 1\n";
+        let found = header_table_error_of(text).expect("the case is found");
+        assert_eq!(found.table, names(&["a", "b"]));
+        assert_eq!(found.rest, names(&["c", "y"]));
+    }
+
+    #[test]
+    fn an_array_of_tables_after_a_named_table_is_the_last() {
+        let text = "[[a.b.c]]\n[a.b]\n[a]\nb.c.x = 1\n";
+        let found = header_table_error_of(text).expect("the case is found");
+        assert_eq!(found.table, names(&["a", "b", "c"]));
+        assert!(found.array);
+        assert_eq!(found.rest, names(&["x"]));
+    }
+
+    #[test]
+    fn a_value_on_the_path_ends_the_search_for_the_last_table() {
+        let text = "[a.b]\nc = 1\n[a]\nb.c.x = 1\n";
+        let found = header_table_error_of(text).expect("the case is found");
+        assert_eq!(found.table, names(&["a", "b"]));
+        assert_eq!(found.rest, names(&["c", "x"]));
     }
 
     #[test]

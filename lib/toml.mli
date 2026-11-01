@@ -172,9 +172,10 @@ type error =
       rest : string list;
     }
       (** the dotted key [key], as the text writes it at [at], adds a key to the
-          table [table], which a table header made. [array] is [true] when that
-          header is the header of an array of tables. [rest] is the names of the
-          dotted key after the table. *)
+          table [table], which a table header made. [table] is the last table on
+          the path of the dotted key that a table header made. [array] is [true]
+          when that header is the header of an array of tables. [rest] is the
+          names of the dotted key after the table. *)
   | Unrecognized of { at : position }
       (** the reader stopped with a message that this module does not know *)
 
