@@ -116,3 +116,11 @@
 (subdir
  cases/check-porcelain-verbose-prints-only-the-warnings/tree
  (dirs :standard .plans))
+
+(subdir
+ cases/check-counts-a-deleted-plan-file-as-exempt-on-both-sides/base
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-counts-a-deleted-plan-file-as-exempt-on-both-sides/base
+ (dirs :standard .plans))
