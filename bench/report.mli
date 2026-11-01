@@ -9,7 +9,8 @@ type row = {
   declarations : int option;  (** [None] for [self] *)
   command : string;  (** [scan] or [check] *)
   exit_code : int;  (** the exit status of sinter *)
-  peak_kib : Measurement.summary;
+  peak_kib : Measurement.summary option;
+      (** [None] when no run of the row measured the peak memory *)
   instructions : Measurement.summary option;
       (** [None] when no run of the row has an instruction count *)
   footprint_kib : Measurement.summary option;
@@ -34,7 +35,8 @@ type t = {
 
 val peak : t -> tree:string -> command:string -> float option
 (** [peak report ~tree ~command] is the median peak memory in the first row of
-    [tree] and [command], or [None] when no row is of [tree] and [command]. *)
+    [tree] and [command], or [None] when no row is of [tree] and [command] or
+    the row has no peak memory. *)
 
 val instructions : t -> tree:string -> command:string -> float option
 (** [instructions report ~tree ~command] is the median instruction count in the
@@ -61,11 +63,13 @@ val to_markdown : ?baseline:t -> t -> Budgets.outcome list -> string
     [## Performance]: one line on the instruction count, a table of the medians
     and spreads of the rows, in MiB and in billions of instructions, and a table
     of the outcomes, with the phase, the limit, and the growth of each, when
-    there are any. It ends with a line feed.
+    there are any. A measure that a row does not have shows [-]. It ends with a
+    line feed.
 
     With [baseline], each row of the table of medians also shows the median peak
     memory of [baseline] for the same tree and command, as {!peak} gives it, in
     MiB, and the difference of the row's median from it, in MiB and in percent
-    of it. A row for which {!peak} gives [None] shows [no baseline]. A baseline
-    of [0.] KiB shows the difference in MiB only. [to_markdown] does not compare
-    the platforms of [report] and [baseline]. *)
+    of it. A row for which {!peak} of [baseline] gives [None] shows
+    [no baseline]. A row with no peak memory of its own shows [-] for the
+    difference. A baseline of [0.] KiB shows the difference in MiB only.
+    [to_markdown] does not compare the platforms of [report] and [baseline]. *)

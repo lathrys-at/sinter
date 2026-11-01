@@ -258,6 +258,11 @@ let positions_stay_inside_their_lines =
           && after.column = place.column + 1)
         (List.init (String.length text) Fun.id))
 
+let make_allocates_in_proportion_to_the_number_of_lines () =
+  Counted_work.check_growth ~margin:1.5 ~sizes:(1000, 16_000)
+    ~input:(fun lines -> String.concat "" (List.init lines (fun _ -> "a b\n")))
+    Line_index.make
+
 let tests =
   [
     Alcotest.test_case "finds the lines of a plain text" `Quick
@@ -294,4 +299,6 @@ let tests =
     line_of_counts_the_line_feeds_before;
     position_of_a_character_counts_the_characters_before;
     positions_stay_inside_their_lines;
+    Alcotest.test_case "make allocates in proportion to the number of lines"
+      `Quick make_allocates_in_proportion_to_the_number_of_lines;
   ]

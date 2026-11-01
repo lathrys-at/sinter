@@ -483,6 +483,13 @@ machine reports one. The two platforms count different processes, so
 compare numbers from one platform only. The instruction counts are
 information only; no budget reads them.
 
+The option `--time` of `run.exe` names the program `time`. The default
+is `/usr/bin/time`. When no file is at that path, the run measures no
+peak memory and no peak footprint, and on macOS no instructions. The
+run still counts the words of each phase and checks the budgets. The
+JSON object then holds null for each measure that the run did not
+make, and the table shows `-`.
+
 When the environment variable `SINTER_PHASE_WORDS` names a file,
 `sinter scan` and `sinter check` write to it the words of memory that
 the OCaml runtime allocated in each phase of the command (a word is 8

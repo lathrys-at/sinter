@@ -649,19 +649,28 @@ let files_names_a_conflicted_path_once () =
     (List.length (List.filter (String.equal "conflict.txt") files))
 
 let files_reports_a_path_whose_type_it_cannot_read () =
-  let repo, t = Lazy.force conflicted in
-  let src = Filename.concat (Repo.root repo) "src" in
-  Unix.chmod src 0o000;
-  let result =
-    Fun.protect
-      ~finally:(fun () -> Unix.chmod src 0o755)
-      (fun () -> file_paths t)
+  let reports result cause =
+    match (error result : Git.error) with
+    | File_error detail ->
+        holds
+          ("the error names the file and the cause: " ^ detail)
+          (String.ends_with
+             ~suffix:("src/main.ml: " ^ Unix.error_message cause)
+             detail)
+    | other -> Alcotest.fail (print_error other)
   in
-  match error result with
-  | File_error detail ->
-      holds "the error names the file"
-        (String.ends_with ~suffix:"src/main.ml: Permission denied" detail)
-  | other -> Alcotest.fail (print_error other)
+  let looped = Repo.copy (Lazy.force shared) in
+  Repo.remove looped "src";
+  Repo.symlink looped ~target:"src" "src";
+  reports
+    (file_paths (ok (Git.open_repo ~env:(Repo.env looped) (Repo.root looped))))
+    Unix.ELOOP;
+  let repo, t = Lazy.force conflicted in
+  Option.iter
+    (fun result -> reports result Unix.EACCES)
+    (Unreadable.with_unreadable
+       (Filename.concat (Repo.root repo) "src")
+       (fun () -> file_paths t))
 
 let files_reports_output_it_cannot_read () =
   match error (Git.files (Lazy.force faked)) with
@@ -831,6 +840,34 @@ let tree_key_leaves_no_temporary_file () =
 
 let copy = lazy (Repo.copy (Lazy.force shared))
 
+let refusing_add env =
+  let real =
+    match
+      List.find_map
+        (fun dir ->
+          let git = Filename.concat dir "git" in
+          if dir <> "" && Sys.file_exists git then Some git else None)
+        (String.split_on_char ':' (path_of env))
+    with
+    | Some git -> git
+    | None -> Alcotest.fail "no git is on the PATH of the repository"
+  in
+  let bin = Repo.temp_dir () in
+  let git = Filename.concat bin "git" in
+  Out_channel.with_open_bin git (fun channel ->
+      Printf.fprintf channel
+        "#!/bin/sh\n\
+         for argument in \"$@\"; do\n\
+        \  if [ \"$argument\" = add ]; then\n\
+        \    echo 'fatal: this git refuses add' >&2\n\
+        \    exit 128\n\
+        \  fi\n\
+         done\n\
+         exec %s \"$@\"\n"
+        (Filename.quote real));
+  Unix.chmod git 0o755;
+  Array.append (without_path env) [| "PATH=" ^ bin |]
+
 let copy_run =
   lazy
     (let repo = Lazy.force copy in
@@ -839,14 +876,17 @@ let copy_run =
      let with_ignored = ok (Git.tree_key t) in
      Repo.write repo "more.txt" "new\n";
      let with_untracked = ok (Git.tree_key t) in
-     let file = Filename.concat (Repo.root repo) "more.txt" in
-     Unix.chmod file 0o000;
-     let failed, left =
-       Fun.protect
-         ~finally:(fun () -> Unix.chmod file 0o644)
-         (fun () -> in_temp_dir (fun () -> Git.tree_key t))
+     let refusing =
+       ok (Git.open_repo ~env:(refusing_add (Repo.env repo)) (Repo.root repo))
      in
-     (t, with_ignored, with_untracked, failed, left))
+     let file = Filename.concat (Repo.root repo) "more.txt" in
+     let failures =
+       in_temp_dir (fun () -> Git.tree_key refusing)
+       :: Option.to_list
+            (Unreadable.with_unreadable file (fun () ->
+                 in_temp_dir (fun () -> Git.tree_key t)))
+     in
+     (t, with_ignored, with_untracked, failures))
 
 let tree_key_sees_an_edit_that_keeps_size_and_time () =
   let repo = Repo.copy (Lazy.force shared) in
@@ -874,26 +914,32 @@ let tree_key_sees_an_edit_that_keeps_size_and_time () =
 
 let tree_key_does_not_change_with_an_ignored_file () =
   let key, _, _, _ = Lazy.force key_run in
-  let _, with_ignored, _, _, _ = Lazy.force copy_run in
+  let _, with_ignored, _, _ = Lazy.force copy_run in
   Alcotest.(check string) "the tree" key with_ignored
 
 let tree_key_changes_with_an_untracked_file () =
-  let _, with_ignored, with_untracked, _, _ = Lazy.force copy_run in
+  let _, with_ignored, with_untracked, _ = Lazy.force copy_run in
   holds "the key differs" (with_untracked <> with_ignored)
 
 let tree_key_reports_a_failed_git_add () =
-  let _, _, _, failed, _ = Lazy.force copy_run in
-  match error failed with
-  | Command_failed { args; _ } -> holds "git add failed" (List.mem "add" args)
-  | other -> Alcotest.fail (print_error other)
+  let _, _, _, failures = Lazy.force copy_run in
+  List.iter
+    (fun (failed, _) ->
+      match (error failed : Git.error) with
+      | Command_failed { args; _ } ->
+          holds "git add failed" (List.mem "add" args)
+      | other -> Alcotest.fail (print_error other))
+    failures
 
 let tree_key_removes_its_files_when_git_fails () =
-  let _, _, _, _, left = Lazy.force copy_run in
-  Alcotest.check strings "the temporary directory" [] left
+  let _, _, _, failures = Lazy.force copy_run in
+  List.iter
+    (fun (_, left) -> Alcotest.check strings "the temporary directory" [] left)
+    failures
 
 let broken =
   lazy
-    (let t, _, _, _, _ = Lazy.force copy_run in
+    (let t, _, _, _ = Lazy.force copy_run in
      Repo.break (Lazy.force copy);
      t)
 
@@ -1108,19 +1154,27 @@ let reports_a_temporary_directory_that_does_not_exist () =
   | other -> Alcotest.fail (print_error other)
 
 let tree_key_reports_an_index_it_cannot_read () =
+  let folder = Repo.copy (Lazy.force shared) in
+  let t = ok (Git.open_repo ~env:(Repo.env folder) (Repo.root folder)) in
+  let index = Filename.concat (Repo.root folder) ".git/index" in
+  Sys.remove index;
+  Unix.mkdir index 0o755;
+  (match (error (Git.tree_key t) : Git.error) with
+  | File_error detail ->
+      holds
+        ("the error names the cause: " ^ detail)
+        (String.ends_with ~suffix:(Unix.error_message Unix.EISDIR) detail)
+  | other -> Alcotest.fail (print_error other));
   let repo, t = Lazy.force conflicted in
   let index = Filename.concat (Repo.root repo) ".git/index" in
-  Unix.chmod index 0o000;
-  let result =
-    Fun.protect
-      ~finally:(fun () -> Unix.chmod index 0o644)
-      (fun () -> Git.tree_key t)
-  in
-  match error result with
-  | File_error detail ->
-      holds "the error names the index"
-        (String.starts_with ~prefix:index detail)
-  | other -> Alcotest.fail (print_error other)
+  Option.iter
+    (fun result ->
+      match (error result : Git.error) with
+      | File_error detail ->
+          holds "the error names the index"
+            (String.starts_with ~prefix:index detail)
+      | other -> Alcotest.fail (print_error other))
+    (Unreadable.with_unreadable index (fun () -> Git.tree_key t))
 
 let open_repo_waits_again_after_a_signal () =
   let env, script =
