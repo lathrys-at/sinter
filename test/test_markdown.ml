@@ -1356,8 +1356,17 @@ let a_read_without_texts_gives_no_text () =
           Alcotest.(check (option string)) "no text" None section.text)
         file.sections
 
+let a_carriage_return_with_no_line_feed_after_it_is_in_the_span () =
+  let file = file "@req a v1 x\r" in
+  Alcotest.(check string)
+    "the span of the tag line" "1:1-1:13"
+    (span file.tags.(0).span)
+
 let tests =
   [
+    Alcotest.test_case
+      "a carriage return with no line feed after it is in the span" `Quick
+      a_carriage_return_with_no_line_feed_after_it_is_in_the_span;
     Alcotest.test_case
       "the text of a section leaves out its heading and its tag lines" `Quick
       the_text_of_a_section_leaves_out_its_heading_and_its_tag_lines;
