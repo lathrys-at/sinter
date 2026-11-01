@@ -187,8 +187,11 @@ let a_fix_changes_the_revision () =
       Fix.bump (tag "# A\n@req a v2\n" 0) 1);
   refuses "a bump to v1 of a tag with no revision" (fun () ->
       Fix.bump (tag "# A\n@req a\n" 0) 1);
+  refuses "a bump above the largest revision" (fun () ->
+      Fix.bump (tag "# A\n@req a v2\n" 0) (Tag_line.largest_revision + 1));
   ignore (Fix.pin (tag "# A\n@cites a v2\n" 0) 1 : Fix.t);
-  ignore (Fix.bump (tag "# A\n@req a v2\n" 0) 3 : Fix.t)
+  ignore (Fix.bump (tag "# A\n@req a v2\n" 0) 3 : Fix.t);
+  ignore (Fix.bump (tag "# A\n@req a v2\n" 0) Tag_line.largest_revision : Fix.t)
 
 let an_ack_needs_a_block () =
   let document = document "# A\n@cites a\n" in

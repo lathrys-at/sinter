@@ -579,6 +579,19 @@ let the_probe_removes_each_stale_ack () =
          | _ -> None)
        (findings ~base probe))
 
+let largest = "# A\n\n@req a v9007199254740991\n"
+
+let every_fix_at_the_largest_revision_repairs_its_finding () =
+  let base = [ ("docs/a.md", largest ^ "Old.\n") ]
+  and files = [ ("docs/a.md", largest ^ "New.\n") ] in
+  List.iter
+    (fun change ->
+      Alcotest.(check bool)
+        (Finding.id change.finding)
+        true
+        (repairs ~base files change))
+    (changes ~base files)
+
 let edit_of (fields : Jsonl.flat) =
   match
     List.map
@@ -666,4 +679,6 @@ let tests =
       every_fix_of_the_probe_touches_only_its_place;
     Alcotest.test_case "the probe removes each stale ack" `Quick
       the_probe_removes_each_stale_ack;
+    Alcotest.test_case "every fix at the largest revision repairs its finding"
+      `Quick every_fix_at_the_largest_revision_repairs_its_finding;
   ]

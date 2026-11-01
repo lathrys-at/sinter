@@ -636,6 +636,25 @@ let unbumped_marks_the_revision_or_the_word () =
              ])
           []))
 
+let unbumped_has_no_fix_at_the_largest_revision () =
+  let unbumped rev =
+    List.map
+      (fun (finding : Finding.t) ->
+        Option.fold ~none:"no fix" ~some:Fix.text finding.fix)
+      (Adjudicator.classes
+         ~base:
+           (facts
+              [ ("docs/a.md", Printf.sprintf "# A\n\n@req a v%d\nOld.\n" rev) ])
+         (facts
+            [ ("docs/a.md", Printf.sprintf "# A\n\n@req a v%d\nNew.\n" rev) ])
+         [])
+  in
+  Alcotest.check strings "the largest revision" [ "no fix" ]
+    (unbumped Tag_line.largest_revision);
+  Alcotest.check strings "the revision below it"
+    [ Printf.sprintf "@req a v%d" Tag_line.largest_revision ]
+    (unbumped (Tag_line.largest_revision - 1))
+
 let renamed_marks_the_target_and_names_the_new_declaration () =
   let base =
     [
@@ -1188,6 +1207,8 @@ let tests =
       renamed_step_gives_one_finding_when_two_base_plans_match;
     case "unbumped marks the revision or the word"
       unbumped_marks_the_revision_or_the_word;
+    case "unbumped has no fix at the largest revision"
+      unbumped_has_no_fix_at_the_largest_revision;
     case "renamed marks the target and names the new declaration"
       renamed_marks_the_target_and_names_the_new_declaration;
     case "promise-collision marks the target" promise_collision_marks_the_target;

@@ -30,8 +30,8 @@ val bump : Markdown.tag -> int -> t
     none.
 
     @raise Invalid_argument
-      if [tag] has no target, or if [rev] is not above the revision of [tag], 1
-      when [tag] has none. *)
+      if [tag] has no target, if [rev] is not above the revision of [tag], 1
+      when [tag] has none, or if [rev] is above {!Tag_line.largest_revision}. *)
 
 val spelling : Markdown.tag -> string -> t
 (** [spelling tag target] is the fix of [dangling]: the tag target [target] in

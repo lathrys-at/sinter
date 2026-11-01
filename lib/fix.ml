@@ -34,6 +34,7 @@ let bump (tag : Markdown.tag) rev =
   targeted tag;
   if rev <= Option.value tag.rev ~default:1 then
     fail "the revision is not above the revision of the tag";
+  if rev > Tag_line.largest_revision then fail "the revision is too large";
   Bump { tag; rev }
 
 let spelling tag target =

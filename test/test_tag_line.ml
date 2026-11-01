@@ -100,6 +100,17 @@ let reads_the_largest_revision =
         } );
     ]
 
+let largest_revision_is_the_largest_that_parts_reads () =
+  Alcotest.(check int) "2^53 - 1" ((1 lsl 53) - 1) Tag_line.largest_revision;
+  Alcotest.(check (option int))
+    "the largest" (Some Tag_line.largest_revision)
+    (Tag_line.parts (Printf.sprintf " a v%d" Tag_line.largest_revision))
+      .revision;
+  Alcotest.(check (option int))
+    "one more" None
+    (Tag_line.parts (Printf.sprintf " a v%d" (Tag_line.largest_revision + 1)))
+      .revision
+
 let without_revision_gives cases () =
   List.iter
     (fun (rest, expected) ->
@@ -301,6 +312,8 @@ let tests =
       takes_a_bad_revision_as_description;
     Alcotest.test_case "reads the largest revision" `Quick
       reads_the_largest_revision;
+    Alcotest.test_case "largest_revision is the largest that parts reads" `Quick
+      largest_revision_is_the_largest_that_parts_reads;
     Alcotest.test_case "drops the revision and the blanks before it" `Quick
       drops_the_revision_and_the_blanks_before_it;
     parts_rebuild_the_rest;

@@ -153,7 +153,10 @@ let unbumped ~base ~same facts =
           Some
             (Finding.make Finding_class.Unbumped (subject declaration)
                ~place:(place declaration) ~detail
-               ~fix:(Fix.bump declaration.tag (highest.rev + 1))
+               ?fix:
+                 (if highest.rev < Tag_line.largest_revision then
+                    Some (Fix.bump declaration.tag (highest.rev + 1))
+                  else None)
                ?mark:
                  (let label =
                     Printf.sprintf "changed since the base, still v%d"
