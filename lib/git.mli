@@ -412,6 +412,39 @@ module Decode : sig
   (** [batch_header line] decodes one header line, without its line feed:
       [<id> <kind> <size>], [<name> missing], or [<name> ambiguous]. *)
 
+  (** {2 Raw objects} *)
+
+  type commit_object = {
+    tree : string;  (** the object id of the tree of the commit *)
+    parents : string list;  (** the object ids of its parents, in order *)
+  }
+  (** The header of a commit object that matters to a walk of its parents. *)
+
+  val commit_object : string -> (commit_object, string) result
+  (** [commit_object content] decodes the content of a commit object, as
+      [git cat-file --batch] prints it. The first line is [tree <id>]. Each
+      [parent <id>] line follows it, before any other line of the header. The
+      header ends at the first empty line. The error is for a content with no
+      [tree] line first, with an id that is not an object id, with a [parent]
+      line after another line of the header, or with no empty line after the
+      header. *)
+
+  type tree_record = {
+    mode : int;  (** the octal mode, for example [0o100644] or [0o40000] *)
+    name : string;  (** the name of the entry, with no [/] and no NUL byte *)
+    id : string;  (** the object id of the entry, in hexadecimal digits *)
+  }
+  (** One entry of a tree object. *)
+
+  val tree_object : object_format -> string -> (tree_record list, string) result
+  (** [tree_object format content] decodes the content of a tree object of a
+      repository of [format], as [git cat-file --batch] prints it: for each
+      entry, the mode in octal digits, a space, the name, a NUL byte, and the
+      object id in 20 bytes ([Sha1]) or 32 bytes ([Sha256]). The records are in
+      the order of the content. The error is for a mode that is not 1 to 6 octal
+      digits, an empty name, a name that holds [/], and a content that ends
+      inside an entry. *)
+
   (** {2 Refs} *)
 
   type ref_entry = {
@@ -476,3 +509,74 @@ module Decode : sig
       its line ending: a carriage return at its end is part of the line ending,
       unless git says that the line has no line feed. *)
 end
+
+(** {1 Refs and objects} *)
+
+val ref_target : t -> string -> (string option, error) result
+(** [ref_target repo refname] is the object id that the ref of the full name
+    [refname] holds, as one [git for-each-ref] gives it; [None] when [repo] has
+    no ref of that name. A tag is not peeled. The repository need not hold the
+    object of the id. A ref whose file holds no object id counts as no ref: git
+    ignores such a broken ref.
+
+    The error is [Bad_revision refname] when [refname] does not start with
+    [refs/], or holds a NUL byte, a line feed, or a space. Git never sees such a
+    name. *)
+
+type objects
+(** One [git cat-file --batch] process of one repository, which reads one object
+    at a time. It is valid only inside the function that {!with_objects} calls.
+*)
+
+val with_objects : t -> (objects -> ('a, error) result) -> ('a, error) result
+(** [with_objects repo f] starts one [git cat-file --batch] process in [repo],
+    calls [f] with it, and ends the process. The result is the result of [f], or
+    [Command_failed] when git does not exit with the status 0. The process ends
+    on every path, also when [f] raises; the exception then passes through.
+
+    While [f] runs, the process ignores the signal [SIGPIPE], so that a write to
+    a process that ended gives an error and does not end the process. The
+    function restores the earlier behaviour when it returns. *)
+
+(** What {!read_object} found. *)
+type found =
+  | Found of { kind : Decode.kind; content : string }
+      (** the type and the bytes of the object *)
+  | Absent  (** the repository holds no object of the id *)
+
+val read_object : objects -> string -> (found, error) result
+(** [read_object objects id] reads the object [id] with the process of
+    [objects]. It writes the id, and reads the answer, before it returns. In a
+    partial clone, an object that the clone does not hold is [Absent], and git
+    does not fetch it. The object of a replacement ref and the parents of
+    [.git/info/grafts] do not count: the content is the object as the repository
+    holds it.
+
+    The error is [Bad_revision id] when [id] is not an object id of the object
+    format of the repository; git never sees such a name. It is
+    [Malformed_output] when the answer of git does not decode, or names another
+    object, or when the process ended.
+
+    @raise Invalid_argument
+      if [objects] is used after the function that {!with_objects} called
+      returned. *)
+
+val read_objects : objects -> string list -> (found list, error) result
+(** [read_objects objects ids] reads each object of [ids], in order, as
+    {!read_object} reads one, and gives what it found for each, in the order of
+    [ids]. It writes up to 64 ids before it reads their answers, so it waits for
+    git less often than one {!read_object} for each id.
+
+    The error is [Bad_revision id] for the first id of [ids] that is not an
+    object id of the object format of the repository, before git reads any of
+    them. Otherwise it is the first error of {!read_object}.
+
+    @raise Invalid_argument
+      if [objects] is used after the function that {!with_objects} called
+      returned. *)
+
+val waits : objects -> int
+(** [waits objects] is the number of times that {!read_object} and
+    {!read_objects} wrote ids to the process of [objects] and then waited for
+    its answers. One {!read_object} waits once; one {!read_objects} waits once
+    for each group of 64 ids. *)

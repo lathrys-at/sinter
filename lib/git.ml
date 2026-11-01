@@ -184,8 +184,115 @@ module Decode = struct
           Some (Missing name)
       | _ -> None
     in
-    Option.to_result decoded
-      ~none:(Printf.sprintf "%S is not a header of git cat-file --batch" header)
+    match decoded with
+    | Some header -> Ok header
+    | None ->
+        Error
+          (Printf.sprintf "%S is not a header of git cat-file --batch" header)
+
+  type commit_object = { tree : string; parents : string list }
+
+  let commit_object content =
+    let rec lines start found =
+      match String.index_from_opt content start '\n' with
+      | None -> Error "the header of the commit does not end with an empty line"
+      | Some stop when stop = start -> Ok (List.rev found)
+      | Some stop ->
+          lines (stop + 1) (String.sub content start (stop - start) :: found)
+    in
+    let* header = lines 0 [] in
+    let field prefix line =
+      if String.starts_with ~prefix line then
+        let id =
+          String.sub line (String.length prefix)
+            (String.length line - String.length prefix)
+        in
+        if is_object_id id then Ok (Some id)
+        else Error (Printf.sprintf "%S does not name an object id" line)
+      else Ok None
+    in
+    match header with
+    | [] -> Error "the commit has no tree line"
+    | first :: rest -> (
+        let* tree = field "tree " first in
+        match tree with
+        | None -> Error (Printf.sprintf "%S is not a tree line" first)
+        | Some tree ->
+            let rec parents found = function
+              | line :: rest -> (
+                  let* parent = field "parent " line in
+                  match parent with
+                  | Some parent -> parents (parent :: found) rest
+                  | None -> others (List.rev found) (line :: rest))
+              | [] -> Ok { tree; parents = List.rev found }
+            and others parents = function
+              | line :: rest ->
+                  if String.starts_with ~prefix:"parent " line then
+                    Error
+                      (Printf.sprintf "%S follows another line of the header"
+                         line)
+                  else others parents rest
+              | [] -> Ok { tree; parents }
+            in
+            parents [] rest)
+
+  type tree_record = { mode : int; name : string; id : string }
+
+  let hex_digits = "0123456789abcdef"
+
+  let hex_of_bytes bytes =
+    let out = Bytes.create (2 * String.length bytes) in
+    String.iteri
+      (fun i c ->
+        let byte = Char.code c in
+        Bytes.set out (2 * i) hex_digits.[byte lsr 4];
+        Bytes.set out ((2 * i) + 1) hex_digits.[byte land 15])
+      bytes;
+    Bytes.unsafe_to_string out
+
+  let tree_object format content =
+    let id_bytes = match format with Sha1 -> 20 | Sha256 -> 32 in
+    let length = String.length content in
+    let rec read start found =
+      if start = length then Ok (List.rev found)
+      else
+        match
+          ( String.index_from_opt content start ' ',
+            String.index_from_opt content start '\000' )
+        with
+        | Some space, Some nul
+          when (space < nul)
+               [@mutaml.skip
+                 "a byte is never both a space and a NUL byte, so space and \
+                  nul differ, and space <= nul holds where space < nul holds"]
+          -> (
+            let mode_field = String.sub content start (space - start) in
+            let name = String.sub content (space + 1) (nul - space - 1) in
+            let mode =
+              if
+                String.length mode_field <= 6
+                && String.for_all
+                     (function '0' .. '7' -> true | _ -> false)
+                     mode_field
+              then int_of_string_opt ("0o" ^ mode_field)
+              else None
+            in
+            match mode with
+            | None ->
+                Error
+                  (Printf.sprintf "%S is not the mode of a tree entry"
+                     mode_field)
+            | Some _ when name = "" -> Error "a tree entry has an empty name"
+            | Some _ when String.contains name '/' ->
+                Error (Printf.sprintf "the tree entry %S holds a slash" name)
+            | Some _ when nul + 1 + id_bytes > length ->
+                Error "the tree ends inside the id of an entry"
+            | Some mode ->
+                let id = hex_of_bytes (String.sub content (nul + 1) id_bytes) in
+                read (nul + 1 + id_bytes) ({ mode; name; id } :: found))
+        | _ -> Error "the tree ends inside an entry"
+    in
+    read 0 []
 
   type ref_entry = {
     refname : string;
@@ -1258,3 +1365,182 @@ let tree_key t =
           let env = in_store ~store ~alternates env in
           let* _ = run ~env t (view_options @ [ "add"; "-A" ]) Result.ok in
           run ~env t (view_options @ [ "write-tree" ]) Decode.object_id))
+
+let ref_target t refname =
+  if
+    (not (String.starts_with ~prefix:"refs/" refname))
+    || String.exists
+         (function '\000' | '\n' | ' ' -> true | _ -> false)
+         refname
+  then Error (Bad_revision refname)
+  else
+    run t [ "for-each-ref"; "--format=%(refname)%00%(objectname)"; refname ]
+      (fun output ->
+        let* lines =
+          if output = "" then Ok []
+          else Result.map (String.split_on_char '\n') (Decode.line output)
+        in
+        let* pairs =
+          Decode.all
+            (fun line ->
+              match String.split_on_char '\000' line with
+              | [ name; id ] when Decode.is_object_id id -> Ok (name, id)
+              | _ ->
+                  Error
+                    (Printf.sprintf "%S is not a ref of git for-each-ref" line))
+            lines
+        in
+        Ok (List.assoc_opt refname pairs))
+
+type objects = {
+  repo : t;
+  args : string list;
+  requests : out_channel;
+  answers : in_channel;
+  mutable open_ : bool;
+  mutable waits : int;
+}
+
+type found = Found of { kind : Decode.kind; content : string } | Absent
+
+let read_answer objects id =
+  let malformed detail =
+    Error (Malformed_output { args = objects.args; detail })
+  in
+  match In_channel.input_line objects.answers with
+  | None -> malformed "the output ends too early"
+  | Some header -> (
+      let* header = decoded objects.args Decode.batch_header header in
+      match header with
+      | Decode.Missing name when String.equal name id -> Ok Absent
+      | Decode.Missing name ->
+          malformed (Printf.sprintf "git answered %s for %s" name id)
+      | Decode.Object { id = read_id; kind; size } -> (
+          match In_channel.really_input_string objects.answers size with
+          | None -> malformed "the output ends too early"
+          | Some content -> (
+              match In_channel.input_char objects.answers with
+              | Some '\n' when String.equal read_id id ->
+                  Ok (Found { kind; content })
+              | Some '\n' ->
+                  malformed (Printf.sprintf "git read %s for %s" read_id id)
+              | Some _ | None ->
+                  malformed "an object does not end with a line feed")))
+
+let request objects ids =
+  objects.waits <- objects.waits + 1;
+  match
+    List.iter (fun id -> output_string objects.requests (id ^ "\n")) ids;
+    flush objects.requests
+  with
+  | exception Sys_error _ ->
+      Error
+        (Malformed_output
+           {
+             args = objects.args;
+             detail = "git ended before it read a request";
+           })
+  | () -> Ok ()
+
+let check_open name objects =
+  if not objects.open_ then
+    invalid_arg ("Sinter_core.Git." ^ name ^ ": the process has ended")
+
+let read_object objects id =
+  check_open "read_object" objects;
+  if not (is_id objects.repo id) then Error (Bad_revision id)
+  else
+    let* () = request objects [ id ] in
+    read_answer objects id
+
+let batch_size = 64
+
+let read_objects objects ids =
+  check_open "read_objects" objects;
+  match List.find_opt (fun id -> not (is_id objects.repo id)) ids with
+  | Some id -> Error (Bad_revision id)
+  | None ->
+      let rec groups found = function
+        | [] -> Ok (List.rev found)
+        | ids ->
+            let group = List.filteri (fun index _ -> index < batch_size) ids in
+            let rest = List.filteri (fun index _ -> index >= batch_size) ids in
+            let* () = request objects group in
+            let* found =
+              List.fold_left
+                (fun found id ->
+                  let* found = found in
+                  let* answer = read_answer objects id in
+                  Ok (answer :: found))
+                (Ok found) group
+            in
+            groups found rest
+      in
+      groups [] ids
+
+let with_objects t f =
+  let args = [ "-C"; t.root; "cat-file"; "--batch" ] in
+  with_temp_file ".err" (fun err_path ->
+      with_fd err_path [ Unix.O_WRONLY ] (fun stderr ->
+          let request_reader, request_writer = Unix.pipe ~cloexec:true () in
+          let answer_reader, answer_writer =
+            Unix.pipe
+              ~cloexec:
+                (true
+                [@mutaml.skip
+                  "without the flag, git also holds the read end of the pipe \
+                   of its own answers; it never reads from it, so no request \
+                   and no answer changes"])
+              ()
+          in
+          let started =
+            match
+              Fun.protect
+                ~finally:(fun () ->
+                  Unix.close request_reader;
+                  Unix.close answer_writer)
+                (fun () ->
+                  Unix.create_process_env t.git
+                    (Array.of_list ("git" :: args))
+                    t.env request_reader answer_writer stderr)
+            with
+            | pid -> Ok pid
+            | exception Unix.Unix_error (error, _, _) ->
+                Unix.close request_writer;
+                Unix.close answer_reader;
+                Error (Git_not_found (Unix.error_message error))
+          in
+          let* pid = started in
+          let objects =
+            {
+              repo = t;
+              args;
+              requests = Unix.out_channel_of_descr request_writer;
+              answers = Unix.in_channel_of_descr answer_reader;
+              open_ = true;
+              waits = 0;
+            }
+          in
+          let pipe = Sys.signal Sys.sigpipe Sys.Signal_ignore in
+          let finish () =
+            objects.open_ <- false;
+            close_out_noerr objects.requests;
+            (try drain objects.answers with Sys_error _ -> ());
+            close_in_noerr objects.answers;
+            let status = wait pid in
+            Sys.set_signal Sys.sigpipe pipe;
+            status
+          in
+          match f objects with
+          | exception raised ->
+              ignore (finish ());
+              raise raised
+          | value -> (
+              let status = finish () in
+              match status with
+              | Unix.WEXITED 0 -> value
+              | _ ->
+                  let* stderr = head err_path in
+                  failed args status stderr)))
+
+let waits objects = objects.waits
