@@ -493,6 +493,23 @@ let untraced_reports_no_declaration_whose_slug_an_edge_names () =
     ]
     []
 
+let stale_ack_sits_at_an_ack_whose_hash_does_not_match_its_block () =
+  Alcotest.(check (list string))
+    "the lines of the stale-ack findings" [ "docs/b.md:6" ]
+    (List.filter_map
+       (fun (finding : Finding.t) ->
+         match (finding.finding_class, finding.place) with
+         | Finding_class.Stale_ack, Some place ->
+             Some (Printf.sprintf "%s:%d" place.path place.span.start.line)
+         | _ -> None)
+       (findings
+          [
+            ("docs/a.md", "# A\n\n@decision dep v1\n@deprecated\n");
+            ( "docs/b.md",
+              "# B\n\nText.\n\n- @cites dep\n  @ack retired dep 00000000\n"
+            );
+          ]))
+
 let plan steps =
   ( ".plans/p.md",
     "# P\n\n@plan p\n@scope lib/**, docs/, bin/main.ml, src/*/**, !lib/x/**\n"
@@ -1637,6 +1654,8 @@ let tests =
     case "untraced names what is missing" untraced_names_what_is_missing;
     case "untraced reports no declaration whose slug an edge names"
       untraced_reports_no_declaration_whose_slug_an_edge_names;
+    case "stale-ack sits at an ack whose hash does not match its block"
+      stale_ack_sits_at_an_ack_whose_hash_does_not_match_its_block;
     case "scope-outside-plan names the globs outside the plan"
       scope_outside_plan_names_the_globs_outside_the_plan;
     case "scope-overlap sits at the later step"
