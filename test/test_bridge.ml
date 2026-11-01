@@ -446,6 +446,21 @@ let the_collector_frees_every_handle () =
     "the shared grammar still parses" 1
     (List.length (captures_of (compiled "(number) @n") (parsed "[1]")))
 
+let rust_grammar = "fixtures/tree-sitter-rust/tree-sitter-rust.wasm"
+
+let a_grammar_loads_after_200_loads_and_closes_in_one_engine () =
+  let rust = In_channel.with_open_bin rust_grammar In_channel.input_all in
+  let engine = B.create () in
+  Fun.protect
+    ~finally:(fun () -> B.close engine)
+    (fun () ->
+      for index = 1 to 200 do
+        match B.Language.load engine ~name:"rust" ~wasm:rust with
+        | Ok language -> B.Language.close language
+        | Error error ->
+            Alcotest.failf "load %d fails: %s" index (B.Language.message error)
+      done)
+
 let handle_tests =
   [
     Alcotest.test_case "reports a missing node" `Quick reports_a_missing_node;
@@ -482,6 +497,9 @@ let handle_tests =
       every_handle_refuses_a_call_after_close;
     Alcotest.test_case "the collector frees every handle" `Quick
       the_collector_frees_every_handle;
+    Alcotest.test_case
+      "a grammar loads after 200 loads and closes in one engine" `Quick
+      a_grammar_loads_after_200_loads_and_closes_in_one_engine;
     property ~count:200 ~name:"a capture holds the bytes of its range"
       ~print:String.escaped Generators.any_text
       a_capture_holds_the_bytes_of_its_range;

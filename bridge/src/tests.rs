@@ -323,6 +323,75 @@ fn a_tree_and_a_query_outlive_their_language_and_their_engine() {
     unsafe { sinter_bridge_tree_free(tree) };
 }
 
+fn rust_wasm() -> Vec<u8> {
+    std::fs::read(repository().join("test/fixtures/tree-sitter-rust/tree-sitter-rust.wasm"))
+        .unwrap()
+}
+
+fn load_named(
+    engine: *mut SinterBridgeEngine,
+    name: &str,
+    wasm: &[u8],
+) -> Result<*mut SinterBridgeLanguage, Failure> {
+    let name = CString::new(name).unwrap();
+    made(unsafe { sinter_bridge_language_load(engine, name.as_ptr(), wasm.as_ptr(), wasm.len()) })
+}
+
+fn instances(engine: *mut SinterBridgeEngine) -> usize {
+    unsafe { &*engine }.instances.len()
+}
+
+#[test]
+fn after_200_loads_and_frees_the_store_holds_one_instance() {
+    let engine = new_engine();
+    for index in 1..=200 {
+        let language = load(engine, &fixture_wasm())
+            .unwrap_or_else(|failure| panic!("load {index}: {failure:?}"));
+        let tree = parse(engine, language, b"[1]").unwrap();
+        unsafe { sinter_bridge_tree_free(tree) };
+        unsafe { sinter_bridge_language_free(language) };
+        assert_eq!(instances(engine), 1, "load {index}");
+    }
+    unsafe { sinter_bridge_engine_free(engine) };
+}
+
+#[test]
+fn the_store_holds_an_instance_of_each_live_grammar_and_of_no_freed_one() {
+    let rust = rust_wasm();
+    let engine = new_engine();
+    let json = load(engine, &fixture_wasm()).unwrap();
+    for index in 1..=3 {
+        let language = load_named(engine, "rust", &rust).unwrap();
+        assert!(instances(engine) <= 2, "load {index}");
+        for (grammar, source) in [(json, &b"[1]"[..]), (language, &b"fn f() {}"[..])] {
+            let tree = parse(engine, grammar, source).unwrap();
+            unsafe { sinter_bridge_tree_free(tree) };
+        }
+        assert_eq!(instances(engine), 2, "parse {index}");
+        unsafe { sinter_bridge_language_free(language) };
+    }
+    unsafe { sinter_bridge_language_free(json) };
+    unsafe { sinter_bridge_engine_free(engine) };
+}
+
+#[test]
+fn a_parse_with_a_grammar_whose_instance_was_freed_makes_a_new_one() {
+    let engine = new_engine();
+    let json = load(engine, &fixture_wasm()).unwrap();
+    let other = load(engine, &fixture_wasm()).unwrap();
+    unsafe { sinter_bridge_language_free(other) };
+    let again = load(engine, &fixture_wasm()).unwrap();
+    assert_eq!(instances(engine), 1);
+    let tree = parse(engine, json, b"[1]").unwrap();
+    assert_eq!(sexp_of(tree), "(document (array (number)))");
+    assert_eq!(instances(engine), 2);
+    for handle in [json, again] {
+        unsafe { sinter_bridge_language_free(handle) };
+    }
+    unsafe { sinter_bridge_tree_free(tree) };
+    unsafe { sinter_bridge_engine_free(engine) };
+}
+
 #[test]
 fn a_language_outlives_its_engine() {
     let engine = new_engine();
