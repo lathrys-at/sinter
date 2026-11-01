@@ -29,17 +29,29 @@ over globs.
 
 A query is evaluated against a **universe** `U`. Sinter produces the
 universe by scanning one working tree `T` against one base `B`. The
-scan also reads one ledger `L`, one evidence set `E`, and one session
-`S`. The evidence set `E` is the set held for the tree key of `T`.
-Every fact is an immutable record with a `kind` and a stable `id` (see
-[jsonl.md](jsonl.md), section "Identity").
+scan also reads the messages `M` of the change, one ledger `L`, one
+evidence set `E`, and one session `S`. The evidence set `E` is the set
+held for the tree key of `T`. Every fact is an immutable record with a
+`kind` and a stable `id` (see [jsonl.md](jsonl.md), section
+"Identity").
+
+`M` holds the message of each commit that `HEAD` reaches and that the
+base commit does not reach, in the order that
+`git rev-list ^<base> HEAD` gives them. Sinter reads `M` in each
+mode, tree mode included, because each mode has a base
+([manifest.md](manifest.md) section 6). A base that is not a commit
+stops the command before it reads `M`. Work that no commit holds has
+no message. `M` is empty when the base is `HEAD` or reaches `HEAD`,
+and when `HEAD` names no commit. The delivery lines of `M`
+([vocabulary.md](vocabulary.md) section 10.8) are the delivery lines
+of the change.
 
 A query denotes a subset of `U` and nothing else. There are no
 scalars, no tuples, and no new facts. `U` is finite. Every closure is
 a least fixpoint of a monotone function, so every closure terminates.
 
-`U` is a function of `(T, B, L, E, S)`. Two evaluations with the same
-five inputs see the same universe and produce the same output bytes.
+`U` is a function of `(T, B, M, L, E, S)`. Two evaluations with the
+same six inputs see the same universe and produce the same output bytes.
 The algebra has no access to time, to the environment, or to the
 network. The tool sets `GIT_NO_LAZY_FETCH=1` in the environment of
 every git child process. So in a **partial clone**, a clone that
@@ -230,7 +242,7 @@ citation is still a citation.
 | `scope(S)` | plan, step, rule, claim | located facts and hunks whose `path` matches the effective scope of some member of `S`. A step's effective scope is the step's own `@scope` when the step declares one; otherwise it is the plan's scope. A plan's effective scope is the union of the effective scopes of its steps. A rule's scope is its `scope` field. `∅` when `S` holds no scope-bearing fact |
 | `promises(S)` | plan, step | promise facts whose step or plan is in `S` |
 | `met(P)` | promise | the promises in `P` that are met, as defined in [vocabulary.md](vocabulary.md) section 10.5 |
-| `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met. For a step with no promises, the first condition depends on `proof.step` ([manifest.md](manifest.md) section 10.4): under `"delivered"`, a branch delivers the step ([vocabulary.md](vocabulary.md) section 10.7); under `"approval"`, the step is approved (section 6.5); under `"promises"`, the condition never holds. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unmeasured` when `proof.verifies` is `"whole-run"` ([manifest.md](manifest.md) section 10.3). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
+| `done(S)` | plan, step | A step is in the result when both conditions hold. First: all of the step's promises are met. For a step with no promises, the first condition depends on `proof.step` ([manifest.md](manifest.md) section 10.4): under `"delivered"`, the step is delivered ([vocabulary.md](vocabulary.md) section 10.8); under `"approval"`, the step is approved (section 6.5); under `"promises"`, the condition never holds. Second: every `verifies` edge in the step's scope is at rung `passing`, or at rung `unmeasured` when `proof.verifies` is `"whole-run"` ([manifest.md](manifest.md) section 10.3). A plan is in the result when all of its steps are in the result and the second condition holds for the plan's scope |
 
 ### 6.5 Status predicates
 
@@ -546,8 +558,8 @@ column to `warn`, at every gate. `sinter init` writes
 incompleteness classes. They take no tier at the gate `turn`, so a
 check at that gate never reports them. A manifest cannot give them a
 tier there ([manifest.md](manifest.md) section 11.2). `sinter status`
-reports them. `status --done` exits 0 when the steps that the branch
-delivers ([vocabulary.md](vocabulary.md) section 10.7) are done. The
+reports them. `status --done` exits 0 when the steps in the
+change ([vocabulary.md](vocabulary.md) section 10.7) are done. The
 job that closes plans checks the completion condition of
 [ledger.md](ledger.md) section 8. Every other class is a violation, or
 a signal about the health of the repository's checking machinery.

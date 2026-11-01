@@ -156,6 +156,19 @@ val base_files : base -> (string * string) list
     symbolic links. The pairs are sorted by path, in byte order, with no path
     twice. *)
 
+val messages : t -> base:string -> ((string * string) list, error) result
+(** [messages repo ~base] is the object id and the message of each commit that
+    [HEAD] reaches and that the commit [base] does not reach, as one git process
+    gives them: [git rev-list ^<base> HEAD], newest first. A message is the raw
+    body of the commit, its subject and its body, in UTF-8 when git can convert
+    it. The list is empty when [HEAD] names no commit, and when [base] is [HEAD]
+    or reaches it. No setting of the git configuration changes the result.
+
+    The caller gives as [base] the object id of a commit of [repo], as
+    {!commit_of} and {!merge_base} give it. The error is [Bad_revision base]
+    when [base] is not an object id of the object format of [repo]; git never
+    sees such a name. A [base] that names no commit gives a wrong result. *)
+
 val fold_blobs :
   t ->
   string list ->
@@ -415,6 +428,14 @@ module Decode : sig
   val refs : string -> (ref_entry list, string) result
   (** [refs output] decodes the output of [git for-each-ref] with that format:
       one line for each ref. The empty string gives the empty list. *)
+
+  val messages : string -> ((string * string) list, string) result
+  (** [messages output] decodes the output of
+      [git rev-list --no-commit-header --format=%H%x00%B%x00]: for each commit,
+      the object id, a NUL byte, the message, a NUL byte, and a line feed. The
+      pairs are in the order of the output. The empty string gives the empty
+      list. The error is for a record that does not end with a NUL byte and a
+      line feed, and for an id that is not an object id. *)
 
   (** {2 Diff output} *)
 

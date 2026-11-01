@@ -15,6 +15,7 @@ type error =
   | Wrong_kind of { entry : string; folder : bool }
   | Reserved_entry of string
   | Repository_with_base
+  | Message_without_base
   | Bad_variable of string
   | Did_not_end of float
   | Ended_by_signal of int
@@ -25,7 +26,12 @@ type error =
 type mode = Compare | Promote_into of string
 
 let ( let* ) = Result.bind
-let known = [ "args"; "env"; "tree"; "base"; "repository"; "stdin"; "expected" ]
+
+let known =
+  [
+    "args"; "env"; "tree"; "base"; "message"; "repository"; "stdin"; "expected";
+  ]
+
 let reserved = [ "ledger.jsonl"; "evidence" ]
 let outputs = [ "stdout"; "stderr"; "exit" ]
 
@@ -66,6 +72,9 @@ let message ~case error =
     | Repository_with_base ->
         "the case holds both base and repository. A case with base already \
          runs in a repository; remove repository."
+    | Message_without_base ->
+        "the case holds message and no base. The message is the message of a \
+         commit of tree on top of base; add base, or remove message."
     | Bad_variable line ->
         Printf.sprintf
           "the line %S of env is not NAME=value, with a name that is not empty."
@@ -356,7 +365,7 @@ let commit_all repository ~message =
   in
   Ok ()
 
-let build workspace ~base ~tree =
+let build ?message workspace ~base ~tree =
   let* repository = initialize workspace in
   copy_folder base workspace.root;
   let* () = commit_all repository ~message:"base" in
@@ -366,6 +375,26 @@ let build workspace ~base ~tree =
         remove (Filename.concat workspace.root name))
     (entries workspace.root);
   copy_folder tree workspace.root;
+  let* () =
+    match message with
+    | None -> Ok ()
+    | Some path ->
+        let copy = Filename.concat workspace.scratch "message" in
+        write_file copy (read_file path);
+        let* _ = git repository [ "checkout"; "--quiet"; "-b"; "topic" ] in
+        let* _ = git repository [ "add"; "--all" ] in
+        let* _ =
+          git repository
+            [
+              "commit";
+              "--quiet";
+              "--allow-empty";
+              "--cleanup=verbatim";
+              "--file=" ^ copy;
+            ]
+        in
+        Ok ()
+  in
   Ok repository
 
 let build_committed workspace ~tree =
@@ -374,10 +403,10 @@ let build_committed workspace ~tree =
   let* () = commit_all repository ~message:"tree" in
   Ok repository
 
-let with_repository ~base ~tree f =
+let with_repository ?message ~base ~tree f =
   with_temporary_folder (fun temporary ->
       let* repository =
-        guarded (fun () -> build (prepare temporary) ~base ~tree)
+        guarded (fun () -> build ?message (prepare temporary) ~base ~tree)
       in
       Ok (f repository))
 
@@ -386,6 +415,7 @@ type layout = {
   env : string option;
   tree : string;
   base : string option;
+  message : string option;
   repository : bool;
   stdin : string option;
   expected : string;
@@ -428,6 +458,12 @@ let read_layout mode case =
       | Some _, Some _ -> Error Repository_with_base
       | _ -> Ok ()
     in
+    let* message = find case "message" ~folder:false in
+    let* () =
+      match (message, base) with
+      | Some _, None -> Error Message_without_base
+      | _ -> Ok ()
+    in
     let* stdin = find case "stdin" ~folder:false in
     let* expected = find case "expected" ~folder:true in
     let* () =
@@ -453,6 +489,7 @@ let read_layout mode case =
         env;
         tree;
         base;
+        message;
         repository = Option.is_some repository;
         stdin;
         expected = Filename.concat case "expected";
@@ -631,7 +668,10 @@ let run ?(bound = 10.) ?caller ~binary mode case =
                 let* _ = build_committed workspace ~tree:layout.tree in
                 Ok ()
             | Some base, _ ->
-                let* _ = build workspace ~base ~tree:layout.tree in
+                let* _ =
+                  build ?message:layout.message workspace ~base
+                    ~tree:layout.tree
+                in
                 Ok ()
           in
           let output = Filename.concat temporary "stdout"

@@ -230,6 +230,8 @@ Example: this plan file gives the canonical bytes below it.
 | `met` `total` | int | *derived* promise counts |
 | `done` | bool | *derived* |
 | `csh` | string | the step hash, as the text after this table gives it |
+| `delivered` | bool | *derived*: the step is delivered ([vocabulary.md](vocabulary.md) section 10.8) |
+| `delivery` | string | the delivery line of the step ([vocabulary.md](vocabulary.md) section 10.8), for example `Delivers: sinter-v0.1@097ce8/check-a-tree 05ef56`; omitted when the slug of the step is empty |
 | `approved` | bool | *derived*: the step is approved ([algebra.md](algebra.md) section 6.5) |
 | `approval` | string | *derived*: the id of the `approval` entry of the ledger that approves the step ([ledger.md](ledger.md) section 5.1); omitted when none |
 | `active` | bool | *derived* from the session; `false` when there is no session |
@@ -272,7 +274,7 @@ are no part of the step hash. The rules of section 2 for the values of
 a record do not apply to this object.
 
 Example: this step gives the canonical bytes below it, and the step
-hash `23e47131fdb5…`.
+hash `23e47131fdb5…`. Its delivery line therefore ends with `23e471`.
 
 ```
 ## Tidy the cache

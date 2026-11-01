@@ -223,7 +223,7 @@ when the person overrides their own earlier refusal.
 
 ### 8.1 The entry and its writer
 
-@req ledger-completed v5
+@req ledger-completed v6
 
 A `completed` entry closes a plan whose steps are all done
 ([algebra.md](algebra.md) section 6.4).
@@ -243,7 +243,7 @@ order:
 |---|---|
 | `subject` | `plan:<slug>@<id>`: the fact id of the plan, with its full form |
 | `approval` | the id of the latest `approval` entry whose subject is the plan, at the time the plan closed; omitted when the plan has no approval |
-| `merge` | the merge commit that delivered the last step of the plan ([vocabulary.md](vocabulary.md) section 10.7) |
+| `merge` | the merge commit that delivered the last step of the plan ([vocabulary.md](vocabulary.md) section 10.8) |
 | `report` | SHA-256 of the report compiled when the plan closed |
 
 ### 8.2 The completion condition
@@ -276,10 +276,10 @@ of the job therefore costs one repeat run and loses no facts.
 
 ### 9.1 The fields of an abandoned entry
 
-@req ledger-abandoned v3
+@req ledger-abandoned v4
 
 An `abandoned` entry closes a plan whose remaining steps no branch
-will deliver ([vocabulary.md](vocabulary.md) section 10.7). A person
+will deliver ([vocabulary.md](vocabulary.md) section 10.8). A person
 runs the abandon command; the tool never writes this entry on its own.
 
 | field | meaning |

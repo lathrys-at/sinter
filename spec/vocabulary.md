@@ -623,7 +623,7 @@ A **plan** is an agreement about a piece of work. A plan holds a set
 of steps. Each step promises that certain tags will exist in the
 repository when the step is done. A plan reaches the default branch in
 a pull request of its own. Later branches each deliver one or more of
-its steps (section 10.7). So an open plan on the default branch is
+its steps (section 10.8). So an open plan on the default branch is
 normal while its work goes on.
 
 A plan file is a markdown file under `.plans/`. A plan is **open**
@@ -767,8 +767,7 @@ when both conditions hold: the first condition that the manifest key
 and every `@verifies` edge in its scope is at an allowed rung. The
 first condition is one of these:
 
-- `"delivered"`, the default: a branch delivers the step (section
-  10.7).
+- `"delivered"`, the default: the step is delivered (section 10.8).
 - `"approval"`: the ledger holds an approval of the step that matches
   its current step hash ([ledger.md](ledger.md) section 5.1).
 - `"promises"`: the condition never holds. A refactor step is never
@@ -785,20 +784,69 @@ by its text. The rules for comparing commitment sets, and for which
 amendments need a new approval, are in [ledger.md](ledger.md) section
 11.
 
-### 10.7 Delivery
+### 10.7 Steps in the change
 
-A branch **delivers** a step when the diff between the base and the
-working tree makes a promise of the step met: the promise is met in
-the working tree, and it is not met in the base.
+A step is **in the change** when one of two things holds:
+
+- A delivery line of the change counts for the step (section 10.8).
+- The diff between the base and the working tree makes a promise of
+  the step met: the promise is met in the working tree, and it is not
+  met in the base.
 
 One branch can deliver several steps, of one plan or of several
 plans. The steps of one plan can take several branches.
 
-The gate `review` checks the steps that the branch delivers. The gate
+The gate `review` checks the steps in the change. The gate
 `merged` runs on the default branch, where no diff exists, and checks
 every step of each open plan ([algebra.md](algebra.md) section 9). The
 job that closes plans closes a plan when every step of the plan is
 done ([ledger.md](ledger.md) section 8).
+
+### 10.8 Delivery lines
+
+A commit names each step that it delivers with a **delivery line**:
+one line of its message, in this form:
+
+```
+Delivers: <plan>/<step> <hash>
+```
+
+`<plan>` is the full form of the plan (section 4.3), `<step>` is the
+slug of the step (section 10.3), and `<hash>` is the first six
+lowercase hex digits of the step hash ([jsonl.md](jsonl.md) section
+4). One space stands after `Delivers:`, and one space stands between
+`<step>` and `<hash>`. Spaces, tabs, and carriage returns at the end
+of the line do not count. Example:
+`Delivers: sinter-v0.1@097ce8/check-a-tree 05ef56`. The field
+`delivery` of the record of a step gives its delivery line
+([jsonl.md](jsonl.md) section 4).
+
+Sinter reads the messages of the commits of the change
+([algebra.md](algebra.md) section 2). It reads each line of a message
+that starts with `Delivers: `, in every paragraph: the subject, the
+body, and the trailers. A squash merge puts the messages of the
+commits of a branch in the body of one commit, so a delivery line can
+stand in any paragraph.
+
+A delivery line **counts** for a step when both conditions hold:
+
+1. The working tree holds an open plan whose full form is `<plan>`,
+   and that plan has a step whose slug is `<step>`.
+2. `<hash>` is the first six hex digits of the step hash of that step
+   in the working tree.
+
+The step hash covers the agreement of the step: its effective scope,
+its promises, and its text. It does not cover the heading of the
+step, any tag line, or the text of other steps. A change of the
+effective scope, of a promise, or of the text of the step changes the
+step hash, so a delivery line written before the change no longer
+counts.
+
+A step is **delivered** when a delivery line of the change counts for
+it.
+
+A delivery line is no tag. It changes neither the plan file nor the
+commitment set of the plan (section 10.6).
 
 ## 11. Rename
 

@@ -959,7 +959,43 @@ let promise_id plan step (promise : promise) =
   String.concat ":"
     [ "promise"; step_id plan step; promise.word; promise.target ]
 
-let plan_records facts plan =
+let short_hash (step : step) = String.sub step.hash 0 6
+
+let delivery plan (step : step) =
+  Delivery_line.make ~plan:(full_form plan) ~step:step.slug
+    ~hash:(short_hash step)
+
+let named facts =
+  let table = Hashtbl.create 16 in
+  List.iter
+    (fun plan ->
+      List.iter
+        (fun (step : step) ->
+          let key = (full_form plan, step.slug) in
+          if not (Hashtbl.mem table key) then Hashtbl.add table key (plan, step))
+        plan.steps)
+    facts.plans;
+  fun (line : Delivery_line.t) -> Hashtbl.find_opt table (line.plan, line.step)
+
+let counts (step : step) (line : Delivery_line.t) =
+  String.equal line.hash (short_hash step)
+
+module Ids = Set.Make (String)
+
+let delivered_steps facts deliveries =
+  let named = named facts in
+  List.fold_left
+    (fun ids (found : Delivery_line.found) ->
+      match
+        Option.bind found.line (fun line ->
+            Option.map (fun pair -> (line, pair)) (named line))
+      with
+      | Some (line, (plan, step)) when counts step line ->
+          Ids.add (step_id plan step) ids
+      | Some _ | None -> ids)
+    Ids.empty deliveries
+
+let plan_records facts ~delivered plan =
   let plan_approved = not (needs_approval facts.manifest Manifest.Plan) in
   let plan_record =
     located ~kind:"plan" ~id:(plan_fact_id plan) ~path:plan.path ~span:plan.span
@@ -982,6 +1018,7 @@ let plan_records facts plan =
     let scope = effective_scope plan step in
     let in_scope = Path_set.mem (path_set scope) in
     let step_id = step_id plan step in
+    let delivered = Ids.mem step_id delivered in
     let promises =
       List.map
         (fun (promise : promise) ->
@@ -1004,26 +1041,31 @@ let plan_records facts plan =
       if total > 0 then met = total
       else
         match Manifest.step facts.manifest with
-        | Manifest.Delivered -> false
+        | Manifest.Delivered -> delivered
         | Manifest.Step_approval -> approved
         | Manifest.Promises -> false
     in
     let done_ = verified && settled in
     located ~kind:"step" ~id:step_id ~path:plan.path ~span:step.span
-      [
-        ("plan", Jsonl.string (full_form plan));
-        ("slug", Jsonl.string step.slug);
-        ("title", Jsonl.string step.title);
-        ("scope", Jsonl.strings scope);
-        ("own_scope", Jsonl.bool (Option.is_some step.own_scope));
-        ("refactor", Jsonl.bool (total = 0));
-        ("met", Jsonl.int met);
-        ("total", Jsonl.int total);
-        ("done", Jsonl.bool done_);
-        ("csh", Jsonl.string step.hash);
-        ("approved", Jsonl.bool approved);
-        ("active", Jsonl.bool false);
-      ]
+      ([
+         ("plan", Jsonl.string (full_form plan));
+         ("slug", Jsonl.string step.slug);
+         ("title", Jsonl.string step.title);
+         ("scope", Jsonl.strings scope);
+         ("own_scope", Jsonl.bool (Option.is_some step.own_scope));
+         ("refactor", Jsonl.bool (total = 0));
+         ("met", Jsonl.int met);
+         ("total", Jsonl.int total);
+         ("done", Jsonl.bool done_);
+         ("csh", Jsonl.string step.hash);
+         ("delivered", Jsonl.bool delivered);
+         ("approved", Jsonl.bool approved);
+         ("active", Jsonl.bool false);
+       ]
+      @ optional "delivery"
+          (Option.map
+             (fun line -> Jsonl.string (Delivery_line.to_string line))
+             (delivery plan step)))
     :: List.map
          (fun ((promise : promise), by, out_of_scope) ->
            located ~kind:"promise"
@@ -1044,7 +1086,8 @@ let plan_records facts plan =
   in
   plan_record :: List.concat_map step_records plan.steps
 
-let records facts =
+let records ?(deliveries = []) facts =
+  let delivered = delivered_steps facts deliveries in
   let approved = approved facts.manifest facts.declarations in
   let inforce = facts.inforce in
   List.map
@@ -1057,7 +1100,7 @@ let records facts =
             edge_records facts;
             site_records facts;
             ack_records facts;
-            List.concat_map (plan_records facts) facts.plans;
+            List.concat_map (plan_records facts ~delivered) facts.plans;
           ]))
   @ external_records facts
 

@@ -1147,8 +1147,193 @@ exec /bin/sleep 0.01
 
 let quick name f = Alcotest.test_case name `Quick f
 
+let message_record =
+  Gen.pair object_id
+    Gen.(
+      string_size
+        ~gen:(map Char.chr (oneof [ int_range 1 255; return 10 ]))
+        (int_range 0 30))
+
+let encode_messages records =
+  String.concat ""
+    (List.map (fun (id, message) -> id ^ "\000" ^ message ^ "\000\n") records)
+
+let messages_gives_back_the_records =
+  property ~name:"messages gives back the commits that were encoded"
+    ~print:QCheck2.Print.(list (pair string string))
+    Gen.(list_size (int_range 0 4) message_record)
+    (fun records -> Git.Decode.messages (encode_messages records) = Ok records)
+
+let messages_is_total =
+  property ~count:500
+    ~name:
+      "messages gives a value or an error for damaged output, and never more \
+       records than the output has ids"
+    ~print:QCheck2.Print.string
+    Gen.(
+      bind
+        (list_size (int_range 1 3) message_record)
+        (fun records -> damaged (encode_messages records)))
+    (fun output ->
+      match Git.Decode.messages output with
+      | Error _ -> true
+      | Ok records ->
+          List.for_all (fun (id, _) -> Git.Decode.is_object_id id) records)
+
+let messages_refuses_a_record_cut_short () =
+  let id = String.make 40 'a' in
+  List.iter
+    (fun output ->
+      Alcotest.(check bool)
+        (Printf.sprintf "%S" output)
+        true
+        (Result.is_error (Git.Decode.messages output)))
+    [
+      id;
+      id ^ "\000";
+      id ^ "\000m";
+      id ^ "\000m\000";
+      id ^ "\000m\000x";
+      "xyz\000m\000\n";
+      id ^ "\000m\000\n" ^ id;
+    ];
+  Alcotest.(check bool) "the empty output" true (Git.Decode.messages "" = Ok [])
+
+let history repo commands =
+  Repo.import repo commands;
+  ok (Git.open_repo ~env:(Repo.env repo) (Repo.root repo))
+
+let id_of repo rev = String.trim (Repo.git repo [ "rev-parse"; rev ])
+
+let squash =
+  "Let a plan span branches (#151)\n\n\
+   * Read the mark\n\n\
+   Step: p/s\n\
+   Signed-off-by: A <a@b>\n\n\
+   * Mark the step\n\n\
+   Delivers: p@0a1b2c/s 3e1f0a\n\
+   Signed-off-by: A <a@b>\n"
+
+let branch_history =
+  [
+    Repo.commit ~ref:"refs/heads/main" ~mark:1 ~message:"base\n"
+      [ Repo.File ("a", "1\n") ];
+    Repo.commit ~parents:[ 1 ] ~ref:"refs/heads/side" ~mark:2
+      ~message:"side\n\nDelivers: p/t 000000\n"
+      [ Repo.File ("b", "1\n") ];
+    Repo.commit ~parents:[ 1 ] ~ref:"refs/heads/work" ~mark:3 ~message:squash
+      [ Repo.File ("a", "2\n") ];
+    Repo.commit ~parents:[ 3; 2 ] ~ref:"refs/heads/work" ~mark:4
+      ~message:"Merge side\n" [];
+  ]
+
+let messages_reads_each_commit_of_the_range () =
+  let repo = Repo.init () in
+  let t = history repo branch_history in
+  ignore (Repo.git repo [ "symbolic-ref"; "HEAD"; "refs/heads/work" ]);
+  let base = id_of repo "main" in
+  let messages = ok (Git.messages t ~base) in
+  Alcotest.(check (list (pair string string)))
+    "the commits of the change, the merged branch included"
+    (List.sort compare
+       [
+         (id_of repo "work", "Merge side\n");
+         (id_of repo "work^1", squash);
+         (id_of repo "side", "side\n\nDelivers: p/t 000000\n");
+       ])
+    (List.sort compare messages);
+  Alcotest.(check (list string))
+    "newest first"
+    [ id_of repo "work" ]
+    (List.filteri (fun index _ -> index = 0) (List.map fst messages));
+  Alcotest.(check (list (pair string string)))
+    "a base that is HEAD" []
+    (ok (Git.messages t ~base:(id_of repo "work")));
+  let later =
+    String.trim
+      (Repo.git repo [ "commit-tree"; "work^{tree}"; "-p"; "work"; "-m"; "l" ])
+  in
+  Alcotest.(check (list (pair string string)))
+    "a base that reaches HEAD" []
+    (ok (Git.messages t ~base:later))
+
+let messages_follow_no_setting_of_the_configuration () =
+  let repo = Repo.init () in
+  let t = history repo branch_history in
+  ignore (Repo.git repo [ "symbolic-ref"; "HEAD"; "refs/heads/work" ]);
+  let base = id_of repo "main" in
+  let plain = ok (Git.messages t ~base) in
+  Repo.append_config repo
+    "[log]\n\
+     \tshowSignature = true\n\
+     \tdecorate = full\n\
+     [format]\n\
+     \tpretty = oneline\n\
+     [i18n]\n\
+     \tlogOutputEncoding = ISO-8859-1\n\
+     [core]\n\
+     \tcommentChar = D\n";
+  Alcotest.(check (list (pair string string)))
+    "the same messages" plain
+    (ok (Git.messages t ~base))
+
+let messages_of_a_head_with_no_commit_are_empty () =
+  let repo = Repo.init () in
+  let t =
+    history repo
+      [
+        Repo.commit ~ref:"refs/heads/other" ~mark:1 ~message:"other\n"
+          [ Repo.File ("a", "1\n") ];
+      ]
+  in
+  ignore (Repo.git repo [ "symbolic-ref"; "HEAD"; "refs/heads/unborn" ]);
+  Alcotest.(check (list (pair string string)))
+    "no commit" []
+    (ok (Git.messages t ~base:(id_of repo "other")))
+
+let messages_end_at_a_nul_byte () =
+  let repo = Repo.init () in
+  let t =
+    history repo
+      [
+        Repo.commit ~ref:"refs/heads/main" ~mark:1 ~message:"base\n" [];
+        Repo.commit ~parents:[ 1 ] ~ref:"refs/heads/work" ~mark:2
+          ~message:"Fix\n\nDelivers: p\000/s 000000\nDelivers: p/s 000000\n" [];
+      ]
+  in
+  ignore (Repo.git repo [ "symbolic-ref"; "HEAD"; "refs/heads/work" ]);
+  Alcotest.(check (list (pair string string)))
+    "git ends the message at the NUL byte"
+    [ (id_of repo "work", "Fix\n\nDelivers: p") ]
+    (ok (Git.messages t ~base:(id_of repo "main")))
+
+let messages_refuse_a_base_that_is_no_object_id () =
+  let repo = Repo.init () in
+  let t = history repo branch_history in
+  List.iter
+    (fun base ->
+      Alcotest.(check string)
+        (Printf.sprintf "%S" base)
+        (print_error (Git.Bad_revision base))
+        (print_error (error (Git.messages t ~base))))
+    [ "main"; ""; "-n"; String.make 40 'A'; String.make 64 'a' ]
+
 let tests =
   [
+    messages_gives_back_the_records;
+    messages_is_total;
+    Alcotest.test_case "messages refuses a record cut short" `Quick
+      messages_refuses_a_record_cut_short;
+    Alcotest.test_case "messages reads each commit of the range" `Quick
+      messages_reads_each_commit_of_the_range;
+    Alcotest.test_case "messages follow no setting of the configuration" `Quick
+      messages_follow_no_setting_of_the_configuration;
+    Alcotest.test_case "messages of a HEAD with no commit are empty" `Quick
+      messages_of_a_head_with_no_commit_are_empty;
+    Alcotest.test_case "messages end at a NUL byte" `Quick
+      messages_end_at_a_nul_byte;
+    Alcotest.test_case "messages refuse a base that is no object id" `Quick
+      messages_refuse_a_base_that_is_no_object_id;
     nul_list_gives_back_the_records;
     nul_list_needs_a_final_nul;
     line_takes_off_one_line_feed;

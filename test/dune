@@ -30,6 +30,14 @@
  (dirs :standard .plans))
 
 (subdir
+ cases/scan-reads-a-refactor-step-as-done-by-its-delivery-line/base
+ (dirs :standard .plans))
+
+(subdir
+ cases/scan-reads-a-refactor-step-as-done-by-its-delivery-line/tree
+ (dirs :standard .plans))
+
+(subdir
  cases/scan-with-a-plan-file-that-markdown-does-not-read-is-an-environment-error/tree
  (dirs :standard .plans))
 

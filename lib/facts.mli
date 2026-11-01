@@ -64,14 +64,20 @@ val iter_identities :
     [within] is [true], and on each external id that an edge of such a path
     names. [within] is [true] for every path when absent. *)
 
-val records : t -> Jsonl.record list
-(** [records facts] is every record of [facts], in the order of
+val records : ?deliveries:Delivery_line.found list -> t -> Jsonl.record list
+(** [records ~deliveries facts] is every record of [facts], in the order of
     [(kind, path, line, col, id)], with each record that has no path after the
-    others, in the order of their ids. A step with no promise is not done: under
-    [proof.step] ["delivered"] no step is delivered, under ["approval"] no step
-    is approved while the ledger is absent, and under ["promises"] such a step
-    is never done. The record of each step holds its step hash, [csh], as
-    {!step.hash} gives it.
+    others, in the order of their ids. [deliveries] is the delivery lines of the
+    change; it is empty when absent.
+
+    A step is delivered when a line of [deliveries] counts for it: the line
+    matches the pattern, {!named} gives the step for it, and {!counts} holds.
+    The record of each step holds [delivered]; its step hash, [csh], as
+    {!step.hash} gives it; and [delivery], the text of {!delivery} of the step,
+    when there is one. A step with no promise is done only when [proof.step] is
+    ["delivered"] and the step is delivered: under ["approval"] no step is
+    approved while the ledger is absent, and under ["promises"] such a step is
+    never done.
 
     Every string of the result is valid UTF-8 when every path of [make] is. *)
 
@@ -187,6 +193,26 @@ val declaration_id : declaration -> string
 
 val edge_id : edge -> string
 (** [edge_id edge] is [<word>:<src>-><tag target>]. *)
+
+val short_hash : step -> string
+(** [short_hash step] is the first six digits of {!step.hash}. *)
+
+val delivery : plan -> step -> Delivery_line.t option
+(** [delivery plan step] is the delivery line of [step] of [plan]: the
+    {!full_form} of [plan], the slug of [step], and {!short_hash} [step]. It is
+    [None] when the slug of [step] is not a slug, as for a heading with no
+    letter and no digit. *)
+
+val named : t -> Delivery_line.t -> (plan * step) option
+(** [named facts line] is the step that [line] names: the first plan of {!plans}
+    whose {!full_form} is the plan of [line], and its first step whose slug is
+    the step of [line]. It is [None] when [facts] hold no such step.
+    [named facts] builds its table once, and gives a function that each line can
+    share. *)
+
+val counts : step -> Delivery_line.t -> bool
+(** [counts step line] is [true] when the hash of [line] is {!short_hash}
+    [step]. *)
 
 val full_form : plan -> string
 (** [full_form plan] is the full form of [plan]: its slug, then [@] and its plan

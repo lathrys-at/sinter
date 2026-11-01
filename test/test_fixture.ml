@@ -357,6 +357,30 @@ let base_and_repository_together_say_to_remove_repository () =
      already runs in a repository; remove repository."
     (Fixture.message ~case:"scan" Fixture.Repository_with_base)
 
+let a_case_with_message_runs_in_a_commit_of_the_tree_on_base () =
+  check_run "the run starts on topic, one commit with the message above base"
+    (Ok [])
+    ([
+       ("base/f", "one\n");
+       ("tree/f", "two\n");
+       ("message", "Change f\n\nDelivers: p/s 000000  \r\n");
+     ]
+    @ case_files
+        ~stdout:"## topic\nChange f\n\nDelivers: p/s 000000  \r\n\n--\nbase\n\n"
+        "git status --porcelain --branch; git log -1 --format=%B; echo --; git \
+         log -1 --format=%B main")
+
+let a_case_with_message_and_no_base_fails () =
+  check_run "a message needs a base" (Error Fixture.Message_without_base)
+    (("message", "m\n") :: case_files "true")
+
+let a_message_with_no_base_says_to_add_base () =
+  Alcotest.(check string)
+    "the message"
+    "case scan: the case holds message and no base. The message is the message \
+     of a commit of tree on top of base; add base, or remove message."
+    (Fixture.message ~case:"scan" Fixture.Message_without_base)
+
 let color_variables =
   [ "TERM"; "NO_COLOR"; "CLICOLOR_FORCE"; "FORCE_COLOR"; "CLICOLOR" ]
 
@@ -726,6 +750,13 @@ let tests =
       a_run_that_a_signal_ends_fails_the_case;
     Alcotest.test_case "a case with repository runs in a commit of the tree"
       `Quick a_case_with_repository_runs_in_a_commit_of_the_tree;
+    Alcotest.test_case
+      "a case with message runs in a commit of the tree on base" `Quick
+      a_case_with_message_runs_in_a_commit_of_the_tree_on_base;
+    Alcotest.test_case "a case with message and no base fails" `Quick
+      a_case_with_message_and_no_base_fails;
+    Alcotest.test_case "a message with no base says to add base" `Quick
+      a_message_with_no_base_says_to_add_base;
     Alcotest.test_case "a case with base and repository fails" `Quick
       a_case_with_base_and_repository_fails;
     Alcotest.test_case "base and repository together say to remove repository"

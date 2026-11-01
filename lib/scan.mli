@@ -101,6 +101,11 @@ type tree = private {
           the path as {!Display.clean} gives {!escape_path} of it. After
           {!load_with_base}, the file set of the base counts too, and a path of
           both file sets has one warning. *)
+  deliveries : Delivery_line.found list;
+      (** the delivery lines of the change: each line that starts with
+          {!Delivery_line.prefix} of the message of each commit of
+          {!Git.messages} with the base, in the order of the commits and then of
+          the lines *)
 }
 (** The working tree of a repository as a scan reads it. *)
 
@@ -122,8 +127,9 @@ val load :
     and the default branch of the manifest.
 
     With [phases], it counts the words of the phases [repository] (the
-    repository, the manifest, the list of files, and the base), [read] (the
-    reading of each file), and [parse] (the parse of each file).
+    repository, the manifest, the list of files, the base, and the messages of
+    the commits of the change), [read] (the reading of each file), and [parse]
+    (the parse of each file).
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
 
