@@ -734,6 +734,26 @@ let deep_nesting_reads_quickly () =
          first - extent 1:1-3:20002" );
     ]
 
+let many_declared_items_in_one_section_read_quickly () =
+  let count = 50_000 in
+  let text =
+    "# Reqs\n\n"
+    ^ String.concat ""
+        (List.init count (fun i -> Printf.sprintf "- @req r%d\n  Text.\n" i))
+  in
+  let start = Unix.gettimeofday () in
+  let tags =
+    match read text with
+    | Ok document -> Array.length document.tags
+    | Error _ -> Alcotest.fail "the file does not read"
+  in
+  let seconds = Unix.gettimeofday () -. start in
+  Alcotest.(check int) "the tags" count tags;
+  Alcotest.(check bool)
+    (Printf.sprintf "%d declared list items: read in %.3f s, under %.0f s"
+       count seconds bound)
+    true (seconds < bound)
+
 let error_node_gives_its_span =
   check_structure
     "# T\n\n| Name | D |\n| ---- | - |\n| `x`  | y |\n|      |   |\n"
@@ -1406,6 +1426,8 @@ let tests =
       long_runs_read_quickly;
     Alcotest.test_case "deep nesting reads quickly" `Quick
       deep_nesting_reads_quickly;
+    Alcotest.test_case "many declared items in one section read quickly"
+      `Quick many_declared_items_in_one_section_read_quickly;
     Alcotest.test_case "an ERROR node gives its span" `Quick
       error_node_gives_its_span;
     Alcotest.test_case "a MISSING node gives an empty span" `Quick
