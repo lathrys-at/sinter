@@ -6,6 +6,7 @@ type error =
   | No_manifest
   | Missing_manifest of string
   | Unreadable_manifest of { path : string; reason : string }
+  | Manifest_not_utf_8 of string
   | Invalid_manifest of {
       path : string;
       text : string;
@@ -25,6 +26,18 @@ type error =
   | Reader of Markdown.load_error
 
 let ( let* ) = Result.bind
+
+let escape_path path =
+  let rec pieces rest =
+    match Sinter_bridge.Utf_8.first_invalid rest with
+    | None -> [ rest ]
+    | Some offset ->
+        String.sub rest 0 offset
+        :: Printf.sprintf "\\x%02x" (Char.code rest.[offset])
+        :: pieces
+             (String.sub rest (offset + 1) (String.length rest - offset - 1))
+  in
+  String.concat "" (pieces path)
 
 let first_line text =
   match String.index_opt text '\n' with
@@ -84,6 +97,13 @@ let explain = function
         plain
           ( Printf.sprintf "cannot read the manifest %s: %s" path reason,
             "name a manifest that is a file that you can read" );
+      ]
+  | Manifest_not_utf_8 path ->
+      [
+        plain
+          ( Printf.sprintf "the path of the manifest %s is not UTF-8"
+              (Display.clean (escape_path path)),
+            "move the manifest to a path that is UTF-8" );
       ]
   | Invalid_manifest { path; text; errors } ->
       let lines = Line_index.make text in
@@ -186,18 +206,6 @@ let explain = function
 type outcome = { warnings : string list; records : Jsonl.record list }
 
 let repository result = Result.map_error (fun error -> Repository error) result
-
-let escape_path path =
-  let rec pieces rest =
-    match Sinter_bridge.Utf_8.first_invalid rest with
-    | None -> [ rest ]
-    | Some offset ->
-        String.sub rest 0 offset
-        :: Printf.sprintf "\\x%02x" (Char.code rest.[offset])
-        :: pieces
-             (String.sub rest (offset + 1) (String.length rest - offset - 1))
-  in
-  String.concat "" (pieces path)
 
 let is_plan_path path =
   String.starts_with ~prefix:".plans/" path
@@ -362,6 +370,10 @@ let prepare ~env ~dir ~manifest ~base =
     Result.map_error
       (fun reason -> Unreadable_manifest { path = shown; reason })
       (manifest_location ~root path)
+  in
+  let* () =
+    if Sinter_bridge.Utf_8.is_valid location then Ok ()
+    else Error (Manifest_not_utf_8 location)
   in
   let* file_set = repository (Git.files repo) in
   let files, not_utf_8 =

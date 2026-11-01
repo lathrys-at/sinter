@@ -106,6 +106,9 @@ stops with exit code 3 in each of these cases:
   `sinter.toml`.
 - The file that `--manifest` names does not exist, or the tool cannot
   read it.
+- The path of the manifest is not valid UTF-8. For a manifest that is
+  a symbolic link, this is the path of the file that the link names.
+  The message gives the path as the warning of section 7.3 does.
 - The manifest names no pack (section 8.1).
 - The manifest holds an error (section 4).
 

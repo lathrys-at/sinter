@@ -5,6 +5,7 @@ let sinter = "../bin/main.exe"
 let grammar = "fixtures/tree-sitter-json/tree-sitter-json.wasm"
 let sample = "fixtures/sample.json"
 let query = "fixtures/sample.scm"
+let coverage_prefix = Filename.concat (Sys.getcwd ()) "bisect"
 
 let contents path =
   let channel = open_in_bin path in
@@ -288,6 +289,53 @@ let a_closed_standard_output_ends_any_command () =
     (outcome_within
        (Printf.sprintf "exec %s --help=plain >&-" (Filename.quote sinter))
        ~input:"" ~bound:10.)
+
+let committed files =
+  let repo = Git_fixture.init () in
+  List.iter (fun (path, text) -> Git_fixture.write repo path text) files;
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  repo
+
+let run_in repo script =
+  let errors = Filename.temp_file "sinter-in" ".err" in
+  Fun.protect
+    ~finally:(fun () -> Sys.remove errors)
+    (fun () ->
+      let status =
+        Unix.create_process_env "/bin/sh"
+          [|
+            "/bin/sh";
+            "-c";
+            "cd \"$1\" && " ^ script ^ " >/dev/null 2>\"$3\"";
+            "sh";
+            Git_fixture.root repo;
+            Filename.concat (Sys.getcwd ()) sinter;
+            errors;
+          |]
+          (Array.append (Git_fixture.env repo)
+             [| "BISECT_FILE=" ^ coverage_prefix |])
+          Unix.stdin Unix.stdout Unix.stderr
+        |> Unix.waitpid [] |> snd
+      in
+      match status with
+      | Unix.WEXITED code -> (Printf.sprintf "exited %d" code, contents errors)
+      | Unix.WSIGNALED _ | Unix.WSTOPPED _ ->
+          ("ended by a signal", contents errors))
+
+let markdown_manifest = "[scan]\npacks.markdown.files = [\"**/*.md\"]\n"
+
+let a_manifest_whose_path_is_not_utf_8_exits_with_3 () =
+  let repo = committed [ ("a.md", "# A\n") ] in
+  (match Git_fixture.write repo "m\xff.toml" markdown_manifest with
+  | () -> ()
+  | exception Sys_error _ -> Alcotest.skip ());
+  Alcotest.(check (pair string string))
+    "the exit code and standard error"
+    ( "exited 3",
+      "error: the path of the manifest m\\xff.toml is not UTF-8\n\
+      \  = help: move the manifest to a path that is UTF-8\n" )
+    (run_in repo "\"$2\" scan --manifest \"$(printf 'm\\377.toml')\"")
 
 let a_closed_standard_input_reads_as_no_request () =
   Alcotest.(check (pair string string))
@@ -685,6 +733,8 @@ let tests =
       `Quick a_closed_standard_output_ends_a_run_that_writes_nothing;
     Alcotest.test_case "a closed standard output ends any command" `Quick
       a_closed_standard_output_ends_any_command;
+    Alcotest.test_case "a manifest whose path is not UTF-8 exits with 3" `Quick
+      a_manifest_whose_path_is_not_utf_8_exits_with_3;
     Alcotest.test_case "a closed standard input reads as no request" `Quick
       a_closed_standard_input_reads_as_no_request;
     Alcotest.test_case "a failed read names the input" `Quick

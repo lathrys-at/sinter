@@ -498,6 +498,7 @@ let every_error =
     Scan.No_manifest;
     Scan.Missing_manifest "m.toml";
     Scan.Unreadable_manifest { path = "m.toml"; reason = "Is a directory" };
+    Scan.Manifest_not_utf_8 "m\xff.toml";
     Scan.Invalid_manifest
       { path = "m.toml"; text = "[scan]\n"; errors = [ Manifest.No_pack ] };
     Scan.Two_packs { file = "a.md"; pack = "markdown"; other = "ocaml" };
@@ -537,6 +538,7 @@ let constructor = function
   | Scan.No_manifest -> "No_manifest"
   | Scan.Missing_manifest _ -> "Missing_manifest"
   | Scan.Unreadable_manifest _ -> "Unreadable_manifest"
+  | Scan.Manifest_not_utf_8 _ -> "Manifest_not_utf_8"
   | Scan.Invalid_manifest _ -> "Invalid_manifest"
   | Scan.Two_packs _ -> "Two_packs"
   | Scan.Plan_not_read _ -> "Plan_not_read"
@@ -567,8 +569,8 @@ let constructor = function
 
 let every_error_has_a_fault_and_a_help () =
   Alcotest.(check int)
-    "the examples are of 31 distinct cases, the cases that [constructor] names"
-    31
+    "the examples are of 32 distinct cases, the cases that [constructor] names"
+    32
     (List.length
        (List.sort_uniq String.compare (List.map constructor every_error)));
   List.iter
@@ -631,6 +633,10 @@ let each_error_says_what_is_wrong_and_what_to_do () =
       [
         ( "cannot read the manifest m.toml: Is a directory",
           "name a manifest that is a file that you can read" );
+      ];
+      [
+        ( "the path of the manifest d/m\\xff\\xfe.toml is not UTF-8",
+          "move the manifest to a path that is UTF-8" );
       ];
       List.map text (List.map (Manifest.explain ~path:"m.toml") manifest_error);
       [
@@ -713,6 +719,7 @@ let each_error_says_what_is_wrong_and_what_to_do () =
          Scan.No_manifest;
          Scan.Missing_manifest "m.toml";
          Scan.Unreadable_manifest { path = "m.toml"; reason = "Is a directory" };
+         Scan.Manifest_not_utf_8 "d/m\xff\xfe.toml";
          Scan.Invalid_manifest
            { path = "m.toml"; text = "[scan]\n"; errors = manifest_error };
          Scan.Two_packs { file = "a.md"; pack = "markdown"; other = "ocaml" };
@@ -1115,9 +1122,45 @@ let a_manifest_outside_the_repository_has_no_base () =
       Alcotest.failf "the load fails: %s" (String.concat "; " (messages error))
 
 let case name f = Alcotest.test_case name `Quick f
+let not_utf_8_help = "move the manifest to a path that is UTF-8"
+
+let a_manifest_whose_path_is_not_utf_8_is_an_error () =
+  let help = not_utf_8_help in
+  let repo = repository [ ("docs/a.md", "# A\n\n@req a\n") ] in
+  let name = "m\xff.toml" in
+  (match Git_fixture.write repo name manifest with
+  | () -> ()
+  | exception Sys_error _ -> Alcotest.skip ());
+  Alcotest.(check (list string))
+    "the error of the path"
+    [ "the path of the manifest m\\xff.toml is not UTF-8; " ^ help ]
+    (match scan ~manifest:name repo with
+    | Error error -> messages error
+    | Ok _ -> [ "the scan gives records" ])
+
+let a_manifest_link_to_a_path_that_is_not_utf_8_is_an_error () =
+  let help = not_utf_8_help in
+  let repo = Git_fixture.init () in
+  (match Git_fixture.write repo "conf\xff.toml" manifest with
+  | () -> ()
+  | exception Sys_error _ -> Alcotest.skip ());
+  Git_fixture.write repo "a.md" "# A\n";
+  Git_fixture.symlink repo ~target:"conf\xff.toml" "sinter.toml";
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  Alcotest.(check (list string))
+    "the error names the path that the link names"
+    [ "the path of the manifest conf\\xff.toml is not UTF-8; " ^ help ]
+    (match scan ~base:"HEAD" repo with
+    | Error error -> messages error
+    | Ok _ -> [ "the scan gives records" ])
 
 let tests =
   [
+    case "a manifest whose path is not UTF-8 is an error"
+      a_manifest_whose_path_is_not_utf_8_is_an_error;
+    case "a manifest link to a path that is not UTF-8 is an error"
+      a_manifest_link_to_a_path_that_is_not_utf_8_is_an_error;
     case "the base reads the manifest only when the diff changes it"
       the_base_reads_the_manifest_only_when_the_diff_changes_it;
     case "a manifest that the base does not hold is absent"
