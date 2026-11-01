@@ -271,58 +271,72 @@ let error_offset = function
       offset
 
 let describe = function
-  | "" -> "the pattern holds a character that is not in the id pattern language"
+  | "" ->
+      ( "the pattern holds a character that is not in the id pattern language",
+        None )
   | character -> (
       let decoded = String.get_utf_8_uchar character 0 in
       let code = Uchar.to_int (Uchar.utf_decode_uchar decoded) in
       if not (Uchar.utf_decode_is_valid decoded) then
-        "a byte that is not UTF-8 is not in the id pattern language"
+        ("a byte that is not UTF-8 is not in the id pattern language", None)
       else if code < 0x20 || (code >= 0x7F && code < 0xA0) then
-        "a control character is not in the id pattern language, and no id \
-         holds one"
+        ( "a control character is not in the id pattern language, and no id \
+           holds one",
+          None )
       else if code >= 0xA0 then
-        Printf.sprintf "'%s' is not printable ASCII, and no id holds it"
-          character
+        ( Printf.sprintf "'%s' is not printable ASCII, and no id holds it"
+            character,
+          None )
       else if code = 0x20 then
-        "a space is not in the id pattern language, and no id holds one"
+        ("a space is not in the id pattern language, and no id holds one", None)
       else
         match character with
         | "." | "}" ->
-            Printf.sprintf
-              "'%s' is not in the id pattern language; put it in a class, for \
-               example [%s]"
-              character character
+            ( Printf.sprintf "'%s' is not in the id pattern language" character,
+              Some
+                (Printf.sprintf "put it in a class, for example [%s]" character)
+            )
         | "$" ->
-            "'$' is not in the id pattern language; remove it, since a pattern \
-             always matches the whole id"
+            ( "'$' is not in the id pattern language",
+              Some "remove it, since a pattern always matches the whole id" )
         | "^" ->
-            "'^' is not in the id pattern language; remove it, since a pattern \
-             always matches the whole id, and a class cannot leave characters \
-             out"
+            ( "'^' is not in the id pattern language",
+              Some
+                "remove it, since a pattern always matches the whole id, and a \
+                 class cannot leave characters out" )
         | _ ->
-            Printf.sprintf
-              "'%s' is not in the id pattern language, and no pattern matches \
-               it"
-              character)
+            ( Printf.sprintf
+                "'%s' is not in the id pattern language, and no pattern \
+                 matches it"
+                character,
+              None ))
 
-let message = function
+let parts = function
   | Not_allowed { character; _ } -> describe character
-  | Unclosed_class _ -> "the class has no ']' at its end"
-  | Empty_class _ -> "a class holds one or more members"
+  | Unclosed_class _ -> ("the class has no ']' at its end", None)
+  | Empty_class _ -> ("a class holds one or more members", None)
   | Bad_range _ ->
-      "the two ends of a range are both digits, both upper-case letters, or \
-       both lower-case letters, and the first end does not come after the \
-       second"
+      ( "the two ends of a range are both digits, both upper-case letters, or \
+         both lower-case letters, and the first end does not come after the \
+         second",
+        None )
   | Misplaced_hyphen _ ->
-      "a '-' in a class stands first, last, or between the two ends of a range"
-  | Unclosed_group _ -> "the group has no ')' at its end"
-  | Unopened_group _ -> "the ')' has no '(' before it"
-  | Empty_group _ -> "a group holds a pattern"
-  | Empty_alternative _ -> "an alternative of the pattern is empty"
+      ( "a '-' in a class stands first, last, or between the two ends of a range",
+        None )
+  | Unclosed_group _ -> ("the group has no ')' at its end", None)
+  | Unopened_group _ -> ("the ')' has no '(' before it", None)
+  | Empty_group _ -> ("a group holds a pattern", None)
+  | Empty_alternative _ -> ("an alternative of the pattern is empty", None)
   | Quantifier_without_part _ ->
-      "a quantifier stands after a literal, a class, or a group"
-  | Two_quantifiers _ -> "a part takes one quantifier at most"
-  | Bad_count _ -> "a '{' starts a quantifier {n}, {n,}, or {n,m}"
-  | Count_too_large _ -> "a count of a quantifier is from 0 to 255"
-  | Counts_out_of_order _ -> "in the quantifier {n,m}, n is not greater than m"
-  | Matches_empty -> "the pattern matches an empty id"
+      ("a quantifier stands after a literal, a class, or a group", None)
+  | Two_quantifiers _ -> ("a part takes one quantifier at most", None)
+  | Bad_count _ -> ("a '{' starts a quantifier {n}, {n,}, or {n,m}", None)
+  | Count_too_large _ -> ("a count of a quantifier is from 0 to 255", None)
+  | Counts_out_of_order _ ->
+      ("in the quantifier {n,m}, n is not greater than m", None)
+  | Matches_empty -> ("the pattern matches an empty id", None)
+
+let message error =
+  match parts error with
+  | fault, None -> fault
+  | fault, Some help -> fault ^ "; " ^ help

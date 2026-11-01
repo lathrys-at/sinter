@@ -1847,13 +1847,29 @@ let load_of_a_path_under_a_file_is_missing () =
       | _ -> Alcotest.fail "a path under a file is not Missing")
 
 let load_of_a_file_it_cannot_open_is_unreadable () =
+  let unreadable what = function
+    | Error (Manifest.Unreadable reason) ->
+        Alcotest.(check bool) "a reason" true (String.length reason > 0)
+    | _ -> Alcotest.fail (what ^ " is not Unreadable")
+  in
+  let path = Filename.temp_file "s" ".sock" in
+  Sys.remove path;
+  let socket = Unix.socket ~cloexec:true Unix.PF_UNIX Unix.SOCK_STREAM 0 in
+  let here = Sys.getcwd () in
+  Fun.protect
+    ~finally:(fun () ->
+      Sys.chdir here;
+      Unix.close socket;
+      if Sys.file_exists path then Sys.remove path)
+    (fun () ->
+      Sys.chdir (Filename.dirname path);
+      Unix.bind socket (Unix.ADDR_UNIX (Filename.basename path));
+      Sys.chdir here;
+      unreadable "a socket" (Manifest.load path));
   with_file markdown (fun path ->
-      Unix.chmod path 0;
-      match Manifest.load path with
-      | Error (Manifest.Unreadable reason) ->
-          Alcotest.(check bool) "a reason" true (String.length reason > 0)
-      | Ok _ when Unix.geteuid () = 0 -> ()
-      | _ -> Alcotest.fail "a file with no read permission is not Unreadable")
+      Option.iter
+        (unreadable "a file with no read permission")
+        (Unreadable.with_unreadable path (fun () -> Manifest.load path)))
 
 let property ?(count = 200) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
@@ -2766,6 +2782,109 @@ let one_fault_gives_its_one_error =
           | _ -> false)
       | _ -> false)
 
+let fault_and_help text =
+  match Manifest.of_string text with
+  | Error [ error ] ->
+      let { Error_text.fault; help; _ } =
+        Manifest.explain ~path:"sinter.toml" error
+      in
+      (fault, help)
+  | Ok _ -> Alcotest.fail "the manifest has no error"
+  | Error _ -> Alcotest.fail "the manifest has more than one error"
+
+let a_syntax_fault_keeps_a_key_with_a_semicolon_whole () =
+  Alcotest.(check (pair string string))
+    "the fault and the help"
+    ( "the key 'a; b' is already defined",
+      "write the text here as TOML 1.1.0 allows" )
+    (fault_and_help "\"a; b\" = 1\n\"a; b\" = 2\n")
+
+let a_glob_fault_keeps_a_segment_with_a_semicolon_whole () =
+  Alcotest.(check (pair string string))
+    "the fault and the help"
+    ( "\"a; **b\" is not a glob: the segment 'a; **b' holds '**' and other \
+       characters",
+      "write '**' as a whole segment, or '*' for the characters inside one name"
+    )
+    (fault_and_help "[scan]\npacks.markdown.files = [\"a; **b\"]\n")
+
+let no_key_of_markdown_suggests_a_key_that_markdown_refuses () =
+  reports "a near name of version"
+    (markdown ^ "packs.markdown.versoin = \"1.0\"\n")
+    [
+      "sinter.toml:3:16: unknown key 'versoin' in [scan.packs.markdown]; \
+       remove this key, or correct its name";
+    ]
+
+let no_key_of_markdown_suggests_runners () =
+  reports "a near name of runners"
+    (markdown ^ "packs.markdown.runers = {}\n")
+    [
+      "sinter.toml:3:16: unknown key 'runers' in [scan.packs.markdown]; remove \
+       this key, or correct its name";
+    ]
+
+let a_key_of_markdown_suggests_files () =
+  reports "a near name of files"
+    (markdown ^ "packs.markdown.file = []\n")
+    [
+      "sinter.toml:3:16: unknown key 'file' in [scan.packs.markdown]; did you \
+       mean 'files'?";
+    ]
+
+let a_key_of_a_fetched_pack_suggests_version () =
+  reports "a near name of version"
+    (markdown
+   ^ "packs.ocaml.files = [\"**/*.ml\"]\npacks.ocaml.versoin = \"1.0\"\n")
+    [
+      "sinter.toml:4:13: unknown key 'versoin' in [scan.packs.ocaml]; did you \
+       mean 'version'?";
+    ]
+
+let near_name_of_a_pack_key =
+  let open Gen in
+  let* pack = oneof_list [ "markdown"; "ocaml" ]
+  and* name = oneof_list [ "files"; "version"; "runners" ] in
+  let length = String.length name in
+  let* at = int_range 0 (length - 1)
+  and* letter = char_range 'a' 'z'
+  and* edit = int_range 0 2 in
+  let before = String.sub name 0 at in
+  let near =
+    match edit with
+    | 0 -> before ^ String.sub name (at + 1) (length - at - 1)
+    | 1 -> before ^ String.make 1 letter ^ String.sub name at (length - at)
+    | _ ->
+        before ^ String.make 1 letter
+        ^ String.sub name (at + 1) (length - at - 1)
+  in
+  return (pack, near)
+
+let pack_key_text (pack, name) =
+  "[scan.packs." ^ pack ^ "]\n" ^ name ^ " = []\n"
+
+let refuses_the_name = function
+  | Manifest.At
+      ( _,
+        ( Manifest.Unknown_key _ | Manifest.Misplaced_key _
+        | Manifest.Markdown_version | Manifest.Markdown_runners ) ) ->
+      true
+  | _ -> false
+
+let a_suggested_key_is_valid_at_its_place =
+  property ~count:500 ~name:"a suggested key of a pack is valid at its place"
+    ~print:(fun (pack, name) -> pack_key_text (pack, name))
+    near_name_of_a_pack_key
+    (fun (pack, name) ->
+      match Manifest.of_string (pack_key_text (pack, name)) with
+      | Error
+          [ Manifest.At (_, Manifest.Unknown_key { nearest = Some near; _ }) ]
+        -> (
+          match Manifest.of_string (pack_key_text (pack, near)) with
+          | Ok _ -> true
+          | Error errors -> not (List.exists refuses_the_name errors))
+      | Ok _ | Error _ -> true)
+
 let case name test = Alcotest.test_case name `Quick test
 
 let the_document_keeps_every_key_with_its_place () =
@@ -2913,4 +3032,16 @@ let tests =
     a_manifest_in_the_canonical_form_reads_back_its_values;
     runners_read_as_written;
     one_fault_gives_its_one_error;
+    case "a syntax fault keeps a key with a semicolon whole"
+      a_syntax_fault_keeps_a_key_with_a_semicolon_whole;
+    case "a glob fault keeps a segment with a semicolon whole"
+      a_glob_fault_keeps_a_segment_with_a_semicolon_whole;
+    case "no key of markdown suggests a key that markdown refuses"
+      no_key_of_markdown_suggests_a_key_that_markdown_refuses;
+    case "no key of markdown suggests runners"
+      no_key_of_markdown_suggests_runners;
+    case "a key of markdown suggests files" a_key_of_markdown_suggests_files;
+    case "a key of a fetched pack suggests version"
+      a_key_of_a_fetched_pack_suggests_version;
+    a_suggested_key_is_valid_at_its_place;
   ]

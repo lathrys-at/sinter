@@ -534,6 +534,12 @@ let names_a_dotted_key_into_a_table_that_a_header_made () =
     "the dotted key 'b.\"c d\".e' adds a key to the table 'a.b', which a table \
      header made; write '\"c d\".e' under the header [a.b]"
 
+let names_the_last_header_table_that_a_dotted_key_goes_into () =
+  check_error ~name:"two header tables on the path"
+    "[a.b.c]\n[a.b]\n[a]\nb.c.x = 1\n" (at 4 1)
+    "the dotted key 'b.c.x' adds a key to the table 'a.b.c', which a table \
+     header made; write 'x' under the header [a.b.c]"
+
 let messages =
   [
     ( "a = 1 b = 2\n",
@@ -1521,6 +1527,89 @@ let any_bytes_give_a_document_or_an_error =
           place_is_inside text (Toml.error_position error)
           && one_line (Toml.error_message error))
 
+let a_message_is_its_parts_joined =
+  property ~count:500 ~name:"a message is its parts joined with '; '"
+    ~print:String.escaped damaged_document (fun text ->
+      match Toml.parse text with
+      | Ok _ -> true
+      | Error error -> (
+          let message = Toml.error_message error in
+          match Toml.error_parts error with
+          | fault, None -> String.equal message fault
+          | fault, Some help -> String.equal message (fault ^ "; " ^ help)))
+
+let the_fault_keeps_a_name_with_a_semicolon_whole () =
+  let parts text = Toml.error_parts (parse_error text) in
+  Alcotest.(check (pair string (option string)))
+    "a key defined twice"
+    ("the key 'a; b' is already defined", None)
+    (parts "\"a; b\" = 1\n\"a; b\" = 2\n");
+  Alcotest.(check (pair string (option string)))
+    "a dotted key into a header table"
+    ( "the dotted key 'c.x' adds a key to the table '\"a; b\".c', which a \
+       table header made",
+      Some "write 'x' under the header [\"a; b\".c]" )
+    (parts "[\"a; b\".c]\nz = 9\n[\"a; b\"]\nc.x = 1\n")
+
+let header_table_case =
+  let open QCheck2.Gen in
+  let path = list_size (int_range 1 2) (oneof_list [ "a"; "b"; "c" ]) in
+  let header (names, array) =
+    let names = Toml.render_path names in
+    if array then "[[" ^ names ^ "]]" else "[" ^ names ^ "]"
+  in
+  let* current = path
+  and* below = path
+  and* more = list_size (int_range 0 2) (oneof_list [ "a"; "b"; "c" ]) in
+  let* target_array = bool
+  and* others = list_size (int_range 0 4) (pair path bool) in
+  let* headers =
+    shuffle_list
+      ((current @ below, target_array)
+      :: List.map (fun (names, array) -> (current @ names, array)) others)
+  in
+  return
+    (String.concat "\n"
+       (List.map header headers
+       @ [
+           header (current, false);
+           Toml.render_path (below @ more @ [ "x" ]) ^ " = 1";
+         ])
+    ^ "\n")
+
+let followed_help text table array rest =
+  let lines = String.split_on_char '\n' text in
+  let header =
+    let names = Toml.render_path table in
+    if array then "[[" ^ names ^ "]]" else "[" ^ names ^ "]"
+  in
+  let without_key = List.filteri (fun i _ -> i < List.length lines - 2) lines in
+  let last =
+    List.fold_left max (-1)
+      (List.mapi (fun i line -> if line = header then i else -1) without_key)
+  in
+  String.concat "\n"
+    (List.concat
+       (List.mapi
+          (fun i line ->
+            if i = last then [ line; Toml.render_path rest ^ " = 1" ]
+            else [ line ])
+          without_key))
+  ^ "\n"
+
+let the_help_of_a_dotted_key_into_a_header_table_reads =
+  property ~count:500
+    ~name:"the help of a dotted key into a header table gives a document"
+    ~print:String.escaped header_table_case (fun text ->
+      match Toml.parse text with
+      | Error (Toml.Header_table { table; array; rest; _ }) -> (
+          match Toml.parse (followed_help text table array rest) with
+          | Ok _ -> true
+          | Error error ->
+              QCheck2.Test.fail_reportf "the help gives %s"
+                (Toml.error_message error))
+      | Ok _ | Error _ -> true)
+
 let render_path_reads_back =
   property ~name:"render_path gives a key path that reads back"
     ~print:QCheck2.Print.(list string)
@@ -1631,6 +1720,8 @@ let tests =
       `Quick reads_a_dotted_key_into_a_table_above_a_header_table;
     Alcotest.test_case "names a dotted key into a table that a header made"
       `Quick names_a_dotted_key_into_a_table_that_a_header_made;
+    Alcotest.test_case "names the last header table that a dotted key goes into"
+      `Quick names_the_last_header_table_that_a_dotted_key_goes_into;
     Alcotest.test_case "gives the message and the place of each form" `Quick
       gives_the_message_and_the_place_of_each_form;
     Alcotest.test_case "a document that nests too deep is refused" `Quick
@@ -1670,6 +1761,10 @@ let tests =
     a_generated_document_reads_back;
     a_damaged_document_gives_a_document_or_an_error_inside_it;
     any_bytes_give_a_document_or_an_error;
+    a_message_is_its_parts_joined;
+    the_help_of_a_dotted_key_into_a_header_table_reads;
+    Alcotest.test_case "the fault keeps a name with a semicolon whole" `Quick
+      the_fault_keeps_a_name_with_a_semicolon_whole;
     render_path_reads_back;
     string_position_points_at_each_character;
   ]

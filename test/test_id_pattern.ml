@@ -511,6 +511,17 @@ let of_string_answers_any_text =
           && offset <= String.length text
           && String.length (Id_pattern.message e) > 0)
 
+let a_message_is_its_parts_joined =
+  property ~count:1000 ~name:"a message is its parts joined with '; '"
+    ~print:QCheck2.Print.string any_pattern_text (fun text ->
+      match Id_pattern.of_string text with
+      | Ok _ -> true
+      | Error e -> (
+          let message = Id_pattern.message e in
+          match Id_pattern.parts e with
+          | fault, None -> String.equal message fault
+          | fault, Some help -> String.equal message (fault ^ "; " ^ help)))
+
 let of_string_answers_any_bytes =
   property ~name:"of_string answers any bytes" ~print:QCheck2.Print.string
     Gen.(string_size (0 -- 12))
@@ -569,6 +580,7 @@ let tests =
     case "each error has its message" each_error_has_its_message;
     matches_agrees_with_a_backtracking_reading;
     of_string_answers_any_text;
+    a_message_is_its_parts_joined;
     of_string_answers_any_bytes;
     matches_answers_any_id;
   ]

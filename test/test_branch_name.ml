@@ -214,6 +214,19 @@ let check_answers_any_bytes =
           && Branch_name.error_offset e <= String.length name
           && String.length (Branch_name.message e) > 0)
 
+let a_message_is_its_parts_joined =
+  property ~name:"a message is its parts joined with '; '"
+    ~print:QCheck2.Print.string
+    Gen.(string_size (0 -- 12))
+    (fun name ->
+      match Branch_name.check name with
+      | Ok () -> true
+      | Error e -> (
+          let message = Branch_name.message e in
+          match Branch_name.parts e with
+          | fault, None -> String.equal message fault
+          | fault, Some help -> String.equal message (fault ^ "; " ^ help)))
+
 let case name test = Alcotest.test_case name `Quick test
 
 let tests =
@@ -227,4 +240,5 @@ let tests =
     case "each error has its message" each_error_has_its_message;
     check_agrees_with_a_second_reading;
     check_answers_any_bytes;
+    a_message_is_its_parts_joined;
   ]

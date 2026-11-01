@@ -63,22 +63,29 @@ let error_offset = function
   | Ends_with_dot offset ->
       offset
 
-let message = function
-  | Empty -> "a branch name cannot be empty"
+let parts = function
+  | Empty -> ("a branch name cannot be empty", None)
   | Full_ref_name ->
-      "a branch name cannot start with 'refs/'; write the name of the branch \
-       alone, such as 'main'"
-  | Bad_character { character = ' '; _ } -> "a branch name cannot hold a space"
+      ( "a branch name cannot start with 'refs/'",
+        Some "write the name of the branch alone, such as 'main'" )
+  | Bad_character { character = ' '; _ } ->
+      ("a branch name cannot hold a space", None)
   | Bad_character { character = '\000' .. '\031' | '\127'; _ } ->
-      "a branch name cannot hold a control character"
+      ("a branch name cannot hold a control character", None)
   | Bad_character { character; _ } ->
-      Printf.sprintf "a branch name cannot hold '%c'" character
-  | Two_dots _ -> "a branch name cannot hold '..'"
-  | At_brace _ -> "a branch name cannot hold '@{'"
+      (Printf.sprintf "a branch name cannot hold '%c'" character, None)
+  | Two_dots _ -> ("a branch name cannot hold '..'", None)
+  | At_brace _ -> ("a branch name cannot hold '@{'", None)
   | Empty_component _ ->
-      "a branch name cannot start or end with '/', or hold two '/' together"
+      ( "a branch name cannot start or end with '/', or hold two '/' together",
+        None )
   | Component_starts_with_dot _ ->
-      "no part of a branch name between two '/' can start with '.'"
+      ("no part of a branch name between two '/' can start with '.'", None)
   | Component_ends_with_lock _ ->
-      "no part of a branch name between two '/' can end with '.lock'"
-  | Ends_with_dot _ -> "a branch name cannot end with '.'"
+      ("no part of a branch name between two '/' can end with '.lock'", None)
+  | Ends_with_dot _ -> ("a branch name cannot end with '.'", None)
+
+let message error =
+  match parts error with
+  | fault, None -> fault
+  | fault, Some help -> fault ^ "; " ^ help

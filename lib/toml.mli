@@ -172,9 +172,10 @@ type error =
       rest : string list;
     }
       (** the dotted key [key], as the text writes it at [at], adds a key to the
-          table [table], which a table header made. [array] is [true] when that
-          header is the header of an array of tables. [rest] is the names of the
-          dotted key after the table. *)
+          table [table], which a table header made. [table] is the last table on
+          the path of the dotted key that a table header made. [array] is [true]
+          when that header is the header of an array of tables. [rest] is the
+          names of the dotted key after the table. *)
   | Unrecognized of { at : position }
       (** the reader stopped with a message that this module does not know *)
 
@@ -198,6 +199,12 @@ val error_position : error -> position
 
 val error_message : error -> string
 (** [error_message error] says what is wrong, in one line, without the place. *)
+
+val error_parts : error -> string * string option
+(** [error_parts error] is {!error_message} in two parts: what is wrong, and
+    what to write instead when the message says it. [error_message error] is the
+    first part when the second is [None], and the two parts joined with ["; "]
+    otherwise. *)
 
 val parse : string -> (table, error) result
 (** [parse text] reads [text] as a TOML 1.1.0 document and gives its top-level

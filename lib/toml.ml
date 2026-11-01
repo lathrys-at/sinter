@@ -752,32 +752,41 @@ let cause_message construct = function
   | Misplaced_underscore ->
       "an underscore in a number must stand between two digits"
 
-let error_message = function
-  | Not_utf_8 _ -> "the text is not UTF-8"
+let error_parts = function
+  | Not_utf_8 _ -> ("the text is not UTF-8", None)
   | Header_table { key; table; array; rest; _ } ->
       let path = render_path table in
-      Printf.sprintf
-        "the dotted key %s adds a key to the table '%s', which a table header \
-         made; write '%s' under the header %s"
-        (quote key) path (render_path rest)
-        (if array then "[[" ^ path ^ "]]" else "[" ^ path ^ "]")
-  | Unrecognized _ -> "the text is not valid TOML here"
+      ( Printf.sprintf
+          "the dotted key %s adds a key to the table '%s', which a table \
+           header made"
+          (quote key) path,
+        Some
+          (Printf.sprintf "write '%s' under the header %s" (render_path rest)
+             (if array then "[[" ^ path ^ "]]" else "[" ^ path ^ "]")) )
+  | Unrecognized _ -> ("the text is not valid TOML here", None)
   | Syntax { construct; expected; cause; _ } -> (
       let expected = one_of (List.map expected_name expected) in
       match (cause, construct, expected) with
-      | Some cause, _, _ -> cause_message construct cause
+      | Some cause, _, _ -> (cause_message construct cause, None)
       | None, Some A_value, _ ->
-          "the value is not valid; write a string in quotes, a number, true, \
-           false, a date, a time, an array, or an inline table"
+          ( "the value is not valid",
+            Some
+              "write a string in quotes, a number, true, false, a date, a \
+               time, an array, or an inline table" )
       | None, Some construct, "" ->
-          Printf.sprintf "the %s is not valid" (construct_name construct)
+          (Printf.sprintf "the %s is not valid" (construct_name construct), None)
       | None, Some construct, _ ->
-          Printf.sprintf "the %s is not valid; write %s here"
-            (construct_name construct) expected
-      | None, None, "" -> "the text is not valid TOML here"
+          ( Printf.sprintf "the %s is not valid" (construct_name construct),
+            Some (Printf.sprintf "write %s here" expected) )
+      | None, None, "" -> ("the text is not valid TOML here", None)
       | None, None, _ ->
-          Printf.sprintf "the text is not valid TOML here; write %s here"
-            expected)
+          ( "the text is not valid TOML here",
+            Some (Printf.sprintf "write %s here" expected) ))
+
+let error_message error =
+  match error_parts error with
+  | fault, None -> fault
+  | fault, Some help -> fault ^ "; " ^ help
 
 let first_invalid_byte text =
   let length = String.length text in

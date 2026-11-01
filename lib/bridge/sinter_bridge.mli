@@ -486,9 +486,10 @@ module Toml_raw : sig
       }
         (** a dotted key, at the byte span [start_byte] to [end_byte] and
             written [key], adds a key to the table that [table] names from the
-            top level, and a table header made that table. [array] is [true]
-            when the table is the last table of an array of tables. [rest] is
-            the names of the dotted key after that table. *)
+            top level, and a table header made that table. [table] is the last
+            table on the path of the dotted key that a table header made.
+            [array] is [true] when the table is the last table of an array of
+            tables. [rest] is the names of the dotted key after that table. *)
 
   val parse : string -> (table, error) result
   (** [parse text] reads [text] as a TOML document and gives its top-level
