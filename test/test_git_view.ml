@@ -511,6 +511,28 @@ let the_tree_key_is_the_tree_of_git_add_all =
          List.iteri (apply repo) steps;
          String.equal (tree_of_git_add_all repo) (key repo)))
 
+let old_time = 1_000_000_000.
+
+let a_tracked_file_is_compared_like_an_untracked_file_of_its_content () =
+  let repo = Repo.init () in
+  List.iter
+    (fun path ->
+      Repo.write repo path "a\r\nb\r\n";
+      let file = Filename.concat (Repo.root repo) path in
+      Unix.utimes file old_time old_time)
+    [ "tracked.txt"; "untracked.txt" ];
+  ignore (Repo.git repo [ "add"; "-A" ]);
+  ignore (Repo.git repo [ "commit"; "-q"; "-m"; "base" ]);
+  ignore (Repo.git repo [ "rm"; "-q"; "--cached"; "untracked.txt" ]);
+  Repo.write repo ".gitattributes" "*.txt text\n";
+  Alcotest.check strings "the conversion changes both files"
+    [
+      show ".gitattributes" (Git.Added (Git.Text [ hunk 1 1 11 1 1 0 ]));
+      show "tracked.txt" (Git.Modified (Git.Text [ hunk 1 2 2 1 2 2 ]));
+      show "untracked.txt" (Git.Modified (Git.Text [ hunk 1 2 2 1 2 2 ]));
+    ]
+    (shown repo)
+
 let tree_with_flag_cleared repo flag path =
   let copy = Repo.copy repo in
   ignore (Repo.git copy [ "update-index"; flag; path ]);
@@ -573,6 +595,8 @@ let tests =
     case "the tree key writes no file under the git directory"
       the_tree_key_writes_no_file_under_the_git_directory;
     the_tree_key_is_the_tree_of_git_add_all;
+    case "a tracked file is compared like an untracked file of its content"
+      a_tracked_file_is_compared_like_an_untracked_file_of_its_content;
     case "the tree key holds the edit of an assume-unchanged file"
       the_tree_key_holds_the_edit_of_an_assume_unchanged_file;
     case "the tree key leaves out a skip-worktree file that is not on disk"
