@@ -259,7 +259,109 @@ fn operator_not_applied(query: &Query, index: usize) -> Option<String> {
         .map(|(_, positive)| if *positive { "is?" } else { "is-not?" }.to_owned())
 }
 
-/// Compile a query for `language`. The query is valid only when every
+/// The greatest depth of nesting that a query can have.
+pub(crate) const QUERY_DEPTH_LIMIT: u32 = 100;
+
+fn is_name_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.' | b'?' | b'!') || byte >= 0x80
+}
+
+fn is_name_start(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-') || byte >= 0x80
+}
+
+fn skip_space(text: &[u8], mut at: usize) -> usize {
+    while at < text.len() {
+        match text[at] {
+            b';' => {
+                while at < text.len() && text[at] != b'\n' {
+                    at += 1;
+                }
+            }
+            byte if byte.is_ascii_whitespace() => at += 1,
+            _ => break,
+        }
+    }
+    at
+}
+
+fn skip_name(text: &[u8], mut at: usize) -> usize {
+    while at < text.len() && is_name_byte(text[at]) {
+        at += 1;
+    }
+    at
+}
+
+fn skip_string(text: &[u8], mut at: usize) -> usize {
+    at += 1;
+    while at < text.len() {
+        match text[at] {
+            b'\\' => at += 2,
+            b'"' => return at + 1,
+            _ => at += 1,
+        }
+    }
+    at
+}
+
+/// The byte offset in `text` where the depth of nesting first passes
+/// `limit`, or `None` when it never does.
+///
+/// Each opening parenthesis, each opening bracket, and each field name
+/// before a `:` adds one level. A closing parenthesis or bracket ends
+/// the level that its opening one added, and the levels of the field
+/// names right before that one. A pattern that is a name or a string
+/// ends the levels of the field names right before it. The text of a
+/// string and of a comment adds no level.
+pub(crate) fn too_deep_at(text: &[u8], limit: u32) -> Option<usize> {
+    let mut levels: Vec<u32> = Vec::new();
+    let mut open: u32 = 0;
+    let mut fields: u32 = 0;
+    let mut at = 0;
+    while at < text.len() {
+        let start = at;
+        match text[at] {
+            b';' => at = skip_space(text, at),
+            b'"' => {
+                at = skip_string(text, at);
+                fields = 0;
+            }
+            b'(' | b'[' => {
+                levels.push(fields + 1);
+                open += fields + 1;
+                fields = 0;
+                at += 1;
+                if open > limit {
+                    return Some(start);
+                }
+            }
+            b')' | b']' => {
+                open -= levels.pop().unwrap_or(0);
+                fields = 0;
+                at += 1;
+            }
+            b'@' | b'#' | b'!' => at = skip_name(text, at + 1),
+            byte if is_name_start(byte) => {
+                let after = skip_space(text, skip_name(text, at));
+                if text.get(after) == Some(&b':') {
+                    fields += 1;
+                    if open + fields > limit {
+                        return Some(start);
+                    }
+                    at = after + 1;
+                } else {
+                    fields = 0;
+                    at = after;
+                }
+            }
+            _ => at += 1,
+        }
+    }
+    None
+}
+
+/// Compile a query for `language`. The query is valid only when its
+/// depth of nesting is at most [`QUERY_DEPTH_LIMIT`], and when every
 /// predicate of every pattern is one that the query cursor applies.
 pub(crate) fn compile_query(language: &Language, text: &[u8]) -> Result<Query, Failure> {
     if length_prefix(text.len()).is_err() {
@@ -267,6 +369,15 @@ pub(crate) fn compile_query(language: &Language, text: &[u8]) -> Result<Query, F
     }
     let text = std::str::from_utf8(text)
         .map_err(|_| Failure::Internal("the query is not UTF-8".to_owned()))?;
+    if let Some(offset) = too_deep_at(text.as_bytes(), QUERY_DEPTH_LIMIT) {
+        let (row, column) = row_and_column(text, offset);
+        return Err(Failure::QueryTooDeep {
+            limit: QUERY_DEPTH_LIMIT,
+            offset: offset as u32,
+            row,
+            column,
+        });
+    }
     let query = Query::new(language, text).map_err(|error| Failure::Query {
         kind: query_error_kind(error.kind),
         row: error.row as u32,
@@ -356,6 +467,59 @@ mod tests {
         assert_eq!(row_and_column(text, 5), (1, 2));
         assert_eq!(row_and_column(text, 6), (2, 0));
         assert_eq!(row_and_column(text, 8), (2, 2));
+    }
+
+    fn depth(text: &str) -> u32 {
+        (0..)
+            .find(|&limit| too_deep_at(text.as_bytes(), limit).is_none())
+            .unwrap()
+    }
+
+    #[test]
+    fn each_parenthesis_and_each_bracket_adds_one_level() {
+        assert_eq!(depth(""), 0);
+        assert_eq!(depth("(number)"), 1);
+        assert_eq!(depth("(pair (string) (number))"), 2);
+        assert_eq!(depth("[(string) (number)] @x"), 2);
+        assert_eq!(depth("((((number))))"), 4);
+        assert_eq!(depth("(number) (string) (array (number))"), 2);
+    }
+
+    #[test]
+    fn a_field_name_adds_a_level_until_its_pattern_ends() {
+        assert_eq!(depth("(pair key: (string))"), 3);
+        assert_eq!(depth("(pair key: (string) value: (number))"), 3);
+        assert_eq!(depth("(pair key: _ value: (number))"), 3);
+        assert_eq!(depth("(pair key: \"a\" value: (number))"), 3);
+        assert_eq!(depth("a: b: c: (x)"), 4);
+        assert_eq!(depth("a: b: c: x (y)"), 3);
+        assert_eq!(depth("(a key\n ; note\n : (b))"), 3);
+    }
+
+    #[test]
+    fn strings_comments_and_names_add_no_level() {
+        assert_eq!(depth("(string) @a.b ; (((((\n"), 1);
+        assert_eq!(depth("((string) @s (#eq? @s \"((((:\"))"), 2);
+        assert_eq!(depth("((string) @s (#eq? @s \"\\\"((\"))"), 2);
+        assert_eq!(depth("(pair !key: (number))"), 2);
+        assert_eq!(depth("))) (number)"), 1);
+    }
+
+    #[test]
+    fn the_first_place_past_the_limit_is_given() {
+        assert_eq!(too_deep_at(b"((x))", 1), Some(1));
+        assert_eq!(too_deep_at(b"(a k: (x))", 1), Some(3));
+        assert_eq!(too_deep_at(b"(x) ((x))", 1), Some(5));
+        assert_eq!(too_deep_at(b"((x))", 2), None);
+    }
+
+    #[test]
+    fn the_queries_of_the_repository_nest_far_below_the_limit() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        for file in ["lib/markdown/blocks.scm", "test/fixtures/sample.scm"] {
+            let text = std::fs::read_to_string(root.join(file)).unwrap();
+            assert!(depth(&text) * 10 <= QUERY_DEPTH_LIMIT, "{file}");
+        }
     }
 
     #[test]

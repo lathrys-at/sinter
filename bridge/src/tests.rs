@@ -500,6 +500,92 @@ fn a_query_error_gives_its_kind_and_its_place() {
     assert_eq!(failure("(string (number))"), (5, 0, 8, 8));
 }
 
+fn nested(form: &str, depth: u32) -> String {
+    let limit = depth as usize;
+    match form {
+        "parenthesis" => format!(
+            "{}(number){}",
+            "(array ".repeat(limit - 1),
+            ")".repeat(limit - 1)
+        ),
+        "bracket" => format!("{}(number){}", "[".repeat(limit - 1), "]".repeat(limit - 1)),
+        "field" => {
+            let levels = (limit - 1) / 3;
+            let rest = limit - 1 - 3 * levels;
+            format!(
+                "{}{}(number){}{}",
+                "(object (pair value: ".repeat(levels),
+                "(array ".repeat(rest),
+                ")".repeat(rest),
+                "))".repeat(levels)
+            )
+        }
+        other => panic!("{other}"),
+    }
+}
+
+#[test]
+fn a_query_at_the_depth_limit_compiles_and_one_level_more_is_refused() {
+    let json = Json::new();
+    for form in ["parenthesis", "bracket", "field"] {
+        let query = json
+            .compile(&nested(form, syntax::QUERY_DEPTH_LIMIT))
+            .unwrap_or_else(|failure| panic!("{form}: {failure:?}"));
+        unsafe { sinter_bridge_query_free(query) };
+        let deeper = format!("(number)\n{}", nested(form, syntax::QUERY_DEPTH_LIMIT + 1));
+        let offset = deeper
+            .match_indices(['(', '[', 'v'])
+            .nth(syntax::QUERY_DEPTH_LIMIT as usize + 1)
+            .unwrap()
+            .0;
+        match json.compile(&deeper) {
+            Err(Failure::QueryTooDeep {
+                limit,
+                offset: at,
+                row,
+                column,
+            }) => assert_eq!(
+                (limit, at, row, column),
+                (
+                    syntax::QUERY_DEPTH_LIMIT,
+                    offset as u32,
+                    1,
+                    (offset - "(number)\n".len()) as u32
+                ),
+                "{form}"
+            ),
+            other => panic!("{form}: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn a_query_nested_a_million_levels_is_refused_and_does_not_crash() {
+    let depth = 1_000_000;
+    let query = format!("{}document{} @x", "(".repeat(depth), ")".repeat(depth));
+    assert!(matches!(
+        query_failure(&query),
+        Failure::QueryTooDeep { offset: 100, .. }
+    ));
+}
+
+#[test]
+fn a_query_at_the_depth_limit_compiles_on_a_stack_of_256_kib() {
+    let json = Json::new();
+    let language = json.language as usize;
+    let text = nested("parenthesis", syntax::QUERY_DEPTH_LIMIT);
+    let compiled = std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            compile(language as *const SinterBridgeLanguage, &text)
+                .map(|query| unsafe { sinter_bridge_query_free(query) })
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+    assert_eq!(compiled, Ok(()));
+}
+
 #[test]
 fn a_predicate_error_gives_the_row_of_its_pattern() {
     match query_failure("(number) @n\n\n((string) @s\n  (#eq? @s))") {

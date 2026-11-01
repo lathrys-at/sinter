@@ -142,6 +142,8 @@ let failure_writer failure =
       u32 w 6;
       text w operator;
       List.iter (u32 w) [ pattern; offset; row; column ]
+  | Query (B.Query.Too_deep { limit; offset; row; column }) ->
+      List.iter (u32 w) [ 14; limit; offset; row; column ]
   | Query (B.Query.Not_utf_8 _) ->
       invalid_arg "Bridge_buffers: the bridge writes no Not_utf_8"
   | Run B.Query.Language_mismatch -> u32 w 7
@@ -261,6 +263,11 @@ let failure_value =
        let* row = u32_gen in
        let+ column = u32_gen in
        Query (B.Query.Not_allowed { operator; pattern; offset; row; column }));
+      (let* limit = u32_gen in
+       let* offset = u32_gen in
+       let* row = u32_gen in
+       let+ column = u32_gen in
+       Query (B.Query.Too_deep { limit; offset; row; column }));
       return (Run B.Query.Language_mismatch);
       map
         (fun m -> Adapter (B.Adapter.Invalid (B.Adapter.Not_a_module m)))

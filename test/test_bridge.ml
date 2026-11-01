@@ -271,6 +271,15 @@ let refuses_a_query_that_is_not_utf_8 () =
   Alcotest.check error_t "the offset of the bad byte" (B.Query.Not_utf_8 3)
     (compile_error "(a)\xff")
 
+let refuses_a_query_that_nests_deeper_than_100_levels () =
+  let deep levels =
+    String.make levels '[' ^ "(number)" ^ String.make levels ']'
+  in
+  B.Query.close (compiled (deep 99));
+  Alcotest.check error_t "the limit and the first byte past it"
+    (B.Query.Too_deep { limit = 100; offset = 101; row = 1; column = 100 })
+    (compile_error ("\n" ^ deep 100))
+
 let an_empty_query_captures_nothing () =
   let query = compiled "" in
   Alcotest.(check int)
@@ -370,6 +379,9 @@ let gives_a_message_for_each_error () =
   check "m" (query B.Query.Language);
   check "the query is not UTF-8 text, at byte 4"
     (B.Query.message (B.Query.Not_utf_8 4));
+  check "Query error at 2:3. The patterns nest deeper than 100 levels"
+    (B.Query.message
+       (B.Query.Too_deep { limit = 100; offset = 9; row = 1; column = 2 }));
   check "the query and the parse tree come from different grammars"
     (B.Query.run_message B.Query.Language_mismatch)
 
@@ -450,6 +462,8 @@ let handle_tests =
       compiles_each_of_the_ten_predicates;
     Alcotest.test_case "refuses a query that is not UTF-8" `Quick
       refuses_a_query_that_is_not_utf_8;
+    Alcotest.test_case "refuses a query that nests deeper than 100 levels"
+      `Quick refuses_a_query_that_nests_deeper_than_100_levels;
     Alcotest.test_case "an empty query captures nothing" `Quick
       an_empty_query_captures_nothing;
     Alcotest.test_case "numbers the matches of a query" `Quick

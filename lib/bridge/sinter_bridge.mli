@@ -208,6 +208,15 @@ module Query : sig
     | Not_utf_8 of int
         (** the query text is not UTF-8. The integer is the byte offset of its
             first sequence that is not well-formed. *)
+    | Too_deep of {
+        limit : int;  (** the greatest depth that a query can have *)
+        offset : int;  (** the first byte past the limit *)
+        row : int;  (** the row of that byte *)
+        column : int;  (** the column of that byte *)
+      }
+        (** the patterns of the query nest deeper than [limit]. Each opening
+            parenthesis, each opening bracket, and each field name adds one
+            level. *)
 
   (** Why a query does not run over a tree. *)
   type run_error =

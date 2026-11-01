@@ -1,0 +1,1 @@
+{"code":3,"event":"error","message":"deep.scm: cannot read the query: Query error at 1:101. The patterns nest deeper than 100 levels","rid":1}

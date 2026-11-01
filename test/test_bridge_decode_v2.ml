@@ -186,8 +186,8 @@ let failure words text = buffer ~kind:5 [] ^ with_text words text
 let refuses_an_unknown_code () =
   Alcotest.(check string)
     "the message names the code"
-    (malformed "a failure has the code 14")
-    (error_message (fun () -> Decode.adapter_error (buffer ~kind:5 [ 14 ])))
+    (malformed "a failure has the code 15")
+    (error_message (fun () -> Decode.adapter_error (buffer ~kind:5 [ 15 ])))
 
 let refuses_an_unknown_wasm_kind () =
   Alcotest.(check string)
