@@ -209,14 +209,13 @@ let ordinary_file ~base ~path (document : Markdown.t) =
   let tags = document.tags in
   let count = Array.length tags in
   let indices = List.init count Fun.id in
-  let numbers =
-    List.mapi
-      (fun n index -> (index, base + n))
-      (List.filter
-         (fun index -> Option.is_some tags.(index).Markdown.extent)
-         indices)
+  let declared =
+    List.filter
+      (fun index -> Option.is_some tags.(index).Markdown.extent)
+      indices
   in
-  let declared = List.map fst numbers in
+  let numbers = Array.make count None in
+  List.iteri (fun n index -> numbers.(index) <- Some (base + n)) declared;
   let owner (tag : Markdown.tag) = tag.owner in
   let id_of index =
     let tag = tags.(index) in
@@ -242,10 +241,14 @@ let ordinary_file ~base ~path (document : Markdown.t) =
           status.(index) <- Some tag.word
       | Some _ | None -> ())
     tags;
-  let last block =
-    List.fold_left
-      (fun found index -> if List.mem index declared then Some index else found)
-      None document.blocks.(block).tags
+  let last =
+    Array.map
+      (fun (block : Markdown.block) ->
+        List.fold_left
+          (fun found index ->
+            if Option.is_some numbers.(index) then Some index else found)
+          None block.tags)
+      document.blocks
   in
   let declarations =
     List.filter_map
@@ -262,7 +265,7 @@ let ordinary_file ~base ~path (document : Markdown.t) =
                     document.sections.(tag.section).heading
             in
             let prose =
-              if last tag.block = Some index then
+              if last.(tag.block) = Some index then
                 List.map trim document.blocks.(tag.block).prose
               else []
             in
@@ -292,7 +295,7 @@ let ordinary_file ~base ~path (document : Markdown.t) =
         | Some target_text when is_citation tag ->
             let src, source =
               match owner tag with
-              | Some index -> (id_of index, Some (List.assoc index numbers))
+              | Some index -> (id_of index, numbers.(index))
               | None -> (site_id path document.sections.(tag.section), None)
             in
             Some

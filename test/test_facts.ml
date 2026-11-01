@@ -2249,6 +2249,21 @@ let a_plan_grows_in_proportion_to_its_steps () =
       ])
     (Facts.make manifest)
 
+let a_file_grows_in_proportion_to_its_declarations () =
+  let manifest = manifest () in
+  Timed_work.check_growth ~margin:3. ~runs:3 ~sizes:(1_000, 8_000)
+    ~input:(fun count ->
+      [
+        ( "docs/a.md",
+          document
+            (String.concat ""
+               (List.init count (fun index ->
+                    Printf.sprintf "## H%d\n\n@req r%d\n@cites r%d v1\n\n" index
+                      index
+                      ((index + 1) mod count)))) );
+      ])
+    (Facts.make manifest)
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -2340,6 +2355,8 @@ let tests =
     in_force_is_no_status_and_no_retirer_or_a_cycle;
     case "a plan grows in proportion to its steps"
       a_plan_grows_in_proportion_to_its_steps;
+    case "a file grows in proportion to its declarations"
+      a_file_grows_in_proportion_to_its_declarations;
     case "a supersedes edge from a site is not effective"
       a_supersedes_edge_from_a_site_is_not_effective;
     case "an ack names the fact of its block" an_ack_names_the_fact_of_its_block;
