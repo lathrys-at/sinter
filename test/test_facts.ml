@@ -2234,6 +2234,21 @@ let a_chain_of_supersedes_edges_grows_in_proportion_to_its_length () =
                    index (index - 1)) )))
     (Facts.make manifest)
 
+let a_plan_grows_in_proportion_to_its_steps () =
+  let manifest = manifest () in
+  Counted_work.check_growth ~margin:1.5 ~sizes:(500, 8_000)
+    ~input:(fun count ->
+      [
+        ( ".plans/p.md",
+          document
+            ("# P\n\n@plan p\n\n"
+            ^ String.concat ""
+                (List.init count (fun index ->
+                     Printf.sprintf "## Step %d\n\n@cites s%d\n\n" index index))
+            ) );
+      ])
+    (Facts.make manifest)
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -2323,6 +2338,8 @@ let tests =
     case "a chain of supersedes edges grows in proportion to its length"
       a_chain_of_supersedes_edges_grows_in_proportion_to_its_length;
     in_force_is_no_status_and_no_retirer_or_a_cycle;
+    case "a plan grows in proportion to its steps"
+      a_plan_grows_in_proportion_to_its_steps;
     case "a supersedes edge from a site is not effective"
       a_supersedes_edge_from_a_site_is_not_effective;
     case "an ack names the fact of its block" an_ack_names_the_fact_of_its_block;

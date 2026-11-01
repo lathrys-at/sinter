@@ -439,16 +439,17 @@ let plan_file ~path (document : Markdown.t) plan_index =
       let plan_scope =
         Option.value (first_scope document first_block) ~default:[]
       in
+      let held_by = Array.make (Array.length document.sections) [] in
+      List.iter
+        (fun index ->
+          Option.iter
+            (fun section -> held_by.(section) <- index :: held_by.(section))
+            (step_section document document.tags.(index).section))
+        (List.rev later);
       let step section_index =
         match document.sections.(section_index) with
         | { level = 2; heading = Some heading; text; _ } -> (
-            let held =
-              List.filter
-                (fun index ->
-                  step_section document document.tags.(index).section
-                  = Some section_index)
-                later
-            in
+            let held = held_by.(section_index) in
             let own_scope = first_scope document held in
             let promises = promises_of document held in
             match held with
