@@ -12,129 +12,39 @@ let bool b = Scalar (Bool b)
 let strings l = Array (List.map (fun s -> String s) l)
 let ints l = Array (List.map (fun i -> Int i) l)
 let objects l = Objects l
+let compare_keys = Json.compare_keys
 
-(* @cites json-handling *)
-(* The range of an integer in the canonical form. *)
-let max_int_value = 9007199254740991
-let min_int_value = -9007199254740991
+let json_of_scalar = function
+  | String s -> Json.String s
+  | Int i -> Json.Int i
+  | Bool b -> Json.Bool b
 
-let utf16_units s =
-  let units = ref [] in
-  let n = String.length s in
-  let i = ref 0 in
-  while !i < n do
-    let decoded = String.get_utf_8_uchar s !i in
-    i := !i + Uchar.utf_decode_length decoded;
-    let point = Uchar.to_int (Uchar.utf_decode_uchar decoded) in
-    if point < 0x10000 then units := point :: !units
-    else
-      let rest =
-        (point - 0x10000)
-        [@mutaml.skip
-          "compare_keys is the only caller, and + leaves the low unit alone, \
-           because 0x10000 is a whole multiple of 0x400, and raises every high \
-           unit by the same 0x80, which keeps it above 0xD7FF and below \
-           0xE000, where no code point of a key falls, so no two keys change \
-           order"]
-      in
-      units :=
-        (0xDC00 lor (rest land 0x3FF)) :: (0xD800 lor (rest lsr 10)) :: !units
-  done;
-  List.rev !units
+let json_of_flat fields =
+  Json.Object
+    (List.map (fun (name, scalar) -> (name, json_of_scalar scalar)) fields)
 
-let compare_keys a b =
-  if String.equal a b then 0
-  else List.compare Int.compare (utf16_units a) (utf16_units b)
+let json_of_value = function
+  | Scalar scalar -> json_of_scalar scalar
+  | Array items -> Json.Array (List.map json_of_scalar items)
+  | Objects items -> Json.Array (List.map json_of_flat items)
 
-(* @cites json-handling *)
-(* The escaping of RFC 8785 section 3.2.2.2. *)
-let add_escaped buffer s =
-  Buffer.add_char buffer '"';
-  let n = String.length s in
-  let i = ref 0 in
-  while !i < n do
-    let decoded = String.get_utf_8_uchar s !i in
-    if not (Uchar.utf_decode_is_valid decoded) then
-      invalid_arg "Sinter_core.Jsonl: a string value is not valid UTF-8";
-    let length = Uchar.utf_decode_length decoded in
-    let point = Uchar.to_int (Uchar.utf_decode_uchar decoded) in
-    (match point with
-    | 0x22 -> Buffer.add_string buffer "\\\""
-    | 0x5C -> Buffer.add_string buffer "\\\\"
-    | 0x08 -> Buffer.add_string buffer "\\b"
-    | 0x0C -> Buffer.add_string buffer "\\f"
-    | 0x0A -> Buffer.add_string buffer "\\n"
-    | 0x0D -> Buffer.add_string buffer "\\r"
-    | 0x09 -> Buffer.add_string buffer "\\t"
-    | point when point < 0x20 ->
-        Buffer.add_string buffer (Printf.sprintf "\\u%04x" point)
-    | _ -> Buffer.add_substring buffer s !i length);
-    i := !i + length
-  done;
-  Buffer.add_char buffer '"'
-
-let add_scalar buffer = function
-  | String s -> add_escaped buffer s
-  | Int i ->
-      if i < min_int_value || i > max_int_value then
-        invalid_arg
-          "Sinter_core.Jsonl: an integer value is outside the range -(2^53-1) \
-           to 2^53-1";
-      Buffer.add_string buffer (string_of_int i)
-  | Bool b -> Buffer.add_string buffer (if b then "true" else "false")
-
-let add_object buffer ~holder add fields =
-  let sorted =
-    List.stable_sort (fun (a, _) (b, _) -> compare_keys a b) fields
-  in
-  let rec check_unique = function
-    | (a, _) :: ((b, _) :: _ as rest) ->
-        if String.equal a b then
-          invalid_arg
-            (Printf.sprintf "Sinter_core.Jsonl: %s holds the field %S twice"
-               holder a);
-        check_unique rest
-    | _ -> ()
-  in
-  check_unique sorted;
-  Buffer.add_char buffer '{';
-  List.iteri
-    (fun index (name, value) ->
-      if index > 0 then Buffer.add_char buffer ',';
-      add_escaped buffer name;
-      Buffer.add_char buffer ':';
-      add buffer value)
-    sorted;
-  Buffer.add_char buffer '}'
-
-let add_array buffer add items =
-  Buffer.add_char buffer '[';
-  List.iteri
-    (fun index item ->
-      if index > 0 then Buffer.add_char buffer ',';
-      add buffer item)
-    items;
-  Buffer.add_char buffer ']'
-
-let add_value buffer = function
-  | Scalar s -> add_scalar buffer s
-  | Array items -> add_array buffer add_scalar items
-  | Objects items ->
-      add_array buffer
-        (fun buffer fields ->
-          add_object buffer ~holder:"an object" add_scalar fields)
-        items
+let refusal = function
+  | Json.Repeated_key { path = []; key } ->
+      Printf.sprintf "the record holds the field %S twice" key
+  | Json.Repeated_key { path = _ :: _; key } ->
+      Printf.sprintf "an object holds the field %S twice" key
+  | Json.Out_of_range _ ->
+      "an integer value is outside the range -(2^53-1) to 2^53-1"
+  | Json.Not_utf_8 _ -> "a string value is not valid UTF-8"
 
 let to_string record =
-  let buffer =
-    Buffer.create
-      (256
-      [@mutaml.skip
-        "the number is only the first size of a buffer that grows as it needs, \
-         and no output reads it"])
-  in
-  add_object buffer ~holder:"the record" add_value record;
-  Buffer.contents buffer
+  match
+    Json.to_string
+      (Json.Object
+         (List.map (fun (name, value) -> (name, json_of_value value)) record))
+  with
+  | Ok line -> line
+  | Error error -> invalid_arg ("Sinter_core.Jsonl: " ^ refusal error)
 
 let output channel record =
   Stdlib.output_string channel (to_string record);
