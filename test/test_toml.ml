@@ -534,6 +534,12 @@ let names_a_dotted_key_into_a_table_that_a_header_made () =
     "the dotted key 'b.\"c d\".e' adds a key to the table 'a.b', which a table \
      header made; write '\"c d\".e' under the header [a.b]"
 
+let names_the_last_header_table_that_a_dotted_key_goes_into () =
+  check_error ~name:"two header tables on the path"
+    "[a.b.c]\n[a.b]\n[a]\nb.c.x = 1\n" (at 4 1)
+    "the dotted key 'b.c.x' adds a key to the table 'a.b.c', which a table \
+     header made; write 'x' under the header [a.b.c]"
+
 let messages =
   [
     ( "a = 1 b = 2\n",
@@ -1631,6 +1637,9 @@ let tests =
       `Quick reads_a_dotted_key_into_a_table_above_a_header_table;
     Alcotest.test_case "names a dotted key into a table that a header made"
       `Quick names_a_dotted_key_into_a_table_that_a_header_made;
+    Alcotest.test_case
+      "names the last header table that a dotted key goes into" `Quick
+      names_the_last_header_table_that_a_dotted_key_goes_into;
     Alcotest.test_case "gives the message and the place of each form" `Quick
       gives_the_message_and_the_place_of_each_form;
     Alcotest.test_case "a document that nests too deep is refused" `Quick
