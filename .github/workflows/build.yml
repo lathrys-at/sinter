@@ -25,6 +25,9 @@ jobs:
           - os: macos-latest
             image: macos-26
     runs-on: ${{ matrix.image }}
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -102,6 +105,22 @@ jobs:
           fi
           echo "The gate is $gate."
           dune exec -- sinter check --gate "$gate"
+      - name: Write the findings as SARIF
+        id: sarif
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.os == 'ubuntu-latest' }}
+        # @cites sarif-output
+        run: |
+          set -eu
+          status=0
+          dune exec -- sinter check --gate review -o sarif >"$RUNNER_TEMP/sinter.sarif" || status=$?
+          echo "The check exited with code $status."
+          test "$status" -le 1
+      - name: Upload the findings to code scanning
+        if: ${{ !cancelled() && steps.sarif.outcome == 'success' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ runner.temp }}/sinter.sarif
+          category: sinter
 
   format:
     name: Check formatting

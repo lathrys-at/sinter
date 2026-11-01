@@ -463,3 +463,15 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
   the doubled braces, accepts an empty region, and reads `columnKind`
   stays unknown. A finding with no place shows in SARIF only as a
   result with no location, which GitHub does not show.
+
+## Upload Sinter's findings to code scanning
+
+- The step that writes the SARIF accepts the exit codes 0 and 1 and
+  fails on any other code. The upload runs only when that step
+  succeeded, so a blocking finding still uploads.
+- The SARIF goes to `$RUNNER_TEMP`, outside the checkout.
+- The step that writes the SARIF cites `sarif-output`, because the
+  record sets the upload in tree mode.
+- Left for later: no upload to GitHub has run. Whether GitHub accepts
+  the file, and whether the token of a pull request can upload, shows
+  only on a real run.
