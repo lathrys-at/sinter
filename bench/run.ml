@@ -6,10 +6,18 @@ open Sinter_bench
 
 exception Stop of string
 
+let ( let* ) = Result.bind
 let stop format = Printf.ksprintf (fun message -> raise (Stop message)) format
 
 type platform = Linux | Macos
 type counter = Perf of string | Time_l | No_count of string
+type timer = Timer of string | No_timer of string
+
+type measures = {
+  peak_kib : int option;
+  instructions : int option;
+  footprint_kib : int option;
+}
 
 type target = {
   name : string;
@@ -22,7 +30,7 @@ type result = {
   target : target;
   command : string;
   exit_code : int;
-  samples : Measurement.sample list;
+  samples : measures list;
   phases : (string * int) list list;
 }
 
@@ -32,7 +40,7 @@ let arguments = function
   | "check-diff" -> [ "check"; "--diff" ]
   | command -> [ command ]
 
-let time = "/usr/bin/time"
+let default_time = "/usr/bin/time"
 let read path = In_channel.with_open_bin path In_channel.input_all
 
 let rec remove_tree path =
@@ -112,16 +120,21 @@ let one_line text =
     String.sub text 0 (String.length text - 1)
   else text
 
-let counter = function
+let counter ~timer = function
   | Macos -> (
-      let result = scratch_file "time-probe" in
-      let code, _, errors = capture [| time; "-l"; "-o"; result; "true" |] in
-      if code <> 0 then No_count ("time -l failed: " ^ one_line errors)
-      else
-        match Measurement.bsd_time (read result) with
-        | Ok { instructions = Some count; _ } when count > 0 -> Time_l
-        | Ok _ -> No_count "time -l reports no instructions retired"
-        | Error message -> No_count message)
+      match timer with
+      | No_timer time -> No_count (time ^ " is missing")
+      | Timer time -> (
+          let result = scratch_file "time-probe" in
+          let code, _, errors =
+            capture [| time; "-l"; "-o"; result; "true" |]
+          in
+          if code <> 0 then No_count ("time -l failed: " ^ one_line errors)
+          else
+            match Measurement.bsd_time (read result) with
+            | Ok { instructions = Some count; _ } when count > 0 -> Time_l
+            | Ok _ -> No_count "time -l reports no instructions retired"
+            | Error message -> No_count message))
   | Linux -> (
       match on_path "perf" with
       | None -> No_count "perf is not on the PATH"
@@ -156,7 +169,7 @@ let sinter_env =
           (Array.to_list (Unix.environment ()))
        @ [ "GIT_CONFIG_GLOBAL=/dev/null"; "GIT_CONFIG_NOSYSTEM=1" ]))
 
-let measure ~platform ~counter ~sinter ~phases ~stdout target command =
+let measure ~platform ~counter ~timer ~sinter ~phases ~stdout target command =
   let times = scratch_file "time" and counts = scratch_file "perf" in
   let errors = scratch_file "errors" and words = scratch_file "words" in
   if Sys.file_exists words then Sys.remove words;
@@ -166,14 +179,19 @@ let measure ~platform ~counter ~sinter ~phases ~stdout target command =
         ~some:(fun path -> [ "--manifest"; path ])
         target.manifest
   in
+  let timed =
+    match (platform, timer) with
+    | Macos, Timer time -> time :: "-l" :: "-o" :: times :: invocation
+    | Linux, Timer time ->
+        time :: "-f" :: "%M" :: "-o" :: times :: "--" :: invocation
+    | (Macos | Linux), No_timer _ -> invocation
+  in
   let argv =
     match (platform, counter) with
-    | Macos, _ -> time :: "-l" :: "-o" :: times :: invocation
     | Linux, Perf perf ->
         [ perf; "stat"; "-x,"; "-e"; "instructions:u"; "-o"; counts; "--" ]
-        @ (time :: "-f" :: "%M" :: "-o" :: times :: "--" :: invocation)
-    | Linux, (Time_l | No_count _) ->
-        time :: "-f" :: "%M" :: "-o" :: times :: "--" :: invocation
+        @ timed
+    | Linux, (Time_l | No_count _) | Macos, _ -> timed
   in
   let code =
     spawn ~cwd:target.root
@@ -186,24 +204,39 @@ let measure ~platform ~counter ~sinter ~phases ~stdout target command =
     stop "sinter %s on %s exited with %d:\n%s" command target.name code
       (read errors);
   let sample =
-    match platform with
-    | Macos -> (
-        match (Measurement.bsd_time (read times), counter) with
-        | Ok sample, No_count _ -> Ok { sample with instructions = None }
-        | result, _ -> result)
-    | Linux -> (
-        match Measurement.gnu_time (read times) with
-        | Error _ as error -> error
-        | Ok peak_kib -> (
-            let instructions =
-              match counter with
-              | Perf _ -> Measurement.perf_stat (read counts)
-              | Time_l | No_count _ -> Ok None
-            in
-            match instructions with
-            | Ok instructions ->
-                Ok { Measurement.peak_kib; instructions; footprint_kib = None }
-            | Error _ as error -> error))
+    let* timed =
+      match (timer, platform) with
+      | No_timer _, _ -> Ok None
+      | Timer _, Macos ->
+          Result.map Option.some (Measurement.bsd_time (read times))
+      | Timer _, Linux ->
+          Result.map
+            (fun peak_kib ->
+              Some
+                {
+                  Measurement.peak_kib;
+                  instructions = None;
+                  footprint_kib = None;
+                })
+            (Measurement.gnu_time (read times))
+    in
+    let* instructions =
+      match (counter, timed) with
+      | Perf _, _ -> Measurement.perf_stat (read counts)
+      | Time_l, Some sample -> Ok sample.instructions
+      | Time_l, None | No_count _, _ -> Ok None
+    in
+    Ok
+      {
+        peak_kib =
+          Option.map
+            (fun (sample : Measurement.sample) -> sample.peak_kib)
+            timed;
+        instructions;
+        footprint_kib =
+          Option.bind timed (fun (sample : Measurement.sample) ->
+              sample.footprint_kib);
+      }
   in
   match
     ( sample,
@@ -215,7 +248,7 @@ let measure ~platform ~counter ~sinter ~phases ~stdout target command =
   | Error message, _ | _, Error message ->
       stop "sinter %s on %s: %s" command target.name message
 
-let run_target ~platform ~counter ~sinter ~phases ~runs ~outputs target =
+let run_target ~platform ~counter ~timer ~sinter ~phases ~runs ~outputs target =
   List.map
     (fun command ->
       let first =
@@ -225,13 +258,14 @@ let run_target ~platform ~counter ~sinter ~phases ~runs ~outputs target =
         | None -> "/dev/null"
       in
       let exit_code, _, _ =
-        measure ~platform ~counter ~sinter ~phases ~stdout:first target command
+        measure ~platform ~counter ~timer ~sinter ~phases ~stdout:first target
+          command
       in
       let measured =
         List.init runs (fun _ ->
             let code, sample, phases =
-              measure ~platform ~counter ~sinter ~phases ~stdout:"/dev/null"
-                target command
+              measure ~platform ~counter ~timer ~sinter ~phases
+                ~stdout:"/dev/null" target command
             in
             if code <> exit_code then
               stop "sinter %s on %s exited with %d and then with %d" command
@@ -305,15 +339,9 @@ let row result =
     declarations = result.target.declarations;
     command = result.command;
     exit_code = result.exit_code;
-    peak_kib =
-      Measurement.summary
-        (List.map
-           (fun (sample : Measurement.sample) -> float_of_int sample.peak_kib)
-           samples);
-    instructions =
-      floats (fun (sample : Measurement.sample) -> sample.instructions);
-    footprint_kib =
-      floats (fun (sample : Measurement.sample) -> sample.footprint_kib);
+    peak_kib = floats (fun (sample : measures) -> sample.peak_kib);
+    instructions = floats (fun (sample : measures) -> sample.instructions);
+    footprint_kib = floats (fun (sample : measures) -> sample.footprint_kib);
     phase_words =
       (match result.phases with
       | [] -> []
@@ -338,9 +366,8 @@ let row result =
 
 let platform_name = function Linux -> "linux" | Macos -> "macos"
 
-let measure_trees ~platform ~phases ~sinter ~generator ~self ~self_manifest
-    ~sizes ~seed ~runs ~trees ~outputs =
-  if not (Sys.file_exists time) then stop "%s is missing" time;
+let measure_trees ~platform ~phases ~sinter ~time ~generator ~self
+    ~self_manifest ~sizes ~seed ~runs ~trees ~outputs =
   if not (Sys.file_exists sinter) then stop "%s is missing" sinter;
   if runs < 1 then stop "--runs is %d, and it must be 1 or more" runs;
   List.iter
@@ -353,7 +380,10 @@ let measure_trees ~platform ~phases ~sinter ~generator ~self ~self_manifest
     | None, _ :: _ -> stop "--generator is missing, and --sizes names trees"
   in
   let sinter = absolute sinter in
-  let counter = counter platform in
+  let timer =
+    if Sys.file_exists time then Timer (absolute time) else No_timer time
+  in
+  let counter = counter ~timer platform in
   let trees =
     match trees with
     | Some dir ->
@@ -381,7 +411,7 @@ let measure_trees ~platform ~phases ~sinter ~generator ~self ~self_manifest
   in
   let results =
     List.concat_map
-      (run_target ~platform ~counter ~sinter ~phases ~runs ~outputs)
+      (run_target ~platform ~counter ~timer ~sinter ~phases ~runs ~outputs)
       targets
   in
   {
@@ -415,7 +445,7 @@ let comparable baseline ~platform ~seed =
           path baseline.seed seed)
     baseline
 
-let main sinter generator self self_manifest sizes seed runs budgets trees
+let main sinter time generator self self_manifest sizes seed runs budgets trees
     outputs results baseline json markdown =
   try
     let budgets =
@@ -436,7 +466,7 @@ let main sinter generator self self_manifest sizes seed runs budgets trees
       | None, Some sinter ->
           let platform = platform () in
           comparable baseline ~platform:(platform_name platform) ~seed;
-          measure_trees ~platform ~phases:(Option.is_some budgets) ~sinter
+          measure_trees ~platform ~phases:(Option.is_some budgets) ~sinter ~time
             ~generator ~self ~self_manifest ~sizes ~seed ~runs ~trees ~outputs
       | Some _, Some _ -> stop "--results and --sinter exclude each other"
       | None, None -> stop "either --sinter or --results is required"
@@ -495,7 +525,13 @@ let () =
          On Linux, GNU $(i,time) gives the peak resident memory, and $(i,perf \
          stat) counts the instructions in user space when $(i,perf) is on the \
          PATH and can count them. On macOS, $(i,time -l) gives the peak \
-         resident memory, the instructions, and the peak memory footprint.";
+         resident memory, the instructions, and the peak memory footprint. \
+         $(b,--time) names the program $(i,time).";
+      `P
+        "When no file is at the path of $(b,--time), the run measures no peak \
+         memory and no peak memory footprint, and on macOS no instructions. \
+         The run does not stop: the JSON object holds null for each of these \
+         measures, and the table shows -.";
       `P
         "On Linux, the peak memory is the largest of the peaks of sinter and \
          of each process that it starts. The instruction count of $(i,perf \
@@ -569,6 +605,15 @@ let () =
       "The sinter executable to measure. Either this option or $(b,--results) \
        is required."
   in
+  let time =
+    Arg.(
+      value & opt string default_time
+      & info [ "time" ] ~docv:"PATH"
+          ~doc:
+            "The program that measures the peak memory: GNU $(i,time) on \
+             Linux, and the $(i,time) of the system on macOS. When no file is \
+             at this path, the run measures no peak memory.")
+  in
   let results =
     path_opt [ "results" ] "PATH"
       "A JSON object that an earlier run wrote. The run reads its measures, \
@@ -641,6 +686,6 @@ let () =
        (Cmd.v
           (Cmd.info "run" ~doc ~man ~exits)
           Term.(
-            const main $ sinter $ generator $ self $ self_manifest $ sizes
-            $ seed $ runs $ budgets $ trees $ outputs $ results $ baseline
-            $ json $ markdown)))
+            const main $ sinter $ time $ generator $ self $ self_manifest
+            $ sizes $ seed $ runs $ budgets $ trees $ outputs $ results
+            $ baseline $ json $ markdown)))

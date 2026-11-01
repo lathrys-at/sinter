@@ -427,7 +427,8 @@ let row_gen =
           (Gen.option (Gen.int_bound 100000))
           (Gen.oneof_list [ "scan"; "check" ])
           (Gen.int_bound 3))
-       (Gen.quad summary_gen (Gen.option summary_gen) (Gen.option summary_gen)
+       (Gen.quad (Gen.option summary_gen) (Gen.option summary_gen)
+          (Gen.option summary_gen)
           (Gen.list_size (Gen.int_bound 4)
              (Gen.pair
                 (Gen.oneof_list [ "read"; "parse"; "facts"; "p\"é" ])
@@ -502,7 +503,13 @@ let report_of_peaks ?(platform = "linux") peaks =
             command;
             exit_code = 0;
             peak_kib =
-              { Measurement.median = peak; min = peak; max = peak; spread = 0. };
+              Some
+                {
+                  Measurement.median = peak;
+                  min = peak;
+                  max = peak;
+                  spread = 0.;
+                };
             instructions = None;
             footprint_kib = None;
             phase_words = [];
@@ -598,22 +605,51 @@ let unique_rows (report : Report.t) =
         [] report.rows;
   }
 
+let markdown_shows_a_dash_for_a_row_without_a_peak () =
+  let unmeasured =
+    {
+      (report_of_peaks [ ("n1000", "scan", 0.) ]) with
+      rows =
+        List.map
+          (fun (row : Report.row) -> { row with peak_kib = None })
+          (report_of_peaks [ ("n1000", "scan", 0.) ]).rows;
+    }
+  in
+  Alcotest.(check (list string))
+    "without a baseline"
+    [ "| n1000 | scan | 0 | - | - | - |" ]
+    (table_rows (Report.to_markdown unmeasured []));
+  Alcotest.(check (list string))
+    "with a baseline"
+    [ "| n1000 | scan | 0 | - | 10.0 | - | - | - |" ]
+    (table_rows
+       (Report.to_markdown
+          ~baseline:(report_of_peaks [ ("n1000", "scan", 10240.) ])
+          unmeasured []));
+  Alcotest.(check (option (float 0.)))
+    "the peak" None
+    (Report.peak unmeasured ~tree:"n1000" ~command:"scan")
+
 let a_report_is_its_own_baseline_with_no_difference =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count:300
        ~name:
          "a report that is its own baseline shows its own peak and a \
-          difference of zero in every row" (Gen.map unique_rows report_gen)
-       (fun report ->
+          difference of zero in every row with a peak"
+       (Gen.map unique_rows report_gen) (fun report ->
          let rows =
            table_rows (Report.to_markdown ~baseline:report report [])
          in
          List.length rows = List.length report.rows
          && List.for_all2
               (fun line (row : Report.row) ->
-                let median = row.peak_kib.median in
-                match String.split_on_char '|' line with
-                | [ ""; _; _; _; _; base; difference; _; _; "" ] ->
+                match (String.split_on_char '|' line, row.peak_kib) with
+                | [ ""; _; _; _; _; base; difference; _; _; "" ], None ->
+                    String.equal (String.trim base) "no baseline"
+                    && String.equal (String.trim difference) "-"
+                | [ ""; _; _; _; _; base; difference; _; _; "" ], Some summary
+                  ->
+                    let median = summary.median in
                     String.equal (String.trim base)
                       (Printf.sprintf "%.1f" (median /. 1024.))
                     && String.equal (String.trim difference)
@@ -656,7 +692,7 @@ let a_report_reads_the_first_row_of_a_tree_and_command () =
       declarations = None;
       command;
       exit_code = 0;
-      peak_kib = summary peak;
+      peak_kib = Some (summary peak);
       instructions = Option.map summary instructions;
       footprint_kib = None;
       phase_words;
@@ -701,13 +737,44 @@ let write path text =
   Out_channel.with_open_bin path (fun channel ->
       Out_channel.output_string channel text)
 
-let run arguments =
+let fake_time =
+  lazy
+    (let path = Filename.concat (Git_fixture.temp_dir ()) "time" in
+     write path
+       {|#!/bin/sh
+if [ "$1" = -l ] && [ "$2" = -o ]; then
+  out=$3
+  shift 3
+  "$@"
+  code=$?
+  printf '  2097152  maximum resident set size\n  1000000  instructions retired\n  3145728  peak memory footprint\n' >"$out"
+  exit $code
+fi
+if [ "$1" = -f ] && [ "$2" = %M ] && [ "$3" = -o ] && [ "$5" = -- ]; then
+  out=$4
+  shift 5
+  "$@"
+  code=$?
+  printf '2048\n' >"$out"
+  exit $code
+fi
+echo "time: the arguments are not of a known form: $*" >&2
+exit 2
+|};
+     Unix.chmod path 0o755;
+     path)
+
+let run ?time arguments =
   let output = Filename.temp_file "sinter-run" ".out" in
   let errors = Filename.temp_file "sinter-run" ".err" in
+  let time =
+    match time with Some time -> time | None -> Lazy.force fake_time
+  in
   let code =
     Sys.command
       (Printf.sprintf "../bench/run.exe %s >%s 2>%s"
-         (String.concat " " (List.map Filename.quote arguments))
+         (String.concat " "
+            (List.map Filename.quote ("--time" :: time :: arguments)))
          (Filename.quote output) (Filename.quote errors))
   in
   Fun.protect
@@ -736,8 +803,8 @@ let budgets_file text =
   write path text;
   path
 
-let measure ?(extra = []) budgets =
-  run
+let measure ?time ?(extra = []) budgets =
+  run ?time
     ([
        "--sinter";
        sinter;
@@ -772,10 +839,10 @@ let run_skips_every_budget_that_it_cannot_check () =
       Alcotest.(check int)
         "exit of sinter" 0
         Yojson.Basic.Util.(to_int (member "exit" result));
-      Alcotest.(check bool)
-        "a peak" true
+      Alcotest.(check (float 0.))
+        "the peak of the fake time" 2048.
         Yojson.Basic.Util.(
-          to_number (member "median" (member "peak_kib" result)) > 0.);
+          to_number (member "median" (member "peak_kib" result)));
       Alcotest.(check bool)
         "an instruction count when a counter counts" counted
         (member "instructions" result <> `Null);
@@ -1082,6 +1149,42 @@ let run_writes_its_files () =
     "the output of check is kept" true
     (Sys.file_exists (Filename.concat outputs "n1000-check.out"))
 
+let run_with_a_missing_time_measures_no_peak_memory () =
+  let missing = Filename.concat (Git_fixture.temp_dir ()) "time" in
+  let code, output, errors =
+    measure ~time:missing ~extra:[ "--sizes"; "1000" ]
+      "[scan]\nallocation-growth = 0.5\n\n[check]\nallocation-growth = 0.5\n"
+  in
+  Alcotest.(check int) ("exit, with: " ^ errors) 0 code;
+  let json = json_of output in
+  let results = Yojson.Basic.Util.(to_list (member "results" json)) in
+  Alcotest.(check int) "the results" 3 (List.length results);
+  List.iter
+    (fun result ->
+      Alcotest.(check bool) "no peak" true (member "peak_kib" result = `Null);
+      Alcotest.(check bool)
+        "no peak footprint" true
+        (member "footprint_kib" result = `Null);
+      Alcotest.(check bool)
+        "the phases" true
+        (Yojson.Basic.Util.(to_list (member "phase_words" result)) <> []))
+    results;
+  if String.equal (host_platform ()) "macos" then (
+    Alcotest.(check bool)
+      "no instruction counter" true
+      (member "instruction_counter" json = `Null);
+    Alcotest.(check string)
+      "the reason" (missing ^ " is missing")
+      Yojson.Basic.Util.(to_string (member "no_count_reason" json)));
+  List.iter
+    (fun row ->
+      Alcotest.(check bool)
+        ("a dash for the peak: " ^ row)
+        true
+        (String.starts_with ~prefix:"| n1000 | " row
+        && List.nth (String.split_on_char '|' row) 4 = " - "))
+    (table_rows errors)
+
 let fake_sinter () =
   let fake = Filename.concat (Git_fixture.temp_dir ()) "sinter" in
   write fake "#!/bin/sh\nexit 0\n";
@@ -1326,4 +1429,8 @@ let tests =
     case "run stops with exit 2" run_stops_with_exit_2;
     case "run with an unknown option is a usage error"
       run_with_an_unknown_option_is_a_usage_error;
+    case "markdown shows a dash for a row without a peak"
+      markdown_shows_a_dash_for_a_row_without_a_peak;
+    case "run with a missing --time measures no peak memory"
+      run_with_a_missing_time_measures_no_peak_memory;
   ]

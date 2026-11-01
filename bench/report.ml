@@ -6,7 +6,7 @@ type row = {
   declarations : int option;
   command : string;
   exit_code : int;
-  peak_kib : Measurement.summary;
+  peak_kib : Measurement.summary option;
   instructions : Measurement.summary option;
   footprint_kib : Measurement.summary option;
   phase_words : (string * float) list;
@@ -27,9 +27,10 @@ let first_row report ~tree ~command =
     report.rows
 
 let peak report ~tree ~command =
-  Option.map
-    (fun row -> row.peak_kib.Measurement.median)
-    (first_row report ~tree ~command)
+  Option.bind (first_row report ~tree ~command) (fun row ->
+      Option.map
+        (fun (summary : Measurement.summary) -> summary.median)
+        row.peak_kib)
 
 let instructions report ~tree ~command =
   Option.bind (first_row report ~tree ~command) (fun row ->
@@ -80,7 +81,7 @@ let to_json report outcomes =
                      option_json (fun count -> `Int count) row.declarations );
                    ("command", `String row.command);
                    ("exit", `Int row.exit_code);
-                   ("peak_kib", summary_json row.peak_kib);
+                   ("peak_kib", option_json summary_json row.peak_kib);
                    ("instructions", option_json summary_json row.instructions);
                    ("footprint_kib", option_json summary_json row.footprint_kib);
                    ( "phase_words",
@@ -168,7 +169,7 @@ let row json =
   in
   let* command = read "command" as_string json in
   let* exit_code = read "exit" as_int json in
-  let* peak_kib = read "peak_kib" summary json in
+  let* peak_kib = read "peak_kib" (fun name -> as_option name summary) json in
   let* instructions =
     read "instructions" (fun name -> as_option name summary) json
   in
@@ -223,10 +224,11 @@ let cell ~scale ~digits = function
         summary.spread
 
 let compared baseline row =
-  match peak baseline ~tree:row.tree ~command:row.command with
-  | None -> [ "no baseline"; "-" ]
-  | Some base ->
-      let change = row.peak_kib.median -. base in
+  match (peak baseline ~tree:row.tree ~command:row.command, row.peak_kib) with
+  | None, _ -> [ "no baseline"; "-" ]
+  | Some base, None -> [ Printf.sprintf "%.1f" (base /. 1024.); "-" ]
+  | Some base, Some (summary : Measurement.summary) ->
+      let change = summary.median -. base in
       [
         Printf.sprintf "%.1f" (base /. 1024.);
         (if base > 0. then
@@ -245,7 +247,7 @@ let to_markdown ?baseline report outcomes =
                row.tree;
                row.command;
                string_of_int row.exit_code;
-               cell ~scale:1024. ~digits:1 (Some row.peak_kib);
+               cell ~scale:1024. ~digits:1 row.peak_kib;
              ]
             @ Option.fold ~none:[]
                 ~some:(fun baseline -> compared baseline row)
