@@ -786,7 +786,12 @@ and walk_fixed reading ~path fields table =
       | Some place -> walk reading ~path:(path @ [ key.name ]) ~key place child
       | None ->
           names_error reading key.at
-            (unknown_key ~table:path ~valid:(List.map fst fields) key.name))
+            (unknown_key ~table:path
+               ~valid:
+                 (List.filter_map
+                    (function _, Refused _ -> None | name, _ -> Some name)
+                    fields)
+               key.name))
     table
 
 and walk_varying reading ~path check table =

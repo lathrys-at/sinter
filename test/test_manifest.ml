@@ -2792,6 +2792,83 @@ let a_glob_fault_keeps_a_segment_with_a_semicolon_whole () =
     )
     (fault_and_help "[scan]\npacks.markdown.files = [\"a; **b\"]\n")
 
+let no_key_of_markdown_suggests_a_key_that_markdown_refuses () =
+  reports "a near name of version"
+    (markdown ^ "packs.markdown.versoin = \"1.0\"\n")
+    [
+      "sinter.toml:3:16: unknown key 'versoin' in [scan.packs.markdown]; \
+       remove this key, or correct its name";
+    ]
+
+let no_key_of_markdown_suggests_runners () =
+  reports "a near name of runners"
+    (markdown ^ "packs.markdown.runers = {}\n")
+    [
+      "sinter.toml:3:16: unknown key 'runers' in [scan.packs.markdown]; remove \
+       this key, or correct its name";
+    ]
+
+let a_key_of_markdown_suggests_files () =
+  reports "a near name of files"
+    (markdown ^ "packs.markdown.file = []\n")
+    [
+      "sinter.toml:3:16: unknown key 'file' in [scan.packs.markdown]; did you \
+       mean 'files'?";
+    ]
+
+let a_key_of_a_fetched_pack_suggests_version () =
+  reports "a near name of version"
+    (markdown
+   ^ "packs.ocaml.files = [\"**/*.ml\"]\npacks.ocaml.versoin = \"1.0\"\n")
+    [
+      "sinter.toml:4:13: unknown key 'versoin' in [scan.packs.ocaml]; did you \
+       mean 'version'?";
+    ]
+
+let near_name_of_a_pack_key =
+  let open Gen in
+  let* pack = oneof_list [ "markdown"; "ocaml" ]
+  and* name = oneof_list [ "files"; "version"; "runners" ] in
+  let length = String.length name in
+  let* at = int_range 0 (length - 1)
+  and* letter = char_range 'a' 'z'
+  and* edit = int_range 0 2 in
+  let before = String.sub name 0 at in
+  let near =
+    match edit with
+    | 0 -> before ^ String.sub name (at + 1) (length - at - 1)
+    | 1 -> before ^ String.make 1 letter ^ String.sub name at (length - at)
+    | _ ->
+        before ^ String.make 1 letter
+        ^ String.sub name (at + 1) (length - at - 1)
+  in
+  return (pack, near)
+
+let pack_key_text (pack, name) =
+  "[scan.packs." ^ pack ^ "]\n" ^ name ^ " = []\n"
+
+let refuses_the_name = function
+  | Manifest.At
+      ( _,
+        ( Manifest.Unknown_key _ | Manifest.Misplaced_key _
+        | Manifest.Markdown_version | Manifest.Markdown_runners ) ) ->
+      true
+  | _ -> false
+
+let a_suggested_key_is_valid_at_its_place =
+  property ~count:500 ~name:"a suggested key of a pack is valid at its place"
+    ~print:(fun (pack, name) -> pack_key_text (pack, name))
+    near_name_of_a_pack_key
+    (fun (pack, name) ->
+      match Manifest.of_string (pack_key_text (pack, name)) with
+      | Error
+          [ Manifest.At (_, Manifest.Unknown_key { nearest = Some near; _ }) ]
+        -> (
+          match Manifest.of_string (pack_key_text (pack, near)) with
+          | Ok _ -> true
+          | Error errors -> not (List.exists refuses_the_name errors))
+      | Ok _ | Error _ -> true)
+
 let case name test = Alcotest.test_case name `Quick test
 
 let the_document_keeps_every_key_with_its_place () =
@@ -2943,4 +3020,12 @@ let tests =
       a_syntax_fault_keeps_a_key_with_a_semicolon_whole;
     case "a glob fault keeps a segment with a semicolon whole"
       a_glob_fault_keeps_a_segment_with_a_semicolon_whole;
+    case "no key of markdown suggests a key that markdown refuses"
+      no_key_of_markdown_suggests_a_key_that_markdown_refuses;
+    case "no key of markdown suggests runners"
+      no_key_of_markdown_suggests_runners;
+    case "a key of markdown suggests files" a_key_of_markdown_suggests_files;
+    case "a key of a fetched pack suggests version"
+      a_key_of_a_fetched_pack_suggests_version;
+    a_suggested_key_is_valid_at_its_place;
   ]
