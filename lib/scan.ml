@@ -24,6 +24,7 @@ type error =
   | Unparsed_file of { file : string; error : Sinter_bridge.Tree.error }
   | Unparsed_base_file of { file : string; error : Sinter_bridge.Tree.error }
   | Reader of Markdown.load_error
+  | Ledger of Ledger.error
 
 let ( let* ) = Result.bind
 
@@ -166,6 +167,7 @@ let explain = function
             ^ Sinter_bridge.Query.message error,
             bug );
       ]
+  | Ledger error -> [ Ledger.explain error ]
 
 type outcome = { warnings : string list; records : Jsonl.record list }
 
@@ -589,37 +591,38 @@ let load_with_base ?phases ~env ~dir ~manifest ~base () =
         ~deliveries,
       compared )
 
-let ledger_ref = "refs/sinter/ledger"
+let ledger ?phases tree depth =
+  Allocation.measure phases "repository" (fun () ->
+      Result.map_error (fun error -> Ledger error) (Ledger.read tree.repo depth))
 
-let ledger_commit tree =
-  match Git.commit_of tree.repo ledger_ref with
-  | Ok commit -> Ok (Some commit)
-  | Error (Git.Bad_revision _) -> Ok None
-  | Error error -> Error (Repository error)
+let ledger_warnings ledger facts =
+  match ledger with
+  | Some ledger -> Option.to_list (Ledger.warning ledger)
+  | None -> (
+      match Facts.plans facts with
+      | [] -> []
+      | _ :: _ -> [ "no ledger found, so every plan counts as open" ])
 
-let ledger_warning tree facts =
-  match Facts.plans facts with
-  | [] -> None
-  | _ :: _ -> (
-      match ledger_commit tree with
-      | Ok None -> Some "no ledger found, so every plan counts as open"
-      | Ok (Some _) | Error _ -> None)
+let entries ledger = Option.fold ~none:[] ~some:Ledger.entries ledger
 
-let index ?(mode = Mode.Tree) tree ~tool =
+let index ?(mode = Mode.Tree) tree ~ledger ~tool =
   let* key = repository (Git.tree_key tree.repo) in
   Ok
     (Facts.index ~tree:key ~base:(base_commit tree.base)
        ~default_branch:(Manifest.default_branch tree.manifest)
-       ~manifest:tree.location ~tool ~mode)
+       ~manifest:tree.location
+       ~ledger:(Option.map Ledger.tip ledger)
+       ~tool ~mode)
 
 let run ?phases ~env ~dir ~manifest ~base ~tool () =
   let* tree = load ?phases ~env ~dir ~manifest ~base () in
+  let* ledger = ledger ?phases tree Ledger.Tip in
   let* index =
-    Allocation.measure phases "repository" (fun () -> index tree ~tool)
+    Allocation.measure phases "repository" (fun () -> index tree ~ledger ~tool)
   in
   let facts =
     Allocation.measure phases "facts" (fun () ->
-        Facts.make tree.manifest tree.documents)
+        Facts.make tree.manifest ~ledger:(entries ledger) tree.documents)
   in
   let records =
     Allocation.measure phases "records" (fun () ->
@@ -627,6 +630,6 @@ let run ?phases ~env ~dir ~manifest ~base ~tool () =
   in
   Ok
     {
-      warnings = tree.warnings @ Option.to_list (ledger_warning tree facts);
+      warnings = tree.warnings @ ledger_warnings ledger facts;
       records = index :: records;
     }

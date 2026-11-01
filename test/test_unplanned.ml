@@ -27,7 +27,7 @@ let manifest =
   | Error _ -> failwith "the manifest has errors"
 
 let facts files =
-  Facts.make manifest
+  Facts.make ~ledger:[] manifest
     (List.map (fun (path, text) -> (path, document text)) files)
 
 let hunk ?(old_line = 1) ?(removed = 0) ?(line = 1) ?(added = 0) ?(ecol = 1) ()

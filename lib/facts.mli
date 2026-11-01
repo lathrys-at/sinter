@@ -12,11 +12,12 @@
     distinct external id that an edge names and that resolves gives one
     [external] record.
 
-    The records take the values that hold when the ledger, the evidence, and the
-    session are absent: every plan is open, no plan and no step is active,
-    nothing is declined, an item of a kind that needs approval is not approved,
-    and a step without promises is not approved while [proof.step] is
-    ["approval"]. Every other step is approved when its plan is. *)
+    The records take the values that hold when the evidence and the session are
+    absent, and as if the ledger held no entry: every plan is open, no plan and
+    no step is active, nothing is declined, an item of a kind that needs
+    approval is not approved, and a step without promises is not approved while
+    [proof.step] is ["approval"]. Every other step is approved when its plan is.
+*)
 
 type t
 (** The facts of one tree. *)
@@ -25,12 +26,14 @@ val may_hold_plan : string -> bool
 (** [may_hold_plan path] is [true] when [path] starts with [.plans/]: only a
     file at such a path can be a plan file. *)
 
-val make : Manifest.t -> (string * Markdown.t) list -> t
-(** [make manifest files] is the facts of [files]. Each pair is the path of one
-    file, relative to the repository root, and the document that
-    {!Markdown.read} gave for the file. No path occurs twice. The manifest gives
-    the namespaces, the kinds that need approval, and the default locations of
-    the kinds.
+val make :
+  Manifest.t -> ledger:Ledger.entry list -> (string * Markdown.t) list -> t
+(** [make manifest ~ledger files] is the facts of [files] with the entries
+    [ledger] of the ledger, in the order of their [seq] ({!Ledger.compare}).
+    Each pair is the path of one file, relative to the repository root, and the
+    document that {!Markdown.read} gave for the file. No path occurs twice. The
+    manifest gives the namespaces, the kinds that need approval, and the default
+    locations of the kinds. No fact and no record depends on [ledger].
 
     @raise Invalid_argument
       if the document of a plan file that gives a plan holds no text of a
@@ -38,6 +41,10 @@ val make : Manifest.t -> (string * Markdown.t) list -> t
 
 val manifest : t -> Manifest.t
 (** [manifest facts] is the manifest that {!make} took. *)
+
+val ledger : t -> Ledger.entry list
+(** [ledger facts] is the entries of the ledger that {!make} took, in their
+    order. *)
 
 val files : t -> (string * Markdown.t) list
 (** [files facts] is the files that {!make} took, in their order. *)
@@ -361,11 +368,13 @@ val index :
   base:string ->
   default_branch:string ->
   manifest:string ->
+  ledger:string option ->
   tool:string ->
   mode:Mode.t ->
   Jsonl.record
-(** [index ~tree ~base ~default_branch ~manifest ~tool ~mode] is the header
-    record of a run in [mode], for a repository with no ledger ref, no evidence,
-    and no fetched pack. [tree] is the tree key, [base] the object id of the
-    base commit, [manifest] the path of the manifest, and [tool] the version of
-    the tool. *)
+(** [index ~tree ~base ~default_branch ~manifest ~ledger ~tool ~mode] is the
+    header record of a run in [mode], for a repository with no evidence and no
+    fetched pack. [tree] is the tree key, [base] the object id of the base
+    commit, [manifest] the path of the manifest, [ledger] the object id of the
+    commit at the ledger ref, and [tool] the version of the tool. The record has
+    no field [ledger] when [ledger] is [None]. *)

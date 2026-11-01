@@ -181,7 +181,7 @@ let a_base_note_names_the_short_ref_and_the_short_commit () =
 let the_index_of_a_tree_is_the_first_record_of_its_scan () =
   let _, _, { Scan.records; _ } = Lazy.force shared in
   let _, tree = Lazy.force shared_tree in
-  match (Scan.index tree ~tool:"v1", records) with
+  match (Scan.index tree ~ledger:None ~tool:"v1", records) with
   | Ok index, first :: _ ->
       Alcotest.(check string)
         "the index" (Jsonl.to_string first) (Jsonl.to_string index)
@@ -522,6 +522,9 @@ let every_error =
   @ [
       Scan.Reader (Markdown.Grammar (Sinter_bridge.Language.Version 9));
       Scan.Reader (Markdown.Query (Sinter_bridge.Query.Not_utf_8 3));
+      Scan.Ledger
+        (Ledger.Missing_object
+           { commit = String.make 40 'a'; id = String.make 40 'b' });
     ]
 
 let constructor = function
@@ -566,11 +569,12 @@ let constructor = function
       | Sinter_bridge.Tree.Too_long -> "Unparsed_base_file Too_long")
   | Scan.Reader (Markdown.Grammar _) -> "Reader Grammar"
   | Scan.Reader (Markdown.Query _) -> "Reader Query"
+  | Scan.Ledger _ -> "Ledger"
 
 let every_error_has_a_fault_and_a_help () =
   Alcotest.(check int)
-    "the examples are of 32 distinct cases, the cases that [constructor] names"
-    32
+    "the examples are of 33 distinct cases, the cases that [constructor] names"
+    33
     (List.length
        (List.sort_uniq String.compare (List.map constructor every_error)));
   List.iter
@@ -697,6 +701,12 @@ let each_error_says_what_is_wrong_and_what_to_do () =
           ^ Sinter_bridge.Query.message (Sinter_bridge.Query.Not_utf_8 3),
           "report this as a fault of sinter" );
       ];
+      [
+        ( "the clone does not hold the object " ^ String.make 40 'b'
+          ^ " of the ledger, in the commit " ^ String.make 40 'a',
+          "fetch every object of the ledger with git fetch --refetch \
+           --no-filter origin refs/sinter/ledger" );
+      ];
     ]
     (List.map
        (fun error -> List.map text (Scan.explain error))
@@ -741,6 +751,9 @@ let each_error_says_what_is_wrong_and_what_to_do () =
            { file = "b.md"; error = Sinter_bridge.Tree.Too_long };
          Scan.Reader (Markdown.Grammar (Sinter_bridge.Language.Version 9));
          Scan.Reader (Markdown.Query (Sinter_bridge.Query.Not_utf_8 3));
+         Scan.Ledger
+           (Ledger.Missing_object
+              { commit = String.make 40 'a'; id = String.make 40 'b' });
        ])
 
 let blocks text =
@@ -1040,24 +1053,71 @@ let a_load_reads_the_delivery_lines_of_the_change () =
     "no line with the base at HEAD" []
     (List.map found_text (load ~base:"HEAD" repo).deliveries)
 
+let empty_ledger repo =
+  let tree = String.trim (Git_fixture.git_input repo [ "mktree" ] "") in
+  let commit =
+    String.trim (Git_fixture.git repo [ "commit-tree"; tree; "-m"; "ledger" ])
+  in
+  ignore (Git_fixture.git repo [ "update-ref"; "refs/sinter/ledger"; commit ]);
+  commit
+
 let the_ledger_warning_needs_a_plan_and_no_ledger () =
   let warning files ~ledger =
     let repo = repository (("sinter.toml", manifest) :: files) in
-    if ledger then
-      ignore
-        (Git_fixture.git repo [ "update-ref"; "refs/sinter/ledger"; "HEAD" ]);
+    if ledger then ignore (empty_ledger repo);
     let tree = load repo in
-    Scan.ledger_warning tree (Facts.make tree.manifest tree.documents)
+    match Scan.ledger tree Ledger.Tip with
+    | Ok read ->
+        Scan.ledger_warnings read
+          (Facts.make ~ledger:[] tree.manifest tree.documents)
+    | Error _ -> Alcotest.fail "the ledger does not read"
   in
   let plan = (".plans/p.md", "# P\n\n@plan p\n") in
-  Alcotest.(check (list (option string)))
+  Alcotest.(check (list (list string)))
     "no ledger and a plan, no ledger and no plan, a ledger and a plan"
-    [ Some ledger; None; None ]
+    [ [ ledger ]; []; [] ]
     [
       warning [ plan ] ~ledger:false;
       warning [ ("docs/a.md", "# A\n\n@req a\n") ] ~ledger:false;
       warning [ plan ] ~ledger:true;
     ]
+
+let a_scan_names_the_ledger_and_reads_its_entries () =
+  let repo = repository [ ("sinter.toml", manifest) ] in
+  let commit = empty_ledger repo in
+  let tree = load repo in
+  match Scan.ledger tree Ledger.Tip with
+  | Ok read ->
+      Alcotest.(check int) "no entry" 0 (List.length (Scan.entries read));
+      Alcotest.(check int)
+        "no entry without a ledger" 0
+        (List.length (Scan.entries None));
+      Alcotest.(check (option string))
+        "the index names the tip" (Some commit)
+        (match Scan.index tree ~ledger:read ~tool:"v1" with
+        | Ok index -> (
+            match List.assoc_opt "ledger" index with
+            | Some (Jsonl.Scalar (Jsonl.String commit)) -> Some commit
+            | _ -> None)
+        | Error _ -> None)
+  | Error _ -> Alcotest.fail "the ledger does not read"
+
+let a_broken_ledger_stops_the_scan () =
+  let repo = repository [ ("sinter.toml", manifest) ] in
+  ignore (Git_fixture.git repo [ "update-ref"; "refs/sinter/ledger"; "HEAD" ]);
+  match
+    Scan.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+      ~manifest:None ~base:None ~tool:"v1" ()
+  with
+  | Error (Scan.Ledger (Ledger.Broken _) as error) ->
+      Alcotest.(check bool)
+        "the help names the repair" true
+        (List.exists
+           (fun (text : Error_text.t) ->
+             String.equal text.help
+               "repair the ledger with sinter ledger repair")
+           (Scan.explain error))
+  | _ -> Alcotest.fail "the scan does not stop"
 
 let base_manifest (compared : Scan.compared) =
   match compared.base_manifest with
@@ -1224,6 +1284,10 @@ let tests =
       a_load_reads_the_delivery_lines_of_the_change;
     Alcotest.test_case "the ledger warning needs a plan and no ledger" `Quick
       the_ledger_warning_needs_a_plan_and_no_ledger;
+    Alcotest.test_case "a scan names the ledger and reads its entries" `Quick
+      a_scan_names_the_ledger_and_reads_its_entries;
+    Alcotest.test_case "a broken ledger stops the scan" `Quick
+      a_broken_ledger_stops_the_scan;
     case "a check that cannot write its output says so"
       a_check_that_cannot_write_its_output_says_so;
     case "every error has a fault and a help" every_error_has_a_fault_and_a_help;

@@ -182,6 +182,7 @@ end)
 
 type t = {
   manifest : Manifest.t;
+  ledger : Ledger.entry list;
   files : (string * Markdown.t) list;
   declarations : declaration array;
   inforce : bool array;
@@ -634,7 +635,7 @@ let lookups (declarations : declaration array) edges targets plans =
            edges);
   }
 
-let make manifest files =
+let make manifest ~ledger files =
   let ordinary, plans =
     List.partition_map
       (fun (path, document) ->
@@ -666,6 +667,7 @@ let make manifest files =
   let acks = List.rev acks in
   {
     manifest;
+    ledger;
     files;
     declarations;
     inforce = in_force ~retirers declarations edges targets;
@@ -1178,6 +1180,7 @@ let identities facts =
   List.rev !found
 
 let manifest facts = facts.manifest
+let ledger facts = facts.ledger
 let files facts = facts.files
 let declarations facts = Array.to_list facts.declarations
 let is_in_force facts index = facts.inforce.(index)
@@ -1303,7 +1306,7 @@ let covered facts paths =
     (fun (id, scope) -> if held.(scope) then Some id else None)
     (Array.to_list steps)
 
-let index ~tree ~base ~default_branch ~manifest ~tool ~mode =
+let index ~tree ~base ~default_branch ~manifest ~ledger ~tool ~mode =
   [
     ("v", Jsonl.int 1);
     ("kind", Jsonl.string "index");
@@ -1311,8 +1314,13 @@ let index ~tree ~base ~default_branch ~manifest ~tool ~mode =
     ("base", Jsonl.string base);
     ("default_branch", Jsonl.string default_branch);
     ("manifest", Jsonl.string manifest);
-    ("evidence", Jsonl.bool false);
-    ("packs", Jsonl.strings []);
-    ("tool", Jsonl.string tool);
-    ("mode", Jsonl.string (Mode.name mode));
   ]
+  @ (match ledger with
+    | Some commit -> [ ("ledger", Jsonl.string commit) ]
+    | None -> [])
+  @ [
+      ("evidence", Jsonl.bool false);
+      ("packs", Jsonl.strings []);
+      ("tool", Jsonl.string tool);
+      ("mode", Jsonl.string (Mode.name mode));
+    ]

@@ -320,7 +320,7 @@ let delivery_lines plans =
   in
   let facts =
     with_reader (fun reader ->
-        Sinter_core.Facts.make manifest
+        Sinter_core.Facts.make ~ledger:[] manifest
           (List.map (fun (path, text) -> (path, document reader text)) plans))
   in
   List.concat_map

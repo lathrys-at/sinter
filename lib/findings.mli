@@ -13,12 +13,13 @@ val tree :
   not_text:(string * int) list ->
   Finding.t list
 (** [tree manifest documents ~base ~not_text] is the findings of the working
-    tree. [documents] is as {!Facts.make} takes it. [base] is the object id of
-    the base commit in lowercase hexadecimal; the fix of [missing-plan-id]
-    derives its plan id from it ({!Plan_target.derive}). [not_text] is each
-    markdown file whose content is not UTF-8 text, by its path relative to the
-    repository root, with the byte offset of its first sequence that is not
-    well-formed. No path occurs twice in [documents] and [not_text] together.
+    tree. [documents] is as {!Facts.make} takes it, and the facts hold no entry
+    of the ledger. [base] is the object id of the base commit in lowercase
+    hexadecimal; the fix of [missing-plan-id] derives its plan id from it
+    ({!Plan_target.derive}). [not_text] is each markdown file whose content is
+    not UTF-8 text, by its path relative to the repository root, with the byte
+    offset of its first sequence that is not well-formed. No path occurs twice
+    in [documents] and [not_text] together.
 
     The result is sorted by {!Finding.compare}. It holds no finding whose place
     is under a historical path, and no finding that a live [@ack] accepts. The

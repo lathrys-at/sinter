@@ -25,7 +25,7 @@ let manifest ?(extra = "") () =
   | Error _ -> Alcotest.fail "the manifest has errors"
 
 let facts ?(extra = "") files =
-  Facts.make (manifest ~extra ())
+  Facts.make ~ledger:[] (manifest ~extra ())
     (List.map (fun (path, text) -> (path, document text)) files)
 
 let facts_of_files files = facts files
@@ -1012,19 +1012,41 @@ let plan_files_holds_every_plan_file_whose_plan_is_read_or_not () =
             ("docs/p.md", "# P\n\n@plan p\n");
           ]))
 
+let the_facts_keep_the_entries_of_the_ledger () =
+  let entry =
+    match Ledger.read_line Git.Sha1 (Sinter_bench.Generated_ledger.entry 0) with
+    | Ok (Ledger.Known { entry; _ }) -> entry
+    | _ -> Alcotest.fail "the entry does not read"
+  in
+  Alcotest.(check (list string))
+    "the ids" [ entry.id ]
+    (List.map
+       (fun (e : Ledger.entry) -> e.id)
+       (Facts.ledger (Facts.make ~ledger:[ entry ] (manifest ()) [])))
+
 let the_index_names_the_tree_and_the_base () =
   Alcotest.(check string)
     "the index record"
     "{\"base\":\"b\",\"default_branch\":\"main\",\"evidence\":false,\"kind\":\"index\",\"manifest\":\"sinter.toml\",\"mode\":\"tree\",\"packs\":[],\"tool\":\"v1\",\"tree\":\"t\",\"v\":1}"
     (Jsonl.to_string
        (Facts.index ~tree:"t" ~base:"b" ~default_branch:"main"
-          ~manifest:"sinter.toml" ~tool:"v1" ~mode:Mode.Tree));
+          ~manifest:"sinter.toml" ~ledger:None ~tool:"v1" ~mode:Mode.Tree));
+  Alcotest.(check (option string))
+    "the ledger" (Some "c")
+    (match
+       List.assoc_opt "ledger"
+         (Facts.index ~tree:"t" ~base:"b" ~default_branch:"main"
+            ~manifest:"sinter.toml" ~ledger:(Some "c") ~tool:"v1"
+            ~mode:Mode.Tree)
+     with
+    | Some (Jsonl.Scalar (Jsonl.String commit)) -> Some commit
+    | _ -> None);
   Alcotest.(check (option string))
     "the mode of a diff" (Some "diff")
     (match
        List.assoc_opt "mode"
          (Facts.index ~tree:"t" ~base:"b" ~default_branch:"main"
-            ~manifest:"sinter.toml" ~tool:"v1" ~mode:Mode.Diff)
+            ~manifest:"sinter.toml" ~ledger:None ~tool:"v1" ~mode:Mode.Diff)
      with
     | Some (Jsonl.Scalar (Jsonl.String mode)) -> Some mode
     | _ -> None)
@@ -1889,7 +1911,7 @@ let block_hash_is_the_hash_of_the_listed_document =
       let documents =
         List.map (fun (path, text) -> (path, document text)) files
       in
-      let facts = Facts.make (manifest ()) documents in
+      let facts = Facts.make ~ledger:[] (manifest ()) documents in
       List.for_all
         (fun (path, _) ->
           let listed : Markdown.t = List.assoc path documents in
@@ -1911,7 +1933,9 @@ let block_hash_is_the_hash_of_the_listed_document =
 let block_hash_reads_the_first_of_two_files_with_one_path () =
   let first = document "# A\n\n@req a\nOne.\n" in
   let second = document "# A\n\n@req a\nTwo.\n" in
-  let facts = Facts.make (manifest ()) [ ("a.md", first); ("a.md", second) ] in
+  let facts =
+    Facts.make ~ledger:[] (manifest ()) [ ("a.md", first); ("a.md", second) ]
+  in
   Alcotest.(check string)
     "the hash" first.blocks.(0).hash
     (Facts.block_hash facts "a.md" 0);
@@ -1929,7 +1953,7 @@ let block_acks_are_the_list_scan_of_the_acks =
          let documents =
            List.map (fun (path, text) -> (path, document text)) files
          in
-         let facts = Facts.make (manifest ()) documents in
+         let facts = Facts.make ~ledger:[] (manifest ()) documents in
          let acks = Facts.acks facts in
          List.for_all
            (fun (path, (document : Markdown.t)) ->
@@ -2065,7 +2089,8 @@ let a_plan_file_read_without_texts_is_refused () =
         (Invalid_argument
            "Facts.make: the document of a plan file holds no section text")
         (fun () ->
-          ignore (Facts.make (manifest ()) [ (".plans/p.md", document) ]))
+          ignore
+            (Facts.make ~ledger:[] (manifest ()) [ (".plans/p.md", document) ]))
 
 module Variant = struct
   type t = { heading : string; tag : string; spaces : string; blanks : string }
@@ -2250,7 +2275,7 @@ let a_chain_of_supersedes_edges_grows_in_proportion_to_its_length () =
                else
                  Printf.sprintf "# D\n\n@decision d%d\n@supersedes d%d v1\n"
                    index (index - 1)) )))
-    (Facts.make manifest)
+    (Facts.make ~ledger:[] manifest)
 
 let a_plan_grows_in_proportion_to_its_steps () =
   let manifest = manifest () in
@@ -2265,7 +2290,7 @@ let a_plan_grows_in_proportion_to_its_steps () =
                      Printf.sprintf "## Step %d\n\n@cites s%d\n\n" index index))
             ) );
       ])
-    (Facts.make manifest)
+    (Facts.make ~ledger:[] manifest)
 
 let a_file_grows_in_proportion_to_its_declarations () =
   let manifest = manifest () in
@@ -2280,7 +2305,7 @@ let a_file_grows_in_proportion_to_its_declarations () =
                       index
                       ((index + 1) mod count)))) );
       ])
-    (Facts.make manifest)
+    (Facts.make ~ledger:[] manifest)
 
 let a_step_grows_in_proportion_to_its_promises () =
   let manifest = manifest () in
@@ -2294,7 +2319,7 @@ let a_step_grows_in_proportion_to_its_promises () =
                 (List.init count (fun index ->
                      Printf.sprintf "@cites c%d\n" index))) );
       ])
-    (Facts.make manifest)
+    (Facts.make ~ledger:[] manifest)
 
 let the_first_block_of_a_plan_belongs_to_no_step () =
   match
@@ -2333,7 +2358,7 @@ let a_plan_grows_in_proportion_to_its_first_block () =
                      Printf.sprintf "@cites c%d\n" index))
             ^ "\n## Step\n\n@req x\n") );
       ])
-    (Facts.make manifest)
+    (Facts.make ~ledger:[] manifest)
 
 let stand_each_promise facts =
   List.iter
@@ -2547,6 +2572,8 @@ let tests =
       plan_files_holds_every_plan_file_whose_plan_is_read_or_not;
     case "the index names the tree and the base"
       the_index_names_the_tree_and_the_base;
+    case "the facts keep the entries of the ledger"
+      the_facts_keep_the_entries_of_the_ledger;
     case "the view gives each declaration in order"
       the_view_gives_each_declaration_in_order;
     case "is_in_force reads status and supersession"
