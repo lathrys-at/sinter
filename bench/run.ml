@@ -24,6 +24,7 @@ type target = {
   root : string;
   manifest : string option;
   declarations : int option;
+  commands : string list;
 }
 
 type result = {
@@ -35,9 +36,12 @@ type result = {
 }
 
 let commands = [ "scan"; "check"; "check-diff" ]
+let ledger_commands = [ "ledger-log"; "ledger-verify" ]
 
 let arguments = function
   | "check-diff" -> [ "check"; "--diff" ]
+  | "ledger-log" -> [ "ledger"; "log" ]
+  | "ledger-verify" -> [ "ledger"; "verify" ]
   | command -> [ command ]
 
 let default_time = "/usr/bin/time"
@@ -280,7 +284,7 @@ let run_target ~platform ~counter ~timer ~sinter ~phases ~runs ~outputs target =
         samples = List.map fst measured;
         phases = List.map snd measured;
       })
-    commands
+    target.commands
 
 let tree ~generator ~trees ~seed declarations =
   let name = Printf.sprintf "n%d" declarations in
@@ -301,7 +305,28 @@ let tree ~generator ~trees ~seed declarations =
      if code <> 0 then
        stop "the generator exited with %d for %d declarations:\n%s" code
          declarations (read errors));
-  { name; root; manifest = None; declarations = Some declarations }
+  { name; root; manifest = None; declarations = Some declarations; commands }
+
+let ledger ~generator ~trees entries =
+  let name = Printf.sprintf "l%d" entries in
+  let dir = Filename.concat trees name in
+  let root = Filename.concat dir "repo" in
+  (if not (Sys.file_exists root) then
+     let errors = scratch_file "generate.err" in
+     let code =
+       spawn ~stdout:"/dev/null" ~stderr:errors
+         [| generator; "--ledger"; string_of_int entries; dir |]
+     in
+     if code <> 0 then
+       stop "the generator exited with %d for a ledger of %d entries:\n%s" code
+         entries (read errors));
+  {
+    name;
+    root;
+    manifest = None;
+    declarations = None;
+    commands = ledger_commands;
+  }
 
 let self_target ~manifest dir =
   match
@@ -314,6 +339,7 @@ let self_target ~manifest dir =
         root = String.trim output;
         manifest = Option.map absolute manifest;
         declarations = None;
+        commands;
       }
   | _, _, errors ->
       stop "%s is not in a git checkout: %s" dir (String.trim errors)
@@ -367,17 +393,22 @@ let row result =
 let platform_name = function Linux -> "linux" | Macos -> "macos"
 
 let measure_trees ~platform ~phases ~sinter ~time ~generator ~self
-    ~self_manifest ~sizes ~seed ~runs ~trees ~outputs =
+    ~self_manifest ~sizes ~ledgers ~seed ~runs ~trees ~outputs =
   if not (Sys.file_exists sinter) then stop "%s is missing" sinter;
   if runs < 1 then stop "--runs is %d, and it must be 1 or more" runs;
   List.iter
     (fun size -> if size < 2 then stop "the size %d is below 2" size)
     sizes;
+  List.iter
+    (fun size ->
+      if size < 1 then stop "the size %d of a ledger is below 1" size)
+    ledgers;
   let generator =
-    match (generator, sizes) with
-    | Some generator, _ -> Some (absolute generator)
-    | None, [] -> None
-    | None, _ :: _ -> stop "--generator is missing, and --sizes names trees"
+    match (generator, sizes, ledgers) with
+    | Some generator, _, _ -> Some (absolute generator)
+    | None, [], [] -> None
+    | None, _, _ ->
+        stop "--generator is missing, and --sizes or --ledgers names trees"
   in
   let sinter = absolute sinter in
   let timer =
@@ -408,6 +439,12 @@ let measure_trees ~platform ~phases ~sinter ~time ~generator ~self
             ~some:(fun generator -> [ tree ~generator ~trees ~seed size ])
             generator)
         sizes
+    @ List.concat_map
+        (fun size ->
+          Option.fold ~none:[]
+            ~some:(fun generator -> [ ledger ~generator ~trees size ])
+            generator)
+        ledgers
   in
   let results =
     List.concat_map
@@ -445,8 +482,8 @@ let comparable baseline ~platform ~seed =
           path baseline.seed seed)
     baseline
 
-let main sinter time generator self self_manifest sizes seed runs budgets trees
-    outputs results baseline json markdown =
+let main sinter time generator self self_manifest sizes ledgers seed runs
+    budgets trees outputs results baseline json markdown =
   try
     let budgets_path = budgets in
     let budgets =
@@ -468,7 +505,8 @@ let main sinter time generator self self_manifest sizes seed runs budgets trees
           let platform = platform () in
           comparable baseline ~platform:(platform_name platform) ~seed;
           measure_trees ~platform ~phases:(Option.is_some budgets) ~sinter ~time
-            ~generator ~self ~self_manifest ~sizes ~seed ~runs ~trees ~outputs
+            ~generator ~self ~self_manifest ~sizes ~ledgers ~seed ~runs ~trees
+            ~outputs
       | Some _, Some _ -> stop "--results and --sinter exclude each other"
       | None, None -> stop "either --sinter or --results is required"
     in
@@ -525,11 +563,13 @@ let () =
         "Run $(i,sinter scan), $(i,sinter check), and $(i,sinter check --diff) \
          on each tree: once to warm up, and then $(b,--runs) times, each run \
          measured. The results name $(i,sinter check --diff) $(i,check-diff). \
-         On Linux, GNU $(i,time) gives the peak resident memory, and $(i,perf \
-         stat) counts the instructions in user space when $(i,perf) is on the \
-         PATH and can count them. On macOS, $(i,time -l) gives the peak \
-         resident memory, the instructions, and the peak memory footprint. \
-         $(b,--time) names the program $(i,time).";
+         On each ledger of $(b,--ledgers), run $(i,sinter ledger log) and \
+         $(i,sinter ledger verify) in the same way, named $(i,ledger-log) and \
+         $(i,ledger-verify). On Linux, GNU $(i,time) gives the peak resident \
+         memory, and $(i,perf stat) counts the instructions in user space when \
+         $(i,perf) is on the PATH and can count them. On macOS, $(i,time -l) \
+         gives the peak resident memory, the instructions, and the peak memory \
+         footprint. $(b,--time) names the program $(i,time).";
       `P
         "When no file is at the path of $(b,--time), the run measures no peak \
          memory and no peak memory footprint, and on macOS no instructions. \
@@ -555,11 +595,14 @@ let () =
       `P
         "With $(b,--budgets), the run checks the growth limits of that file. \
          The file is TOML, with the tables $(i,scan) and $(i,check), and the \
-         table $(i,check-diff) when $(i,sinter check --diff) has a limit. Each \
-         table holds $(i,allocation-growth), the limit, for each phase, of the \
-         words on the tree of 10,000 declarations divided by the words on the \
-         tree of 1,000 declarations. A table may also hold the table \
-         $(i,phases), with the limit of a named phase in place of \
+         table $(i,check-diff) when $(i,sinter check --diff) has a limit, and \
+         the tables $(i,ledger-log) and $(i,ledger-verify) when those commands \
+         have a limit. Each table holds $(i,allocation-growth), the limit, for \
+         each phase, of the words on the tree of 10,000 declarations divided \
+         by the words on the tree of 1,000 declarations; for the commands of \
+         the ledger, of the words on the ledger of 100,000 entries divided by \
+         the words on the ledger of 1,000 entries. A table may also hold the \
+         table $(i,phases), with the limit of a named phase in place of \
          $(i,allocation-growth); a name there that is not a phase of the run \
          stops the run. The run skips the limit of a phase that does not have \
          its words on both trees. No limit applies to the peak memory or to \
@@ -574,8 +617,9 @@ let () =
          command; and $(i,budgets), one object for each phase of each command \
          that the budgets file names.";
       `P
-        "An object of $(i,results) holds $(i,tree) (self, or n and the number \
-         of declarations), $(i,declarations) (null for self), $(i,command), \
+        "An object of $(i,results) holds $(i,tree) (self, n and the number of \
+         declarations, or l and the number of entries of a ledger), \
+         $(i,declarations) (null for self and for a ledger), $(i,command), \
          $(i,exit) (the exit status of sinter, 0 or 1), and $(i,peak_kib), \
          $(i,instructions), and $(i,footprint_kib), and $(i,phase_words). Each \
          of $(i,peak_kib), $(i,instructions), and $(i,footprint_kib) is null \
@@ -657,6 +701,16 @@ let () =
             "The numbers of declarations of the generated trees, each 2 or \
              more. An empty list measures no generated tree.")
   in
+  let ledgers =
+    Arg.(
+      value
+      & opt (list int) []
+      & info [ "ledgers" ] ~docv:"N,..."
+          ~doc:
+            "The numbers of entries of the generated ledgers, each 1 or more. \
+             The run measures $(i,sinter ledger log) and $(i,sinter ledger \
+             verify) on each, as the trees l<N>.")
+  in
   let seed =
     Arg.(
       value & opt int 1
@@ -693,5 +747,5 @@ let () =
           (Cmd.info "run" ~doc ~man ~exits)
           Term.(
             const main $ sinter $ time $ generator $ self $ self_manifest
-            $ sizes $ seed $ runs $ budgets $ trees $ outputs $ results
-            $ baseline $ json $ markdown)))
+            $ sizes $ ledgers $ seed $ runs $ budgets $ trees $ outputs
+            $ results $ baseline $ json $ markdown)))

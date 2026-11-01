@@ -753,6 +753,7 @@ let ledger_form default =
     & info [ "o"; "output" ] ~docv:"FORM" ~doc)
 
 let with_ledger color depth run =
+  with_phases color @@ fun phases ->
   in_current_folder color @@ fun dir ->
   let errors =
     Sinter_core.Style.formatter stderr ~color:(colored color Unix.stderr)
@@ -761,23 +762,31 @@ let with_ledger color depth run =
     Sinter_core.Render.warning errors text;
     Format.pp_print_flush errors ()
   in
-  match Sinter_core.Git.open_repo ~env:(Unix.environment ()) dir with
+  match
+    Sinter_core.Allocation.measure phases "repository" (fun () ->
+        Sinter_core.Git.open_repo ~env:(Unix.environment ()) dir)
+  with
   | Error error ->
       report color [ Sinter_core.Error_text.of_git error ];
       environment_error
   | Ok repo -> (
-      match Sinter_core.Ledger.read repo depth with
+      match
+        Sinter_core.Allocation.measure phases "ledger" (fun () ->
+            Sinter_core.Ledger.read repo depth)
+      with
       | Ok None ->
           warn "no ledger found";
           clean
       | Ok (Some ledger) ->
           Option.iter warn (Sinter_core.Ledger.warning ledger);
-          run ~errors (Ok ledger);
-          flush stdout;
+          Sinter_core.Allocation.measure phases "output" (fun () ->
+              run ~errors (Ok ledger);
+              flush stdout);
           clean
       | Error error ->
-          run ~errors (Error error);
-          flush stdout;
+          Sinter_core.Allocation.measure phases "output" (fun () ->
+              run ~errors (Error error);
+              flush stdout);
           report color [ Sinter_core.Ledger.explain error ];
           environment_error)
 

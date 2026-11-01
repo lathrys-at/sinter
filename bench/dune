@@ -33,7 +33,9 @@
    --budgets
    budgets.toml
    --sizes
-   1000,10000)))
+   1000,10000
+   --ledgers
+   10,1000,100000)))
 
 (rule
  (alias bench-large)
@@ -53,5 +55,7 @@
    budgets.toml
    --sizes
    1000,10000,100000
+   --ledgers
+   10,1000,100000
    --runs
    3)))

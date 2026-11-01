@@ -4,40 +4,69 @@
 open Cmdliner
 open Sinter_bench
 
-let generate seed declarations dir =
+let generate_ledger entries dir =
   match
-    if declarations < 2 then
-      Error (Printf.sprintf "N is %d, and it must be 2 or more" declarations)
+    if entries < 1 then
+      Error (Printf.sprintf "N is %d, and it must be 1 or more" entries)
     else if Sys.file_exists dir then Error (dir ^ " exists")
     else (
       Unix.mkdir dir 0o755;
-      let tree = Generated_tree.make ~seed ~declarations in
-      let repo = Generated_tree.write tree dir in
-      Ok (tree, repo))
+      let repo = Git_fixture.init_in dir in
+      Generated_ledger.write repo ~entries ~per_commit:1;
+      Ok repo)
   with
   | Error message ->
       Printf.eprintf "generate: %s\n" message;
       1
-  | Ok (tree, repo) ->
-      Printf.printf
-        "%s: files %d, req %d, design %d, decision %d, plans %d, seed %d\n"
-        (Git_fixture.root repo)
-        (List.length (Generated_tree.main tree))
-        (Generated_tree.count tree "req")
-        (Generated_tree.count tree "design")
-        (Generated_tree.count tree "decision")
-        (Generated_tree.count tree "plan")
-        seed;
+  | Ok repo ->
+      Printf.printf "%s: ledger entries %d, commits %d\n"
+        (Git_fixture.root repo) entries (entries + 1);
       0
-  | exception
-      (Failure message | Invalid_argument message | Sinter_bridge.Error message)
-    ->
+  | exception (Failure message | Invalid_argument message) ->
       Printf.eprintf "generate: %s\n" message;
       1
   | exception Unix.Unix_error (error, call, path) ->
       Printf.eprintf "generate: %s %s: %s\n" call path
         (Unix.error_message error);
       1
+
+let generate seed ledger declarations dir =
+  if ledger then generate_ledger declarations dir
+  else
+    match
+      if declarations < 2 then
+        Error (Printf.sprintf "N is %d, and it must be 2 or more" declarations)
+      else if Sys.file_exists dir then Error (dir ^ " exists")
+      else (
+        Unix.mkdir dir 0o755;
+        let tree = Generated_tree.make ~seed ~declarations in
+        let repo = Generated_tree.write tree dir in
+        Ok (tree, repo))
+    with
+    | Error message ->
+        Printf.eprintf "generate: %s\n" message;
+        1
+    | Ok (tree, repo) ->
+        Printf.printf
+          "%s: files %d, req %d, design %d, decision %d, plans %d, seed %d\n"
+          (Git_fixture.root repo)
+          (List.length (Generated_tree.main tree))
+          (Generated_tree.count tree "req")
+          (Generated_tree.count tree "design")
+          (Generated_tree.count tree "decision")
+          (Generated_tree.count tree "plan")
+          seed;
+        0
+    | exception
+        ( Failure message
+        | Invalid_argument message
+        | Sinter_bridge.Error message ) ->
+        Printf.eprintf "generate: %s\n" message;
+        1
+    | exception Unix.Unix_error (error, call, path) ->
+        Printf.eprintf "generate: %s %s: %s\n" call path
+          (Unix.error_message error);
+        1
 
 let () =
   let doc = "Make a git repository of generated markdown files" in
@@ -58,14 +87,22 @@ let () =
          commit. Every file has the modification time 1700000000, and the \
          index holds that time, so git reads no file that did not change.";
       `P
+        "With $(b,--ledger), the repository holds no file and no branch, and \
+         $(i,N) is the number of entries of its ledger, 1 or more. The ref \
+         refs/sinter/ledger holds a first commit with an empty tree, and then \
+         one commit for each entry: an approval of the requirement r<n>, in \
+         files of up to 50 entries each.";
+      `P
         "The same seed and the same $(i,N) give the same files and the same \
          commits, byte for byte, on every run of one build.";
       `S "OUTPUT";
       `P
         "One line on standard output: the path of the working tree, and then \
          the number of files, the number of declarations of each kind, the \
-         number of plans, and the seed, each after its name. Each error goes \
-         to standard error.";
+         number of plans, and the seed, each after its name. With \
+         $(b,--ledger), the line gives the path, the number of entries, and \
+         the number of commits of the ledger. Each error goes to standard \
+         error.";
     ]
   in
   let seed =
@@ -73,11 +110,20 @@ let () =
       value & opt int 1
       & info [ "seed" ] ~docv:"SEED" ~doc:"The seed of the tree.")
   in
+  let ledger =
+    Arg.(
+      value & flag
+      & info [ "ledger" ]
+          ~doc:"Make a repository that holds a ledger of $(i,N) entries.")
+  in
   let declarations =
     Arg.(
       required
       & pos 0 (some int) None
-      & info [] ~docv:"N" ~doc:"The number of declarations, 2 or more.")
+      & info [] ~docv:"N"
+          ~doc:
+            "The number of declarations, 2 or more; with $(b,--ledger), the \
+             number of entries, 1 or more.")
   in
   let dir =
     Arg.(
@@ -92,4 +138,4 @@ let () =
              ~exits:
                (Cmd.Exit.info 1 ~doc:"when the repository is not made."
                :: Cmd.Exit.defaults))
-          Term.(const generate $ seed $ declarations $ dir)))
+          Term.(const generate $ seed $ ledger $ declarations $ dir)))
