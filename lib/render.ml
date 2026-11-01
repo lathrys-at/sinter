@@ -102,17 +102,25 @@ let item source path (span : Markdown.span) ~columns ~label ~sign ~style =
           })
         (marked raw ~start ~stop))
 
-let rec rows = function
-  | [] -> []
-  | first :: rest ->
-      let same, others = List.partition (fun item -> item.at = first.at) rest in
-      {
-        number = first.at;
-        text = shown first.raw;
-        marks = first.mark :: List.map (fun item -> item.mark) same;
-        continues = List.exists (fun item -> item.continues) (first :: same);
-      }
-      :: rows others
+let row first same =
+  {
+    number = first.at;
+    text = shown first.raw;
+    marks = first.mark :: List.map (fun item -> item.mark) same;
+    continues = List.exists (fun item -> item.continues) (first :: same);
+  }
+
+let rows items =
+  let rec take first same found = function
+    | item :: rest when item.at = first.at ->
+        take first (item :: same) found rest
+    | rest -> (
+        let found = row first (List.rev same) :: found in
+        match rest with
+        | [] -> List.rev found
+        | next :: rest -> take next [] found rest)
+  in
+  match items with [] -> [] | first :: rest -> take first [] [] rest
 
 let sorted_rows items =
   rows (List.stable_sort (fun a b -> Int.compare a.at b.at) items)
