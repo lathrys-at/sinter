@@ -90,3 +90,39 @@
 - Left for later: an `@ack` with no hash, or in a block with no
   declaration and no site, gives no ack fact, so it gives no
   `stale-ack`.
+
+## Stop the crashes and give the right exit codes
+
+- The limit of a query is 100 levels. Each `(`, each `[`, and each
+  field name before a `:` adds a level, because each of the three
+  recurses in the query parser of tree-sitter 0.26. A field chain such
+  as `a: b: c: (x)` recurses with no bracket. The deepest query of the
+  repository has 2 levels. A query at the limit compiles on a stack of
+  256 KiB.
+- The count of levels can be higher than the real recursion, never
+  lower: a byte at or above 0x80 counts as a byte of a name. A count
+  that is too high gives a false refusal and no crash.
+- The bridge frees the instances of freed grammars when it replaces
+  the store at the next load. A grammar freed after the last load keeps
+  its instance until then. A test counts the instances through the
+  private field of the engine, so the bridge exports no new function.
+- A write error on standard output: before each error, the tool
+  flushes standard output, and closes it when the flush fails. The
+  close drops the bytes that failed, so the flush at exit has nothing
+  to write. The help and the version of cmdliner raise their write
+  error from `Cmd.eval'` or from the flush at the end; main catches
+  both.
+- macOS has no `/dev/full`. The tests of standard output also run with
+  SIGXFSZ ignored and a file size limit of 0, which makes each write
+  fail with EFBIG. The limit stops git and the temporary files of
+  scan, so scan and check are tested on `/dev/full` only, on Linux.
+- The words of the phases are tested on macOS with `/dev/fd/3`, a pipe
+  that no process reads. Linux blocks the open of such a pipe, so that
+  test skips there.
+- APFS refuses a name that is not UTF-8, so the tests of a manifest
+  path that is not UTF-8 skip on macOS. The tests of `/dev/stdin` fail
+  before the fix only on Linux, where realpath of `/dev/stdin` fails.
+- Left for later: the other errors of the manifest print a path that
+  is not UTF-8 as raw bytes: "no manifest at", "cannot read the
+  manifest", and the `-->` line of an error in the file. None of them
+  crashes.
