@@ -1847,13 +1847,29 @@ let load_of_a_path_under_a_file_is_missing () =
       | _ -> Alcotest.fail "a path under a file is not Missing")
 
 let load_of_a_file_it_cannot_open_is_unreadable () =
+  let unreadable what = function
+    | Error (Manifest.Unreadable reason) ->
+        Alcotest.(check bool) "a reason" true (String.length reason > 0)
+    | _ -> Alcotest.fail (what ^ " is not Unreadable")
+  in
+  let path = Filename.temp_file "s" ".sock" in
+  Sys.remove path;
+  let socket = Unix.socket ~cloexec:true Unix.PF_UNIX Unix.SOCK_STREAM 0 in
+  let here = Sys.getcwd () in
+  Fun.protect
+    ~finally:(fun () ->
+      Sys.chdir here;
+      Unix.close socket;
+      if Sys.file_exists path then Sys.remove path)
+    (fun () ->
+      Sys.chdir (Filename.dirname path);
+      Unix.bind socket (Unix.ADDR_UNIX (Filename.basename path));
+      Sys.chdir here;
+      unreadable "a socket" (Manifest.load path));
   with_file markdown (fun path ->
-      Unix.chmod path 0;
-      match Manifest.load path with
-      | Error (Manifest.Unreadable reason) ->
-          Alcotest.(check bool) "a reason" true (String.length reason > 0)
-      | Ok _ when Unix.geteuid () = 0 -> ()
-      | _ -> Alcotest.fail "a file with no read permission is not Unreadable")
+      Option.iter
+        (unreadable "a file with no read permission")
+        (Unreadable.with_unreadable path (fun () -> Manifest.load path)))
 
 let property ?(count = 200) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
