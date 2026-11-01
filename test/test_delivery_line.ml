@@ -233,6 +233,24 @@ let read_takes_any_bytes =
              && found.line = Delivery_line.of_string found.text)
            found)
 
+let shown_allocates_in_proportion_to_the_length_of_its_text () =
+  let length = 20_000 in
+  let text = Delivery_line.prefix ^ String.make length '\xff' in
+  let before = Gc.allocated_bytes () in
+  let result = Delivery_line.shown text in
+  let allocated = Gc.allocated_bytes () -. before in
+  Alcotest.(check int)
+    "the length of the result"
+    (String.length Delivery_line.prefix + (4 * length))
+    (String.length result);
+  Alcotest.(check bool)
+    (Printf.sprintf
+       "%d bytes that are not UTF-8 shown with %.0f bytes allocated, under \
+        %d"
+       length allocated (500 * length))
+    true
+    (allocated < float_of_int (500 * length))
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -248,6 +266,8 @@ let tests =
       read_of_a_message_with_no_line_is_empty;
     case "shown writes each byte that is not UTF-8"
       shown_writes_each_byte_that_is_not_utf_8;
+    case "shown allocates in proportion to the length of its text"
+      shown_allocates_in_proportion_to_the_length_of_its_text;
     a_line_reads_back_from_its_text;
     a_line_in_any_paragraph_is_read;
     read_takes_any_bytes;
