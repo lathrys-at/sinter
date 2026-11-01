@@ -647,6 +647,7 @@ path can contain `@`.
 | an error node of a markdown file | `file:<path>@L<line>C<column>`, from the position where the node starts | `parse-error` in a markdown file ([packs.md](packs.md) section 5.2) |
 | a line | `line:<path>@L<line>` | `typo-tag` and `ignored-tag`, at the tag line; `duplicate` of a step, at the line of the step's heading |
 | a tag | `tag:<path>@L<line>C<column>`, from the position of the `@` of the tag | `invalid-target`; `misplaced-plan`; `duplicate` of a declaration or a plan |
+| a line of a commit message | `message:<commit>@L<line>`, where `<commit>` is the object id of the commit and `<line>` the number of the line in its message, from 1 | `stale-delivery` |
 
 The mark and the related places of a finding never enter its id.
 

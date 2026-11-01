@@ -414,7 +414,7 @@ let compare_with_base ?phases ~mode ~gate (tree : Scan.tree)
   in
   Allocation.measure phases "findings" (fun () ->
       List.merge Finding.compare
-        (Adjudicator.classes ~same
+        (Adjudicator.classes ~same ~deliveries:tree.deliveries
            ~whole_base:
              (match mode with
              | Mode.Diff -> lazy base

@@ -46,6 +46,22 @@
  (dirs :standard .plans))
 
 (subdir
+ cases/check-diff-shows-the-classes-of-delivery-in-the-full-form/base
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-shows-the-classes-of-delivery-in-the-full-form/tree
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-shows-the-classes-of-delivery-in-the-brief-form/base
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-shows-the-classes-of-delivery-in-the-brief-form/tree
+ (dirs :standard .plans))
+
+(subdir
  cases/check-porcelain-diff-reports-the-classes-of-delivery/base
  (dirs :standard .plans))
 

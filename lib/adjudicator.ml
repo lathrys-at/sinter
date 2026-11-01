@@ -386,6 +386,52 @@ let renamed_steps ~base ~same ~whole_base facts =
               lost)
     (Facts.plans base)
 
+let short commit = String.sub commit 0 (min 7 (String.length commit))
+
+let quoted (found : Delivery_line.found) =
+  Printf.sprintf "the line \"%s\" of commit %s"
+    (Delivery_line.shown found.text)
+    (short found.commit)
+
+let stale_deliveries ~deliveries facts =
+  let named = Facts.named facts in
+  List.filter_map
+    (fun (found : Delivery_line.found) ->
+      let stale ?(related = []) detail =
+        Some
+          (Finding.make Finding_class.Stale_delivery
+             (Finding.Message_line
+                { commit = found.commit; line = found.number })
+             ~detail ~related ())
+      in
+      match found.line with
+      | None ->
+          stale
+            (quoted found
+           ^ " does not match the form Delivers: <plan>/<step> <hash>")
+      | Some line -> (
+          match named line with
+          | None -> stale (quoted found ^ " names no step of an open plan")
+          | Some (_, step) when Facts.counts step line -> None
+          | Some (plan, step) ->
+              stale
+                ~related:
+                  [
+                    {
+                      Finding.label = "the step";
+                      place =
+                        Some { Finding.path = plan.path; span = step.span };
+                    };
+                  ]
+                (Printf.sprintf "%s does not match the step hash of %s%s"
+                   (quoted found) (Facts.step_id plan step)
+                   (match Facts.delivery plan step with
+                   | Some correct ->
+                       Printf.sprintf "; write \"%s\""
+                         (Delivery_line.to_string correct)
+                   | None -> ""))))
+    deliveries
+
 let renamed_to ?(same = fun _ -> false) ~base facts =
   let resolve = lazy (Facts.resolve facts)
   and successor =
@@ -404,8 +450,8 @@ let historical facts (finding : Finding.t) =
   | Some place -> Manifest.is_historical (Facts.manifest facts) place.path
   | None -> false
 
-let classes ?(same = fun _ -> false) ?whole_base ?(wanted = fun _ -> true) ~base
-    facts findings =
+let classes ?(same = fun _ -> false) ?whole_base ?(deliveries = [])
+    ?(wanted = fun _ -> true) ~base facts findings =
   let whole_base = Option.value whole_base ~default:(lazy base) in
   let tombstones = tombstones ~same ~base facts in
   let renamed = renamed ~base ~same ~tombstones facts in
@@ -426,6 +472,7 @@ let classes ?(same = fun _ -> false) ?whole_base ?(wanted = fun _ -> true) ~base
         (fun finding -> not (historical facts finding))
         (unbumped ~base ~same facts @ renamed
         @ promise_collisions ~base ~same facts
+        @ stale_deliveries ~deliveries facts
         @
         if wanted Finding_class.Renamed_step then
           renamed_steps ~base ~same ~whole_base facts

@@ -33,6 +33,7 @@ val tombstones :
 val classes :
   ?same:(string -> bool) ->
   ?whole_base:Facts.t Lazy.t ->
+  ?deliveries:Delivery_line.found list ->
   ?wanted:(Finding_class.t -> bool) ->
   base:Facts.t ->
   Facts.t ->
@@ -44,9 +45,10 @@ val classes :
     [whole_base] is the facts of every file of the base tree, as {!Facts.make}
     gives them; it is [base] when absent, so give it when [base] leaves out the
     facts of a file by [same]. The function forces it only when a class needs
-    it. The result holds no finding of [renamed-step] when [wanted] is [false]
-    for the class; [wanted] is [true] for every class when absent. The classes
-    are:
+    it. [deliveries] is the delivery lines of the change; it is empty when
+    absent. The result holds no finding of [renamed-step] when [wanted] is
+    [false] for the class; [wanted] is [true] for every class when absent. The
+    classes are:
 
     - [unbumped]: a declaration of the kind [req], [design], or [decision] whose
       slug the base declares, in one of these kinds, when no such declaration of
@@ -80,6 +82,13 @@ val classes :
       {!Facts.met_within} [whole_base] meets one of its promises with the
       effective scope of the step in the base. The finding sits at the tag line
       of [@plan] of the plan of the working tree, one for each slug.
+
+    - [stale-delivery]: a line of [deliveries] that does not count: it does not
+      match the pattern, {!Facts.named} gives no step for it, or {!Facts.counts}
+      does not hold for that step. Its subject is the line of the message, and
+      it has no place. When the step exists, its related place is the heading of
+      the step, and the detail ends with the text of {!Facts.delivery} of the
+      step. The detail shows the line as {!Delivery_line.shown} gives it.
 
     No finding of these classes sits under a historical path. *)
 

@@ -34,7 +34,8 @@ let line moves ~path base_line =
       walk 0 runs
 
 let subject moves = function
-  | (Finding.Fact _ | Finding.File _) as subject -> Some subject
+  | (Finding.Fact _ | Finding.File _ | Finding.Message_line _) as subject ->
+      Some subject
   | Finding.Error_node { path; position } ->
       Option.map
         (fun line ->

@@ -1,0 +1,6 @@
+check
+--diff
+--gate
+review
+-o
+brief

@@ -826,7 +826,8 @@ Sinter reads the messages of the commits of the change
 that starts with `Delivers: `, in every paragraph: the subject, the
 body, and the trailers. A squash merge puts the messages of the
 commits of a branch in the body of one commit, so a delivery line can
-stand in any paragraph.
+stand in any paragraph. A line that starts with `Delivers: ` and does
+not count is an error (finding class `stale-delivery`).
 
 A delivery line **counts** for a step when both conditions hold:
 

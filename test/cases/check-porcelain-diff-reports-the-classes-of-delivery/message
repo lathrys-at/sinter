@@ -1,0 +1,12 @@
+Deliver the plan p (#7)
+
+* Tidy the source
+
+Delivers: p@0a1b2c/tidy 9b4dd2
+
+* Clean the binary
+
+Delivers: p@0a1b2c/clean 222222
+Delivers: p@0a1b2c/gone 000000
+Delivers: p@0a1b2c/write-e-and-f 7f81de
+Delivers: p@0a1b2c/clean

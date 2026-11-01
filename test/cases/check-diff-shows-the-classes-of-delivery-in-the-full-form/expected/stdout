@@ -1,0 +1,37 @@
+block[renamed-step]: step:p@0a1b2c/old-name is started in the base, and the plan has no step with the slug old-name now
+ --> .plans/p.md:3:1
+  |
+3 | @plan p@0a1b2c
+  | ^^^^^^^^^^^^^^
+  |
+
+block[merged-incomplete]: step:p@0a1b2c/part has 1 of its 2 promises met
+  --> .plans/p.md:11:1
+   |
+11 | ## Part
+   | ^^^^^^^
+...
+15 | @decision c
+   | ----------- not met
+   |
+
+block[merged-incomplete]: step:p@0a1b2c/write-e-and-f has 1 of its 2 promises met
+  --> .plans/p.md:32:1
+   |
+32 | ## Write e and f
+   | ^^^^^^^^^^^^^^^^
+...
+36 | @decision f
+   | ----------- not met
+   |
+
+block[stale-delivery]: the line "Delivers: p@0a1b2c/gone 000000" of commit 2ca564f names no step of an open plan
+
+block[stale-delivery]: the line "Delivers: p@0a1b2c/clean" of commit 2ca564f does not match the form Delivers: <plan>/<step> <hash>
+
+block[stale-delivery]: the line "Delivers: p@0a1b2c/clean 222222" of commit 2ca564f does not match the step hash of step:p@0a1b2c/clean; write "Delivers: p@0a1b2c/clean e0254b"
+  ::: .plans/p.md:27:1
+   |
+27 | ## Clean
+   | -------- the step
+   |

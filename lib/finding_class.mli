@@ -41,6 +41,7 @@ type t =
   | Duplicate
   | Scope_outside_plan
   | Step_without_promises
+  | Stale_delivery
   | Misplaced_plan
   | Missing_plan_id
   | Unpinned

@@ -736,8 +736,129 @@ let renamed_step_reads_the_unchanged_files_of_the_base () =
        [ one ]
        [ steps_plan "\n## Do that\n\n@req a\n"; a ])
 
+let commit = "0123456789abcdef0123456789abcdef01234567"
+let other_commit = "fedcba9876543210fedcba9876543210fedcba98"
+
+let delivery_findings ?(commit = commit) ?(base = []) wanted message tree =
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) -> finding.finding_class = wanted)
+       (Adjudicator.classes
+          ~deliveries:(Delivery_line.read ~commit message)
+          ~base:(facts base) (facts tree) []))
+
+let refactor_plan =
+  ( ".plans/p.md",
+    "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Tidy\n\n@scope lib/**\nTidy it.\n"
+  )
+
+let line_of (path, text) slug =
+  match Facts.plans (facts [ (path, text) ]) with
+  | [ plan ] -> (
+      match
+        List.find_opt
+          (fun (step : Facts.step) -> String.equal step.slug slug)
+          plan.steps
+      with
+      | Some step -> (
+          match Facts.delivery plan step with
+          | Some line -> Delivery_line.to_string line
+          | None -> Alcotest.fail "the step has no delivery line")
+      | None -> Alcotest.fail "no such step")
+  | _ -> Alcotest.fail "the text gives no plan"
+
+let stale message =
+  delivery_findings Finding_class.Stale_delivery message [ refactor_plan ]
+
+let stale_delivery_reports_each_line_that_does_not_count () =
+  let good = line_of refactor_plan "tidy" in
+  Alcotest.(check strings) "a line that counts" [] (stale (good ^ "\n"));
+  Alcotest.(check strings)
+    "a line with blanks at its end that counts" []
+    (stale (good ^ " \t\r\n"));
+  Alcotest.(check strings)
+    "a line of another form"
+    [
+      "- | finding:stale-delivery:message:" ^ commit
+      ^ "@L3 | the line \"Delivers: p@0a1b2c/tidy\" of commit 0123456 does not \
+         match the form Delivers: <plan>/<step> <hash>";
+    ]
+    (stale "Tidy\n\nDelivers: p@0a1b2c/tidy\n");
+  Alcotest.(check strings)
+    "a line of no step"
+    [
+      "- | finding:stale-delivery:message:" ^ commit
+      ^ "@L1 | the line \"Delivers: p@0a1b2c/other 000000\" of commit 0123456 \
+         names no step of an open plan";
+      "- | finding:stale-delivery:message:" ^ commit
+      ^ "@L2 | the line \"Delivers: p/tidy 000000\" of commit 0123456 names no \
+         step of an open plan";
+    ]
+    (stale "Delivers: p@0a1b2c/other 000000\nDelivers: p/tidy 000000\n");
+  Alcotest.(check strings)
+    "a line of another hash"
+    [
+      "- | finding:stale-delivery:message:" ^ commit
+      ^ "@L1 | the line \"Delivers: p@0a1b2c/tidy 000000\" of commit 0123456 \
+         does not match the step hash of step:p@0a1b2c/tidy; write \"" ^ good
+      ^ "\"";
+    ]
+    (stale "Delivers: p@0a1b2c/tidy 000000\n")
+
+let stale_delivery_names_the_step_and_has_no_place_and_no_fix () =
+  match
+    List.filter
+      (fun (finding : Finding.t) ->
+        finding.finding_class = Finding_class.Stale_delivery)
+      (Adjudicator.classes
+         ~deliveries:
+           (Delivery_line.read ~commit "Delivers: p@0a1b2c/tidy 000000\n"
+           @ Delivery_line.read ~commit:other_commit
+               "x\nDelivers: p@0a1b2c/tidy 000000\n")
+         ~base:(facts []) (facts [ refactor_plan ]) [])
+  with
+  | [ first; second ] ->
+      Alcotest.(check (list string))
+        "one finding for each commit"
+        [ "message:" ^ commit ^ "@L1"; "message:" ^ other_commit ^ "@L2" ]
+        (List.sort compare
+           (List.map
+              (fun (finding : Finding.t) -> Finding.ack_subject finding.subject)
+              [ first; second ]));
+      Alcotest.(check bool) "no place" true (Option.is_none first.place);
+      Alcotest.(check bool) "no fix" true (Option.is_none first.fix);
+      Alcotest.(check bool) "not ackable" false first.ackable;
+      Alcotest.(check (list string))
+        "the related place is the step"
+        [ "the step .plans/p.md:6" ]
+        (List.map
+           (fun (related : Finding.related) ->
+             match related.place with
+             | Some { path; span } ->
+                 Printf.sprintf "%s %s:%d" related.label path span.start.line
+             | None -> related.label)
+           first.related)
+  | findings ->
+      Alcotest.failf "two findings were expected, not %d" (List.length findings)
+
+let stale_delivery_shows_the_line_as_one_line_of_utf_8 () =
+  Alcotest.(check strings)
+    "the control characters and the bytes that are not UTF-8"
+    [
+      "- | finding:stale-delivery:message:" ^ commit
+      ^ "@L1 | the line \"Delivers: \\x1b[31mp\\xff/tidy 000000\" of commit \
+         0123456 does not match the form Delivers: <plan>/<step> <hash>";
+    ]
+    (stale "Delivers: \x1b[31mp\xff/tidy 000000\n")
+
 let tests =
   [
+    case "stale-delivery reports each line that does not count"
+      stale_delivery_reports_each_line_that_does_not_count;
+    case "stale-delivery names the step and has no place and no fix"
+      stale_delivery_names_the_step_and_has_no_place_and_no_fix;
+    case "stale-delivery shows the line as one line of UTF-8"
+      stale_delivery_shows_the_line_as_one_line_of_utf_8;
     Alcotest.test_case "renamed-step reports each lost slug of a started step"
       `Quick renamed_step_reports_each_lost_slug_of_a_started_step;
     Alcotest.test_case "renamed-step reads the unchanged files of the base"
