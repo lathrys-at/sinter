@@ -2201,6 +2201,26 @@ let a_file_of_24000_declarations_is_made_quickly () =
                  ((index + 1) mod 24_000))) );
     ]
 
+let a_step_of_50000_promises_is_made_quickly () =
+  check_quick_make "a step of 50,000 promises"
+    [
+      ( ".plans/p.md",
+        "# P\n\n@plan p@abcdef\n@scope docs/**\n\n## Step\n\n"
+        ^ String.concat ""
+            (List.init 50_000 (fun index -> Printf.sprintf "@cites c%d\n" index))
+      );
+    ]
+
+let a_first_block_of_50000_tag_lines_is_made_quickly () =
+  check_quick_make "a first block of 50,000 tag lines"
+    [
+      ( ".plans/p.md",
+        "# P\n\n@plan p@abcdef\n"
+        ^ String.concat ""
+            (List.init 50_000 (fun index -> Printf.sprintf "@cites c%d\n" index))
+        ^ "\n## Step\n\n@req x\n" );
+    ]
+
 let case name f = Alcotest.test_case name `Quick f
 
 let a_plan_of_many_steps_makes_its_facts_quickly () =
@@ -2430,4 +2450,8 @@ let tests =
       a_chain_of_2000_supersedes_edges_is_made_quickly;
     case "a file of 24,000 declarations is made quickly"
       a_file_of_24000_declarations_is_made_quickly;
+    case "a step of 50,000 promises is made quickly"
+      a_step_of_50000_promises_is_made_quickly;
+    case "a first block of 50,000 tag lines is made quickly"
+      a_first_block_of_50000_tag_lines_is_made_quickly;
   ]
