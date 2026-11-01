@@ -76,6 +76,17 @@ let with_phases setting run =
           ];
         environment_error)
 
+let in_current_folder setting run =
+  match Sys.getcwd () with
+  | dir -> run dir
+  | exception Sys_error message ->
+      report setting
+        [
+          failure ~help:"run the command in a folder that exists"
+            ("cannot read the current folder: " ^ message);
+        ];
+      environment_error
+
 let plumbing = "PLUMBING COMMANDS"
 
 let envs =
@@ -331,10 +342,11 @@ let scan_cmd =
     Arg.(value & opt (some string) None & info [ "base" ] ~docv:"REVISION" ~doc)
   in
   let run color manifest base =
+    in_current_folder color @@ fun dir ->
     with_phases color (fun phases ->
         match
-          Sinter_core.Scan.run ?phases ~env:(Unix.environment ())
-            ~dir:(Sys.getcwd ()) ~manifest ~base ~tool:version ()
+          Sinter_core.Scan.run ?phases ~env:(Unix.environment ()) ~dir ~manifest
+            ~base ~tool:version ()
         with
         | Error error ->
             report color (Sinter_core.Scan.explain error);
@@ -611,10 +623,11 @@ let check_cmd =
     Arg.(value & flag & info [ "q"; "quiet" ] ~doc)
   in
   let check color manifest base diff gate strict form verbose quiet =
+    in_current_folder color @@ fun dir ->
     with_phases color @@ fun phases ->
     match
-      Sinter_core.Check.run ?phases ~env:(Unix.environment ())
-        ~dir:(Sys.getcwd ()) ~manifest ~base
+      Sinter_core.Check.run ?phases ~env:(Unix.environment ()) ~dir ~manifest
+        ~base
         ~mode:(if diff then Sinter_core.Mode.Diff else Sinter_core.Mode.Tree)
         ~gate ~strict ~form ~verbose ~quiet ~tool:version ()
     with

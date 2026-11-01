@@ -368,6 +368,29 @@ let a_write_past_the_file_size_limit_exits_with_3_in_each_command () =
       ("serve", tree_request "1" ^ "\n");
     ]
 
+let a_current_folder_that_is_gone_is_an_environment_error () =
+  List.iter
+    (fun command ->
+      let folder = Filename.temp_dir "sinter-gone" "" in
+      Alcotest.(check (pair string (list string)))
+        command
+        ( "exited 3",
+          [
+            "error: cannot read the current folder: No such file or directory";
+            "  = help: run the command in a folder that exists";
+          ] )
+        (let outcome, text =
+           outcome_and_errors
+             (Printf.sprintf "cd %s && rmdir %s && BISECT_FILE=%s exec %s %s"
+                (Filename.quote folder) (Filename.quote folder)
+                (Filename.quote coverage_prefix)
+                (Filename.quote (Filename.concat (Sys.getcwd ()) sinter))
+                command)
+             ~input:""
+         in
+         (outcome, lines text)))
+    [ "scan"; "check" ]
+
 let committed files =
   let repo = Git_fixture.init () in
   List.iter (fun (path, text) -> Git_fixture.write repo path text) files;
@@ -838,6 +861,8 @@ let tests =
       a_write_past_the_file_size_limit_exits_with_3_in_each_command;
     Alcotest.test_case "a full standard output ends scan and check with 3"
       `Quick a_full_standard_output_ends_scan_and_check_with_3;
+    Alcotest.test_case "a current folder that is gone is an environment error"
+      `Quick a_current_folder_that_is_gone_is_an_environment_error;
     Alcotest.test_case "a manifest whose path is not UTF-8 exits with 3" `Quick
       a_manifest_whose_path_is_not_utf_8_exits_with_3;
     Alcotest.test_case "a closed standard input reads as no request" `Quick
