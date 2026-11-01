@@ -472,19 +472,24 @@ let counted ~deliveries facts =
     (Facts.plans facts)
 
 let deliveries_without_change ~counted ~changed ~base facts =
-  let plan_files = Facts.plan_files facts @ Facts.plan_files base in
-  let changed =
-    List.filter (fun path -> not (List.mem path plan_files)) changed
+  let covered =
+    lazy
+      (let plan_files =
+         Ids.of_list (Facts.plan_files facts @ Facts.plan_files base)
+       in
+       let covering = Facts.covering facts in
+       List.fold_left
+         (fun covered path ->
+           if Ids.mem path plan_files then covered
+           else List.fold_left (Fun.flip Ids.add) covered (covering path))
+         Ids.empty changed)
   in
-  let covering = lazy (Facts.covering facts) in
   List.filter_map
     (fun ( (plan : Facts.plan),
            (step : Facts.step),
            (found : Delivery_line.found) ) ->
       let id = Facts.step_id plan step in
-      if
-        List.exists (fun path -> List.mem id (Lazy.force covering path)) changed
-      then None
+      if Ids.mem id (Lazy.force covered) then None
       else
         Some
           (Finding.make Finding_class.Delivery_without_change

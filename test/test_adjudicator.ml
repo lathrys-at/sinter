@@ -1034,6 +1034,35 @@ let delivery_without_change_sits_at_a_step_with_no_change_in_scope () =
     "a line that does not count" []
     (without_change [] "Delivers: p@0a1b2c/a 000000\n")
 
+let delivery_without_change_grows_in_proportion_to_the_steps () =
+  let plan i =
+    ( Printf.sprintf ".plans/p%d.md" i,
+      Printf.sprintf "# P\n\n@plan p%d@%06x\n@scope docs/%d/**\n\n%s" i i i
+        (String.concat ""
+           (List.init 10 (fun step ->
+                Printf.sprintf "## Step %d\n\n@scope docs/%d/%d/**\nWork.\n\n"
+                  step i step))) )
+  in
+  let input plans =
+    let tree = facts (List.init plans plan) in
+    let message =
+      String.concat "\n"
+        (List.concat_map
+           (fun (plan : Facts.plan) ->
+             List.filter_map
+               (fun step ->
+                 Option.map Delivery_line.to_string (Facts.delivery plan step))
+               plan.steps)
+           (Facts.plans tree))
+    in
+    (tree, Delivery_line.read ~commit message)
+  in
+  let changed = List.init 20 (Printf.sprintf "src/file%d.c") in
+  let base = facts [] in
+  Counted_work.check_growth ~margin:1.5 ~sizes:(2, 32) ~input
+    (fun (tree, deliveries) ->
+      Adjudicator.classes ~changed ~deliveries ~base tree [])
+
 let delivery_without_change_warns_and_has_no_fix () =
   Alcotest.(check (list (option string)))
     "the tiers at turn, review, and merged"
@@ -1185,6 +1214,8 @@ let tests =
       delivery_without_change_sits_at_a_step_with_no_change_in_scope;
     case "delivery-without-change warns and has no fix"
       delivery_without_change_warns_and_has_no_fix;
+    case "delivery-without-change grows in proportion to the steps"
+      delivery_without_change_grows_in_proportion_to_the_steps;
     case "delivery-on-unmet-step sits at a step with an unmet promise"
       delivery_on_unmet_step_sits_at_a_step_with_an_unmet_promise;
     case "delivery-on-unmet-step names each promise not met"
