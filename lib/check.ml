@@ -415,6 +415,11 @@ let compare_with_base ?phases ~mode ~gate (tree : Scan.tree)
   Allocation.measure phases "findings" (fun () ->
       List.merge Finding.compare
         (Adjudicator.classes ~same ~deliveries:tree.deliveries
+           ~changed:
+             (List.filter_map
+                (fun (path, change) ->
+                  if Git.hunks change = [] then None else Some path)
+                compared.diff)
            ~whole_base:
              (match mode with
              | Mode.Diff -> lazy base

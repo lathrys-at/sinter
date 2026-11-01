@@ -1,5 +1,6 @@
 .plans/p.md:3:1: block[renamed-step] step:p@0a1b2c/old-name is started in the base, and the plan has no step with the slug old-name now
 .plans/p.md:11:1: block[merged-incomplete] step:p@0a1b2c/part has 1 of its 2 promises met
+.plans/p.md:17:1: warn[delivery-without-change] commit 2ca564f delivers step:p@0a1b2c/tidy, and the diff changes no file in the scope of the step
 .plans/p.md:32:1: block[delivery-on-unmet-step] commit 2ca564f delivers step:p@0a1b2c/write-e-and-f, and 1 of its 2 promises are not met
 .plans/p.md:32:1: block[merged-incomplete] step:p@0a1b2c/write-e-and-f has 1 of its 2 promises met
 -:-:-: block[stale-delivery] the line "Delivers: p@0a1b2c/gone 000000" of commit 2ca564f names no step of an open plan

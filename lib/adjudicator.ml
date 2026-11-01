@@ -456,6 +456,33 @@ let counted ~deliveries facts =
         plan.steps)
     (Facts.plans facts)
 
+let deliveries_without_change ~counted ~changed ~base facts =
+  let plan_files = Facts.plan_files facts @ Facts.plan_files base in
+  let changed =
+    List.filter (fun path -> not (List.mem path plan_files)) changed
+  in
+  let covering = lazy (Facts.covering facts) in
+  List.filter_map
+    (fun ( (plan : Facts.plan),
+           (step : Facts.step),
+           (found : Delivery_line.found) ) ->
+      let id = Facts.step_id plan step in
+      if
+        List.exists (fun path -> List.mem id (Lazy.force covering path)) changed
+      then None
+      else
+        Some
+          (Finding.make Finding_class.Delivery_without_change
+             (Finding.Fact { id; ack_name = step.slug })
+             ~place:{ Finding.path = plan.path; span = step.span }
+             ~detail:
+               (Printf.sprintf
+                  "commit %s delivers %s, and the diff changes no file in the \
+                   scope of the step"
+                  (short found.commit) id)
+             ()))
+    counted
+
 let deliveries_on_unmet_steps ~counted facts =
   List.filter_map
     (fun ( (plan : Facts.plan),
@@ -510,8 +537,8 @@ let historical facts (finding : Finding.t) =
   | Some place -> Manifest.is_historical (Facts.manifest facts) place.path
   | None -> false
 
-let classes ?(same = fun _ -> false) ?whole_base ?(deliveries = [])
-    ?(wanted = fun _ -> true) ~base facts findings =
+let classes ?(same = fun _ -> false) ?(changed = []) ?whole_base
+    ?(deliveries = []) ?(wanted = fun _ -> true) ~base facts findings =
   let whole_base = Option.value whole_base ~default:(lazy base) in
   let counted = counted ~deliveries facts in
   let tombstones = tombstones ~same ~base facts in
@@ -534,6 +561,7 @@ let classes ?(same = fun _ -> false) ?whole_base ?(deliveries = [])
         (unbumped ~base ~same facts @ renamed
         @ promise_collisions ~base ~same facts
         @ stale_deliveries ~deliveries facts
+        @ deliveries_without_change ~counted ~changed ~base facts
         @ deliveries_on_unmet_steps ~counted facts
         @
         if wanted Finding_class.Renamed_step then

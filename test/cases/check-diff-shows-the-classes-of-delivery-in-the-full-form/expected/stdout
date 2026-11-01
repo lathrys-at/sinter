@@ -15,6 +15,13 @@ block[merged-incomplete]: step:p@0a1b2c/part has 1 of its 2 promises met
    | ----------- not met
    |
 
+warn[delivery-without-change]: commit 2ca564f delivers step:p@0a1b2c/tidy, and the diff changes no file in the scope of the step
+  --> .plans/p.md:17:1
+   |
+17 | ## Tidy
+   | ^^^^^^^
+   |
+
 block[delivery-on-unmet-step]: commit 2ca564f delivers step:p@0a1b2c/write-e-and-f, and 1 of its 2 promises are not met
   --> .plans/p.md:32:1
    |

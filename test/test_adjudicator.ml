@@ -936,8 +936,90 @@ let delivery_on_unmet_step_counts_no_verifies_edge_of_a_markdown_file () =
           (line_of plan "do-it" ^ "\n")
           [ plan; ("lib/a.md", "# A\n\n@req a\n\n## T\n\n@verifies a v1\n") ]))
 
+let two_step_plan =
+  ( ".plans/p.md",
+    "# P\n\n\
+     @plan p@0a1b2c\n\
+     @scope lib/**\n\n\
+     ## A\n\n\
+     @scope lib/a/**\n\
+     Do a.\n\n\
+     ## B\n\n\
+     @scope lib/b/**\n\
+     Do b.\n" )
+
+let without_change ?(base = []) changed message =
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) ->
+         finding.finding_class = Finding_class.Delivery_without_change)
+       (Adjudicator.classes ~changed
+          ~deliveries:(Delivery_line.read ~commit message)
+          ~base:(facts base) (facts [ two_step_plan ]) []))
+
+let delivery_without_change_sits_at_a_step_with_no_change_in_scope () =
+  let message =
+    line_of two_step_plan "a" ^ "\n" ^ line_of two_step_plan "b" ^ "\n"
+  in
+  let b =
+    ".plans/p.md:11 | finding:delivery-without-change:step:p@0a1b2c/b | commit \
+     0123456 delivers step:p@0a1b2c/b, and the diff changes no file in the \
+     scope of the step"
+  in
+  let a =
+    ".plans/p.md:6 | finding:delivery-without-change:step:p@0a1b2c/a | commit \
+     0123456 delivers step:p@0a1b2c/a, and the diff changes no file in the \
+     scope of the step"
+  in
+  Alcotest.(check strings)
+    "a change in the scope of a only" [ b ]
+    (without_change [ ".plans/p.md"; "lib/a/x.md" ] message);
+  Alcotest.(check strings)
+    "a change of plan files only" [ a; b ]
+    (without_change
+       ~base:[ (".plans/q.md", "# Q\n\n@plan q@111111\n@scope lib/**\n") ]
+       [ ".plans/p.md"; ".plans/q.md" ]
+       message);
+  Alcotest.(check strings)
+    "a change outside both scopes" [ a; b ]
+    (without_change [ "docs/a.md" ] message);
+  Alcotest.(check strings)
+    "a change in both scopes" []
+    (without_change [ "lib/a/x.md"; "lib/b/y.md" ] message);
+  Alcotest.(check strings)
+    "a line that does not count" []
+    (without_change [] "Delivers: p@0a1b2c/a 000000\n")
+
+let delivery_without_change_warns_and_has_no_fix () =
+  Alcotest.(check (list (option string)))
+    "the tiers at turn, review, and merged"
+    [ Some "warn"; Some "warn"; None ]
+    (List.map
+       (fun gate ->
+         Option.map Finding_class.tier_name
+           (Finding_class.builtin_tier Finding_class.Delivery_without_change
+              gate))
+       Finding_class.gates);
+  match
+    List.filter
+      (fun (finding : Finding.t) ->
+        finding.finding_class = Finding_class.Delivery_without_change)
+      (Adjudicator.classes
+         ~deliveries:(Delivery_line.read ~commit (line_of two_step_plan "a"))
+         ~base:(facts []) (facts [ two_step_plan ]) [])
+  with
+  | [ finding ] ->
+      Alcotest.(check bool) "no fix" true (Option.is_none finding.fix);
+      Alcotest.(check bool) "not ackable" false finding.ackable
+  | findings ->
+      Alcotest.failf "one finding was expected, not %d" (List.length findings)
+
 let tests =
   [
+    case "delivery-without-change sits at a step with no change in scope"
+      delivery_without_change_sits_at_a_step_with_no_change_in_scope;
+    case "delivery-without-change warns and has no fix"
+      delivery_without_change_warns_and_has_no_fix;
     case "delivery-on-unmet-step sits at a step with an unmet promise"
       delivery_on_unmet_step_sits_at_a_step_with_an_unmet_promise;
     case "delivery-on-unmet-step names each promise not met"

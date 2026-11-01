@@ -42,6 +42,7 @@ type t =
   | Scope_outside_plan
   | Step_without_promises
   | Stale_delivery
+  | Delivery_without_change
   | Delivery_on_unmet_step
   | Misplaced_plan
   | Missing_plan_id

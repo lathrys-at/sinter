@@ -32,6 +32,7 @@ val tombstones :
 
 val classes :
   ?same:(string -> bool) ->
+  ?changed:string list ->
   ?whole_base:Facts.t Lazy.t ->
   ?deliveries:Delivery_line.found list ->
   ?wanted:(Finding_class.t -> bool) ->
@@ -39,16 +40,17 @@ val classes :
   Facts.t ->
   Finding.t list ->
   Finding.t list
-(** [classes ~same ~base facts findings] is [findings] with the findings of the
-    classes that compare the working tree with the base, sorted by
-    {!Finding.compare}. [same] and [base] are as {!tombstones} takes them.
-    [whole_base] is the facts of every file of the base tree, as {!Facts.make}
-    gives them; it is [base] when absent, so give it when [base] leaves out the
-    facts of a file by [same]. The function forces it only when a class needs
-    it. [deliveries] is the delivery lines of the change; it is empty when
-    absent. The result holds no finding of [renamed-step] when [wanted] is
-    [false] for the class; [wanted] is [true] for every class when absent. The
-    classes are:
+(** [classes ~same ~changed ~base facts findings] is [findings] with the
+    findings of the classes that compare the working tree with the base, sorted
+    by {!Finding.compare}. [same] and [base] are as {!tombstones} takes them.
+    [changed] is the path of each file to which the diff between the base and
+    the working tree gives a hunk; it is empty when absent. [whole_base] is the
+    facts of every file of the base tree, as {!Facts.make} gives them; it is
+    [base] when absent, so give it when [base] leaves out the facts of a file by
+    [same]. The function forces it only when a class needs it. [deliveries] is
+    the delivery lines of the change; it is empty when absent. The result holds
+    no finding of [renamed-step] when [wanted] is [false] for the class;
+    [wanted] is [true] for every class when absent. The classes are:
 
     - [unbumped]: a declaration of the kind [req], [design], or [decision] whose
       slug the base declares, in one of these kinds, when no such declaration of
@@ -89,6 +91,13 @@ val classes :
       it has no place. When the step exists, its related place is the heading of
       the step, and the detail ends with the text of {!Facts.delivery} of the
       step. The detail shows the line as {!Delivery_line.shown} gives it.
+
+    - [delivery-without-change]: a step of a plan of the working tree for which
+      a line of [deliveries] counts, when no path of [changed] is in the
+      effective scope of the step, apart from the paths of {!Facts.plan_files}
+      of [facts] and of [base]. The finding sits at the heading of the step, and
+      the detail names the commit of the first line of [deliveries] that counts
+      for the step.
 
     - [delivery-on-unmet-step]: a step of a plan of the working tree for which a
       line of [deliveries] counts, when {!Facts.standing} does not meet a

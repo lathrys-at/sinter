@@ -935,6 +935,68 @@ let tree_lines repo =
   | Ok report -> written report
   | Error _ -> Alcotest.fail "the check fails"
 
+let delivery_line repo slug =
+  match
+    Scan.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+      ~manifest:None ~base:None ~tool:"v1" ()
+  with
+  | Ok outcome -> (
+      match
+        List.find_map
+          (fun record ->
+            match
+              (List.assoc_opt "slug" record, List.assoc_opt "delivery" record)
+            with
+            | ( Some (Jsonl.Scalar (Jsonl.String found)),
+                Some (Jsonl.Scalar (Jsonl.String line)) )
+              when String.equal found slug ->
+                Some line
+            | _ -> None)
+          outcome.records
+      with
+      | Some line -> line
+      | None -> Alcotest.failf "no delivery line for %s" slug)
+  | Error _ -> Alcotest.fail "the scan fails"
+
+let a_delivery_line_needs_a_change_in_the_scope_of_its_step () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "sinter.toml" packs;
+  Git_fixture.write repo ".plans/p.md"
+    "# P\n\n\
+     @plan p@0a1b2c\n\
+     @scope lib/**\n\n\
+     ## A\n\n\
+     @scope lib/a/**\n\
+     Do a.\n\n\
+     ## B\n\n\
+     @scope lib/b/**\n\
+     Do b.\n";
+  Git_fixture.write repo "lib/a/x.md" "# X\n";
+  Git_fixture.write repo "lib/b/y.md" "# Y\n";
+  commit repo "main";
+  ignore (Git_fixture.git repo [ "checkout"; "-q"; "-b"; "work" ]);
+  Git_fixture.write repo "lib/a/x.md" "# X\n\nMore.\n";
+  Git_fixture.make_executable repo "lib/b/y.md";
+  commit repo
+    ("Do a and b\n\n" ^ delivery_line repo "a" ^ "\n" ^ delivery_line repo "b");
+  let without_change lines =
+    List.filter (fun line -> contains_text "delivery-without-change" line) lines
+  in
+  let expected =
+    [
+      ".plans/p.md:11:1: delivery-without-change commit "
+      ^ String.sub
+          (String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]))
+          0 7
+      ^ " delivers step:p@0a1b2c/b, and the diff changes no file in the scope \
+         of the step";
+    ]
+  in
+  Alcotest.(check (pair (list string) (list string)))
+    "the step whose scope the branch changes only in its mode, in both modes"
+    (expected, expected)
+    (without_change (tree_lines repo), without_change (diff_lines repo))
+
 let a_diff_compares_each_file_as_git_stores_it () =
   let repo = Git_fixture.init () in
   Git_fixture.write repo "sinter.toml" packs;
@@ -1245,6 +1307,8 @@ let the_porcelain_form_with_nul_ends_each_field_with_nul () =
 
 let tests =
   [
+    case "a delivery line needs a change in the scope of its step"
+      a_delivery_line_needs_a_change_in_the_scope_of_its_step;
     case "each header prints alone after the version"
       each_header_prints_alone_after_the_version;
     case "the headers print once each in their order"
