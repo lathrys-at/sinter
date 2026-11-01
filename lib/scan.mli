@@ -14,6 +14,9 @@ type error =
       (** nothing is at the path of the manifest that the caller named *)
   | Unreadable_manifest of { path : string; reason : string }
       (** the manifest does not open or read *)
+  | Manifest_not_utf_8 of string
+      (** the path of the manifest is not UTF-8. For a manifest that is a
+          symbolic link, the path is that of the file that the link names. *)
   | Invalid_manifest of {
       path : string;
       text : string;  (** the text of the manifest *)

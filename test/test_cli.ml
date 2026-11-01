@@ -5,6 +5,7 @@ let sinter = "../bin/main.exe"
 let grammar = "fixtures/tree-sitter-json/tree-sitter-json.wasm"
 let sample = "fixtures/sample.json"
 let query = "fixtures/sample.scm"
+let coverage_prefix = Filename.concat (Sys.getcwd ()) "bisect"
 
 let contents path =
   let channel = open_in_bin path in
@@ -289,6 +290,202 @@ let a_closed_standard_output_ends_any_command () =
        (Printf.sprintf "exec %s --help=plain >&-" (Filename.quote sinter))
        ~input:"" ~bound:10.)
 
+let a_full_standard_output_exits_with_3_and_names_the_failure () =
+  if not (Sys.file_exists "/dev/full") then Alcotest.skip ();
+  Alcotest.(check (pair string (list string)))
+    "the exit code and the lines of standard error"
+    ( "exited 3",
+      [
+        "error: cannot write the output: No space left on device";
+        "  = help: check that the output stays open and that the disk has space";
+      ] )
+    (let outcome, text =
+       outcome_and_errors
+         (Printf.sprintf "exec %s parse --grammar %s --tree %s >/dev/full"
+            (Filename.quote sinter) grammar sample)
+         ~input:""
+     in
+     (outcome, lines text))
+
+let errors_of_a_limited_run script ~input =
+  let request = Filename.temp_file "sinter-limit" ".in" in
+  let output = Filename.temp_file "sinter-limit" ".out" in
+  let coverage = Filename.temp_dir "sinter-limit" ".coverage" in
+  write request input;
+  let read_end, write_end = Unix.pipe ~cloexec:true () in
+  let pid =
+    Fun.protect
+      ~finally:(fun () -> Unix.close write_end)
+      (fun () ->
+        Unix.create_process "/bin/sh"
+          [|
+            "/bin/sh";
+            "-c";
+            "trap '' XFSZ; ulimit -f 0; BISECT_FILE=\"$3\" exec " ^ script
+            ^ " <\"$1\" >\"$2\"";
+            "sh";
+            request;
+            output;
+            Filename.concat coverage "bisect";
+          |]
+          Unix.stdin Unix.stdout write_end)
+  in
+  let channel = Unix.in_channel_of_descr read_end in
+  let text = In_channel.input_all channel in
+  close_in channel;
+  let status = snd (Unix.waitpid [] pid) in
+  Sys.remove request;
+  Sys.remove output;
+  Array.iter
+    (fun name -> Sys.remove (Filename.concat coverage name))
+    (Sys.readdir coverage);
+  Sys.rmdir coverage;
+  match status with
+  | Unix.WEXITED code -> (Printf.sprintf "exited %d" code, lines text)
+  | Unix.WSIGNALED _ | Unix.WSTOPPED _ -> ("ended by a signal", lines text)
+
+let a_write_past_the_file_size_limit_exits_with_3_in_each_command () =
+  List.iter
+    (fun (arguments, input) ->
+      Alcotest.(check (pair string (list string)))
+        arguments
+        ( "exited 3",
+          [
+            "error: cannot write the output: File too large";
+            "  = help: check that the output stays open and that the disk has \
+             space";
+          ] )
+        (errors_of_a_limited_run
+           (Filename.quote sinter ^ " " ^ arguments)
+           ~input))
+    [
+      (Printf.sprintf "parse --grammar %s --tree %s" grammar sample, "");
+      ( Printf.sprintf "parse --grammar %s --query %s %s" grammar query sample,
+        "" );
+      ("--version", "");
+      ("--help=plain", "");
+      ("parse --help=plain", "");
+      ("serve", tree_request "1" ^ "\n");
+    ]
+
+let a_current_folder_that_is_gone_is_an_environment_error () =
+  List.iter
+    (fun command ->
+      let folder = Filename.temp_dir "sinter-gone" "" in
+      Alcotest.(check (pair string (list string)))
+        command
+        ( "exited 3",
+          [
+            "error: cannot read the current folder: No such file or directory";
+            "  = help: run the command in a folder that exists";
+          ] )
+        (let outcome, text =
+           outcome_and_errors
+             (Printf.sprintf "cd %s && rmdir %s && BISECT_FILE=%s exec %s %s"
+                (Filename.quote folder) (Filename.quote folder)
+                (Filename.quote coverage_prefix)
+                (Filename.quote (Filename.concat (Sys.getcwd ()) sinter))
+                command)
+             ~input:""
+         in
+         (outcome, lines text)))
+    [ "scan"; "check" ]
+
+let committed files =
+  let repo = Git_fixture.init () in
+  List.iter (fun (path, text) -> Git_fixture.write repo path text) files;
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  repo
+
+let run_in repo script =
+  let errors = Filename.temp_file "sinter-in" ".err" in
+  Fun.protect
+    ~finally:(fun () -> Sys.remove errors)
+    (fun () ->
+      let status =
+        Unix.create_process_env "/bin/sh"
+          [|
+            "/bin/sh";
+            "-c";
+            "cd \"$1\" && " ^ script ^ " 2>\"$3\"";
+            "sh";
+            Git_fixture.root repo;
+            Filename.concat (Sys.getcwd ()) sinter;
+            errors;
+          |]
+          (Array.append (Git_fixture.env repo)
+             [| "BISECT_FILE=" ^ coverage_prefix |])
+          Unix.stdin Unix.stdout Unix.stderr
+        |> Unix.waitpid [] |> snd
+      in
+      match status with
+      | Unix.WEXITED code -> (Printf.sprintf "exited %d" code, contents errors)
+      | Unix.WSIGNALED _ | Unix.WSTOPPED _ ->
+          ("ended by a signal", contents errors))
+
+let markdown_manifest = "[scan]\npacks.markdown.files = [\"**/*.md\"]\n"
+
+let a_manifest_whose_path_is_not_utf_8_exits_with_3 () =
+  let repo = committed [ ("a.md", "# A\n") ] in
+  (match Git_fixture.write repo "m\xff.toml" markdown_manifest with
+  | () -> ()
+  | exception Sys_error _ -> Alcotest.skip ());
+  Alcotest.(check (pair string string))
+    "the exit code and standard error"
+    ( "exited 3",
+      "error: the path of the manifest m\\xff.toml is not UTF-8\n\
+      \  = help: move the manifest to a path that is UTF-8\n" )
+    (run_in repo "\"$2\" scan --manifest \"$(printf 'm\\377.toml')\" >/dev/null")
+
+let a_full_standard_output_ends_scan_and_check_with_3 () =
+  if not (Sys.file_exists "/dev/full") then Alcotest.skip ();
+  let repo =
+    committed
+      [
+        ("sinter.toml", markdown_manifest); ("a.md", "# A\n\n@cites missing\n");
+      ]
+  in
+  List.iter
+    (fun command ->
+      Alcotest.(check (pair string string))
+        command
+        ( "exited 3",
+          "error: cannot write the output: No space left on device\n\
+          \  = help: check that the output stays open and that the disk has \
+           space\n" )
+        (run_in repo (Printf.sprintf "\"$2\" %s >/dev/full" command)))
+    [ "scan"; "check"; "check -o json"; "check --gate merged" ]
+
+let a_manifest_that_a_pipe_gives_is_read () =
+  let repo =
+    committed [ ("sinter.toml", markdown_manifest); ("a.md", "# A\n") ]
+  in
+  Unix.symlink "/dev" (Filename.concat (Git_fixture.root repo) "dev");
+  let output = Filename.temp_file "sinter-pipe" ".out" in
+  Fun.protect
+    ~finally:(fun () -> Sys.remove output)
+    (fun () ->
+      let outcome =
+        run_in repo
+          ("cat sinter.toml | \"$2\" scan --manifest dev/stdin >"
+         ^ Filename.quote output)
+      in
+      let index =
+        match lines (contents output) with first :: _ -> first | [] -> ""
+      in
+      Alcotest.(check (pair (pair string string) bool))
+        "the exit code, standard error, and the manifest of the index record"
+        (("exited 0", ""), true)
+        ( outcome,
+          List.exists
+            (fun manifest ->
+              String.starts_with ~prefix:"{" index
+              && List.mem
+                   (Printf.sprintf {|"manifest":"%s"|} manifest)
+                   (String.split_on_char ',' index))
+            [ "/dev/stdin"; "/dev/fd/0" ] ))
+
 let a_closed_standard_input_reads_as_no_request () =
   Alcotest.(check (pair string string))
     "the run ends clean and writes no error" ("exited 0", "")
@@ -317,6 +514,40 @@ let a_closed_standard_error_keeps_the_exit_code () =
        (Printf.sprintf "exec %s parse --grammar missing.wasm --query %s %s 2>&-"
           (Filename.quote sinter) query sample)
        ~input:"" ~bound:10.)
+
+let with_deep_query work =
+  let path = Filename.temp_file "sinter-deep" ".scm" in
+  Fun.protect
+    ~finally:(fun () -> Sys.remove path)
+    (fun () ->
+      let depth = 1_000_000 in
+      write path
+        (String.make depth '(' ^ "document" ^ String.make depth ')' ^ " @x\n");
+      work path)
+
+let a_deeply_nested_query_ends_parse_with_an_exit_code () =
+  with_deep_query (fun path ->
+      let outcome =
+        outcome_within
+          (Printf.sprintf "exec %s parse --grammar %s --query %s %s"
+             (Filename.quote sinter) grammar (Filename.quote path) sample)
+          ~input:"" ~bound:10.
+      in
+      Alcotest.(check string)
+        "the run ends with the environment code" "exited 3" outcome)
+
+let a_deeply_nested_query_does_not_end_serve () =
+  with_deep_query (fun path ->
+      let outcome =
+        outcome_within
+          (Printf.sprintf "exec %s serve" (Filename.quote sinter))
+          ~input:
+            (parse_request "1"
+               (Printf.sprintf {|"query":"%s","files":["%s"]|} path sample)
+            ^ "\n")
+          ~bound:10.
+      in
+      Alcotest.(check string) "the loop exits clean" "exited 0" outcome)
 
 let the_help_of_serve_names_only_the_codes_it_returns () =
   let status, text = run "serve --help=plain" in
@@ -651,12 +882,30 @@ let tests =
       `Quick a_closed_standard_output_ends_a_run_that_writes_nothing;
     Alcotest.test_case "a closed standard output ends any command" `Quick
       a_closed_standard_output_ends_any_command;
+    Alcotest.test_case
+      "a full standard output exits with 3 and names the failure" `Quick
+      a_full_standard_output_exits_with_3_and_names_the_failure;
+    Alcotest.test_case
+      "a write past the file size limit exits with 3 in each command" `Quick
+      a_write_past_the_file_size_limit_exits_with_3_in_each_command;
+    Alcotest.test_case "a full standard output ends scan and check with 3"
+      `Quick a_full_standard_output_ends_scan_and_check_with_3;
+    Alcotest.test_case "a current folder that is gone is an environment error"
+      `Quick a_current_folder_that_is_gone_is_an_environment_error;
+    Alcotest.test_case "a manifest that a pipe gives is read" `Quick
+      a_manifest_that_a_pipe_gives_is_read;
+    Alcotest.test_case "a manifest whose path is not UTF-8 exits with 3" `Quick
+      a_manifest_whose_path_is_not_utf_8_exits_with_3;
     Alcotest.test_case "a closed standard input reads as no request" `Quick
       a_closed_standard_input_reads_as_no_request;
     Alcotest.test_case "a failed read names the input" `Quick
       a_failed_read_names_the_input;
     Alcotest.test_case "a closed standard error keeps the exit code" `Quick
       a_closed_standard_error_keeps_the_exit_code;
+    Alcotest.test_case "a deeply nested query ends parse with an exit code"
+      `Quick a_deeply_nested_query_ends_parse_with_an_exit_code;
+    Alcotest.test_case "a deeply nested query does not end serve" `Quick
+      a_deeply_nested_query_does_not_end_serve;
     Alcotest.test_case "the help of serve names only the codes it returns"
       `Quick the_help_of_serve_names_only_the_codes_it_returns;
     Alcotest.test_case "the help of serve names the request id" `Quick

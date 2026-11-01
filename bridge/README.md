@@ -265,6 +265,7 @@ that code.
 | 11 | the adapter asked for more memory than its limit | the size in bytes of all its memories that the bridge refused, an unsigned 64-bit integer, little-endian |
 | 12 | `sinter_alloc` gave 0, or a range outside `memory` | the call, a u32: `0` for the request, `1` for the report; the address and the length, two u32 fields; the size of `memory` in bytes, an unsigned 64-bit integer |
 | 13 | the response lies outside `memory` | the address and the length, two u32 fields; the size of `memory` in bytes, an unsigned 64-bit integer |
+| 14 | the patterns of the query nest deeper than the limit | the limit, the byte offset of the first place past the limit, its row, and its column in bytes, four u32 fields |
 
 The cause of code 8, and its strings:
 
@@ -275,10 +276,10 @@ The cause of code 8, and its strings:
 | 2 | the module lacks `memory` or one of the four functions | one: the name of the export |
 | 3 | an export has the wrong kind or the wrong type | one: the name of the export |
 
-The row and the column of code 5 count from 0. For the kind
-predicate, tree-sitter gives the row where the pattern starts, and the
-column and the offset 0. When a pattern holds more than one operator
-of code 6, the failure names one of them.
+The rows and the columns of codes 5, 6, and 14 count from 0. For the
+kind predicate of code 5, tree-sitter gives the row where the pattern
+starts, and the column and the offset 0. When a pattern holds more
+than one operator of code 6, the failure names one of them.
 
 ### A capture record, when kind is 6
 

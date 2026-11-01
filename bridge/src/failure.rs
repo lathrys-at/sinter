@@ -65,6 +65,14 @@ pub(crate) enum Failure {
         length: u32,
         memory_size: u64,
     },
+    /// Code 14: the patterns of the query nest deeper than `limit`. The
+    /// place is the first byte where the depth passes the limit.
+    QueryTooDeep {
+        limit: u32,
+        offset: u32,
+        row: u32,
+        column: u32,
+    },
 }
 
 /// The `kind` of a grammar that the WebAssembly parser rejects.
@@ -114,6 +122,7 @@ impl Failure {
             Failure::AdapterMemoryLimit(_) => 11,
             Failure::AdapterAlloc { .. } => 12,
             Failure::AdapterResponse { .. } => 13,
+            Failure::QueryTooDeep { .. } => 14,
         }
     }
 
@@ -187,6 +196,16 @@ impl Failure {
                 put_u32(&mut buffer, *length);
                 put_u64(&mut buffer, *memory_size);
             }
+            Failure::QueryTooDeep {
+                limit,
+                offset,
+                row,
+                column,
+            } => {
+                for value in [*limit, *offset, *row, *column] {
+                    put_u32(&mut buffer, value);
+                }
+            }
         }
         set_count(&mut buffer, 1);
         buffer
@@ -259,6 +278,12 @@ mod tests {
                 length: 0,
                 memory_size: 0,
             },
+            Failure::QueryTooDeep {
+                limit: 0,
+                offset: 0,
+                row: 0,
+                column: 0,
+            },
         ];
         for (index, failure) in all.iter().enumerate() {
             assert_eq!(failure.code(), index as u32);
@@ -283,6 +308,20 @@ mod tests {
         let fields: Vec<u32> = (0..5).map(|i| u32_at(&buffer, 20 + 4 * i)).collect();
         assert_eq!(fields, vec![4, 2, 0, 7, 3]);
         assert_eq!(&buffer[40..], b"bad");
+    }
+
+    #[test]
+    fn a_depth_failure_holds_the_limit_then_the_place() {
+        let buffer = Failure::QueryTooDeep {
+            limit: 100,
+            offset: 9,
+            row: 1,
+            column: 2,
+        }
+        .buffer();
+        let fields: Vec<u32> = (0..4).map(|i| u32_at(&buffer, 20 + 4 * i)).collect();
+        assert_eq!(fields, vec![100, 9, 1, 2]);
+        assert_eq!(buffer.len(), 36);
     }
 
     #[test]

@@ -323,6 +323,75 @@ fn a_tree_and_a_query_outlive_their_language_and_their_engine() {
     unsafe { sinter_bridge_tree_free(tree) };
 }
 
+fn rust_wasm() -> Vec<u8> {
+    std::fs::read(repository().join("test/fixtures/tree-sitter-rust/tree-sitter-rust.wasm"))
+        .unwrap()
+}
+
+fn load_named(
+    engine: *mut SinterBridgeEngine,
+    name: &str,
+    wasm: &[u8],
+) -> Result<*mut SinterBridgeLanguage, Failure> {
+    let name = CString::new(name).unwrap();
+    made(unsafe { sinter_bridge_language_load(engine, name.as_ptr(), wasm.as_ptr(), wasm.len()) })
+}
+
+fn instances(engine: *mut SinterBridgeEngine) -> usize {
+    unsafe { &*engine }.instances.len()
+}
+
+#[test]
+fn after_200_loads_and_frees_the_store_holds_one_instance() {
+    let engine = new_engine();
+    for index in 1..=200 {
+        let language = load(engine, &fixture_wasm())
+            .unwrap_or_else(|failure| panic!("load {index}: {failure:?}"));
+        let tree = parse(engine, language, b"[1]").unwrap();
+        unsafe { sinter_bridge_tree_free(tree) };
+        unsafe { sinter_bridge_language_free(language) };
+        assert_eq!(instances(engine), 1, "load {index}");
+    }
+    unsafe { sinter_bridge_engine_free(engine) };
+}
+
+#[test]
+fn the_store_holds_an_instance_of_each_live_grammar_and_of_no_freed_one() {
+    let rust = rust_wasm();
+    let engine = new_engine();
+    let json = load(engine, &fixture_wasm()).unwrap();
+    for index in 1..=3 {
+        let language = load_named(engine, "rust", &rust).unwrap();
+        assert!(instances(engine) <= 2, "load {index}");
+        for (grammar, source) in [(json, &b"[1]"[..]), (language, &b"fn f() {}"[..])] {
+            let tree = parse(engine, grammar, source).unwrap();
+            unsafe { sinter_bridge_tree_free(tree) };
+        }
+        assert_eq!(instances(engine), 2, "parse {index}");
+        unsafe { sinter_bridge_language_free(language) };
+    }
+    unsafe { sinter_bridge_language_free(json) };
+    unsafe { sinter_bridge_engine_free(engine) };
+}
+
+#[test]
+fn a_parse_with_a_grammar_whose_instance_was_freed_makes_a_new_one() {
+    let engine = new_engine();
+    let json = load(engine, &fixture_wasm()).unwrap();
+    let other = load(engine, &fixture_wasm()).unwrap();
+    unsafe { sinter_bridge_language_free(other) };
+    let again = load(engine, &fixture_wasm()).unwrap();
+    assert_eq!(instances(engine), 1);
+    let tree = parse(engine, json, b"[1]").unwrap();
+    assert_eq!(sexp_of(tree), "(document (array (number)))");
+    assert_eq!(instances(engine), 2);
+    for handle in [json, again] {
+        unsafe { sinter_bridge_language_free(handle) };
+    }
+    unsafe { sinter_bridge_tree_free(tree) };
+    unsafe { sinter_bridge_engine_free(engine) };
+}
+
 #[test]
 fn a_language_outlives_its_engine() {
     let engine = new_engine();
@@ -498,6 +567,92 @@ fn a_query_error_gives_its_kind_and_its_place() {
     assert_eq!(failure("(pair nofield: (string))"), (2, 0, 6, 6));
     assert_eq!(failure("((number) @a (#eq? @b \"1\"))"), (3, 0, 20, 20));
     assert_eq!(failure("(string (number))"), (5, 0, 8, 8));
+}
+
+fn nested(form: &str, depth: u32) -> String {
+    let limit = depth as usize;
+    match form {
+        "parenthesis" => format!(
+            "{}(number){}",
+            "(array ".repeat(limit - 1),
+            ")".repeat(limit - 1)
+        ),
+        "bracket" => format!("{}(number){}", "[".repeat(limit - 1), "]".repeat(limit - 1)),
+        "field" => {
+            let levels = (limit - 1) / 3;
+            let rest = limit - 1 - 3 * levels;
+            format!(
+                "{}{}(number){}{}",
+                "(object (pair value: ".repeat(levels),
+                "(array ".repeat(rest),
+                ")".repeat(rest),
+                "))".repeat(levels)
+            )
+        }
+        other => panic!("{other}"),
+    }
+}
+
+#[test]
+fn a_query_at_the_depth_limit_compiles_and_one_level_more_is_refused() {
+    let json = Json::new();
+    for form in ["parenthesis", "bracket", "field"] {
+        let query = json
+            .compile(&nested(form, syntax::QUERY_DEPTH_LIMIT))
+            .unwrap_or_else(|failure| panic!("{form}: {failure:?}"));
+        unsafe { sinter_bridge_query_free(query) };
+        let deeper = format!("(number)\n{}", nested(form, syntax::QUERY_DEPTH_LIMIT + 1));
+        let offset = deeper
+            .match_indices(['(', '[', 'v'])
+            .nth(syntax::QUERY_DEPTH_LIMIT as usize + 1)
+            .unwrap()
+            .0;
+        match json.compile(&deeper) {
+            Err(Failure::QueryTooDeep {
+                limit,
+                offset: at,
+                row,
+                column,
+            }) => assert_eq!(
+                (limit, at, row, column),
+                (
+                    syntax::QUERY_DEPTH_LIMIT,
+                    offset as u32,
+                    1,
+                    (offset - "(number)\n".len()) as u32
+                ),
+                "{form}"
+            ),
+            other => panic!("{form}: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn a_query_nested_a_million_levels_is_refused_and_does_not_crash() {
+    let depth = 1_000_000;
+    let query = format!("{}document{} @x", "(".repeat(depth), ")".repeat(depth));
+    assert!(matches!(
+        query_failure(&query),
+        Failure::QueryTooDeep { offset: 100, .. }
+    ));
+}
+
+#[test]
+fn a_query_at_the_depth_limit_compiles_on_a_stack_of_256_kib() {
+    let json = Json::new();
+    let language = json.language as usize;
+    let text = nested("parenthesis", syntax::QUERY_DEPTH_LIMIT);
+    let compiled = std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            compile(language as *const SinterBridgeLanguage, &text)
+                .map(|query| unsafe { sinter_bridge_query_free(query) })
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+    assert_eq!(compiled, Ok(()));
 }
 
 #[test]

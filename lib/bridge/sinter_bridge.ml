@@ -256,6 +256,7 @@ module Query_types = struct
         column : int;
       }
     | Not_utf_8 of int
+    | Too_deep of { limit : int; offset : int; row : int; column : int }
 
   type run_error = Language_mismatch
 
@@ -294,6 +295,10 @@ module Query_types = struct
           (row + 1) (column + 1) operator
     | Not_utf_8 offset ->
         Printf.sprintf "the query is not UTF-8 text, at byte %d" offset
+    | Too_deep { limit; row; column; _ } ->
+        Printf.sprintf
+          "Query error at %d:%d. The patterns nest deeper than %d levels"
+          (row + 1) (column + 1) limit
 
   let run_message Language_mismatch =
     "the query and the parse tree come from different grammars"
@@ -493,6 +498,14 @@ let read_failure buffer offset =
       ( Query_failure
           (Query_types.Not_allowed
              { operator; pattern; offset = pattern_offset; row; column }),
+        offset + 16 )
+  | 14 ->
+      let limit = read_int buffer offset in
+      let depth_offset = read_int buffer (offset + 4) in
+      let row = read_int buffer (offset + 8) in
+      let column = read_int buffer (offset + 12) in
+      ( Query_failure
+          (Query_types.Too_deep { limit; offset = depth_offset; row; column }),
         offset + 16 )
   | 7 -> (Run_failure Query_types.Language_mismatch, offset)
   | 8 ->

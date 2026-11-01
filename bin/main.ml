@@ -34,7 +34,11 @@ let colored setting descriptor =
   Sinter_core.Style.color setting ~getenv:Sys.getenv_opt
     ~terminal:(Unix.isatty descriptor)
 
+let settle_output () =
+  try flush stdout with Sys_error _ -> close_out_noerr stdout
+
 let report setting errors =
+  settle_output ();
   let ppf =
     Sinter_core.Style.formatter stderr ~color:(colored setting Unix.stderr)
   in
@@ -54,9 +58,12 @@ let with_phases setting run =
       let phases = Sinter_core.Allocation.create () in
       let code = run (Some phases) in
       try
-        Out_channel.with_open_bin path (fun channel ->
-            Out_channel.output_string channel
-              (Sinter_core.Allocation.to_string phases));
+        let channel = open_out_bin path in
+        Fun.protect
+          ~finally:(fun () -> close_out_noerr channel)
+          (fun () ->
+            output_string channel (Sinter_core.Allocation.to_string phases);
+            close_out channel);
         code
       with Sys_error message ->
         report setting
@@ -68,6 +75,17 @@ let with_phases setting run =
               ("cannot write the words of the phases: " ^ message);
           ];
         environment_error)
+
+let in_current_folder setting run =
+  match Sys.getcwd () with
+  | dir -> run dir
+  | exception Sys_error message ->
+      report setting
+        [
+          failure ~help:"run the command in a folder that exists"
+            ("cannot read the current folder: " ^ message);
+        ];
+      environment_error
 
 let plumbing = "PLUMBING COMMANDS"
 
@@ -324,10 +342,11 @@ let scan_cmd =
     Arg.(value & opt (some string) None & info [ "base" ] ~docv:"REVISION" ~doc)
   in
   let run color manifest base =
+    in_current_folder color @@ fun dir ->
     with_phases color (fun phases ->
         match
-          Sinter_core.Scan.run ?phases ~env:(Unix.environment ())
-            ~dir:(Sys.getcwd ()) ~manifest ~base ~tool:version ()
+          Sinter_core.Scan.run ?phases ~env:(Unix.environment ()) ~dir ~manifest
+            ~base ~tool:version ()
         with
         | Error error ->
             report color (Sinter_core.Scan.explain error);
@@ -604,10 +623,11 @@ let check_cmd =
     Arg.(value & flag & info [ "q"; "quiet" ] ~doc)
   in
   let check color manifest base diff gate strict form verbose quiet =
+    in_current_folder color @@ fun dir ->
     with_phases color @@ fun phases ->
     match
-      Sinter_core.Check.run ?phases ~env:(Unix.environment ())
-        ~dir:(Sys.getcwd ()) ~manifest ~base
+      Sinter_core.Check.run ?phases ~env:(Unix.environment ()) ~dir ~manifest
+        ~base
         ~mode:(if diff then Sinter_core.Mode.Diff else Sinter_core.Mode.Tree)
         ~gate ~strict ~form ~verbose ~quiet ~tool:version ()
     with
@@ -771,9 +791,17 @@ let () =
   let buffer = Buffer.create 256 in
   let err = Format.formatter_of_buffer buffer in
   Sinter_core.Style.prepare err `None;
-  let code = Cmd.eval' ~err ~term_err:usage_error cmd in
-  Format.pp_print_flush err ();
-  if Buffer.length buffer > 0 then
-    report Sinter_core.Style.Auto
-      [ Sinter_core.Usage.error (Buffer.contents buffer) ];
-  exit (if code = Cmd.Exit.cli_error then usage_error else code)
+  let run () =
+    let code = Cmd.eval' ~err ~term_err:usage_error cmd in
+    (match Buffer.contents buffer with
+    | "" -> ()
+    | text -> report Sinter_core.Style.Auto [ Sinter_core.Usage.error text ]);
+    Format.pp_print_flush Format.std_formatter ();
+    if code = Cmd.Exit.cli_error then usage_error else code
+  in
+  exit
+    (match run () with
+    | code -> code
+    | exception Sys_error message ->
+        report Sinter_core.Style.Auto [ output_failure message ];
+        environment_error)

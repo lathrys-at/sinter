@@ -290,6 +290,27 @@ let a_failed_load_drops_the_grammar_the_loop_kept () =
       holds "the third request does not answer with the grammar of the first"
         (not (ran (ask state path))))
 
+let rust_grammar = "fixtures/tree-sitter-rust/tree-sitter-rust.wasm"
+
+let a_grammar_that_changes_200_times_still_loads () =
+  let path = Filename.temp_file "sinter-grammar" ".wasm" in
+  Fun.protect
+    ~finally:(fun () -> try Sys.remove path with Sys_error _ -> ())
+    (fun () ->
+      write_file path (read_file rust_grammar);
+      let state = Serve.create () in
+      Fun.protect
+        ~finally:(fun () -> Serve.close state)
+        (fun () ->
+          for index = 1 to 200 do
+            let time = fixed_time +. float_of_int index in
+            Unix.utimes path time time;
+            match Serve.control (ask state path) with
+            | Serve.Done _ -> ()
+            | Serve.Failed (_, message) ->
+                Alcotest.failf "request %d fails: %s" index message
+          done))
+
 let a_message_that_is_utf_8_is_not_escaped () =
   let absent = "no-such-f\xc3\xaele.json" in
   let records = Serve.lines (answer (request ~query [ absent ])) in
@@ -345,6 +366,8 @@ let tests =
         a_grammar_that_does_not_load_is_not_kept;
       case "a failed load drops the grammar the loop kept"
         a_failed_load_drops_the_grammar_the_loop_kept;
+      case "a grammar that changes 200 times still loads"
+        a_grammar_that_changes_200_times_still_loads;
       case "a message that is UTF-8 is not escaped"
         a_message_that_is_utf_8_is_not_escaped;
       case "a closed state refuses to answer" a_closed_state_refuses_to_answer;

@@ -282,6 +282,16 @@ syntax of the Rust crate `regex`, which that library uses. A query
 that uses any other predicate, or a directive such as `#set!`, is an
 error.
 
+The patterns of a query nest. Each opening parenthesis `(`, each
+opening bracket `[`, and each field name before a `:`, such as `key:`
+in `(pair key: (string))`, adds one **level**. A closing parenthesis
+or bracket ends the level that its opening one added, and the levels
+of the field names right before that opening one. A pattern that is a
+name or a string, such as `_` or `"if"`, ends the levels of the field
+names right before it. A parenthesis or a bracket inside a string or
+a comment adds no level. A query that has more than 100 levels open
+at one place is an error, and the message gives the first such place.
+
 Sinter ignores a capture whose name starts with `_`. A pattern can use
 such a capture for a predicate, for example `#eq?`. Any other capture
 name that section 4 does not define for the query file is an error.

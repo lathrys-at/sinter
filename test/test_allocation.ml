@@ -93,7 +93,7 @@ let repository () =
   ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
   repo
 
-let run repo ~words command =
+let run ?(prefix = "") ?(shell = "") ?output repo ~words command =
   let errors = Filename.temp_file "sinter-phases" ".err" in
   let environment =
     Array.append (Git_fixture.env repo) [| Allocation.variable ^ "=" ^ words |]
@@ -105,6 +105,7 @@ let run repo ~words command =
         Unix.openfile errors [ Unix.O_WRONLY; Unix.O_TRUNC; Unix.O_CLOEXEC ] 0
       in
       let to_nowhere = Unix.openfile "/dev/null" [ Unix.O_WRONLY ] 0 in
+      let to_output = Option.value output ~default:to_nowhere in
       let pid =
         Fun.protect
           ~finally:(fun () ->
@@ -115,13 +116,12 @@ let run repo ~words command =
               [|
                 "/bin/sh";
                 "-c";
-                "cd \"$1\" && exec \"$2\" \"$3\"";
+                prefix ^ "cd \"$1\" && exec \"$2\" " ^ command ^ " " ^ shell;
                 "sh";
                 Git_fixture.root repo;
                 sinter;
-                command;
               |]
-              environment Unix.stdin to_nowhere to_errors)
+              environment Unix.stdin to_output to_errors)
       in
       let status =
         match Unix.waitpid [] pid with
@@ -195,6 +195,36 @@ let a_file_that_cannot_be_written_is_an_environment_error () =
         words )
     (status, without_warnings errors)
 
+let a_file_on_a_full_disk_is_an_environment_error () =
+  if not (Sys.file_exists "/dev/full") then Alcotest.skip ();
+  let repo = repository () in
+  let status, errors = run repo ~words:"/dev/full" "scan" in
+  Alcotest.(check (pair int string))
+    "the exit code, and an error that names the words of the phases"
+    ( 3,
+      "error: cannot write the words of the phases: No space left on device\n\
+      \  = help: name a file that you can write in SINTER_PHASE_WORDS\n" )
+    (status, without_warnings errors)
+
+let a_pipe_that_no_one_reads_is_an_environment_error () =
+  if Sys.file_exists "/proc/self/fd" then Alcotest.skip ();
+  let repo = repository () in
+  let read_end, write_end = Unix.pipe ~cloexec:true () in
+  Unix.close read_end;
+  let status, errors =
+    Fun.protect
+      ~finally:(fun () -> Unix.close write_end)
+      (fun () ->
+        run ~prefix:"trap '' PIPE; " ~shell:"3>&1 >/dev/null" ~output:write_end
+          repo ~words:"/dev/fd/3" "scan")
+  in
+  Alcotest.(check (pair int string))
+    "the exit code, and an error that names the words of the phases"
+    ( 3,
+      "error: cannot write the words of the phases: Broken pipe\n\
+      \  = help: name a file that you can write in SINTER_PHASE_WORDS\n" )
+    (status, without_warnings errors)
+
 let tests =
   [
     case "a phase counts the words that it allocates"
@@ -213,4 +243,8 @@ let tests =
     case "an empty variable writes nothing" an_empty_variable_writes_nothing;
     case "a file that cannot be written is an environment error"
       a_file_that_cannot_be_written_is_an_environment_error;
+    case "a file on a full disk is an environment error"
+      a_file_on_a_full_disk_is_an_environment_error;
+    case "a pipe that no one reads is an environment error"
+      a_pipe_that_no_one_reads_is_an_environment_error;
   ]

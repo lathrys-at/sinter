@@ -20,6 +20,7 @@
 compile_error!("the bridge needs unwinding panics; do not build it with panic = \"abort\"");
 
 use std::ffi::{CStr, c_char};
+use std::sync::{Arc, Weak};
 
 mod adapter;
 mod buffer;
@@ -42,18 +43,28 @@ fn null_argument() -> Failure {
 }
 
 /// An engine holds the WebAssembly runtime for grammars and a parser.
+///
+/// The parser holds one WebAssembly store. Each grammar that the store
+/// loads or parses with gets an instance in the store. `instances`
+/// holds the token of each grammar that has an instance in the store.
+/// A load replaces the store with a new one when a grammar of
+/// `instances` was freed. So the store holds the instances of the live
+/// grammars, and of the grammars freed since the last load.
 pub struct SinterBridgeEngine {
     parser: Parser,
     grammar_engine: wasmtime::Engine,
     config: wasmtime::Config,
     adapter_engine: Option<wasmtime::Engine>,
+    instances: Vec<Weak<()>>,
 }
 
 /// A grammar. It holds a counted reference to the tree-sitter
-/// language, so it stays valid after its engine is freed.
+/// language, so it stays valid after its engine is freed. Its token
+/// lives as long as the grammar.
 pub struct SinterBridgeLanguage {
     language: Language,
     engine: wasmtime::Engine,
+    token: Arc<()>,
 }
 
 /// A parse tree, with a copy of the text it was parsed from. The tree
@@ -86,6 +97,16 @@ pub struct SinterBridgeAdapter {
 }
 
 impl SinterBridgeEngine {
+    fn holds_a_freed_grammar(&self) -> bool {
+        self.instances.iter().any(|token| token.strong_count() == 0)
+    }
+
+    fn has_an_instance_of(&self, language: &SinterBridgeLanguage) -> bool {
+        self.instances
+            .iter()
+            .any(|token| std::ptr::eq(token.as_ptr(), Arc::as_ptr(&language.token)))
+    }
+
     fn adapter_engine(&mut self) -> Result<wasmtime::Engine, Failure> {
         if let Some(engine) = &self.adapter_engine {
             return Ok(engine.clone());
@@ -223,6 +244,7 @@ pub extern "C" fn sinter_bridge_engine_new() -> *mut SinterBridgeEngine {
             grammar_engine,
             config,
             adapter_engine: None,
+            instances: Vec::new(),
         }))
     })
 }
@@ -274,6 +296,12 @@ pub unsafe extern "C" fn sinter_bridge_language_load(
                 return std::ptr::null_mut();
             }
         };
+        if engine.holds_a_freed_grammar()
+            && let Ok(fresh) = WasmStore::new(&engine.grammar_engine)
+        {
+            store = fresh;
+            engine.instances.clear();
+        }
         let loaded = store.load_language(&name, bytes);
         if let Err(error) = engine.parser.set_wasm_store(store) {
             set_error(format!("cannot attach the WebAssembly store: {error}"));
@@ -286,10 +314,13 @@ pub unsafe extern "C" fn sinter_bridge_language_load(
                 return std::ptr::null_mut();
             }
         };
+        let token = Arc::new(());
+        engine.instances.push(Arc::downgrade(&token));
         handle_of(
             syntax::check_version(language.abi_version()).map(|()| SinterBridgeLanguage {
                 language,
                 engine: engine.grammar_engine.clone(),
+                token,
             }),
         )
     })
@@ -337,10 +368,14 @@ pub unsafe extern "C" fn sinter_bridge_parse(
                 "the grammar was loaded by another engine".to_owned(),
             )));
         }
+        let known = engine.has_an_instance_of(language);
         if engine.parser.set_language(&language.language).is_err() {
             return handle_of(Err(Failure::LanguageVersion(
                 language.language.abi_version() as u32,
             )));
+        }
+        if !known {
+            engine.instances.push(Arc::downgrade(&language.token));
         }
         handle_of(
             engine
