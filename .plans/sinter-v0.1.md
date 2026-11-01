@@ -203,10 +203,10 @@ Fetch a pack, with its grammars, queries, and runner adapters, from
 the packs repository with `sinter pack add`, record it in
 `sinter.lock`, and keep it in a user cache keyed by its hash.
 
-## Read TypeScript, Rust, and OCaml
+## Read JavaScript, OCaml, Rust, and TypeScript
 @scope lib/**, test/**, THIRD_PARTY.md, REUSE.toml
-Read the packs for TypeScript, Rust, and OCaml, and capture the tests
-that each one declares.
+Read the packs for JavaScript, OCaml, Rust, and TypeScript, and
+capture the tests that each one declares.
 
 ## Import test evidence
 @scope lib/**, bin/**, test/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, docs/decisions/**
