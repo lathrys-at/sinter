@@ -512,7 +512,7 @@ column to `warn`, at every gate. `sinter init` writes
 | class | subject | definition | mode | A | F | tiers |
 |---|---|---|---|---|---|---|
 | `parse-error` | file | *engine*: a governed file with a parse failure ([packs.md](packs.md) section 5.2). In a file of a fetched pack, the file's facts are absent. In a markdown file, the facts stay, one finding sits at each error, and the tier of such a finding is `warn` where the class's tier is `block` | tree | · | · | warn, block, block |
-| `typo-tag` | line | *engine*: a tag line whose tag word ([vocabulary.md](vocabulary.md) section 3.1) is not in the vocabulary and lies within Damerau–Levenshtein distance 2 of a word of the vocabulary. The pack's foreign vocabulary is exempt. The fix writes the nearest word of the vocabulary in place of the tag word. When two words are equally near, it writes the first in byte order, as [manifest.md](manifest.md) section 4.2 does for keys | tree | · | F | warn, warn, warn |
+| `typo-tag` | line | *engine*: a tag line whose tag word ([vocabulary.md](vocabulary.md) section 3.1) is not in the vocabulary and lies within Damerau–Levenshtein distance 2 of a word of the vocabulary. The pack's foreign vocabulary is exempt. The fix writes the nearest word of the vocabulary in place of the tag word. When two words are equally near, it writes the first in byte order, as [manifest.md](manifest.md) section 4.2 does for keys. When that word is `ack`, the finding has no fix, so that no fix of this class writes an `@ack` line | tree | · | F | warn, warn, warn |
 | `ignored-tag` | line | *engine*: in markdown, a paragraph that a section or a list item holds directly, that is not the first paragraph of that section or list item, that no block quote holds, and whose first line is a tag line. The scanner reads no tag in it ([packs.md](packs.md) section 7.2) | tree | · | · | warn, warn, warn |
 | `invalid-target` | tag | *engine*: a tag target that fails its pattern: a slug that fails the slug pattern, an external id whose namespace is undeclared or whose id fails the pattern of its namespace, or a tag target of `@plan` that fails the rules of the full form ([vocabulary.md](vocabulary.md) sections 4.1, 4.2, and 4.3). Such a tag target is never `dangling` | tree | · | · | block, block, block |
 | `duplicate` | tag or line | *engine*: two slugs in one namespace that are equal, or that differ only in case ([vocabulary.md](vocabulary.md) section 4.1): two declarations; two open plans; or two steps of one plan. Two plans of any state with one full form ([vocabulary.md](vocabulary.md) section 4.3) are also a group. Order the facts of one such group by the byte order of their paths, and then by their lines. Each fact after the first gives one finding. Its subject is the tag of that fact or, for a step, the line of the step's heading ([jsonl.md](jsonl.md) section 9). A plan that both rules of plans report gives one finding, by the rule of the full form. The `detail` names the rule that applies | tree | · | · | block, block, block |
@@ -588,7 +588,8 @@ report such a hunk. These are the changes:
   fix of `renamed` write;
 - the citation of a successor in place of a citation of a retired
   declaration (the fix of `retired`);
-- the corrected tag word of a `typo-tag` line (the fix of `typo-tag`);
+- the corrected tag word of a `typo-tag` line, a word other than `ack`
+  (the fix of `typo-tag`);
 - a plan id added to the tag target of a `@plan` line (the fix of
   `missing-plan-id`).
 

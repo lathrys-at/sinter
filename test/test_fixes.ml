@@ -592,6 +592,31 @@ let every_fix_at_the_largest_revision_repairs_its_finding () =
         (repairs ~base files change))
     (changes ~base files)
 
+let a_tag_word_made_ack_is_no_mechanical_repair () =
+  let text word =
+    Printf.sprintf "# A\n\n@cites dep\n@%s retired dep 1\n" word
+  in
+  let base = [ ("docs/a.md", text "akc") ] in
+  List.iter
+    (fun (word, expected) ->
+      let files = [ ("docs/a.md", text word) ] in
+      Alcotest.(check bool)
+        word expected
+        (Repair.hunk
+           (Repair.fixes ~base:(facts base) (facts files))
+           ~base:(Some (Edits.document (text "akc")))
+           (Some (Edits.document (text word)))
+           (hunk (text "akc") (text word))))
+    [ ("ack", false); ("acks", false) ];
+  let base = [ ("docs/a.md", text "reqq") ] in
+  Alcotest.(check bool)
+    "req" true
+    (Repair.hunk
+       (Repair.fixes ~base:(facts base) (facts [ ("docs/a.md", text "req") ]))
+       ~base:(Some (Edits.document (text "reqq")))
+       (Some (Edits.document (text "req")))
+       (hunk (text "reqq") (text "req")))
+
 let edit_of (fields : Jsonl.flat) =
   match
     List.map
@@ -679,6 +704,8 @@ let tests =
       every_fix_of_the_probe_touches_only_its_place;
     Alcotest.test_case "the probe removes each stale ack" `Quick
       the_probe_removes_each_stale_ack;
+    Alcotest.test_case "a tag word made ack is no mechanical repair" `Quick
+      a_tag_word_made_ack_is_no_mechanical_repair;
     Alcotest.test_case "every fix at the largest revision repairs its finding"
       `Quick every_fix_at_the_largest_revision_repairs_its_finding;
   ]

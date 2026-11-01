@@ -102,7 +102,17 @@ let typo_tag_takes_the_first_word_in_byte_order_of_two_equally_near () =
     [ ("docs/a.md", "# A\n\n@reck x\n") ]
     [
       "docs/a.md:3:1-3:8 | finding:typo-tag:line:docs/a.md@L3 | @reck is not a \
-       tag word of sinter | fix: @ack";
+       tag word of sinter";
+    ]
+
+let typo_tag_near_ack_has_no_fix () =
+  check Finding_class.Typo_tag
+    [ ("docs/a.md", "# A\n\n@cites x\n@akc retired x 12345678\n@acks\n") ]
+    [
+      "docs/a.md:4:1-4:24 | finding:typo-tag:line:docs/a.md@L4 | @akc is not a \
+       tag word of sinter";
+      "docs/a.md:5:1-5:6 | finding:typo-tag:line:docs/a.md@L5 | @acks is not a \
+       tag word of sinter";
     ]
 
 let ignored_tag_sits_at_a_later_paragraph () =
@@ -1193,9 +1203,19 @@ let the_findings_are_sorted () =
 let nearest_word_names_the_word_that_the_fix_of_typo_tag_writes () =
   Alcotest.(check (list (option string)))
     "the word of each tag word"
-    [ Some "req"; Some "req"; Some "verifies"; None; None; None; None ]
+    [
+      Some "req";
+      Some "req";
+      Some "verifies";
+      None;
+      None;
+      None;
+      None;
+      None;
+      None;
+    ]
     (List.map Findings.nearest_word
-       [ "reqq"; "Req"; "verifie"; "req"; "ack"; "param"; "" ])
+       [ "reqq"; "Req"; "verifie"; "req"; "ack"; "param"; ""; "akc"; "reck" ])
 
 module Gen = QCheck2.Gen
 
@@ -1233,7 +1253,8 @@ let nearest_word_is_a_word_of_the_vocabulary_within_two_edits =
          match Findings.nearest_word word with
          | None -> true
          | Some nearest ->
-             (not (String.equal nearest word))
+             (not (String.equal nearest "ack"))
+             && (not (String.equal nearest word))
              && Edit_distance.distance word nearest <= 2
              && Findings.nearest_word nearest = None))
 
@@ -1833,6 +1854,7 @@ let tests =
     case "parse-error sits at each error and at a file that is not text"
       parse_error_sits_at_each_error_and_at_a_file_that_is_not_text;
     case "typo-tag names the nearest word" typo_tag_names_the_nearest_word;
+    case "typo-tag near ack has no fix" typo_tag_near_ack_has_no_fix;
     case "nearest_word names the word that the fix of typo-tag writes"
       nearest_word_names_the_word_that_the_fix_of_typo_tag_writes;
     nearest_word_is_a_word_of_the_vocabulary_within_two_edits;

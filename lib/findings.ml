@@ -40,9 +40,12 @@ let parse_errors documents ~not_text =
           document.errors)
       documents
 
-let nearest_word word =
+let nearest word =
   if List.mem word vocabulary then None
   else Edit_distance.nearest word vocabulary
+
+let nearest_word word =
+  match nearest word with Some "ack" -> None | found -> found
 
 let typo_tags documents =
   List.filter_map
@@ -53,10 +56,12 @@ let typo_tags documents =
             (Finding.Line { path; line = tag.span.start.line })
             ~place:(place path tag.span)
             ~detail:(Printf.sprintf "@%s is not a tag word of sinter" tag.word)
-            ~fix:(Fix.word tag nearest)
+            ?fix:
+              (if String.equal nearest "ack" then None
+               else Some (Fix.word tag nearest))
             ?mark:(Finding.part tag Tag_line.Word "not a tag word")
             ())
-        (nearest_word tag.word))
+        (nearest tag.word))
     (tags documents)
 
 let ignored_tags documents =
