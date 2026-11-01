@@ -1391,7 +1391,7 @@ base, and every surface of the tool is a saved expression.
   order is always fixed, by kind, path, line, column, and id, and never
   the order of a hash table. Bazel added `--order_output` after an
   unstable order broke the scripts of its users;
-- `--json`, for JSONL facts;
+- `-o json`, for JSONL facts;
 - `-o sarif`, for findings, so that CI on a pull request gets annotations
   at each file and line from GitHub code scanning with no work of
   integration, as CodeQL and Semgrep showed;
