@@ -3,7 +3,7 @@
 
 (library
  (name sinter_bench)
- (modules generated_tree measurement budgets report)
+ (modules generated_tree generated_ledger measurement budgets report)
  (libraries sinter_core sinter_bridge git_fixture yojson unix))
 
 (executable

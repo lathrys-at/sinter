@@ -39,47 +39,11 @@ let escape_path path =
   in
   String.concat "" (pieces path)
 
-let first_line text =
-  match String.index_opt text '\n' with
-  | Some stop -> String.sub text 0 stop
-  | None -> text
-
-let git_text = function
-  | Git.Git_not_found reason ->
-      ( "cannot start git: " ^ reason,
-        "install git 2.43.7 or later, and put it on PATH" )
-  | Git.Not_a_repository { dir; _ } ->
-      ( Printf.sprintf "the folder %s is in no git repository" dir,
-        "run sinter inside the working tree of a git repository" )
-  | Git.Bad_revision revision ->
-      ( Printf.sprintf "'%s' names no commit" revision,
-        "name a revision that names a commit" )
-  | Git.Default_branch_not_found name ->
-      ( Printf.sprintf "no branch '%s' exists" name,
-        "set 'default-branch' in sinter.toml to the name of the default branch"
-      )
-  | Git.No_merge_base (a, b) ->
-      ( Printf.sprintf "%s and %s have no common ancestor" a b,
-        "name a base with --base" )
-  | Git.Command_failed { args; stderr; _ } ->
-      ( Printf.sprintf "git %s failed: %s" (String.concat " " args)
-          (first_line stderr),
-        "run the same git command in the repository to see the whole message" )
-  | Git.Malformed_output { args; detail } ->
-      ( Printf.sprintf "git %s gave output that sinter cannot read: %s"
-          (String.concat " " args) detail,
-        "use git 2.43.7 or later; with such a git, "
-        ^ Error_text.fault_of_sinter )
-  | Git.File_error reason ->
-      ( reason,
-        "check that you can read and write the file, and that the disk has \
-         space" )
-
 let bug = Error_text.fault_of_sinter
 let plain (fault, help) = { Error_text.fault; help; place = None }
 
 let explain = function
-  | Repository error -> [ plain (git_text error) ]
+  | Repository error -> [ Error_text.of_git error ]
   | No_manifest ->
       [
         plain

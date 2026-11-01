@@ -29,3 +29,8 @@ val fault_of_sinter : string
 val output_help : string
 (** The help of an error of a write to an output:
     [check that the output stays open and that the disk has space]. *)
+
+val of_git : Git.error -> t
+(** [of_git error] says what failed in git and what to do, with no place. A
+    failed command names its arguments and the first line of what git wrote to
+    its standard error. *)
