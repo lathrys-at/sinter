@@ -1115,8 +1115,26 @@ let a_manifest_outside_the_repository_has_no_base () =
 
 let case name f = Alcotest.test_case name `Quick f
 
+let a_manifest_whose_path_is_not_utf_8_gives_an_answer () =
+  let repo = repository [ ("docs/a.md", "# A\n\n@req a\n") ] in
+  let name = "m\xff.toml" in
+  (match Git_fixture.write repo name manifest with
+  | () -> ()
+  | exception Sys_error _ -> Alcotest.skip ());
+  match scan ~manifest:name repo with
+  | Error _ -> ()
+  | Ok { Scan.records; _ } -> (
+      match
+        List.iter (fun record -> ignore (Jsonl.to_string record)) records
+      with
+      | () -> ()
+      | exception Invalid_argument message ->
+          Alcotest.failf "a record of the scan does not write: %s" message)
+
 let tests =
   [
+    case "a manifest whose path is not UTF-8 gives an answer"
+      a_manifest_whose_path_is_not_utf_8_gives_an_answer;
     case "the base reads the manifest only when the diff changes it"
       the_base_reads_the_manifest_only_when_the_diff_changes_it;
     case "a manifest that the base does not hold is absent"
