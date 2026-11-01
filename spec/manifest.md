@@ -35,9 +35,10 @@ The manifest is the file `sinter.toml` at the repository root. The
 
 The option `--manifest <path>` names another file as the manifest. The
 path is relative to the current folder, as every path on the command
-line is. The file can be inside or outside the repository. Every glob
-in the manifest is relative to the repository root, wherever the file
-is.
+line is. The file can be inside or outside the repository. The tool
+reads the file once, so the path can also name a pipe, such as
+`/dev/stdin`. Every glob in the manifest is relative to the repository
+root, wherever the file is.
 
 ### 2.2 TOML
 

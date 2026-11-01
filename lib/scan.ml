@@ -220,8 +220,16 @@ let load_manifest ~path ~shown ~missing =
   | Error (Manifest.Invalid { text; errors }) ->
       Error (Invalid_manifest { path = shown; text; errors })
 
+let real_path path =
+  match Unix.realpath path with
+  | real -> real
+  | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
+      Filename.concat
+        (Unix.realpath (Filename.dirname path))
+        (Filename.basename path)
+
 let manifest_location ~root path =
-  match (Unix.realpath root, Unix.realpath path) with
+  match (Unix.realpath root, real_path path) with
   | root, path ->
       let prefix = root ^ "/" in
       if String.starts_with ~prefix path then

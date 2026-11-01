@@ -457,6 +457,35 @@ let a_full_standard_output_ends_scan_and_check_with_3 () =
         (run_in repo (Printf.sprintf "\"$2\" %s >/dev/full" command)))
     [ "scan"; "check"; "check -o json"; "check --gate merged" ]
 
+let a_manifest_that_a_pipe_gives_is_read () =
+  let repo =
+    committed [ ("sinter.toml", markdown_manifest); ("a.md", "# A\n") ]
+  in
+  Unix.symlink "/dev" (Filename.concat (Git_fixture.root repo) "dev");
+  let output = Filename.temp_file "sinter-pipe" ".out" in
+  Fun.protect
+    ~finally:(fun () -> Sys.remove output)
+    (fun () ->
+      let outcome =
+        run_in repo
+          ("cat sinter.toml | \"$2\" scan --manifest dev/stdin >"
+         ^ Filename.quote output)
+      in
+      let index =
+        match lines (contents output) with first :: _ -> first | [] -> ""
+      in
+      Alcotest.(check (pair (pair string string) bool))
+        "the exit code, standard error, and the manifest of the index record"
+        (("exited 0", ""), true)
+        ( outcome,
+          List.exists
+            (fun manifest ->
+              String.starts_with ~prefix:"{" index
+              && List.mem
+                   (Printf.sprintf {|"manifest":"%s"|} manifest)
+                   (String.split_on_char ',' index))
+            [ "/dev/stdin"; "/dev/fd/0" ] ))
+
 let a_closed_standard_input_reads_as_no_request () =
   Alcotest.(check (pair string string))
     "the run ends clean and writes no error" ("exited 0", "")
@@ -863,6 +892,8 @@ let tests =
       `Quick a_full_standard_output_ends_scan_and_check_with_3;
     Alcotest.test_case "a current folder that is gone is an environment error"
       `Quick a_current_folder_that_is_gone_is_an_environment_error;
+    Alcotest.test_case "a manifest that a pipe gives is read" `Quick
+      a_manifest_that_a_pipe_gives_is_read;
     Alcotest.test_case "a manifest whose path is not UTF-8 exits with 3" `Quick
       a_manifest_whose_path_is_not_utf_8_exits_with_3;
     Alcotest.test_case "a closed standard input reads as no request" `Quick
