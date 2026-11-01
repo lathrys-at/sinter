@@ -2766,6 +2766,32 @@ let one_fault_gives_its_one_error =
           | _ -> false)
       | _ -> false)
 
+let fault_and_help text =
+  match Manifest.of_string text with
+  | Error [ error ] ->
+      let { Error_text.fault; help; _ } =
+        Manifest.explain ~path:"sinter.toml" error
+      in
+      (fault, help)
+  | Ok _ -> Alcotest.fail "the manifest has no error"
+  | Error _ -> Alcotest.fail "the manifest has more than one error"
+
+let a_syntax_fault_keeps_a_key_with_a_semicolon_whole () =
+  Alcotest.(check (pair string string))
+    "the fault and the help"
+    ( "the key 'a; b' is already defined",
+      "write the text here as TOML 1.1.0 allows" )
+    (fault_and_help "\"a; b\" = 1\n\"a; b\" = 2\n")
+
+let a_glob_fault_keeps_a_segment_with_a_semicolon_whole () =
+  Alcotest.(check (pair string string))
+    "the fault and the help"
+    ( "\"a; **b\" is not a glob: the segment 'a; **b' holds '**' and other \
+       characters",
+      "write '**' as a whole segment, or '*' for the characters inside one \
+       name" )
+    (fault_and_help "[scan]\npacks.markdown.files = [\"a; **b\"]\n")
+
 let case name test = Alcotest.test_case name `Quick test
 
 let the_document_keeps_every_key_with_its_place () =
@@ -2913,4 +2939,8 @@ let tests =
     a_manifest_in_the_canonical_form_reads_back_its_values;
     runners_read_as_written;
     one_fault_gives_its_one_error;
+    case "a syntax fault keeps a key with a semicolon whole"
+      a_syntax_fault_keeps_a_key_with_a_semicolon_whole;
+    case "a glob fault keeps a segment with a semicolon whole"
+      a_glob_fault_keeps_a_segment_with_a_semicolon_whole;
   ]
