@@ -703,10 +703,11 @@ Example: `## Verify against the reqs` becomes
 are an error (`duplicate`).
 
 A step is **started** in a tree when a promise of the step is met
-there. A step that is started in the base keeps its slug. A rename, a
-split, a merge, or a removal of such a step loses its slug, and it is
-an error (finding class `renamed-step`). A step that is not started
-can be renamed freely.
+there, or when the ledger holds a `delivered` entry whose subject is
+the step ([ledger.md](ledger.md) section 8.4). A step that is started
+in the base keeps its slug. A rename, a split, a merge, or a removal
+of such a step loses its slug, and it is an error (finding class
+`renamed-step`). A step that is not started can be renamed freely.
 
 The **prose** of a step is the text of its section after its heading
 line, with the text of each section inside it, without the tag lines.
@@ -805,8 +806,8 @@ plans. The steps of one plan can take several branches.
 The gate `review` checks the steps in the change. The gate
 `merged` runs on the default branch, where no diff exists, and checks
 every step of each open plan ([algebra.md](algebra.md) section 9). The
-job that closes plans closes a plan when every step of the plan is
-done ([ledger.md](ledger.md) section 8).
+job on the default branch closes a plan when every step of the plan
+is done ([ledger.md](ledger.md) section 8).
 
 ### 10.8 Delivery lines
 
@@ -850,7 +851,11 @@ step changes the step hash, so a delivery line written before the
 change no longer counts.
 
 A step is **delivered** when a delivery line of the change counts for
-it.
+it, or when the ledger holds a `delivered` entry that matches it: an
+entry whose subject is the step and whose `csh` is its current step
+hash ([ledger.md](ledger.md) section 8.4). The job on the default
+branch writes that entry when a delivery line reaches the default
+branch.
 
 A delivery line is no tag. It changes neither the plan file nor the
 commitment set of the plan (section 10.6).

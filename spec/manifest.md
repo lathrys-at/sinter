@@ -669,7 +669,7 @@ questions:
 |---|---|---|
 | Is an item approved? | its declaration, or the approval of a person in the ledger | `proof.<kind>` (section 10.1) |
 | Is a promised `@verifies` met? | a passing test, with the coverage of the whole run or the coverage of each test | `proof.verifies` (section 10.3) |
-| Is a step without promises done? | a commit that names it with a delivery line, or the approval of a person in the ledger; or nothing, so that each step needs promises | `proof.step` (section 10.4) |
+| Is a step without promises done? | its delivery, by a delivery line of a commit or by a `delivered` entry in the ledger; or the approval of a person in the ledger; or nothing, so that each step needs promises | `proof.step` (section 10.4) |
 
 ### 10.1 Approval
 
@@ -743,7 +743,7 @@ does not change when a step with promises is done.
 
 | value | a step without promises is done when |
 |---|---|
-| `"delivered"` | the step is delivered: a delivery line of the change counts for it ([vocabulary.md](vocabulary.md) section 10.8) |
+| `"delivered"` | the step is delivered: a delivery line of the change counts for it, or the ledger holds a `delivered` entry that matches it ([vocabulary.md](vocabulary.md) section 10.8) |
 | `"approval"` | the ledger holds an approval of the step that matches its current step hash ([ledger.md](ledger.md) section 5.1) |
 | `"promises"` | never: each step needs promises |
 
