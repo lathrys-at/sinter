@@ -550,6 +550,16 @@ let retirers manifest (declarations : declaration array) edges targets =
     edges targets;
   found
 
+let cycle_members graph =
+  let members = Array.make (Array.length graph) false in
+  List.iter
+    (function
+      | [ single ] ->
+          if List.mem single graph.(single) then members.(single) <- true
+      | cycle -> List.iter (fun member -> members.(member) <- true) cycle)
+    (Components.of_graph graph);
+  members
+
 let in_force ~retirers (declarations : declaration array) edges targets =
   let count = Array.length declarations in
   let superseded = Array.make count [] in
@@ -560,20 +570,10 @@ let in_force ~retirers (declarations : declaration array) edges targets =
           superseded.(source) <- target :: superseded.(source)
       | _ -> ())
     edges targets;
-  let on_cycle node =
-    let rec search seen = function
-      | [] -> false
-      | next :: rest ->
-          next = node
-          ||
-          if List.mem next seen then search seen rest
-          else search (next :: seen) (superseded.(next) @ rest)
-    in
-    search [] superseded.(node)
-  in
+  let on_cycle = cycle_members superseded in
   Array.init count (fun node ->
       Option.is_none declarations.(node).status
-      && (retirers.(node) = [] || on_cycle node))
+      && (retirers.(node) = [] || on_cycle.(node)))
 
 let in_place_order (a : meeting_fact) (b : meeting_fact) =
   compare

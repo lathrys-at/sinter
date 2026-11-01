@@ -88,6 +88,7 @@ let () =
       ("bench", Test_bench.tests);
       ("edit distance", Test_edit_distance.tests);
       ("glob", Test_glob.tests);
+      ("components", Test_components.tests);
       ("id pattern", Test_id_pattern.tests);
       ("branch name", Test_branch_name.tests);
       ("finding class", Test_finding_class.tests);

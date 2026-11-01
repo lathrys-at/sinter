@@ -1374,6 +1374,58 @@ let successors_end_in_force_and_only_effective_edges_retire =
              && (Option.is_none declarations.(index).status || not in_force))
            (List.init (Array.length declarations) Fun.id)))
 
+let in_force_is_no_status_and_no_retirer_or_a_cycle =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200
+       ~name:
+         "a declaration is in force when it has no status, and no effective \
+          edge retires it or it reaches itself by supersedes edges"
+       ~print:graph_text graph (fun graph ->
+         let facts =
+           facts ~extra:"[proof]\ndesign = \"approval\"\n"
+             [ ("a.md", graph_text graph) ]
+         in
+         let declarations = Array.of_list (Facts.declarations facts) in
+         let supersedes =
+           List.filter_map
+             (fun ((edge : Facts.edge), target) ->
+               match (edge.word, edge.source, target) with
+               | "supersedes", Some source, Facts.Declaration target ->
+                   Some (source, target)
+               | _ -> None)
+             (Facts.edges facts)
+         in
+         let effective (source, _) =
+           Option.is_none declarations.(source).status
+           && not (String.equal declarations.(source).kind "design")
+         in
+         let reaches_itself index =
+           let rec walk seen = function
+             | [] -> false
+             | node :: rest ->
+                 if List.mem node seen then walk seen rest
+                 else
+                   let next =
+                     List.filter_map
+                       (fun (source, target) ->
+                         if source = node then Some target else None)
+                       supersedes
+                   in
+                   List.mem index next || walk (node :: seen) (next @ rest)
+           in
+           walk [] [ index ]
+         in
+         List.for_all
+           (fun index ->
+             Facts.is_in_force facts index
+             = (Option.is_none declarations.(index).status
+               && ((not
+                      (List.exists
+                         (fun edge -> snd edge = index && effective edge)
+                         supersedes))
+                  || reaches_itself index)))
+           (List.init (Array.length declarations) Fun.id)))
+
 let edges_give_what_their_targets_resolve_to () =
   let facts =
     facts
@@ -2169,6 +2221,19 @@ let met_within_reads_the_facts_with_the_scope_of_a_step () =
        (facts_of_files [ ("lib/a.md", "# A\n\n@req a v1\n@cites a v2\n") ])
        ~scope:[ "lib/**" ] ~word:"cites" ~target:"a")
 
+let a_chain_of_supersedes_edges_grows_in_proportion_to_its_length () =
+  let manifest = manifest () in
+  Counted_work.check_growth ~margin:1.5 ~sizes:(100, 1_600)
+    ~input:(fun count ->
+      List.init count (fun index ->
+          ( Printf.sprintf "docs/d%04d.md" index,
+            document
+              (if index = 0 then "# D\n\n@decision d0\n"
+               else
+                 Printf.sprintf "# D\n\n@decision d%d\n@supersedes d%d v1\n"
+                   index (index - 1)) )))
+    (Facts.make manifest)
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -2255,6 +2320,9 @@ let tests =
       every_member_of_a_supersedes_cycle_is_in_force;
     case "a cycle counts its edges that are not effective"
       a_cycle_counts_its_edges_that_are_not_effective;
+    case "a chain of supersedes edges grows in proportion to its length"
+      a_chain_of_supersedes_edges_grows_in_proportion_to_its_length;
+    in_force_is_no_status_and_no_retirer_or_a_cycle;
     case "a supersedes edge from a site is not effective"
       a_supersedes_edge_from_a_site_is_not_effective;
     case "an ack names the fact of its block" an_ack_names_the_fact_of_its_block;
