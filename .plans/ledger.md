@@ -1,28 +1,52 @@
 # The ledger
 @plan ledger@b74038
 @scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**, .github/workflows/**, CLAUDE.md, README.md, CONTRIBUTING.md
-Read and write the ledger: a person's approvals and closings, the job
+Read and write the ledger: approvals, declines, and closings, the job
 on the default branch that records deliveries, plans, and closings,
 and plans that live in the ledger without a file.
 
-## Read the ledger
+## Read and verify the ledger
 @scope spec/**, docs/**, lib/**, bin/**, test/**
-Read `refs/sinter/ledger`, verify its entries, and give the checks the
-approvals, the `delivered` entries, and the `plan` entries that they
-read.
+@decision ledger-layout
+Read `refs/sinter/ledger` in closed chunks, check each entry by its
+canonical bytes and its id, verify the history entry by entry, report
+`ledger-broken`, and add `sinter ledger verify` and `sinter ledger log`.
 
-## Write a person's entries
+## Check approvals
+@scope spec/**, docs/**, lib/**, bin/**, test/**
+Give the checks the approvals, the declines, the closings, and the
+`delivered` entries: the classes `unapproved-req`,
+`unapproved-design`, `awaiting-approval`, `unapproved-plan`, and
+`declined`, open and closed plans, effective supersession, and the
+steps that a delivery makes done.
+
+## Check claims
+@scope spec/**, docs/**, lib/**, bin/**, test/**
+Give the checks the claims: the classes `waiting-on` and
+`branch-overlap`, and the claims that `dangling` and
+`promise-collision` read.
+
+## Record approvals, declines, and closings
 @scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**
-Add `sinter approve`, `sinter decline`, `sinter ledger abandon`, and
-`sinter ledger show`. Each command that writes the ledger refuses when
-an agent marker is set, and `--dry-run` writes nothing.
+@decision approval-commands
+Add `sinter decline`, `sinter ledger abandon`, `sinter ledger repair`,
+`sinter ledger show`, `sinter ledger fetch`, and `sinter ledger push`
+with `--replay`, and the machinery that writes an entry without
+touching the working tree. Each command that writes the ledger needs
+a terminal and refuses under an agent, and `--dry-run` writes nothing.
+
+## Approve
+@scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**
+Add `sinter approve`: show the delta since the last approval, ask for
+each subject, refuse text that HEAD does not hold, and write the
+approval with the commitment set of a plan.
 
 ## Run the job on the default branch
 @scope spec/**, docs/**, lib/**, bin/**, test/**, .github/workflows/**
 @decision ledger-plans
 Add the job that runs at each push to the default branch, in CI or by
-a person's hand. It reads the commits from the head of its last entry
-to the current head, imports the evidence of its run, and writes the
+hand. It reads the commits from the head of its last entry to the
+current head, imports the evidence of its run, and writes the
 `delivered`, `plan`, and `completed` entries.
 
 ## Record a plan without a file
