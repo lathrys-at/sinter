@@ -402,8 +402,8 @@ let usage_errors =
       "unknown option '--foo'",
       "sinter check [--help] [OPTION]\xe2\x80\xa6" );
     ( "check -o x",
-      "option '-o': invalid value 'x', expected one of 'full', 'brief', 'json' \
-       or 'porcelain'",
+      "option '-o': invalid value 'x', expected one of 'full', 'brief', \
+       'json', 'porcelain' or 'sarif'",
       "sinter check [--help] [OPTION]\xe2\x80\xa6" );
     ( "nope",
       "unknown command 'nope'. Must be one of 'check', 'parse', 'scan' or \

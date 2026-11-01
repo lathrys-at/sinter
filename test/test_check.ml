@@ -847,6 +847,66 @@ let folding_leaves_the_json_as_it_is () =
     "the records of the JSON" 3
     (List.length (written (run Check.Json false)))
 
+let sarif_writes_one_log_at_the_gate () =
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "sinter.toml" packs;
+  Git_fixture.write repo ".plans/p.md" "# P\n\n@plan p\n";
+  Git_fixture.write repo "docs/a.md" "# A\n\n@cites x\n";
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  let head = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]) in
+  let run gate =
+    Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+      ~manifest:None ~base:(Some "HEAD") ~mode:Mode.Tree ~gate ~strict:false
+      ~form:Check.Sarif ~verbose:true ~quiet:false ~tool:"v1" ()
+  in
+  match run (Some Finding_class.Review) with
+  | Error _ -> Alcotest.fail "the check fails"
+  | Ok report -> (
+      Alcotest.(check (list string))
+        "only the warning on standard error"
+        [ "warning: no ledger found, so every plan counts as open" ]
+        (Check.messages report);
+      Alcotest.(check int) "the code" 1 (Check.code report);
+      match written report with
+      | [ line ] ->
+          let json = Yojson.Safe.from_string line in
+          let run_field name =
+            match json with
+            | `Assoc log -> (
+                match List.assoc_opt "runs" log with
+                | Some (`List [ `Assoc run ]) -> List.assoc_opt name run
+                | _ -> None)
+            | _ -> None
+          in
+          Alcotest.(check bool)
+            "the run names the mode, the gate, and the base" true
+            (run_field "properties"
+            = Some
+                (`Assoc
+                   [
+                     ("base", `String head);
+                     ("gate", `String "review");
+                     ("mode", `String "tree");
+                   ]));
+          Alcotest.(check bool)
+            "a result of the dangling citation" true
+            (match run_field "results" with
+            | Some (`List results) ->
+                List.exists
+                  (function
+                    | `Assoc result ->
+                        List.assoc_opt "ruleId" result
+                        = Some (`String "dangling")
+                    | _ -> false)
+                  results
+            | _ -> false);
+          Alcotest.check_raises "no gate"
+            (Invalid_argument
+               "Sinter_core.Check.run: the form Sarif needs a gate") (fun () ->
+              ignore (run None))
+      | lines -> Alcotest.failf "%d lines" (List.length lines))
+
 let notices_write_the_warning_and_the_note_in_their_styles () =
   let repo = Git_fixture.init () in
   Git_fixture.write repo "sinter.toml" packs;
@@ -1403,6 +1463,7 @@ let tests =
     case "the options choose the lines of standard error"
       the_options_choose_the_lines_of_standard_error;
     case "folding leaves the JSON as it is" folding_leaves_the_json_as_it_is;
+    case "SARIF writes one log at the gate" sarif_writes_one_log_at_the_gate;
     case "notices write the warning and the note in their styles"
       notices_write_the_warning_and_the_note_in_their_styles;
     case "a check reads the repository and reports at its gate"

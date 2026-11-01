@@ -567,29 +567,43 @@ let find_from text ~pattern start =
   in
   scan start
 
-let mask_line line =
+let close_string line start =
+  let rec close index =
+    if index >= String.length line then None
+    else
+      match line.[index] with
+      | '\\' -> close (index + 2)
+      | '"' -> Some index
+      | _ -> close (index + 1)
+  in
+  close start
+
+let mask_value line value =
+  Option.fold ~none:line
+    ~some:(fun stop ->
+      String.sub line 0 value ^ "<tool>"
+      ^ String.sub line stop (String.length line - stop))
+    (close_string line value)
+
+let mask_index line =
   let key = "\"tool\":\"" in
   match
     ( find_from line ~pattern:"\"kind\":\"index\"" 0,
       find_from line ~pattern:key 0 )
   with
-  | Some _, Some start ->
-      let value = start + String.length key in
-      let rec close index =
-        if index >= String.length line then None
-        else
-          match line.[index] with
-          | '\\' -> close (index + 2)
-          | '"' -> Some index
-          | _ -> close (index + 1)
-      in
-      Option.fold ~none:line
-        ~some:(fun stop ->
-          String.sub line 0 value ^ "<tool>"
-          ^ String.sub line stop (String.length line - stop))
-        (close value)
+  | Some _, Some start -> mask_value line (start + String.length key)
   | _ -> line
 
+let mask_driver line =
+  let key = "\"version\":\"" in
+  match find_from line ~pattern:"\"tool\":{\"driver\":{" 0 with
+  | None -> line
+  | Some driver -> (
+      match find_from line ~pattern:key driver with
+      | Some start -> mask_value line (start + String.length key)
+      | None -> line)
+
+let mask_line line = mask_driver (mask_index line)
 let tool_header = "# tool "
 
 let mask_header text =

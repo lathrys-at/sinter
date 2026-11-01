@@ -1,2 +1,2 @@
-error: option '-o': invalid value 'short', expected one of 'full', 'brief', 'json' or 'porcelain'
+error: option '-o': invalid value 'short', expected one of 'full', 'brief', 'json', 'porcelain' or 'sarif'
   = help: usage: sinter check [--help] [OPTION]…

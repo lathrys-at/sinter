@@ -152,6 +152,7 @@ type form =
   | Brief
   | Json
   | Porcelain of { nul : bool; headers : Porcelain.header_lines }
+  | Sarif
 
 type notice = Line of string | Warning of string | Note of string
 
@@ -278,6 +279,12 @@ type output =
   | Lines of item list
   | Records of Jsonl.record * entry list
   | Fields of { nul : bool; headers : string; entries : entry list }
+  | Log of {
+      tool : string;
+      gate : Finding_class.gate;
+      base : string;
+      entries : entry list;
+    }
 
 type report = {
   notices : notice list;
@@ -353,7 +360,17 @@ let write ?phases ppf report =
               Porcelain.add_finding buffer ~nul ~tier:(tier_of entry)
                 entry.finding;
               print ())
-            entries);
+            entries
+      | Log { tool; gate; base; entries } ->
+          Format.pp_print_string ppf
+            (Sarif.to_string ~tool ~mode:report.mode ~gate ~base
+               (List.filter_map
+                  (fun entry ->
+                    Option.map
+                      (fun (_, tier) -> (entry.finding, tier))
+                      entry.tier)
+                  entries));
+          Format.pp_force_newline ppf ());
       Format.pp_print_flush ppf ())
 
 module Paths = Map.Make (String)
@@ -437,6 +454,14 @@ let compare_with_base ?phases ~mode ~gate (tree : Scan.tree)
 
 let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
     ~quiet ~tool () =
+  let sarif_gate () =
+    match gate with
+    | Some gate -> gate
+    | None -> invalid_arg "Sinter_core.Check.run: the form Sarif needs a gate"
+  in
+  (match form with
+  | Sarif -> ignore (sarif_gate ())
+  | Full | Brief | Json | Porcelain _ -> ());
   let* tree, compared =
     Scan.load_with_base ?phases ~env ~dir ~manifest ~base ()
   in
@@ -492,6 +517,16 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
             Scan.index ~mode tree ~tool)
       in
       Ok (report warnings (Records (index, entries)))
+  | Sarif ->
+      Ok
+        (report warnings
+           (Log
+              {
+                tool;
+                gate = sarif_gate ();
+                base = Scan.base_commit tree.base;
+                entries;
+              }))
   | Porcelain { nul; headers } ->
       let* headers =
         match headers with

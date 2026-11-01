@@ -1,0 +1,5 @@
+check
+--gate
+merged
+-o
+sarif

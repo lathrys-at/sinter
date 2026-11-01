@@ -1,0 +1,2 @@
+error: -o sarif needs a gate
+  = help: add --gate turn, review, or merged

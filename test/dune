@@ -70,6 +70,14 @@
  (dirs :standard .plans))
 
 (subdir
+ cases/check-sarif-diff-writes-a-finding-with-no-place-without-locations/base
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-sarif-diff-writes-a-finding-with-no-place-without-locations/tree
+ (dirs :standard .plans))
+
+(subdir
  cases/check-under-warn-only-blocks-nothing/tree
  (dirs :standard .plans))
 

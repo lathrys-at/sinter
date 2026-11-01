@@ -118,8 +118,10 @@ val run :
     [index], as [<tool>]. It also holds the value of each porcelain header
     [# tool <version>] as [<tool>]: the bytes after [# tool ] up to the next
     line feed or NUL byte, or to the end, of an item that starts with [# tool ]
-    at the start of the output or after a line feed or a NUL byte. The run is
-    killed after [bound] seconds; the default is 10.
+    at the start of the output or after a line feed or a NUL byte. In a line
+    that holds [{"tool":{"driver":{], as a SARIF log does, it holds the value of
+    the first key [version] after that text as [<tool>]. The run is killed after
+    [bound] seconds; the default is 10.
 
     The run of [binary] gets the environment [caller] without the variables
     [TERM], [NO_COLOR], [CLICOLOR_FORCE], [FORCE_COLOR], and [CLICOLOR], and

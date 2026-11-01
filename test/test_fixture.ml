@@ -309,6 +309,17 @@ let the_tool_of_an_index_record_shows_as_tool () =
         '{\"kind\":\"req\",\"tool\":\"x\"}' '{\"kind\":\"index\"}'; printf \
         '%s' '{\"kind\":\"index\",\"tool\":\"abc\"}'")
 
+let the_driver_version_of_a_sarif_log_shows_as_tool () =
+  check_run "only the value of version after the driver changes" (Ok [])
+    (case_files
+       ~stdout:
+         "{\"runs\":[{\"tool\":{\"driver\":{\"name\":\"sinter\",\"rules\":[{\"id\":\"a\"}],\"version\":\"<tool>\"}}}],\"version\":\"2.1.0\"}\n\
+          {\"version\":\"2.1.0\"}\n\
+          {\"tool\":{\"driver\":{\"name\":\"x\"}}}\n"
+       "printf '%s\\n' \
+        '{\"runs\":[{\"tool\":{\"driver\":{\"name\":\"sinter\",\"rules\":[{\"id\":\"a\"}],\"version\":\"v1-\\\"x\"}}}],\"version\":\"2.1.0\"}' \
+        '{\"version\":\"2.1.0\"}' '{\"tool\":{\"driver\":{\"name\":\"x\"}}}'")
+
 let the_tool_of_a_porcelain_header_shows_as_tool () =
   check_run "only the value of a header # tool changes" (Ok [])
     (case_files
@@ -742,6 +753,8 @@ let tests =
       a_run_of_a_grammar_puts_a_compiled_module_into_the_cache_folder;
     Alcotest.test_case "the tool of an index record shows as <tool>" `Quick
       the_tool_of_an_index_record_shows_as_tool;
+    Alcotest.test_case "the driver version of a SARIF log shows as <tool>"
+      `Quick the_driver_version_of_a_sarif_log_shows_as_tool;
     Alcotest.test_case "the tool of a porcelain header shows as <tool>" `Quick
       the_tool_of_a_porcelain_header_shows_as_tool;
     Alcotest.test_case "a run past its bound is killed" `Quick
