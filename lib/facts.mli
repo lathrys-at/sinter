@@ -166,12 +166,12 @@ type step = private {
       (** in the order of the file, each word and tag target once *)
   hash : string;
       (** the step hash, as 64 lowercase hexadecimal digits: the SHA-256 of the
-          canonical JSON object with the keys [promises], [scope], and [text].
+          canonical JSON object with the keys [promises], [prose], and [scope].
           [promises] holds an object with the keys [target] and [word] for each
           promise, sorted by the word and then by the tag target, in byte order.
+          [prose] is the {!Markdown.section.text} of the section of the step.
           [scope] holds the globs of the effective scope, each once, in byte
-          order. [text] is the {!Markdown.section.text} of the section of the
-          step. *)
+          order. *)
 }
 (** One step of a plan. *)
 

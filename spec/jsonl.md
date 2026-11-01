@@ -238,7 +238,7 @@ Example: this plan file gives the canonical bytes below it.
 
 The **step hash** (`csh` of a step) is SHA-256 over canonical bytes
 that hold the agreement of the step: its effective scope, its
-promises, and its text. The canonical bytes are one JSON object in
+promises, and its prose. The canonical bytes are one JSON object in
 the canonical form of RFC 8785 (JCS) that section 2 uses, with no LF
 at the end. The object has three keys:
 
@@ -247,12 +247,12 @@ at the end. The object has three keys:
   the promise record gives them. The objects are sorted by `word`, then
   by `target`, each in byte order. A step without promises gives an
   empty array.
+- `prose`: the prose of the step, as a string.
 - `scope`: the globs of the effective scope of the step, each glob
   once, sorted in byte order, as the commitment-set hash writes the
   scope of a step.
-- `text`: the text of the step, as a string.
 
-The **text of a step** comes from the lines of the section of the
+The **prose of a step** comes from the lines of the section of the
 step, after its heading line, in four steps:
 
 1. Take the lines of the section, with the lines of each section
@@ -267,14 +267,16 @@ step, after its heading line, in four steps:
    text, with the spaces and tabs after it; then remove the trailing
    whitespace.
 4. End each line with one LF. A step with no line left has the empty
-   text.
+   prose.
 
-So the heading of the step, each tag line, and the text of other steps
-are no part of the step hash. The rules of section 2 for the values of
-a record do not apply to this object.
+So the prose leaves out the heading line of the step and each tag
+line. The heading lines of the sections inside the step stay, without
+their section numbers. The heading of the step, each tag line, and
+the prose of another step are no part of the step hash. The rules of
+section 2 for the values of a record do not apply to this object.
 
 Example: this step gives the canonical bytes below it, and the step
-hash `23e47131fdb5…`. Its delivery line therefore ends with `23e471`.
+hash `33810a3ee901…`. Its delivery line therefore ends with `33810a`.
 
 ```
 ## Tidy the cache
@@ -285,7 +287,7 @@ of the old cache.
 ```
 
 ```
-{"promises":[],"scope":["src/**","src/cache/**"],"text":"Remove the dead code\nof the old cache.\n"}
+{"promises":[],"prose":"Remove the dead code\nof the old cache.\n","scope":["src/**","src/cache/**"]}
 ```
 
 **`test`** — a test, or a group of tests, that a language pack finds

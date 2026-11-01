@@ -2,5 +2,5 @@ Tidy the library
 
 The library loses its dead code.
 
-Delivers: tidy@046174/tidy-the-library 38cdbc
+Delivers: tidy@046174/tidy-the-library af44b2
 Delivers: tidy@046174/tidy-the-binary 000000

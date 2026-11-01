@@ -708,6 +708,12 @@ split, a merge, or a removal of such a step loses its slug, and it is
 an error (finding class `renamed-step`). A step that is not started
 can be renamed freely.
 
+The **prose** of a step is the text of its section after its heading
+line, with the text of each section inside it, without the tag lines.
+The trailing prose of a block (section 3.2) is part of it. The
+heading lines of the sections inside the step stay, without their
+section numbers. [jsonl.md](jsonl.md) section 4 gives the exact rule.
+
 Steps are unordered facts. The order of steps in the document is
 advice, not a constraint.
 
@@ -837,11 +843,11 @@ A delivery line **counts** for a step when both conditions hold:
    in the working tree.
 
 The step hash covers the agreement of the step: its effective scope,
-its promises, and its text. It does not cover the heading of the
-step, any tag line, or the text of other steps. A change of the
-effective scope, of a promise, or of the text of the step changes the
-step hash, so a delivery line written before the change no longer
-counts.
+its promises, and its prose (section 10.3). It does not cover the
+heading of the step, any tag line, or the prose of another step. A
+change of the effective scope, of a promise, or of the prose of the
+step changes the step hash, so a delivery line written before the
+change no longer counts.
 
 A step is **delivered** when a delivery line of the change counts for
 it.

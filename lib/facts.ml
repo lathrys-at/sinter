@@ -404,7 +404,7 @@ let promises_of (document : Markdown.t) indices =
          | Some _ | None -> found)
        [] indices)
 
-let step_hash ~scope promises text =
+let step_hash ~scope promises prose =
   Sha256.hex
     (Jsonl.to_string
        [
@@ -420,8 +420,8 @@ let step_hash ~scope promises text =
                       (fun (promise : promise) ->
                         (promise.word, promise.target))
                       promises))) );
+         ("prose", Jsonl.string prose);
          ("scope", Jsonl.strings (List.sort_uniq String.compare scope));
-         ("text", Jsonl.string text);
        ])
 
 let plan_file ~path (document : Markdown.t) plan_index =

@@ -540,7 +540,7 @@ let auth_plan =
    ## Record the policy\n\n\
    @decision lockout-policy\n"
 
-let step_hash ?(promises = []) ?(text = "") scope =
+let step_hash ?(promises = []) ?(prose = "") scope =
   let quoted text =
     "\"" ^ String.concat "\\n" (String.split_on_char '\n' text) ^ "\""
   in
@@ -552,9 +552,9 @@ let step_hash ?(promises = []) ?(text = "") scope =
              Printf.sprintf "{\"target\":%s,\"word\":%s}" (quoted target)
                (quoted word))
            promises)
-    ^ "],\"scope\":["
+    ^ "],\"prose\":" ^ quoted prose ^ ",\"scope\":["
     ^ String.concat "," (List.map quoted scope)
-    ^ "],\"text\":" ^ quoted text ^ "}")
+    ^ "]}")
 
 let a_plan_file_gives_its_plan_steps_and_promises () =
   let csh =
@@ -1979,12 +1979,12 @@ let step_of text =
       | [] -> Alcotest.fail "the plan has no step")
   | _ -> Alcotest.fail "the text gives no plan"
 
-let the_step_hash_covers_the_scope_the_promises_and_the_text () =
+let the_step_hash_covers_the_scope_the_promises_and_the_prose () =
   Alcotest.(check string)
     "the step hash"
     (step_hash
        ~promises:[ ("req", "a") ]
-       ~text:"Write the code.\n" [ "lib/**" ])
+       ~prose:"Write the code.\n" [ "lib/**" ])
     (step_of (step_plan ())).hash
 
 let a_plan_file_read_without_texts_is_refused () =
@@ -2043,12 +2043,12 @@ let the_step_hash_ignores_the_heading_a_tag_line_and_the_whitespace =
        (fun (agreement, variant) ->
          String.equal (hash_of agreement variant) (hash_of agreement plain)))
 
-let the_step_hash_changes_with_the_scope_the_promises_and_the_text =
+let the_step_hash_changes_with_the_scope_the_promises_and_the_prose =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count:200
        ~name:
          "the step hash changes with any change of the scope, the promises, or \
-          the text"
+          the prose"
        ~print:QCheck2.Print.(pair print_agreement print_agreement)
        (Gen.pair agreement agreement)
        (fun (a, b) ->
@@ -2173,8 +2173,8 @@ let case name f = Alcotest.test_case name `Quick f
 
 let tests =
   [
-    case "the step hash covers the scope, the promises, and the text"
-      the_step_hash_covers_the_scope_the_promises_and_the_text;
+    case "the step hash covers the scope, the promises, and the prose"
+      the_step_hash_covers_the_scope_the_promises_and_the_prose;
     case "met_within reads the facts with the scope of a step"
       met_within_reads_the_facts_with_the_scope_of_a_step;
     case "a plan file read without texts is refused"
@@ -2182,7 +2182,7 @@ let tests =
     the_step_hash_ignores_the_heading_a_tag_line_and_the_whitespace;
     a_delivery_line_counts_exactly_when_its_hash_starts_the_step_hash;
     the_delivery_of_a_step_reads_back_as_a_line_that_counts;
-    the_step_hash_changes_with_the_scope_the_promises_and_the_text;
+    the_step_hash_changes_with_the_scope_the_promises_and_the_prose;
     a_tag_line_of_another_word_never_changes_the_commitment_set_hash;
     case "a section number leaves titles and slugs"
       a_section_number_leaves_titles_and_slugs;
