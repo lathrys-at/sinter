@@ -46,17 +46,35 @@ and when `HEAD` names no commit. The delivery lines of `M`
 ([vocabulary.md](vocabulary.md) section 10.8) are the delivery lines
 of the change.
 
+`L` is the sequence of the entries of the tip of the clone's ledger
+ref, in the order of their `seq` ([ledger.md](ledger.md) section 3.4).
+It holds the entries that the clone fetched and the entries that the
+clone wrote and has not pushed. With no ledger ref, `L` is empty. `U`
+depends on `L` only through this sequence, so two tips with the same
+entries give the same universe, whatever history each tip has. Every
+fact and every derived field that reads the ledger is a fold over `L`,
+or over the entries of `L` below a `seq` ([ledger.md](ledger.md)
+section 2.3). No fold reads git's commit graph, the clock, the
+environment, or the network. A check binds a team only where it reads
+the ledger ref of the host, as CI does, because any program that can
+write the `.git` folder of a clone can rewrite the clone's ref.
+
 A query denotes a subset of `U` and nothing else. There are no
 scalars, no tuples, and no new facts. `U` is finite. Every closure is
 a least fixpoint of a monotone function, so every closure terminates.
 
-`U` is a function of `(T, B, M, L, E, S)`. Two evaluations with the
-same six inputs see the same universe and produce the same output bytes.
-The algebra has no access to time, to the environment, or to the
-network. The tool sets `GIT_NO_LAZY_FETCH=1` in the environment of
-every git child process. So in a **partial clone**, a clone that
-leaves out some objects, git reports a missing object as an error and
-never downloads it.
+`U` is a function of `(T, B, M, L, E, S)`. For one version of the
+tool, two evaluations with the same six inputs see the same universe
+and produce the same output bytes. The headers of an output, such as
+the header record ([jsonl.md](jsonl.md) section 10) and the porcelain
+headers ([porcelain.md](porcelain.md)), can name the commit of the
+ledger tip; they are no facts. The algebra has no access to time, to
+the environment, or to the network. The tool sets
+`GIT_NO_LAZY_FETCH=1` and `GIT_NO_REPLACE_OBJECTS=1` in the
+environment of every git child process. So in a **partial clone**, a
+clone that leaves out some objects, git reports a missing object as an
+error and never downloads it, and a replacement ref of git changes no
+object that the tool reads.
 
 ## 3. Kinds and categories
 
@@ -251,10 +269,10 @@ A predicate filters its argument: `pred(S) ⊆ S`.
 | function | accepts | keeps `f ∈ S` iff |
 |---|---|---|
 | `inforce(S)` | any | For a declaration: `f` carries no status tag and no effective `@supersedes` edge points at `f` ([vocabulary.md](vocabulary.md) section 8.1). A member of a cycle of `@supersedes` edges that carries no status tag is in force, and the tool reports the `cycle` finding. For a plan, for its steps, and for its promises: the plan is open — the ledger holds no `completed` entry and no `abandoned` entry for its full form. The predicate keeps every fact of every other kind |
-| `approved(S)` | any | A kind needs approval when its key `proof.<kind>` is `"approval"` ([manifest.md](manifest.md) section 10.1). The predicate keeps `f` when any one of these conditions holds: `f` is a declaration of a kind that needs approval, and the ledger holds an approval for `f`'s `(slug, rev, xh)`; `f` is a declaration of a kind that does not need approval; `f` is a plan, the kind `plan` needs approval, and `f`'s current commitment set is approved against the plan's latest approved set ([ledger.md](ledger.md) section 11); `f` is a plan, and the kind `plan` does not need approval; `f` is a step without promises, `proof.step` is `"approval"` ([manifest.md](manifest.md) section 10.4), and the ledger holds an approval of `f` that matches its current step hash ([ledger.md](ledger.md) section 5.1); `f` is a step, the plan of `f` is approved, and `f` has promises or `proof.step` is not `"approval"`; `f` is a fact of any other kind |
+| `approved(S)` | any | A kind needs approval when its key `proof.<kind>` is `"approval"` ([manifest.md](manifest.md) section 10.1). The predicate keeps `f` when any one of these conditions holds: `f` is a declaration of a kind that needs approval, and an approval of `f`'s `(slug, rev, xh)` counts for `f`: it is later than every decline of `f` at its current extent hash ([ledger.md](ledger.md) section 5.2); `f` is a declaration of a kind that does not need approval; `f` is a plan, the kind `plan` needs approval, `f` has no live decline, and `f`'s current commitment set is approved against the set of the plan's latest approval that has its set ([ledger.md](ledger.md) sections 6 and 11); `f` is a plan, and the kind `plan` does not need approval; `f` is a step without promises, `proof.step` is `"approval"` ([manifest.md](manifest.md) section 10.4), and an approval of `f` that matches its current step hash counts for `f`: it is later than every decline of `f` at that hash ([ledger.md](ledger.md) section 5.2); `f` is a step, the plan of `f` is approved, and `f` has promises or `proof.step` is not `"approval"`; `f` is a fact of any other kind |
 | `bumped(S)` | node | `f` is a declaration, and the fact set of `B` holds no declaration with the slug of `f`, or holds one with a smaller revision. The compare is by slug, across the kinds that share the namespace ([vocabulary.md](vocabulary.md) section 9) |
-| `declined(S)` | node | `f` is a declaration or a plan with a live decline: one whose recorded hash equals `f`'s current extent hash (declarations) or commitment-set hash (plans) |
-| `waiting(P)` | promise | The tag target of the promise is a slug that no declaration in `T` declares, and that some claim promises to declare. A claim is an open plan that the ledger holds an approval of, and whose full form `T` does not hold ([ledger.md](ledger.md) section 10.2). This case means that the work of the claim comes first, not that the promise is broken. The tool reports `waiting-on` for it, and not `dangling` |
+| `declined(S)` | node | `f` is a declaration, a plan, or a step with a live decline ([ledger.md](ledger.md) section 7.2): a decline whose recorded hash equals `f`'s current extent hash (declarations), commitment-set hash (plans), or step hash (steps), with no later approval that ends it |
+| `waiting(P)` | promise | The tag target of the promise is a slug that no declaration in `T` declares, and that some claim promises to declare. A claim is an open plan that the ledger holds an approval of with its set, and whose full form `T` does not hold ([ledger.md](ledger.md) section 10.2). This case means that the work of the claim comes first, not that the promise is broken. The tool reports `waiting-on` for it, and not `dangling` |
 
 ### 6.6 Edge predicates
 
@@ -549,7 +567,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `promise-out-of-scope` | promise | *engine*: a promise met only by facts outside its step's scope | tree | · | · | warn, warn, — |
 | `unverified-promise` | promise | *engine*: a promised `req` or `design` with no promised `verifies` of it in the same plan | tree | · | · | warn, warn, — |
 | `promise-collision` | promise | *engine*: a promised declaration whose slug a claim promises to declare, or a new promised declaration whose slug exists in the fact set of `B`. A promise is new when the fact set of `B` holds no promise of the same plan with the same word and target, in any step, so that a rename of a step gives no finding of this class. A plan of `B` and a plan of `T` are the same plan when their full forms are equal ([vocabulary.md](vocabulary.md) section 4.3), or when the plan of `B` has no plan id and the two have the same slug and the same path. So a promise that `B` also holds does not collide, for example a promise that an earlier merge of the same plan delivered, and a plan id added to a plan makes none of its promises new. A tool that does not read the ledger has no claims, so it reports only the second case | diff | · | · | block, block, — |
-| `renamed-step` | step | *engine*: a step of a plan of `B` that is started in `B`, when the same plan of `T`, by the rule of `promise-collision`, has no step of its slug: a rename, a split, a merge, or a removal lost the slug. A step is started in `B` when a promise of the step is met in `B`, or when the ledger holds a `delivered` entry whose subject is the step ([vocabulary.md](vocabulary.md) section 10.3); a promise counts as met by the rule of section 9.2. A tool that does not read the ledger reads the promises alone. Each lost slug of a plan of `T` gives one finding, also when several steps of `B` lose it: two steps of one plan with one slug, or the steps of two plans of `B` that are the same plan of `T`. Its subject is the first of those steps, in the byte order of the paths of their plan files and then in the order of their lines. It sits at the `@plan` tag of the plan of `T`. It has no fix | diff | · | · | block, block, — |
+| `renamed-step` | step | *engine*: a step of a plan of `B` that is started in `B`, when the same plan of `T`, by the rule of `promise-collision`, has no step of its slug: a rename, a split, a merge, or a removal lost the slug. A step is started in `B` when a promise of the step is met in `B`, or when the ledger holds a `delivered` entry whose subject is the step ([vocabulary.md](vocabulary.md) section 10.3); a promise counts as met by the rule of section 9.2. The ledger is `L`, the ledger of the current run, also for the facts of `B`. A tool that does not read the ledger reads the promises alone. Each lost slug of a plan of `T` gives one finding, also when several steps of `B` lose it: two steps of one plan with one slug, or the steps of two plans of `B` that are the same plan of `T`. Its subject is the first of those steps, in the byte order of the paths of their plan files and then in the order of their lines. It sits at the `@plan` tag of the plan of `T`. It has no fix | diff | · | · | block, block, — |
 | `scope-overlap` | step | *engine*: two steps of one plan with intersecting scopes and intersecting promise sets. Two scopes intersect when a plain glob of one contains a plain glob of the other, or is contained in it, by the rule of glob containment of [ledger.md](ledger.md) section 11 | tree | · | · | warn, warn, — |
 | `waiting-on` | promise | `waiting(promises(kind(plan)))` — reported in place of `dangling`, with the claim and step named | tree | · | · | off, warn, — |
 | `branch-overlap` | step | *engine*: a step's scope intersects the scope of a claim | tree | · | · | warn, warn, — |
@@ -557,7 +575,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `unmet-rule` | any | `obligations(kind(rule))`, one finding per `(rule, subject)`; ackable only when the rule's `expect` is `acked`; a rule's own `tiers` overrides the class's `tiers` | tree | A* | · | warn, block, block |
 | `config-changed` | config or tombstone | *engine*: a change to the manifest between the base tree and the working tree, one finding for each change ([manifest.md](manifest.md) section 13.4). `check.tiers` cannot set its tier, and nothing turns it off; it always reports and never blocks | diff | · | · | warn, warn, warn |
 | `merged-incomplete` | step | *engine*: a step of an open plan with some of its promises met and some not: a step merged in part. A promise counts as met by the rule of section 9.2. The finding sits at the heading of the step, and its related places are the promises that are not met. It has no fix | tree | · | · | —, block, block |
-| `ledger-broken` | ledger | *engine*: ledger verification fails | tree | · | · | —, —, block |
+| `ledger-broken` | ledger | *engine*: the ledger fails a check of [ledger.md](ledger.md) section 13.3 or 13.4. The class takes no tier at any gate: a check stops with exit code 3 ([ledger.md](ledger.md) section 13.5). `sinter ledger verify -o json` writes the finding | tree | · | · | — |
 | `pack-mismatch` | pack | *engine*: the hash of a fetched pack in the cache does not match the hash that the lock file `sinter.lock` fixes for it. The built-in pack `markdown` is not in the lock file. The class takes no tier at any gate: the tool stops with exit code 3 | tree | · | · | — |
 
 `untraced`, `unmet-promise`, and `awaiting-approval` are the

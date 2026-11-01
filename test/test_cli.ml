@@ -838,7 +838,8 @@ let the_help_of_check_says_how_to_fetch_the_ledger () =
   code "the exit code is 0" 0 status;
   Alcotest.(check bool)
     "the help holds the command" true
-    (contains "git fetch origin refs/sinter/ledger:refs/sinter/ledger" text)
+    (contains
+       "git fetch --no-filter origin refs/sinter/ledger:refs/sinter/ledger" text)
 
 let tests =
   [

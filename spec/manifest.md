@@ -691,13 +691,16 @@ kind **needs approval** when its key `proof.<kind>` is `"approval"`.
 
 An **approval** is a ledger entry that records that a person approved
 an item ([ledger.md](ledger.md) section 5). An item of a kind that
-needs approval is approved only when the ledger holds an approval for
-it:
+needs approval is approved only when an approval in the ledger counts
+for it:
 
 - a declaration of the kind `req`, `design`, or `decision` needs an
-  approval for its current slug, revision, and extent hash;
-- a plan needs an approval against which its current commitment set is
-  approved ([ledger.md](ledger.md) section 11).
+  approval of its current slug, revision, and extent hash that no
+  later decline of the same text ends ([ledger.md](ledger.md) section
+  5.2);
+- a plan needs a latest approval with its set, against which its
+  current commitment set is approved, and no live decline
+  ([ledger.md](ledger.md) sections 7.2 and 11).
 
 An item of a kind that does not need approval counts as approved. The
 predicate `approved()` ([algebra.md](algebra.md) section 6.5), each
@@ -708,8 +711,9 @@ finding class that uses it, and the liveness of a `@supersedes` edge
 
 An **agent marker** is an environment variable that shows that an
 agent runs the command. The commands `sinter approve`,
-`sinter decline`, and `sinter ledger abandon` refuse with exit code 4
-when the environment holds an agent marker, whatever its value.
+`sinter decline`, `sinter ledger abandon`, and `sinter ledger repair`
+refuse with exit code 4 when the environment holds an agent marker,
+whatever its value.
 
 The tool holds a built-in list of agent markers.
 `proof.agent-markers` is an array of names that add to that list.
@@ -756,7 +760,7 @@ does not change when a step with promises is done.
 | value | a step without promises is done when |
 |---|---|
 | `"delivered"` | the step is delivered: a delivery line of the change counts for it, or the ledger holds a `delivered` entry that matches it ([vocabulary.md](vocabulary.md) section 10.8) |
-| `"approval"` | the ledger holds an approval of the step that matches its current step hash ([ledger.md](ledger.md) section 5.1) |
+| `"approval"` | an approval of the step that matches its current step hash counts for the step: no later decline of the same text ends it ([ledger.md](ledger.md) section 5.2) |
 | `"promises"` | never: each step needs promises |
 
 Under each value, the step is done only when every `@verifies` edge in
@@ -802,7 +806,8 @@ These are errors:
 - `<class>` is not a built-in finding class;
 - `<class>` takes no tier at `<gate>`;
 - `<class>` is `config-changed`, which always reports and never blocks;
-- `<class>` is `pack-mismatch`, which takes no tier at any gate.
+- `<class>` is `pack-mismatch` or `ledger-broken`, which take no tier
+  at any gate.
 
 ### 11.3 Warn-only and the tier that applies
 

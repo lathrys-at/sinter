@@ -218,7 +218,7 @@ let tiers = function
   | Unmet_rule -> (Some Warn, Some Block, Some Block)
   | Config_changed -> (Some Warn, Some Warn, Some Warn)
   | Merged_incomplete -> (None, Some Block, Some Block)
-  | Ledger_broken -> (None, None, Some Block)
+  | Ledger_broken -> (None, None, None)
   | Pack_mismatch -> (None, None, None)
 
 let of_name text = List.find_opt (fun c -> name c = text) all

@@ -456,7 +456,8 @@ let check_cmd =
          the git ref $(b,refs/sinter/ledger). When the repository has no such \
          ref and the tree holds a plan, a warning says that every plan counts \
          as open. To fetch the ledger from the remote $(b,origin), run:";
-      `Pre "  git fetch origin refs/sinter/ledger:refs/sinter/ledger";
+      `Pre
+        "  git fetch --no-filter origin refs/sinter/ledger:refs/sinter/ledger";
       `P
         "With $(b,--diff), the command reports only the findings that the \
          changes since the base add. It checks the base with the same \

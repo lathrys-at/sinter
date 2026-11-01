@@ -865,13 +865,14 @@ revision, and the extent hash of each item, never to the document. The
 document is only the way to read the items.
 
 **The ledger** is the record of approvals and other judgments. It is a
-file on a git ref of its own, `refs/sinter/ledger`, and entries are
-only ever added (`spec/ledger.md`). CI can fetch the ref and every
-worktree shares it, but it is outside every path that an editor or a
-file tool touches. Only the low-level commands of git, its plumbing,
-reach it, so to write it is a deliberate act. A kind needs approval
-only when the manifest sets its key `proof.<kind>` to `"approval"`
-(`spec/manifest.md` section 10.1).
+set of files on a git ref of its own, `refs/sinter/ledger`, and
+entries are only ever added (`spec/ledger.md`). The entries are in
+chunks: files of about 50 entries each. A full chunk never changes.
+CI can fetch the ref and every worktree shares it, but it is outside
+every path that an editor or a file tool touches. Only the low-level
+commands of git, its plumbing, reach it, so to write it is a
+deliberate act. A kind needs approval only when the manifest sets its
+key `proof.<kind>` to `"approval"` (`spec/manifest.md` section 10.1).
 
 Because the ledger is a shared record with timestamps, it gives five
 more uses, each one a kind of entry or a query, and none a new

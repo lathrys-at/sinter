@@ -233,7 +233,9 @@ let the_tier_that_applies_follows_the_three_rules () =
   check "a class with no tier at the gate" None Finding_class.Merged
     Finding_class.Scope_outside_plan;
   check "pack-mismatch takes no tier" None Finding_class.Review
-    Finding_class.Pack_mismatch
+    Finding_class.Pack_mismatch;
+  check "ledger-broken takes no tier" None Finding_class.Merged
+    Finding_class.Ledger_broken
 
 let without_warn_only_the_built_in_tier_applies () =
   let manifest = read (markdown ^ "[check]\ntiers.turn.dangling = \"off\"\n") in
@@ -776,6 +778,12 @@ let names_that_vary () =
        key";
       "sinter.toml:4:1: unknown finding class 'xyz' in [check.tiers.review]; \
        write the name of a built-in finding class";
+    ];
+  reports "ledger-broken takes no tier"
+    "[check.tiers.merged]\nledger-broken = \"block\"\n"
+    [
+      "sinter.toml:2:1: 'ledger-broken' takes no tier at any gate; remove this \
+       key";
     ];
   reports "config-changed is never a suggestion"
     "[check.tiers.review]\nconfig-chnged = \"warn\"\n"
@@ -1524,7 +1532,8 @@ let every_problem =
       No_tier_at_gate
         { finding_class = Finding_class.Dangling; gate = Finding_class.Turn };
       Never_blocks;
-      No_tier_at_any_gate;
+      No_tier_at_any_gate Finding_class.Pack_mismatch;
+      No_tier_at_any_gate Finding_class.Ledger_broken;
       Plan_location;
       Markdown_version;
       Markdown_runners;
@@ -1580,7 +1589,7 @@ let constructor = function
   | Manifest.Unknown_class _ -> "Unknown_class"
   | Manifest.No_tier_at_gate _ -> "No_tier_at_gate"
   | Manifest.Never_blocks -> "Never_blocks"
-  | Manifest.No_tier_at_any_gate -> "No_tier_at_any_gate"
+  | Manifest.No_tier_at_any_gate _ -> "No_tier_at_any_gate"
   | Manifest.Plan_location -> "Plan_location"
   | Manifest.Markdown_version -> "Markdown_version"
   | Manifest.Markdown_runners -> "Markdown_runners"
@@ -1712,7 +1721,8 @@ let render_names_the_path_and_the_place () =
     "conf/s.toml:3:14: 'pack-mismatch' takes no tier at any gate; remove this \
      key"
     (render ~path:"conf/s.toml"
-       (Manifest.At (at 3 14, Manifest.No_tier_at_any_gate)))
+       (Manifest.At
+          (at 3 14, Manifest.No_tier_at_any_gate Finding_class.Pack_mismatch)))
 
 let rows () =
   let text =
@@ -2003,10 +2013,10 @@ let a_tier_reads_where_its_class_takes_a_tier_at_the_gate =
           _,
           Error [ Manifest.At (_, Manifest.Never_blocks) ] ) ->
           true
-      | ( Finding_class.Pack_mismatch,
+      | ( (Finding_class.Pack_mismatch | Finding_class.Ledger_broken),
           None,
-          Error [ Manifest.At (_, Manifest.No_tier_at_any_gate) ] ) ->
-          true
+          Error [ Manifest.At (_, Manifest.No_tier_at_any_gate c) ] ) ->
+          c = finding_class
       | ( _,
           None,
           Error
@@ -2016,7 +2026,11 @@ let a_tier_reads_where_its_class_takes_a_tier_at_the_gate =
             ] ) ->
           c = finding_class && g = gate
           && finding_class <> Finding_class.Pack_mismatch
-      | (Finding_class.Config_changed | Finding_class.Pack_mismatch), _, _ ->
+          && finding_class <> Finding_class.Ledger_broken
+      | ( ( Finding_class.Config_changed | Finding_class.Pack_mismatch
+          | Finding_class.Ledger_broken ),
+          _,
+          _ ) ->
           false
       | _, Some _, Ok manifest ->
           Manifest.tier manifest gate finding_class = Some tier

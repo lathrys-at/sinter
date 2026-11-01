@@ -123,7 +123,9 @@ type problem =
       gate : Finding_class.gate;
     }  (** the class takes no tier at the gate *)
   | Never_blocks  (** a tier for [config-changed] *)
-  | No_tier_at_any_gate  (** a tier for [pack-mismatch] *)
+  | No_tier_at_any_gate of Finding_class.t
+      (** a tier for a class that takes no tier at any gate: [pack-mismatch] or
+          [ledger-broken] *)
   | Plan_location  (** [paths.plan] *)
   | Markdown_version  (** a version for the built-in pack [markdown] *)
   | Markdown_runners  (** runners for the built-in pack [markdown] *)
