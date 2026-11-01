@@ -432,6 +432,66 @@ let stale_deliveries ~deliveries facts =
                    | None -> ""))))
     deliveries
 
+let counted ~deliveries facts =
+  let named = Facts.named facts in
+  let first = Hashtbl.create 16 in
+  List.iter
+    (fun (found : Delivery_line.found) ->
+      match
+        Option.bind found.line (fun line ->
+            Option.map (fun pair -> (line, pair)) (named line))
+      with
+      | Some (line, (plan, step)) when Facts.counts step line ->
+          let id = Facts.step_id plan step in
+          if not (Hashtbl.mem first id) then Hashtbl.add first id (step, found)
+      | Some _ | None -> ())
+    deliveries;
+  List.concat_map
+    (fun (plan : Facts.plan) ->
+      List.filter_map
+        (fun (step : Facts.step) ->
+          match Hashtbl.find_opt first (Facts.step_id plan step) with
+          | Some (named, found) when named == step -> Some (plan, step, found)
+          | Some _ | None -> None)
+        plan.steps)
+    (Facts.plans facts)
+
+let deliveries_on_unmet_steps ~counted facts =
+  List.filter_map
+    (fun ( (plan : Facts.plan),
+           (step : Facts.step),
+           (found : Delivery_line.found) ) ->
+      let standing = Facts.standing facts plan step in
+      match
+        List.filter
+          (fun promise -> Option.is_none (standing promise).Facts.by)
+          step.promises
+      with
+      | [] -> None
+      | unmet ->
+          let id = Facts.step_id plan step in
+          Some
+            (Finding.make Finding_class.Delivery_on_unmet_step
+               (Finding.Fact { id; ack_name = step.slug })
+               ~place:{ Finding.path = plan.path; span = step.span }
+               ~detail:
+                 (Printf.sprintf
+                    "commit %s delivers %s, and %d of its %d promises are not \
+                     met"
+                    (short found.commit) id (List.length unmet)
+                    (List.length step.promises))
+               ~related:
+                 (List.map
+                    (fun (promise : Facts.promise) ->
+                      {
+                        Finding.label = "not met";
+                        place =
+                          Some { Finding.path = plan.path; span = promise.span };
+                      })
+                    unmet)
+               ()))
+    counted
+
 let renamed_to ?(same = fun _ -> false) ~base facts =
   let resolve = lazy (Facts.resolve facts)
   and successor =
@@ -453,6 +513,7 @@ let historical facts (finding : Finding.t) =
 let classes ?(same = fun _ -> false) ?whole_base ?(deliveries = [])
     ?(wanted = fun _ -> true) ~base facts findings =
   let whole_base = Option.value whole_base ~default:(lazy base) in
+  let counted = counted ~deliveries facts in
   let tombstones = tombstones ~same ~base facts in
   let renamed = renamed ~base ~same ~tombstones facts in
   let replaced =
@@ -473,6 +534,7 @@ let classes ?(same = fun _ -> false) ?whole_base ?(deliveries = [])
         (unbumped ~base ~same facts @ renamed
         @ promise_collisions ~base ~same facts
         @ stale_deliveries ~deliveries facts
+        @ deliveries_on_unmet_steps ~counted facts
         @
         if wanted Finding_class.Renamed_step then
           renamed_steps ~base ~same ~whole_base facts

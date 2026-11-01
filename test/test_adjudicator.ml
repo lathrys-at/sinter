@@ -851,8 +851,99 @@ let stale_delivery_shows_the_line_as_one_line_of_utf_8 () =
     ]
     (stale "Delivers: \x1b[31mp\xff/tidy 000000\n")
 
+let two_promise_plan =
+  ( ".plans/p.md",
+    "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Do it\n\n@req a\n@req b\nText.\n" )
+
+let unmet ?(commit = commit) message files =
+  delivery_findings ~commit Finding_class.Delivery_on_unmet_step message files
+
+let related_parts (finding : Finding.t) =
+  List.map
+    (fun (related : Finding.related) ->
+      match related.place with
+      | Some { path; span } ->
+          Printf.sprintf "%s %s:%d" related.label path span.start.line
+      | None -> related.label)
+    finding.related
+
+let delivery_on_unmet_step_sits_at_a_step_with_an_unmet_promise () =
+  let line = line_of two_promise_plan "do-it" ^ "\n" in
+  let a = ("lib/a.md", "# A\n\n@req a\n")
+  and b = ("lib/b.md", "# B\n\n@req b\n") in
+  let finding =
+    ".plans/p.md:6 | finding:delivery-on-unmet-step:step:p@0a1b2c/do-it | \
+     commit 0123456 delivers step:p@0a1b2c/do-it, and 1 of its 2 promises are \
+     not met"
+  in
+  Alcotest.(check strings)
+    "one promise not met" [ finding ]
+    (unmet line [ two_promise_plan; a ]);
+  Alcotest.(check strings)
+    "every promise met" []
+    (unmet line [ two_promise_plan; a; b ]);
+  Alcotest.(check strings)
+    "a line that does not count" []
+    (unmet "Delivers: p@0a1b2c/do-it 000000\n" [ two_promise_plan; a ]);
+  Alcotest.(check strings)
+    "no line" []
+    (unmet "Fix it\n" [ two_promise_plan; a ]);
+  Alcotest.(check strings)
+    "two lines for one step give one finding" [ finding ]
+    (List.map show
+       (List.filter
+          (fun (finding : Finding.t) ->
+            finding.finding_class = Finding_class.Delivery_on_unmet_step)
+          (Adjudicator.classes
+             ~deliveries:
+               (Delivery_line.read ~commit ("Do it\n\n" ^ line ^ line)
+               @ Delivery_line.read ~commit:other_commit line)
+             ~base:(facts [])
+             (facts [ two_promise_plan; a ])
+             [])))
+
+let delivery_on_unmet_step_names_each_promise_not_met () =
+  match
+    List.filter
+      (fun (finding : Finding.t) ->
+        finding.finding_class = Finding_class.Delivery_on_unmet_step)
+      (Adjudicator.classes
+         ~deliveries:
+           (Delivery_line.read ~commit (line_of two_promise_plan "do-it"))
+         ~base:(facts [])
+         (facts [ two_promise_plan ])
+         [])
+  with
+  | [ finding ] ->
+      Alcotest.(check (list string))
+        "the related places"
+        [ "not met .plans/p.md:8"; "not met .plans/p.md:9" ]
+        (related_parts finding);
+      Alcotest.(check bool) "no fix" true (Option.is_none finding.fix);
+      Alcotest.(check bool) "not ackable" false finding.ackable
+  | findings ->
+      Alcotest.failf "one finding was expected, not %d" (List.length findings)
+
+let delivery_on_unmet_step_counts_no_verifies_edge_of_a_markdown_file () =
+  let plan =
+    ( ".plans/p.md",
+      "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Do it\n\n@req a\n@verifies a\n" )
+  in
+  Alcotest.(check int)
+    "the promised verifies is not met" 1
+    (List.length
+       (unmet
+          (line_of plan "do-it" ^ "\n")
+          [ plan; ("lib/a.md", "# A\n\n@req a\n\n## T\n\n@verifies a v1\n") ]))
+
 let tests =
   [
+    case "delivery-on-unmet-step sits at a step with an unmet promise"
+      delivery_on_unmet_step_sits_at_a_step_with_an_unmet_promise;
+    case "delivery-on-unmet-step names each promise not met"
+      delivery_on_unmet_step_names_each_promise_not_met;
+    case "delivery-on-unmet-step counts no verifies edge of a markdown file"
+      delivery_on_unmet_step_counts_no_verifies_edge_of_a_markdown_file;
     case "stale-delivery reports each line that does not count"
       stale_delivery_reports_each_line_that_does_not_count;
     case "stale-delivery names the step and has no place and no fix"

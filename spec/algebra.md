@@ -441,9 +441,10 @@ A finding that exists at the base and still exists in the working tree
 is pre-existing; diff mode does not report it. A finding absent at the
 base is what the diff introduced. The diff-relative classes —
 `unbumped`, `unplanned-change`, `config-changed`, `code-drift`,
-`renamed`, `promise-collision`, `renamed-step`, `stale-delivery` —
-have `F(b) = ∅` by construction and appear in both modes. So a check
-in tree mode also reads the base, and reports these classes.
+`renamed`, `promise-collision`, `renamed-step`, `stale-delivery`,
+`delivery-on-unmet-step` — have `F(b) = ∅` by construction and appear
+in both modes. So a check in tree mode also reads the base, and
+reports these classes.
 
 ## 9. Built-in finding classes
 
@@ -517,6 +518,7 @@ column to `warn`, at every gate. `sinter init` writes
 | `scope-outside-plan` | step | *engine*: a step whose `@scope` is not contained in its plan's `@scope`. The tool decides containment on the plain globs ([manifest.md](manifest.md) section 7.2), by the rule of glob containment of [ledger.md](ledger.md) section 11: each plain glob of the step must be contained in a plain glob of the plan. A `!` glob of the step only narrows the step's scope, so it never breaks containment | tree | · | · | block, block, — |
 | `step-without-promises` | step | *engine*: a step without promises of an open plan, while `proof.step` is `"promises"` ([manifest.md](manifest.md) section 10.4). The finding sits at the heading of the step. It has no fix | tree | · | · | block, block, block |
 | `stale-delivery` | message line | *engine*: a delivery line of the change that does not count ([vocabulary.md](vocabulary.md) section 10.8): it does not match the form `Delivers: <plan>/<step> <hash>`, it names no step of an open plan of `T`, or its hash is not the first six hex digits of the step hash of that step. The subject is the line of the commit message ([jsonl.md](jsonl.md) section 9), and the finding has no place. When the step exists, the related place of the finding is the heading of the step, and the `detail` gives the delivery line of the step. The finding has no fix, because a commit message is no file of the tree | diff | · | · | block, block, — |
+| `delivery-on-unmet-step` | step | *engine*: a step of an open plan of `T` for which a delivery line of the change counts ([vocabulary.md](vocabulary.md) section 10.8), when a promise of the step is not met. A promise counts as met by the rule of section 9.2. The finding sits at the heading of the step, and its related places are the promises that are not met. The `detail` names the commit of the first delivery line that counts for the step. It has no fix | diff | · | · | block, block, — |
 | `misplaced-plan` | tag | *engine*: a `@plan` tag that does not stand in the first tag block of a file under `.plans/`: a `@plan` outside `.plans/**`, or a `@plan` in a later block of a file under `.plans/` ([vocabulary.md](vocabulary.md) section 10.1) | tree | · | · | block, block, block |
 | `missing-plan-id` | plan | *engine*: a plan whose `@plan` tag has no plan id ([vocabulary.md](vocabulary.md) section 4.3). The fix inserts `@` and a plan id at the end of the tag target. That plan id is the first six hex digits of the SHA-256 of three parts, as UTF-8 bytes: the object id of the base commit in lowercase hex (the field `base` of the `index` record, [jsonl.md](jsonl.md) section 10), one LF, and the path of the plan file, relative to the repository root | tree | · | F | block, block, block |
 | `unpinned` | edge | *engine*: a `satisfies`, `verifies`, `refines`, or `supersedes` edge without a revision | tree | · | F | block, block, block |
@@ -613,9 +615,9 @@ must be equal.
 
 ### 9.2 Promises without evidence
 
-The classes `renamed-step` and `merged-incomplete` read a promised
-`@verifies` in one more way. When no evidence set exists for the tree
-(global rule 3), a promised
+The classes `delivery-on-unmet-step`, `renamed-step`, and
+`merged-incomplete` read a promised `@verifies` in one more way. When
+no evidence set exists for the tree (global rule 3), a promised
 `@verifies` counts as met for these classes when a `verifies` edge
 with its tag target exists inside the effective scope of the step, its
 source is a test, its tag target resolves, and it is not suspect. A

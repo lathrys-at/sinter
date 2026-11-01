@@ -15,6 +15,16 @@ block[merged-incomplete]: step:p@0a1b2c/part has 1 of its 2 promises met
    | ----------- not met
    |
 
+block[delivery-on-unmet-step]: commit 2ca564f delivers step:p@0a1b2c/write-e-and-f, and 1 of its 2 promises are not met
+  --> .plans/p.md:32:1
+   |
+32 | ## Write e and f
+   | ^^^^^^^^^^^^^^^^
+...
+36 | @decision f
+   | ----------- not met
+   |
+
 block[merged-incomplete]: step:p@0a1b2c/write-e-and-f has 1 of its 2 promises met
   --> .plans/p.md:32:1
    |

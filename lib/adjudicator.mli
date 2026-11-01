@@ -90,6 +90,12 @@ val classes :
       the step, and the detail ends with the text of {!Facts.delivery} of the
       step. The detail shows the line as {!Delivery_line.shown} gives it.
 
+    - [delivery-on-unmet-step]: a step of a plan of the working tree for which a
+      line of [deliveries] counts, when {!Facts.standing} does not meet a
+      promise of the step. The finding sits at the heading of the step, its
+      related places are the promises that are not met, and the detail names the
+      commit of the first line of [deliveries] that counts for the step.
+
     No finding of these classes sits under a historical path. *)
 
 val renamed_to :
