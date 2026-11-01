@@ -1014,6 +1014,36 @@ let a_warning_and_a_note_are_one_line_each () =
       print (fun ppf -> Render.note ppf "base abc");
     ]
 
+let many_related_places_in_one_file_print_quickly () =
+  let count = 30_000 in
+  let place line =
+    {
+      Finding.path = "p.md";
+      span = { start = { line; column = 1 }; stop = { line; column = 5 } };
+    }
+  in
+  let finding =
+    Finding.make Finding_class.Merged_incomplete
+      (Finding.Line { path = "p.md"; line = 1 })
+      ~place:(place 1) ~detail:"d"
+      ~related:
+        (List.init (count - 1) (fun index ->
+             { Finding.label = "not met"; place = Some (place (index + 2)) }))
+      ()
+  in
+  let text =
+    String.concat ""
+      (List.init count (fun index -> Printf.sprintf "line %d\n" (index + 1)))
+  in
+  in_files [ ("p.md", text) ] (fun source ->
+      let start = Unix.gettimeofday () in
+      ignore (print (fun ppf -> Render.full ppf source ~tier:None finding));
+      let seconds = Unix.gettimeofday () -. start in
+      Alcotest.(check bool)
+        (Printf.sprintf "%d related places: printed in %.3f s, under 5 s" count
+           seconds)
+        true (seconds < 5.0))
+
 let a_warning_and_a_note_take_their_styles () =
   Alcotest.(check (list string))
     "the word in its style, and the text plain"
@@ -1093,4 +1123,6 @@ let tests =
     a_mark_starts_at_the_width_of_the_printed_text_before_it;
     styles_change_no_character;
     the_output_is_the_same_on_each_run;
+    case "many related places in one file print quickly"
+      many_related_places_in_one_file_print_quickly;
   ]
