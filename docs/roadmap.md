@@ -37,6 +37,19 @@
   edit, and not only for CI, is unknown. Until then, these packs
   report rung 4 as `unmeasured` on a local machine, and as
   `unexercised` or `passing` in CI. Not designed.
+- **Issue trackers** — plans and steps that point at issues in a
+  tracker such as GitHub, GitLab, or Jira.
+  - A pointer from a plan or a step to an issue that is not a promise.
+    Today every tag in a plan file is a promise, so `@cites gh/42` in a
+    step promises a citation; it does not say that the step carries out
+    the issue. It shares its design with `@pin`.
+  - The state of an issue, read by a routine outside Sinter and written
+    into a file, as the next item describes; `sinter check` never reads
+    the network.
+  - A converter outside Sinter that turns a sequence of issues into a
+    plan file and opens a pull request, or into a draft that a person
+    records in the ledger.
+  - Nothing flows back to the tracker when a plan closes. Not designed.
 - **Observations of the outside world** — an obligation that a
   decision record makes and that never ends, where the work depends on
   events outside the repository. An example is a decision to keep

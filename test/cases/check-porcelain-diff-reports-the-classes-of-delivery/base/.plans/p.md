@@ -17,5 +17,4 @@
 ## Tidy
 
 @scope src/**
-@delivered 000000
 Tidy the source.

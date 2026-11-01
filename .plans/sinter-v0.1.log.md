@@ -393,3 +393,45 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
 - Left for later: no class prints the mark line of a step without
   promises, so the plan skill reads the hash from `sinter scan`. A
   plan file removed while its plan is open gives no `renamed-step`.
+
+## Name a delivered step in its commit
+
+- Rulings of the lead on details that the brief left open:
+  - Sinter reads the messages of the change in every mode that has a
+    base, tree mode included, because CI runs `check --gate review` in
+    tree mode. The set is empty when the base is `HEAD` or reaches
+    it, and when `HEAD` names no commit. A base that is not a commit
+    stops the command before Sinter reads the messages.
+  - "Delivered" has one meaning: a delivery line of the change counts
+    for the step, or the ledger holds a matching `delivered` entry.
+    `renamed-step` reads a new term, **started**: a promise of the step
+    is met, or the ledger holds a `delivered` entry for it.
+  - The steps that the gate `review` checks are the steps **in the
+    change**: a delivery line counts for them, or the diff makes one of
+    their promises met.
+  - The job on the default branch reads the commits from the head of
+    its latest entry, not only the commits of the push, so a run that
+    does not finish loses nothing. A run with no entry leaves the start
+    where it was. The field `merge` of `delivered` is the commit whose
+    message holds the line, which is the merge commit only after a
+    squash merge.
+  - The words of a step in the step hash are its **prose**, under the
+    key `prose` (ruling of the maintainer). The nested headings of a
+    step stay in its prose, as before. Every step hash changes.
+- `stale-delivery` has no place in a file. Its subject is the line of
+  the message, `message:<commit>@L<line>`, so one bad line in two
+  commits gives two findings. The other three classes sit at the
+  heading of the step, one finding for each step.
+- `git rev-list --ignore-missing` keeps an unborn `HEAD` from being an
+  error, but it also ignores a base that names no object. The base is
+  always a resolved commit, so `Git.messages` states that as its
+  precondition.
+- Git ends a commit message at a NUL byte, so the decoder of the
+  messages never sees a NUL inside a message.
+- A commit body that wraps so that a line starts with `Delivers: ` is
+  a `stale-delivery`. The first message of the step that read the
+  lines did so, and Sinter reported it on the branch itself; the
+  message was reworded.
+- Left for later: Sinter reads no ledger, so on the default branch no
+  step without promises is done. The job on the default branch is not
+  built.

@@ -1375,6 +1375,9 @@ let porcelain_subject =
       map2
         (fun path position -> Finding.Tag { path; position })
         porcelain_field porcelain_position;
+      map2
+        (fun commit line -> Finding.Message_line { commit; line })
+        porcelain_field (int_range 1 100000);
     ]
 
 let porcelain_finding =

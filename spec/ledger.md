@@ -8,7 +8,8 @@ Status: draft. The seven specifications share one version; see [docs/versioning.
 ## 1. Introduction
 
 The ledger is Sinter's append-only record of judgments about a
-repository: approvals, refusals, and the entry that closes each plan.
+repository: approvals, refusals, the entries that record the delivery
+of a step, and the entry that closes each plan.
 This document defines where the ledger lives, how entries get their
 ids, each entry kind, and the rules that give entries their meaning.
 
@@ -86,14 +87,14 @@ the file.
 
 ### 4.1 The fields of every entry
 
-@req ledger-common-fields v2
+@req ledger-common-fields v3
 
 Every entry carries:
 
 | field | meaning |
 |---|---|
 | `id` | entry id (section 3) |
-| `kind` | `approval`, `approved-scope`, `approved-promise`, `decline`, `completed`, or `abandoned` |
+| `kind` | `approval`, `approved-scope`, `approved-promise`, `decline`, `delivered`, `completed`, or `abandoned` |
 | `v` | schema version |
 | `by` | who wrote the entry |
 | `ts` | RFC 3339 timestamp, UTC |
@@ -103,14 +104,15 @@ Every entry carries:
 
 ### 4.2 The writers
 
-@req ledger-writers v5
+@req ledger-writers v6
 
 Four writers exist. The approval command writes `approval` entries:
 of a declaration, of a plan, and of a step. The approval of a plan
 comes with its `approved-scope` and `approved-promise` lines. The
 decline command writes `decline`. The abandon command writes
 `abandoned`. A person runs these three commands. The fourth writer is
-the job that closes plans, which writes `completed` (section 8).
+the job on the default branch, which writes `delivered` and
+`completed` (section 8).
 
 ## 5. `approval`
 
@@ -219,36 +221,42 @@ A later approval of the subject ends the decline's effect. That later
 approval can be at a different hash. It can also be at the same hash,
 when the person overrides their own earlier refusal.
 
-## 8. `completed`
+## 8. The job on the default branch
 
-### 8.1 The entry and its writer
+### 8.1 The job and the `completed` entry
 
-@req ledger-completed v5
+@req ledger-completed v6
+
+The **job on the default branch** writes the `delivered` and the
+`completed` entries. The job runs on the default branch, in CI or by a
+person's hand. It runs the same command either way, and it makes no
+judgment of its own. In CI, it runs on each push to the default
+branch. The job takes these actions in order:
+
+1. Find the range of its run (section 8.4). When the clone does not
+   hold the commits of the range, fetch them. A clone in CI is often
+   shallow.
+2. Import the test evidence of its run.
+3. Append one `delivered` entry for each delivery line of the range
+   that section 8.4 names.
+4. Find the open plans on the default branch.
+5. Check each of those plans against the completion condition below.
+6. Append one `completed` entry for each plan that passes the
+   condition.
 
 A `completed` entry closes a plan whose steps are all done
 ([algebra.md](algebra.md) section 6.4).
-
-The job that closes plans writes the entry. The job runs on the
-default branch, in CI or by a person's hand. It runs the same command
-either way, and it makes no judgment of its own. In CI, it runs on
-each push to the default branch. The job takes these actions in
-order:
-
-1. Import the test evidence of its run.
-2. Find the open plans on the default branch.
-3. Check each of those plans against the completion condition below.
-4. Append one entry for each plan that passes the condition.
 
 | field | meaning |
 |---|---|
 | `subject` | `plan:<slug>@<id>`: the fact id of the plan, with its full form |
 | `approval` | the id of the latest `approval` entry whose subject is the plan, at the time the plan closed; omitted when the plan has no approval |
-| `merge` | the merge commit that delivered the last step of the plan ([vocabulary.md](vocabulary.md) section 10.7) |
+| `merge` | the merge commit that delivered the last step of the plan ([vocabulary.md](vocabulary.md) section 10.8) |
 | `report` | SHA-256 of the report compiled when the plan closed |
 
 ### 8.2 The completion condition
 
-@req ledger-completion-condition v4
+@req ledger-completion-condition v5
 
 A plan passes the condition when every step of the plan is done
 (`done()`, [algebra.md](algebra.md) section 6.4). The job imports the
@@ -258,6 +266,11 @@ evidence, a `verifies` edge is at rung `never-ran`
 edge in its scope is not done. So a plan with a `verifies` edge in the
 scope of a step does not close without evidence.
 
+Under `proof.step = "delivered"`, a step without promises is done when
+the ledger holds a `delivered` entry that matches its current step
+hash (section 8.4). So the job appends the `delivered` entries of its
+run before it checks the condition.
+
 An open plan that fails this condition is normal while its work goes
 on. A step merged in part, with some of its promises met and some not,
 is the finding `merged-incomplete` ([algebra.md](algebra.md) section
@@ -265,21 +278,75 @@ is the finding `merged-incomplete` ([algebra.md](algebra.md) section
 
 ### 8.3 A repeated run
 
-@req ledger-completion-idempotent v2
+@req ledger-completion-idempotent v3
 
-The job's write is idempotent: a second run for the same plan adds no
-second entry. The plan's approvals, the repository tree, and the test
-evidence of the run hold the facts that prove completion. A lost run
-of the job therefore costs one repeat run and loses no facts.
+The writes of the job are idempotent. A second run adds no second
+`completed` entry for a plan. It adds no `delivered` entry whose
+subject and `csh` are those of a `delivered` entry that the ledger
+holds. The approvals of a plan, the repository tree, the messages of
+its commits, and the test evidence of the run hold the facts that
+prove delivery and completion. A run reads every commit from the
+start of section 8.4, so a run of the job that does not finish costs
+one repeat run and loses no facts.
+
+### 8.4 The `delivered` entry
+
+@req ledger-delivered
+
+A `delivered` entry records that a commit of the default branch
+delivered a step ([vocabulary.md](vocabulary.md) section 10.8). An
+entry **matches** a step when its subject is the step and its `csh` is
+the current step hash of the step.
+
+| field | meaning |
+|---|---|
+| `subject` | `step:<plan>/<step>`: the fact id of the step, with the full form of its plan |
+| `csh` | the step hash of the step in the tree of the head of the run, all 64 hex digits ([jsonl.md](jsonl.md) section 4) |
+| `merge` | the commit of the range whose message holds the delivery line. After a squash merge, it is the merge commit. After another kind of merge, it can be a commit of the merged branch |
+
+The **range** of a run is the set of commits that the head of the
+default branch reaches and that the **start** of the run does not
+reach. The start is the first of these that exists:
+
+1. The `head` of the latest `delivered` or `completed` entry of the
+   ledger. The job alone writes these two kinds, so this is the head of
+   the latest run that appended an entry.
+2. The `head` of the first entry of the ledger whose `branch` is the
+   default branch.
+
+When the ledger holds no such entry, the run has no start, and the
+range holds every commit that the head reaches. A run that appends no
+entry leaves the start where it was, so the next run reads the same
+commits again.
+
+The job reads the message of each commit of the range, in the order
+that `git rev-list ^<start> <head>` gives them, and reads the delivery
+lines of each message as [vocabulary.md](vocabulary.md) section 10.8
+says. It appends one `delivered` entry for each step for which a
+delivery line of the range meets both of these conditions, in the
+tree of the head and with the test evidence of the run:
+
+1. The line counts for the step.
+2. Each promise of the step is met ([vocabulary.md](vocabulary.md)
+   section 10.5). A step without promises meets this condition.
+
+The `merge` of the entry is the commit of the first such line in that
+order. The job appends no entry for another line.
+
+A line whose step has a promise that is not met at a run gives no
+entry. When a later run appends an entry, the start moves past the
+commit of that line, and no run reads the line again. The step is
+then done when its promises are met, as for every step with promises,
+and it is started by its met promises.
 
 ## 9. `abandoned`
 
 ### 9.1 The fields of an abandoned entry
 
-@req ledger-abandoned v3
+@req ledger-abandoned v4
 
 An `abandoned` entry closes a plan whose remaining steps no branch
-will deliver ([vocabulary.md](vocabulary.md) section 10.7). A person
+will deliver ([vocabulary.md](vocabulary.md) section 10.8). A person
 runs the abandon command; the tool never writes this entry on its own.
 
 | field | meaning |

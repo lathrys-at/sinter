@@ -9,6 +9,7 @@ type subject =
   | Error_node of { path : string; position : Markdown.position }
   | Line of { path : string; line : int }
   | Tag of { path : string; position : Markdown.position }
+  | Message_line of { commit : string; line : int }
 
 let subject_id = function
   | Fact { id; _ } -> id
@@ -18,10 +19,12 @@ let subject_id = function
   | Line { path; line } -> Printf.sprintf "line:%s@L%d" path line
   | Tag { path; position } ->
       Printf.sprintf "tag:%s@L%dC%d" path position.line position.column
+  | Message_line { commit; line } -> Printf.sprintf "message:%s@L%d" commit line
 
 let ack_subject = function
   | Fact { ack_name; _ } -> ack_name
-  | (File _ | Error_node _ | Line _ | Tag _) as subject -> subject_id subject
+  | (File _ | Error_node _ | Line _ | Tag _ | Message_line _) as subject ->
+      subject_id subject
 
 type mark = { start : int; stop : int; label : string }
 type related = { label : string; place : place option }

@@ -504,6 +504,27 @@ module Decode = struct
          (List.stable_sort
             (fun (a, _) (b, _) -> String.compare a b)
             (List.rev found)))
+
+  let messages output =
+    let length = String.length output in
+    let field start =
+      match String.index_from_opt output start '\000' with
+      | Some stop -> Ok (String.sub output start (stop - start), stop + 1)
+      | None -> Error "a record does not end with a NUL byte"
+    in
+    let rec read found start =
+      if start = length then Ok (List.rev found)
+      else
+        let* id, start = field start in
+        if not (is_object_id id) then
+          Error (Printf.sprintf "%S is not an object id" id)
+        else
+          let* message, start = field start in
+          if start < length && output.[start] = '\n' then
+            read ((id, message) :: found) (start + 1)
+          else Error "a record does not end with a line feed"
+    in
+    read [] 0
 end
 
 let file_error path error =
@@ -932,6 +953,23 @@ let read_base t rev =
   else resolved ()
 
 let base_files base = base.tree
+
+let messages t ~base =
+  if not (is_id t base) then Error (Bad_revision base)
+  else
+    run t
+      [
+        "rev-list";
+        "--no-commit-header";
+        "--encoding=UTF-8";
+        "--format=%H%x00%B%x00";
+        "--ignore-missing";
+        "--end-of-options";
+        "^" ^ base;
+        "HEAD";
+        "--";
+      ]
+      Decode.messages
 
 let fold_blobs t ids ~init ~f =
   match List.find_opt (fun id -> not (is_id t id)) ids with

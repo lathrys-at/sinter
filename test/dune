@@ -30,7 +30,11 @@
  (dirs :standard .plans))
 
 (subdir
- cases/scan-reads-a-refactor-step-as-done-by-its-mark/tree
+ cases/scan-reads-a-refactor-step-as-done-by-its-delivery-line/base
+ (dirs :standard .plans))
+
+(subdir
+ cases/scan-reads-a-refactor-step-as-done-by-its-delivery-line/tree
  (dirs :standard .plans))
 
 (subdir
@@ -39,6 +43,22 @@
 
 (subdir
  cases/check-reports-the-findings-of-plans/tree
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-shows-the-classes-of-delivery-in-the-full-form/base
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-shows-the-classes-of-delivery-in-the-full-form/tree
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-shows-the-classes-of-delivery-in-the-brief-form/base
+ (dirs :standard .plans))
+
+(subdir
+ cases/check-diff-shows-the-classes-of-delivery-in-the-brief-form/tree
  (dirs :standard .plans))
 
 (subdir

@@ -10,8 +10,8 @@ type place = { path : string; span : Markdown.span }
     is in the file of the hunk: the working tree can lack that file, and the
     place can start on the line after the last line of the file. *)
 
-(** What a finding is about: a fact, or a file, a line, or a tag that is no
-    fact. *)
+(** What a finding is about: a fact, or a file, a line, a tag, or a line of a
+    commit message that is no fact. *)
 type subject =
   | Fact of { id : string; ack_name : string }
       (** a fact: its id, and the name that an [@ack] gives it. The name is the
@@ -23,12 +23,15 @@ type subject =
   | Line of { path : string; line : int }  (** a line of a file *)
   | Tag of { path : string; position : Markdown.position }
       (** a tag, by the position of its [@] *)
+  | Message_line of { commit : string; line : int }
+      (** a line of the message of a commit: the object id of the commit, and
+          the number of the line in the message, from 1 *)
 
 val subject_id : subject -> string
 (** [subject_id subject] is the id of the fact, or the positional subject id:
     [file:<path>] for a file, [file:<path>@L<line>C<column>] for an error node,
-    [line:<path>@L<line>] for a line, and [tag:<path>@L<line>C<column>] for a
-    tag. *)
+    [line:<path>@L<line>] for a line, [tag:<path>@L<line>C<column>] for a tag,
+    and [message:<commit>@L<line>] for a line of a commit message. *)
 
 val ack_subject : subject -> string
 (** [ack_subject subject] is the subject in the form that an [@ack] names it:

@@ -992,6 +992,46 @@ let a_base_path_that_is_not_utf_8_gives_one_warning () =
     [ "the path gone\\xff.md is not UTF-8, so sinter does not read the file" ]
     tree.warnings
 
+let found_text (found : Delivery_line.found) =
+  Printf.sprintf "%d %s" found.number found.text
+
+let a_load_reads_the_delivery_lines_of_the_change () =
+  let repo = Git_fixture.init () in
+  Git_fixture.import repo
+    [
+      Git_fixture.commit ~ref:"refs/heads/main" ~mark:1
+        ~message:"base\n\nDelivers: p/base 000000\n"
+        [ Git_fixture.File ("sinter.toml", manifest) ];
+      Git_fixture.commit ~parents:[ 1 ] ~ref:"refs/heads/work" ~mark:2
+        ~message:"one\n\nDelivers: p/one 000000\n" [];
+      Git_fixture.commit ~parents:[ 2 ] ~ref:"refs/heads/work" ~mark:3
+        ~message:"Delivers: p/two 000000\n\nDelivers: bad\n" [];
+    ];
+  ignore (Git_fixture.git repo [ "symbolic-ref"; "HEAD"; "refs/heads/work" ]);
+  Git_fixture.checkout repo;
+  let expected =
+    [
+      "1 Delivers: p/two 000000"; "3 Delivers: bad"; "3 Delivers: p/one 000000";
+    ]
+  in
+  Alcotest.(check (list string))
+    "the lines of the commits of the change, newest commit first" expected
+    (List.map found_text (load repo).deliveries);
+  Alcotest.(check (list string))
+    "the same lines with the base" expected
+    (List.map found_text
+       (fst
+          (match
+             Scan.load_with_base ~env:(Git_fixture.env repo)
+               ~dir:(Git_fixture.root repo) ~manifest:None ~base:None ()
+           with
+          | Ok loaded -> loaded
+          | Error _ -> Alcotest.fail "the load fails"))
+         .deliveries);
+  Alcotest.(check (list string))
+    "no line with the base at HEAD" []
+    (List.map found_text (load ~base:"HEAD" repo).deliveries)
+
 let the_ledger_warning_needs_a_plan_and_no_ledger () =
   let warning files ~ledger =
     let repo = repository (("sinter.toml", manifest) :: files) in
@@ -1136,6 +1176,8 @@ let tests =
       a_plan_file_needs_the_pack_markdown_when_it_names_none;
     case "a scan that cannot write its output says so"
       a_scan_that_cannot_write_its_output_says_so;
+    case "a load reads the delivery lines of the change"
+      a_load_reads_the_delivery_lines_of_the_change;
     Alcotest.test_case "the ledger warning needs a plan and no ledger" `Quick
       the_ledger_warning_needs_a_plan_and_no_ledger;
     case "a check that cannot write its output says so"

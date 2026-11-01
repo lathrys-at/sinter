@@ -342,6 +342,7 @@ type tree = {
   documents : (string * Markdown.t) list;
   not_text : (string * int) list;
   warnings : string list;
+  deliveries : Delivery_line.found list;
 }
 
 let prepare ~env ~dir ~manifest ~base =
@@ -393,6 +394,12 @@ let prepare ~env ~dir ~manifest ~base =
     | None -> Ok ()
   in
   let* base = find_base repo manifest_value base in
+  let* messages = repository (Git.messages repo ~base:(base_commit base)) in
+  let deliveries =
+    List.concat_map
+      (fun (commit, message) -> Delivery_line.read ~commit message)
+      messages
+  in
   Ok
     ( repo,
       file_set,
@@ -402,7 +409,8 @@ let prepare ~env ~dir ~manifest ~base =
       base,
       read_by_markdown,
       List.filter read_by_markdown files,
-      not_utf_8 )
+      not_utf_8,
+      deliveries )
 
 let not_utf_8_warning path =
   Printf.sprintf "the path %s is not UTF-8, so sinter does not read the file"
@@ -527,8 +535,9 @@ let read_base reader ~repo ~diff ~files ~documents ~not_text ~location ~manifest
     }
 
 let assemble ~repo ~file_set ~manifest ~location ~base ~documents ~not_text
-    ~not_utf_8 =
+    ~not_utf_8 ~deliveries =
   {
+    deliveries;
     repo;
     file_set;
     manifest;
@@ -541,7 +550,16 @@ let assemble ~repo ~file_set ~manifest ~location ~base ~documents ~not_text
   }
 
 let load ?phases ~env ~dir ~manifest ~base () =
-  let* repo, file_set, root, manifest, location, base, _, files, not_utf_8 =
+  let* ( repo,
+         file_set,
+         root,
+         manifest,
+         location,
+         base,
+         _,
+         files,
+         not_utf_8,
+         deliveries ) =
     Allocation.measure phases "repository" (fun () ->
         prepare ~env ~dir ~manifest ~base)
   in
@@ -550,7 +568,7 @@ let load ?phases ~env ~dir ~manifest ~base () =
   in
   Ok
     (assemble ~repo ~file_set ~manifest ~location ~base ~documents ~not_text
-       ~not_utf_8)
+       ~not_utf_8 ~deliveries)
 
 let load_with_base ?phases ~env ~dir ~manifest ~base () =
   let* ( repo,
@@ -561,7 +579,8 @@ let load_with_base ?phases ~env ~dir ~manifest ~base () =
          base,
          read_by_markdown,
          files,
-         not_utf_8 ) =
+         not_utf_8,
+         deliveries ) =
     Allocation.measure phases "repository" (fun () ->
         prepare ~env ~dir ~manifest ~base)
   in
@@ -582,7 +601,8 @@ let load_with_base ?phases ~env ~dir ~manifest ~base () =
   in
   Ok
     ( assemble ~repo ~file_set ~manifest ~location ~base ~documents ~not_text
-        ~not_utf_8:(not_utf_8 @ base_not_utf_8),
+        ~not_utf_8:(not_utf_8 @ base_not_utf_8)
+        ~deliveries,
       compared )
 
 let ledger_ref = "refs/sinter/ledger"
@@ -618,7 +638,8 @@ let run ?phases ~env ~dir ~manifest ~base ~tool () =
         Facts.make tree.manifest tree.documents)
   in
   let records =
-    Allocation.measure phases "records" (fun () -> Facts.records facts)
+    Allocation.measure phases "records" (fun () ->
+        Facts.records ~deliveries:tree.deliveries facts)
   in
   Ok
     {

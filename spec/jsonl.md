@@ -230,30 +230,29 @@ Example: this plan file gives the canonical bytes below it.
 | `met` `total` | int | *derived* promise counts |
 | `done` | bool | *derived* |
 | `csh` | string | the step hash, as the text after this table gives it |
-| `delivered` | bool | *derived*: the step has a mark that counts ([vocabulary.md](vocabulary.md) section 10.8) |
-| `mark` | string | the tag target of the mark of the step, as written; omitted when the step has no mark |
+| `delivered` | bool | *derived*: the step is delivered ([vocabulary.md](vocabulary.md) section 10.8) |
+| `delivery` | string | the delivery line of the step ([vocabulary.md](vocabulary.md) section 10.8), for example `Delivers: sinter-v0.1@097ce8/check-a-tree 05ef56`; omitted when the slug of the step is empty |
 | `approved` | bool | *derived*: the step is approved ([algebra.md](algebra.md) section 6.5) |
 | `approval` | string | *derived*: the id of the `approval` entry of the ledger that approves the step ([ledger.md](ledger.md) section 5.1); omitted when none |
 | `active` | bool | *derived* from the session; `false` when there is no session |
 
 The **step hash** (`csh` of a step) is SHA-256 over canonical bytes
 that hold the agreement of the step: its effective scope, its
-promises, and its text ([vocabulary.md](vocabulary.md) section 10.8).
-The canonical bytes are one JSON object in the canonical form of RFC
-8785 (JCS) that section 2 uses, with no LF at the end. The object has
-three keys:
+promises, and its prose. The canonical bytes are one JSON object in
+the canonical form of RFC 8785 (JCS) that section 2 uses, with no LF
+at the end. The object has three keys:
 
 - `promises`: an array with one object for each promise record of the
   step (section 5). Each object has two keys, `word` and `target`, as
   the promise record gives them. The objects are sorted by `word`, then
   by `target`, each in byte order. A step without promises gives an
   empty array.
+- `prose`: the prose of the step, as a string.
 - `scope`: the globs of the effective scope of the step, each glob
   once, sorted in byte order, as the commitment-set hash writes the
   scope of a step.
-- `text`: the text of the step, as a string.
 
-The **text of a step** comes from the lines of the section of the
+The **prose of a step** comes from the lines of the section of the
 step, after its heading line, in four steps:
 
 1. Take the lines of the section, with the lines of each section
@@ -268,26 +267,27 @@ step, after its heading line, in four steps:
    text, with the spaces and tabs after it; then remove the trailing
    whitespace.
 4. End each line with one LF. A step with no line left has the empty
-   text.
+   prose.
 
-So the heading of the step, each tag line, and the text of other steps
-are no part of the step hash. The rules of section 2 for the values of
-a record do not apply to this object.
+So the prose leaves out the heading line of the step and each tag
+line. The heading lines of the sections inside the step stay, without
+their section numbers. The heading of the step, each tag line, and
+the prose of another step are no part of the step hash. The rules of
+section 2 for the values of a record do not apply to this object.
 
 Example: this step gives the canonical bytes below it, and the step
-hash `23e47131fdb5…`. Its mark therefore names `23e471`.
+hash `33810a3ee901…`. Its delivery line therefore ends with `33810a`.
 
 ```
 ## Tidy the cache
 
 @scope src/cache/**, src/**, src/cache/**
-@delivered 23e471
 Remove the dead code
 of the old cache.
 ```
 
 ```
-{"promises":[],"scope":["src/**","src/cache/**"],"text":"Remove the dead code\nof the old cache.\n"}
+{"promises":[],"prose":"Remove the dead code\nof the old cache.\n","scope":["src/**","src/cache/**"]}
 ```
 
 **`test`** — a test, or a group of tests, that a language pack finds
@@ -649,6 +649,7 @@ path can contain `@`.
 | an error node of a markdown file | `file:<path>@L<line>C<column>`, from the position where the node starts | `parse-error` in a markdown file ([packs.md](packs.md) section 5.2) |
 | a line | `line:<path>@L<line>` | `typo-tag` and `ignored-tag`, at the tag line; `duplicate` of a step, at the line of the step's heading |
 | a tag | `tag:<path>@L<line>C<column>`, from the position of the `@` of the tag | `invalid-target`; `misplaced-plan`; `duplicate` of a declaration or a plan |
+| a line of a commit message | `message:<commit>@L<line>`, where `<commit>` is the object id of the commit and `<line>` the number of the line in its message, from 1 | `stale-delivery` |
 
 The mark and the related places of a finding never enter its id.
 

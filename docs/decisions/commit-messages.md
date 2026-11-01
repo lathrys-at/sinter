@@ -2,7 +2,7 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Name the plan step and its promises in each commit message
-@decision commit-messages v3
+@decision commit-messages v4
 @cites pull-request-descriptions
 @cites plain-names
 Each commit message ends with git trailers that name the plan step, the record, or the issue that allows the change, and each promise of the step that the commit meets.
@@ -38,7 +38,12 @@ order:
    that the commit carries out, with no revision. Example:
    `Meets: @satisfies diff-mode`. A commit that does a part of a
    step and meets no promise has no `Meets:` line.
-3. The trailer that names an agent, then the `Signed-off-by:` line
+3. One `Delivers: <plan>/<step> <hash>` line for each step that the
+   commit completes, with the full form of the plan and the first 6
+   digits of the step hash (record `delivery-lines`). Example:
+   `Delivers: sinter-v0.1@097ce8/check-a-diff 05ef56`. Sinter reads
+   this line.
+4. The trailer that names an agent, then the `Signed-off-by:` line
    that `git commit -s` adds.
 
 A change that no plan step, record, or issue allows gets one of them
@@ -56,7 +61,7 @@ first.
 
 A reviewer checks each `Meets:` line against the diff and the
 plan, and finds a commit that claims a promise it does not deliver,
-or work that no promise names. A tool can read the trailers; a check
-of them by Sinter is on the roadmap. Each commit message has two or
+or work that no promise names. Sinter reads the `Delivers:` lines; a
+check of the other trailers is on the roadmap. Each commit message has two or
 three more lines. Commits written before revision 2 carry the same
 trailer under the name `Discharges:`.

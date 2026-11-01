@@ -2,7 +2,7 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Cut the tables of the manifest by the question that each answers
-@decision manifest-questions v2
+@decision manifest-questions v3
 @cites manifest-names
 Each table of the manifest answers one question about the project, and the table `[proof]` holds what settles each item.
 
@@ -59,8 +59,8 @@ Each value in `[proof]` names the evidence that settles the item:
   test.
 - `proof.step` applies to a step without promises. It is
   `"delivered"`, the default, `"approval"`, or `"promises"`. Under
-  `"delivered"`, the step is done when the plan file marks it as
-  delivered (record `delivery-marks`). Under `"approval"`, the step is
+  `"delivered"`, the step is done when the ledger records its delivery
+  (record `delivery-lines`). Under `"approval"`, the step is
   done when a person approves it in the ledger. Under `"promises"`,
   every step must have promises, and a step without promises is the
   finding `step-without-promises`.

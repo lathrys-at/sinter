@@ -17,7 +17,6 @@
 ## Tidy
 
 @scope src/**
-@delivered 111111
 Tidy the source.
 
 ## Write d
@@ -28,7 +27,6 @@ Tidy the source.
 ## Clean
 
 @scope bin/**
-@delivered 222222
 Clean the binary.
 
 ## Write e and f
@@ -36,4 +34,3 @@ Clean the binary.
 @scope docs/**
 @decision e
 @decision f
-@delivered 7f81de

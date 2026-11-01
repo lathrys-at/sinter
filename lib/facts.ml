@@ -140,8 +140,6 @@ type step = {
   span : Markdown.span;
   own_scope : string list option;
   promises : promise list;
-  block : int;
-  marks : Markdown.tag list;
   hash : string;
 }
 
@@ -406,7 +404,7 @@ let promises_of (document : Markdown.t) indices =
          | Some _ | None -> found)
        [] indices)
 
-let step_hash ~scope promises text =
+let step_hash ~scope promises prose =
   Sha256.hex
     (Jsonl.to_string
        [
@@ -422,8 +420,8 @@ let step_hash ~scope promises text =
                       (fun (promise : promise) ->
                         (promise.word, promise.target))
                       promises))) );
+         ("prose", Jsonl.string prose);
          ("scope", Jsonl.strings (List.sort_uniq String.compare scope));
-         ("text", Jsonl.string text);
        ])
 
 let plan_file ~path (document : Markdown.t) plan_index =
@@ -452,8 +450,7 @@ let plan_file ~path (document : Markdown.t) plan_index =
             let own_scope = first_scope document held in
             let promises = promises_of document held in
             match held with
-            | first :: _ when Option.is_some own_scope || promises <> [] ->
-                let block = document.tags.(first).block in
+            | _ :: _ when Option.is_some own_scope || promises <> [] ->
                 let text =
                   match text with
                   | Some text -> text
@@ -469,17 +466,6 @@ let plan_file ~path (document : Markdown.t) plan_index =
                     span = heading.span;
                     own_scope;
                     promises;
-                    block;
-                    marks =
-                      List.filter_map
-                        (fun index ->
-                          let tag = document.tags.(index) in
-                          if
-                            String.equal tag.word "delivered"
-                            && tag.block = block
-                          then Some tag
-                          else None)
-                        held;
                     hash =
                       step_hash
                         ~scope:(Option.value own_scope ~default:plan_scope)
@@ -973,17 +959,43 @@ let promise_id plan step (promise : promise) =
   String.concat ":"
     [ "promise"; step_id plan step; promise.word; promise.target ]
 
-let mark (step : step) =
-  match step.marks with first :: _ -> Some first | [] -> None
+let short_hash (step : step) = String.sub step.hash 0 6
 
-let mark_hash (step : step) = String.sub step.hash 0 6
+let delivery plan (step : step) =
+  Delivery_line.make ~plan:(full_form plan) ~step:step.slug
+    ~hash:(short_hash step)
 
-let delivered step =
-  match mark step with
-  | Some { target = Some target; _ } -> String.equal target (mark_hash step)
-  | Some { target = None; _ } | None -> false
+let named facts =
+  let table = Hashtbl.create 16 in
+  List.iter
+    (fun plan ->
+      List.iter
+        (fun (step : step) ->
+          let key = (full_form plan, step.slug) in
+          if not (Hashtbl.mem table key) then Hashtbl.add table key (plan, step))
+        plan.steps)
+    facts.plans;
+  fun (line : Delivery_line.t) -> Hashtbl.find_opt table (line.plan, line.step)
 
-let plan_records facts plan =
+let counts (step : step) (line : Delivery_line.t) =
+  String.equal line.hash (short_hash step)
+
+module Ids = Set.Make (String)
+
+let delivered_steps facts deliveries =
+  let named = named facts in
+  List.fold_left
+    (fun ids (found : Delivery_line.found) ->
+      match
+        Option.bind found.line (fun line ->
+            Option.map (fun pair -> (line, pair)) (named line))
+      with
+      | Some (line, (plan, step)) when counts step line ->
+          Ids.add (step_id plan step) ids
+      | Some _ | None -> ids)
+    Ids.empty deliveries
+
+let plan_records facts ~delivered plan =
   let plan_approved = not (needs_approval facts.manifest Manifest.Plan) in
   let plan_record =
     located ~kind:"plan" ~id:(plan_fact_id plan) ~path:plan.path ~span:plan.span
@@ -1006,6 +1018,7 @@ let plan_records facts plan =
     let scope = effective_scope plan step in
     let in_scope = Path_set.mem (path_set scope) in
     let step_id = step_id plan step in
+    let delivered = Ids.mem step_id delivered in
     let promises =
       List.map
         (fun (promise : promise) ->
@@ -1028,7 +1041,7 @@ let plan_records facts plan =
       if total > 0 then met = total
       else
         match Manifest.step facts.manifest with
-        | Manifest.Delivered -> delivered step
+        | Manifest.Delivered -> delivered
         | Manifest.Step_approval -> approved
         | Manifest.Promises -> false
     in
@@ -1045,13 +1058,14 @@ let plan_records facts plan =
          ("total", Jsonl.int total);
          ("done", Jsonl.bool done_);
          ("csh", Jsonl.string step.hash);
-         ("delivered", Jsonl.bool (delivered step));
+         ("delivered", Jsonl.bool delivered);
          ("approved", Jsonl.bool approved);
          ("active", Jsonl.bool false);
        ]
-      @ optional "mark"
-          (Option.bind (mark step) (fun (tag : Markdown.tag) ->
-               Option.map Jsonl.string tag.target)))
+      @ optional "delivery"
+          (Option.map
+             (fun line -> Jsonl.string (Delivery_line.to_string line))
+             (delivery plan step)))
     :: List.map
          (fun ((promise : promise), by, out_of_scope) ->
            located ~kind:"promise"
@@ -1072,7 +1086,8 @@ let plan_records facts plan =
   in
   plan_record :: List.concat_map step_records plan.steps
 
-let records facts =
+let records ?(deliveries = []) facts =
+  let delivered = delivered_steps facts deliveries in
   let approved = approved facts.manifest facts.declarations in
   let inforce = facts.inforce in
   List.map
@@ -1085,7 +1100,7 @@ let records facts =
             edge_records facts;
             site_records facts;
             ack_records facts;
-            List.concat_map (plan_records facts) facts.plans;
+            List.concat_map (plan_records facts ~delivered) facts.plans;
           ]))
   @ external_records facts
 

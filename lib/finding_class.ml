@@ -26,10 +26,10 @@ type t =
   | Duplicate
   | Scope_outside_plan
   | Step_without_promises
-  | Stale_mark
-  | Mark_without_change
-  | Mark_on_unmet_step
-  | Unmarked_step
+  | Stale_delivery
+  | Delivery_without_change
+  | Delivery_on_unmet_step
+  | Missing_delivery
   | Misplaced_plan
   | Missing_plan_id
   | Unpinned
@@ -77,10 +77,10 @@ let all =
     Duplicate;
     Scope_outside_plan;
     Step_without_promises;
-    Stale_mark;
-    Mark_without_change;
-    Mark_on_unmet_step;
-    Unmarked_step;
+    Stale_delivery;
+    Delivery_without_change;
+    Delivery_on_unmet_step;
+    Missing_delivery;
     Misplaced_plan;
     Missing_plan_id;
     Unpinned;
@@ -128,10 +128,10 @@ let name = function
   | Duplicate -> "duplicate"
   | Scope_outside_plan -> "scope-outside-plan"
   | Step_without_promises -> "step-without-promises"
-  | Stale_mark -> "stale-mark"
-  | Mark_without_change -> "mark-without-change"
-  | Mark_on_unmet_step -> "mark-on-unmet-step"
-  | Unmarked_step -> "unmarked-step"
+  | Stale_delivery -> "stale-delivery"
+  | Delivery_without_change -> "delivery-without-change"
+  | Delivery_on_unmet_step -> "delivery-on-unmet-step"
+  | Missing_delivery -> "missing-delivery"
   | Misplaced_plan -> "misplaced-plan"
   | Missing_plan_id -> "missing-plan-id"
   | Unpinned -> "unpinned"
@@ -179,10 +179,10 @@ let tiers = function
   | Duplicate -> (Some Block, Some Block, Some Block)
   | Scope_outside_plan -> (Some Block, Some Block, None)
   | Step_without_promises -> (Some Block, Some Block, Some Block)
-  | Stale_mark -> (Some Block, Some Block, Some Block)
-  | Mark_without_change -> (Some Block, Some Block, None)
-  | Mark_on_unmet_step -> (Some Block, Some Block, Some Block)
-  | Unmarked_step -> (None, Some Block, None)
+  | Stale_delivery -> (Some Block, Some Block, None)
+  | Delivery_without_change -> (Some Warn, Some Warn, None)
+  | Delivery_on_unmet_step -> (Some Block, Some Block, None)
+  | Missing_delivery -> (None, Some Block, None)
   | Misplaced_plan -> (Some Block, Some Block, Some Block)
   | Missing_plan_id -> (Some Block, Some Block, Some Block)
   | Unpinned -> (Some Block, Some Block, Some Block)

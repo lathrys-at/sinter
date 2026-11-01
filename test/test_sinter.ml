@@ -54,6 +54,7 @@ let () =
       ("tag line", Test_tag_line.tests);
       ("slug", Test_slug.tests);
       ("plan target", Test_plan_target.tests);
+      ("delivery line", Test_delivery_line.tests);
       ("section number", Test_section_number.tests);
       ("markdown", Test_markdown.tests);
       ("toml raw", Test_toml_raw.tests);

@@ -243,7 +243,6 @@ the gate `turn`.
 ## Let a plan span branches
 @scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**, sinter.toml
 @decision delivery-marks
-@delivered 05ef56
 Carry out the records `plans-span-branches` and `delivery-marks`:
 specify that a plan reaches the default branch in its own pull
 request, that later branches deliver its steps and mark them, and
@@ -251,6 +250,14 @@ that an open plan on the default branch is normal while its work goes
 on; add the mark `@delivered` and its checks; redefine
 `merged-incomplete`; report a delivered step that loses its slug; and
 let the plan skill say so.
+
+## Name a delivered step in its commit
+@scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**, CONTRIBUTING.md
+@decision delivery-lines
+Carry out the record `delivery-lines`: a commit names each step that
+it delivers with a `Delivers:` line, Sinter checks the delivery lines
+of a branch, the job on the default branch records each delivery
+line in the ledger, and the mark `@delivered` goes away.
 
 ## Release the binaries
 @scope .github/workflows/**, README.md, docs/**, THIRD_PARTY.md, REUSE.toml, LICENSES/**

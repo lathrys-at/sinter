@@ -121,11 +121,11 @@ decisions in prose, `@satisfies` and `@verifies` citations in the code
 and the tests, test evidence, and entries in the ledger, Sinter's
 record of judgments (section 6.4). A plan is **open** until the ledger
 records that it closed. It closes in one of two ways (section 6.3).
-The job that closes plans records it as `completed` after the merge
-that delivers its last step, and only when every step is done. Or a
-person records it as `abandoned`. A closed plan can stay in the tree
-as a record, beside the facts that it produced, or its file and its
-journal can leave `.plans/`. The ledger, not the file system, says
+The job on the default branch records it as `completed` after the
+merge that delivers its last step, and only when every step is done.
+Or a person records it as `abandoned`. A closed plan can stay in the
+tree as a record, beside the facts that it produced, or its file and
+its journal can leave `.plans/`. The ledger, not the file system, says
 when a plan stopped being an agreement.
 
 The parts of the system:
@@ -260,9 +260,7 @@ decision that was considered and not chosen; its record stays, so that
 nobody argues the choice again. `@deferred` marks a decision that is not
 made yet. These three tags have effect only in the tag block of a
 declaration, so the `@deprecated` of JSDoc in a code comment is safe.
-The fourth status tag, `@delivered`, marks a step of a plan that a
-branch delivered (section 6). Sinter has no tag for "done": a step is
-done when the facts say so.
+Sinter has no tag for "done": a step is done when the facts say so.
 
 An item is **in force** when no status tag and no effective
 `@supersedes` retires it; otherwise it is **retired**
@@ -471,8 +469,8 @@ never fails a check for its evidence. `sinter status --done` still
 refuses. A step is done only when each of its `@verifies` edges is at an
 allowed rung, and with no evidence each edge is at `never-ran`
 (`spec/algebra.md` section 6.4). The review gate enforces the rungs, so
-each step that a branch delivers is checked against measured work
-before the branch merges.
+each step in the change is checked against measured work before the
+branch merges.
 
 **The coverage of each test is the expensive rung.** Rung 4 below asks
 whether this test ran that site. Only the **coverage of each test**
@@ -715,20 +713,34 @@ both is reported as `promise-out-of-scope`, because the scope is part of
 the agreement. A promised `@verifies` needs a passing test, so a plan
 cannot be done on a test that never ran or that failed (section 4).
 
-**Delivery.** A branch delivers a step when its diff adds a mark of
-the step, or makes a promise of the step met. The **mark** is one tag
-line in the step's tag block, `@delivered <hash>`, and Sinter prints
-the line to add (`unmarked-step`). The hash is the first six digits of
-the step hash, which covers the scope, the promises, and the text of
-the step, so an edit of a delivered step voids its mark
-(`stale-mark`). A mark is a statement of the agent, and it changes a
-state only as a line of the diff tied to its text (record
-`agent-statements`): the person who merges sees each new mark. Sinter
-also checks each mark against the tree. A mark that the diff adds on a
-step whose scope it did not change is `mark-without-change`, and a
-mark on a step with a promise that is not met is `mark-on-unmet-step`
-(record `delivery-marks`). A delivered step keeps its slug, because the
-journals and the commit trailers name it (`renamed-step`).
+**Delivery.** The commit that completes a step names it with a
+**delivery line** in its message, `Delivers: <plan>/<step> <hash>`,
+and `sinter scan` gives the line of each step in the field `delivery`
+of its record. The hash is the first six digits of the step hash,
+which covers the scope, the promises, and the prose of the step, so
+an edit of the step makes an earlier line stale. The plan file holds
+the agreement only; the commits of a change and the ledger hold its
+delivery (record `delivery-lines`). A delivery line is a statement of
+the agent, and the person who merges reads it with the commits
+(record `agent-statements`). Sinter checks each line of the change
+against the tree: a line that does not count is `stale-delivery`, a
+line on a step with a promise that is not met is
+`delivery-on-unmet-step`, and a line on a step whose scope the diff
+does not change is the warning `delivery-without-change`. A step whose
+promises the diff makes met, with no line, is `missing-delivery`, and
+the finding gives the line to add. The steps in the change are the
+steps that a line counts for and the steps whose promises the diff
+makes met. A started step keeps its slug, because the journals and the
+commit trailers name it (`renamed-step`).
+
+At each push to the default branch, the job on the default branch
+reads the delivery lines of the commits since its last entry, and
+writes a `delivered` entry in the ledger for each line that counts on
+a step whose promises are met. A squash merge keeps the messages of
+the commits of a branch in the body of its commit, so the job finds
+the lines there. Sinter never reads the history of the default branch
+in a check; the job reads each commit once, and the ledger keeps the
+result.
 
 **The active plan.** When exactly one plan is open, it is active. An
 open plan on the default branch is on every branch, so a repository
@@ -739,7 +751,7 @@ scope have no plan to anchor on, and `sinter status` says why.
 
 - **The state of a step is derived, never ticked.** A step is done
   when its promises are met and its evidence passes. The gate `review`
-  checks the steps that the branch delivers. A step merged in part,
+  checks the steps in the change. A step merged in part,
   with some promises met and some not, is the finding
   `merged-incomplete`.
 - **The active step is the one statement of the agent that Sinter
@@ -751,9 +763,11 @@ scope have no plan to anchor on, and `sinter status` says why.
   agent, gives a session id, Sinter keeps the step per session (section
   11.18), so parallel sessions in one worktree do not collide.
 - **A step with a scope and no promises is a refactor step.** By
-  default, it is done when the plan file marks it as delivered with a
-  mark that counts, and the evidence still passes. A person reads the
-  mark in the diff, so the condition is visible. A project
+  default, it is done when a delivery line of the change counts for
+  it, or when the ledger holds a `delivered` entry for its current
+  step hash, and the evidence still passes. A person reads the line in
+  the commits, so the condition is visible. Until Sinter reads the
+  ledger, no refactor step is done on the default branch. A project
   that wants more sets `proof.step`: to `"approval"`, so that a person
   approves each refactor step in the ledger, or to `"promises"`, so
   that every step needs promises and a refactor step is a finding
@@ -808,19 +822,20 @@ deletion needs to be arranged and no merge commit needs an edit. It
 closes as `completed` or as `abandoned` (section 6.7).
 
 **The completion gate.** A plan completes when every step is done: the
-**completion condition**. The **job that closes plans** writes the
+**completion condition**. The **job on the default branch** writes the
 entry. It runs on the default branch, in CI or by a person's hand, and
 it runs the same command either way and makes no judgment of its own.
-It imports the test evidence of its run first, then checks each open
-plan against the completion condition, and appends `completed` for
-each plan that passes (`spec/ledger.md` section 8). Without evidence,
-a step with a `@verifies` edge in its scope is not done, so its plan
-does not close. So a project that closes plans needs a CI job that
-imports evidence, a person who runs the job, or both. The closing
-rests on the tree, the evidence, and the approvals, not on anyone's
-report. A second run writes nothing new, so a lost run costs a retry
-and loses no fact. On a branch, `sinter status --done` exits 0 when
-the steps that the branch delivers are done.
+It imports the test evidence of its run first, then appends the
+`delivered` entries of the commits since its last entry, then checks
+each open plan against the completion condition, and appends
+`completed` for each plan that passes (`spec/ledger.md` section 8).
+Without evidence, a step with a `@verifies` edge in its scope is not
+done, so its plan does not close. So a project that closes plans
+needs a CI job that imports evidence, a person who runs the job, or
+both. The closing rests on the tree, the evidence, and the approvals,
+not on anyone's report. A second run writes nothing new, so a run
+that does not finish costs a retry and loses no fact. On a branch,
+`sinter status --done` exits 0 when the steps in the change are done.
 
 An open plan on the default branch is normal while its work goes on.
 A step with some promises met and some not is the blocking finding
@@ -1535,8 +1550,8 @@ touch the scope; the counts of findings; the health of the machinery,
 such as the bumps since the base and the void acks; and a hint of the
 next command, such as `sinter patch suspect`. Sinter stores none of
 it, and computes every line again from the tree, the ledger, and the
-evidence. `--done` prints nothing and exits 0 only when the steps that
-the branch delivers are done, for a merge queue or a script:
+evidence. `--done` prints nothing and exits 0 only when the steps in
+the change are done, for a merge queue or a script:
 `sinter status --done && git push`.
 
 ### 11.3 `sinter check`
@@ -1736,7 +1751,7 @@ overwrites a user's edit. It touches only files that the tool owns:
 | `.plans/` | the folder of plans |
 | `refs/sinter/ledger` | an empty ledger commit, when the ref is absent |
 | the settings of the harness | the hooks that call `sinter hook <event>`; for Claude Code, in `.claude/settings.json` |
-| the CI workflows | a job for pull requests: `check --diff --gate review` on the host's merge ref, against the tip of the default branch (section 3.5), the import of evidence, the report, and SARIF. A job for the default branch: `check --gate merged`, `ledger verify`, and the job that closes plans, which imports the evidence of its run and appends `completed` (section 6.3), with the right to push the ledger ref. Both jobs fetch the ledger ref, because a clone does not |
+| the CI workflows | a job for pull requests: `check --diff --gate review` on the host's merge ref, against the tip of the default branch (section 3.5), the import of evidence, the report, and SARIF. A job for the default branch: `check --gate merged`, `ledger verify`, and the steps of the job on the default branch (section 6.3): it fetches the commits since its last entry, imports the evidence of its run, and appends the `delivered` entries and `completed`, with the right to push the ledger ref. Both jobs fetch the ledger ref, because a clone does not |
 
 The command that runs the tests is the repository's own. `init` writes a
 marked step that it cannot fill, with the runner command that each pack
@@ -1776,10 +1791,10 @@ state of the session, the declared step, is kept per `session_id`.
 functions, and built-in finding classes.
 
 **The universe is one fixed set of facts.** Sinter builds the facts
-from five inputs: one working tree, one base, one ledger, one
-evidence set, and one session. A query selects a subset of those
-facts, and nothing else: it makes no numbers, no tuples, and no new
-facts. Two queries with the same five inputs give the same bytes,
+from six inputs: one working tree, one base, the messages of the
+commits of the change, one ledger, one evidence set, and one session.
+A query selects a subset of those facts, and nothing else: it makes
+no numbers, no tuples, and no new facts. Two queries with the same six inputs give the same bytes,
 because the algebra has no access to the time, the environment, or the
 network. Every gate depends on this: a check on a laptop and a check
 in CI must agree.

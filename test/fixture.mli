@@ -13,6 +13,11 @@
     - [base/]: a folder, optional. When it exists, the case is a diff case: the
       run starts in a git repository whose one commit holds [base/] and whose
       working tree holds [tree/].
+    - [message]: a file, optional, in a case with [base/]. When it exists, the
+      files of [tree/] are also a commit on the branch [topic] on top of the
+      commit of [base/], and the content of the file is its message, byte for
+      byte. The run then starts on [topic], and the working tree holds the files
+      of that commit.
     - [repository]: an empty file, optional, in a case without [base/]. When it
       exists, the run starts in a git repository whose one commit holds [tree/],
       and whose working tree holds the same files. Without it and without
@@ -53,6 +58,7 @@ type error =
       (** The case holds [ledger.jsonl] or [evidence], which the harness does
           not read. *)
   | Repository_with_base  (** The case holds both [base/] and [repository]. *)
+  | Message_without_base  (** The case holds [message] and no [base/]. *)
   | Bad_variable of string
       (** A line of [env] has no [=], or starts with [=]. *)
   | Did_not_end of float
@@ -161,16 +167,23 @@ type repository
     inside the function that {!with_repository} calls. *)
 
 val with_repository :
-  base:string -> tree:string -> (repository -> 'a) -> ('a, error) result
-(** [with_repository ~base ~tree f] builds a repository under the temporary
-    folder and calls [f] with it. The repository is on the branch [main]. Its
-    one commit holds the files of the folder [base], and its working tree holds
-    the files of the folder [tree], uncommitted: a file only in [base] is
-    deleted, and a file only in [tree] is untracked. Every git command runs with
-    a fixed configuration, home folder, author, committer, date, and message, so
-    the commit has the same id on every machine. The repository is removed when
-    [f] returns or raises. The rule of {!run} on the working folder of the
-    process holds here too.
+  ?message:string ->
+  base:string ->
+  tree:string ->
+  (repository -> 'a) ->
+  ('a, error) result
+(** [with_repository ~message ~base ~tree f] builds a repository under the
+    temporary folder and calls [f] with it. The repository is on the branch
+    [main]. Its one commit holds the files of the folder [base], and its working
+    tree holds the files of the folder [tree], uncommitted: a file only in
+    [base] is deleted, and a file only in [tree] is untracked. With [message],
+    the path of a file, the files of [tree] are also a commit on the branch
+    [topic] on top of the commit of [base], with the content of that file as its
+    message, byte for byte, and the repository is on [topic]. Every git command
+    runs with a fixed configuration, home folder, author, committer, and date,
+    and the commit of [base] has a fixed message, so each commit has the same id
+    on every machine. The repository is removed when [f] returns or raises. The
+    rule of {!run} on the working folder of the process holds here too.
 
     An exception that [f] raises passes through. It raises the exceptions of
     {!with_temporary_folder} when the temporary folder cannot be made or

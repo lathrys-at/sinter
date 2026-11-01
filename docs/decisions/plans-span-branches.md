@@ -2,7 +2,7 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # A plan can span several branches and pull requests
-@decision plans-span-branches v2
+@decision plans-span-branches v3
 A plan reaches the main branch on its own, later branches each deliver some of its steps, and the plan closes when every step is done.
 
 ## Context
@@ -19,9 +19,10 @@ reader approves such a plan once and reads it as one document.
 - A plan reaches the target branch in a pull request of its own. Its
   merge is the approval. When `proof.plan` is `"approval"`, a person
   also approves the plan in the ledger before the merge.
-- A later branch delivers one or more of the plan's steps, and marks
-  each one in the plan file (record `delivery-marks`). The gates
-  `review` and `merged` check the steps that the branch delivers.
+- A later branch delivers one or more of the plan's steps, and names
+  each one in a commit message (record `delivery-lines`). The gate
+  `review` checks the steps in the change, and the gate `merged`
+  checks every step of each open plan.
 - A step with some of its promises met and some not is the finding
   `merged-incomplete`: a step merged in part. It is computed from the
   tree alone.
@@ -31,9 +32,10 @@ reader approves such a plan once and reads it as one document.
   with a `@verifies` edge in the scope of a step does not close
   without evidence. The job runs in CI or by a person's hand. It runs
   the same command either way and makes no judgment of its own.
-- A delivered step keeps its slug: renaming, splitting, merging, or
-  removing a delivered step is a finding. A step that no branch has
-  delivered can still be renamed freely.
+- A started step keeps its slug: renaming, splitting, merging, or
+  removing a started step is a finding. A step is started when one of
+  its promises is met, or when the ledger records its delivery. A step
+  that is not started can still be renamed freely.
 - A claim is an approved, open plan whose full form the current tree
   does not hold. It does not depend on a branch, and it ends when the
   plan closes.

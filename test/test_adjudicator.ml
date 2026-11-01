@@ -56,69 +56,6 @@ let compared ?(findings = []) base tree =
 
 let strings = Alcotest.(list string)
 
-let marked ?(changed = []) base tree =
-  List.map show
-    (List.filter
-       (fun (finding : Finding.t) ->
-         finding.finding_class = Finding_class.Mark_without_change)
-       (Adjudicator.classes ~changed ~base:(facts base) (facts tree) []))
-
-let mark_plan ?(id = "p@0a1b2c") ?(text = "Text.") mark =
-  ( ".plans/p.md",
-    "# P\n\n@plan " ^ id ^ "\n@scope **\n\n## Do it\n\n@scope lib/**\n" ^ mark
-    ^ text ^ "\n" )
-
-let hash_of (path, text) =
-  match Facts.plans (facts [ (path, text) ]) with
-  | [ { steps = step :: _; _ } ] -> Facts.mark_hash step
-  | _ -> Alcotest.fail "the plan has no step"
-
-let mark_without_change_sits_at_a_mark_with_no_change_in_scope () =
-  let hash = hash_of (mark_plan "") in
-  let mark = mark_plan ("@delivered " ^ hash ^ "\n") in
-  let finding =
-    [
-      ".plans/p.md:9 | finding:mark-without-change:step:p@0a1b2c/do-it | the \
-       diff adds the mark of step:p@0a1b2c/do-it, and it changes no file in \
-       the scope of the step";
-    ]
-  in
-  Alcotest.check strings "no change" finding
-    (marked ~changed:[ ".plans/p.md"; "docs/a.md" ] [ mark_plan "" ] [ mark ]);
-  Alcotest.check strings "a change in the scope" []
-    (marked ~changed:[ ".plans/p.md"; "lib/a.ml" ] [ mark_plan "" ] [ mark ]);
-  Alcotest.check strings "a new plan" finding (marked [] [ mark ]);
-  Alcotest.check strings "the mark was there" [] (marked [ mark ] [ mark ]);
-  Alcotest.check strings "the mark was there, beside another plan" []
-    (marked
-       [ (".plans/a.md", "# A\n\n@plan a@111111\n\n## One\n\n@req z\n"); mark ]
-       [ mark ])
-
-let a_new_hash_on_a_mark_that_counted_is_no_added_mark () =
-  let edited mark = mark_plan ~text:"Other text." mark in
-  let new_hash = hash_of (edited "") in
-  let old_hash = hash_of (mark_plan "") in
-  Alcotest.(check bool)
-    "the edit changes the hash" false
-    (String.equal new_hash old_hash);
-  Alcotest.check strings "a repair of a mark that counted" []
-    (marked
-       [ mark_plan ("@delivered " ^ old_hash ^ "\n") ]
-       [ edited ("@delivered " ^ new_hash ^ "\n") ]);
-  Alcotest.check strings "a new hash on a mark that was stale"
-    [
-      ".plans/p.md:9 | finding:mark-without-change:step:p@0a1b2c/do-it | the \
-       diff adds the mark of step:p@0a1b2c/do-it, and it changes no file in \
-       the scope of the step";
-    ]
-    (marked
-       [ mark_plan "@delivered 000000\n" ]
-       [ edited ("@delivered " ^ new_hash ^ "\n") ]);
-  Alcotest.check strings "the same plan without its id in the base" []
-    (marked
-       [ mark_plan ~id:"p" ("@delivered " ^ old_hash ^ "\n") ]
-       [ mark_plan ("@delivered " ^ old_hash ^ "\n") ])
-
 let a_tombstone_names_each_fact_that_the_working_tree_lacks () =
   let base =
     facts
@@ -740,113 +677,6 @@ let promise_collision_marks_the_target () =
 
 let case name f = Alcotest.test_case name `Quick f
 
-let unmarked ?same ?whole_base base tree =
-  List.map show
-    (List.filter
-       (fun (finding : Finding.t) ->
-         finding.finding_class = Finding_class.Unmarked_step)
-       (Adjudicator.classes ?same ?whole_base ~base:(facts base) (facts tree) []))
-
-let promise_plan mark =
-  ( ".plans/p.md",
-    "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Do it\n\n@req a\n" ^ mark
-    ^ "Text.\n" )
-
-let declared = ("docs/a.md", "# A\n\n@req a\n")
-
-let scoped_plan mark =
-  ( ".plans/p.md",
-    "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Do it\n\n@scope docs/**\n@req a\n"
-    ^ mark ^ "Text.\n" )
-
-let unmarked_step_sits_at_a_step_that_the_diff_makes_met () =
-  let hash = hash_of (promise_plan "") in
-  Alcotest.check strings "the diff declares a"
-    [
-      Printf.sprintf
-        ".plans/p.md:6 | finding:unmarked-step:step:p@0a1b2c/do-it | the diff \
-         makes the promises of step:p@0a1b2c/do-it met, and the step has no \
-         mark | fix: @delivered %s"
-        hash;
-    ]
-    (unmarked [ promise_plan "" ] [ promise_plan ""; declared ]);
-  Alcotest.check strings "a new plan with its promise met"
-    [
-      Printf.sprintf
-        ".plans/p.md:6 | finding:unmarked-step:step:p@0a1b2c/do-it | the diff \
-         makes the promises of step:p@0a1b2c/do-it met, and the step has no \
-         mark | fix: @delivered %s"
-        hash;
-    ]
-    (unmarked [] [ promise_plan ""; declared ]);
-  Alcotest.check strings "a mark that counts" []
-    (unmarked
-       [ promise_plan "" ]
-       [ promise_plan ("@delivered " ^ hash ^ "\n"); declared ]);
-  Alcotest.check strings "a stale mark" []
-    (unmarked
-       [ promise_plan "" ]
-       [ promise_plan "@delivered 000000\n"; declared ]);
-  Alcotest.check strings "a new plan whose promise the base meets" []
-    (unmarked [ declared ] [ promise_plan ""; declared ]);
-  Alcotest.check strings "a new plan whose citation the base holds" []
-    (unmarked
-       [ ("docs/guide.md", "# G\n\n@cites gh/1\n") ]
-       [
-         ( ".plans/p.md",
-           "# P\n\n@plan p@0a1b2c\n@scope docs/**\n\n## Do it\n\n@cites gh/1\n"
-         );
-         ("docs/guide.md", "# G\n\n@cites gh/1\n");
-       ]);
-  Alcotest.check strings "the base meets it outside the scope of the step"
-    [
-      ".plans/p.md:6 | finding:unmarked-step:step:p@0a1b2c/do-it | the diff \
-       makes the promises of step:p@0a1b2c/do-it met, and the step has no mark \
-       | fix: @delivered "
-      ^ hash_of (scoped_plan "");
-    ]
-    (unmarked
-       [ scoped_plan ""; ("lib/a.md", "# A\n\n@req a\n") ]
-       [ scoped_plan ""; ("docs/a.md", "# A\n\n@req a\n") ]);
-  Alcotest.check strings "met in the base already" []
-    (unmarked [ promise_plan ""; declared ] [ promise_plan ""; declared ]);
-  Alcotest.check strings "not met in the tree" []
-    (unmarked [ promise_plan "" ] [ promise_plan "" ])
-
-let unmarked_step_reads_the_unchanged_files_of_the_base () =
-  let base_plan = promise_plan "" in
-  let tree_plan =
-    let path, text = promise_plan "" in
-    (path, text ^ "More text.\n")
-  in
-  let unchanged path = String.equal path "docs/a.md" in
-  Alcotest.check strings "the meeting fact sits in an unchanged file" []
-    (unmarked ~same:unchanged
-       ~whole_base:(lazy (facts [ base_plan; declared ]))
-       [ base_plan ] [ tree_plan; declared ])
-
-let the_fix_of_unmarked_step_makes_a_mark_that_counts () =
-  let path, text = promise_plan "" in
-  match
-    List.filter
-      (fun (finding : Finding.t) ->
-        finding.finding_class = Finding_class.Unmarked_step)
-      (Adjudicator.classes
-         ~base:(facts [ (path, text) ])
-         (facts [ (path, text); declared ])
-         [])
-  with
-  | [ { fix = Some fix; _ } ] -> (
-      let marked = Edits.apply text (List.hd (Fix.alternatives fix)) in
-      Alcotest.(check bool)
-        "one more line" true
-        (String.length marked > String.length text);
-      match Facts.plans (facts [ (path, marked) ]) with
-      | [ { steps = [ step ]; _ } ] ->
-          Alcotest.(check bool) "the mark counts" true (Facts.delivered step)
-      | _ -> Alcotest.fail "one plan with one step")
-  | _ -> Alcotest.fail "one unmarked-step with a fix"
-
 let renamed_steps ?same ?whole_base base tree =
   List.map show
     (List.filter
@@ -860,11 +690,11 @@ let steps_plan steps =
 
 let lost slug =
   Printf.sprintf
-    ".plans/p.md:3 | finding:renamed-step:step:p@0a1b2c/%s | the base delivers \
-     step:p@0a1b2c/%s, and the plan has no step with the slug %s now"
+    ".plans/p.md:3 | finding:renamed-step:step:p@0a1b2c/%s | step:p@0a1b2c/%s \
+     is started in the base, and the plan has no step with the slug %s now"
     slug slug slug
 
-let renamed_step_reports_each_lost_slug_of_a_delivered_step () =
+let renamed_step_reports_each_lost_slug_of_a_started_step () =
   let a = ("docs/a.md", "# A\n\n@req a\n\n## B\n\n@req b\n") in
   let one = steps_plan "\n## Do it\n\n@req a\n@req b\n" in
   Alcotest.check strings "a rename"
@@ -878,7 +708,7 @@ let renamed_step_reports_each_lost_slug_of_a_delivered_step () =
   Alcotest.check strings "a removal"
     [ lost "do-it" ]
     (renamed_steps [ one; a ] [ steps_plan "\n## Other\n\n@req c\n"; a ]);
-  Alcotest.check strings "a step that is not delivered" []
+  Alcotest.check strings "a step that is not started" []
     (renamed_steps [ one ] [ steps_plan "\n## Do that\n\n@req a\n@req b\n" ]);
   Alcotest.check strings "the slug stays" []
     (renamed_steps [ one; a ]
@@ -896,21 +726,6 @@ let renamed_step_reports_each_lost_slug_of_a_delivered_step () =
          a;
        ])
 
-let renamed_step_reads_the_mark_of_a_step_without_promises () =
-  let refactor mark =
-    steps_plan ("\n## Tidy\n\n@scope lib/**\n" ^ mark ^ "Tidy it.\n")
-  in
-  let hash = hash_of (refactor "") in
-  Alcotest.check strings "a mark that counts"
-    [ lost "tidy" ]
-    (renamed_steps
-       [ refactor ("@delivered " ^ hash ^ "\n") ]
-       [ steps_plan "\n## Tidy more\n\n@scope lib/**\nTidy it.\n" ]);
-  Alcotest.check strings "a stale mark" []
-    (renamed_steps
-       [ refactor "@delivered 000000\n" ]
-       [ steps_plan "\n## Tidy more\n\n@scope lib/**\nTidy it.\n" ])
-
 let renamed_step_reads_the_unchanged_files_of_the_base () =
   let a = ("docs/a.md", "# A\n\n@req a\n") in
   let one = steps_plan "\n## Do it\n\n@req a\n" in
@@ -921,25 +736,427 @@ let renamed_step_reads_the_unchanged_files_of_the_base () =
        [ one ]
        [ steps_plan "\n## Do that\n\n@req a\n"; a ])
 
+let commit = "0123456789abcdef0123456789abcdef01234567"
+let other_commit = "fedcba9876543210fedcba9876543210fedcba98"
+
+let delivery_findings ?(commit = commit) ?(base = []) wanted message tree =
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) -> finding.finding_class = wanted)
+       (Adjudicator.classes
+          ~deliveries:(Delivery_line.read ~commit message)
+          ~base:(facts base) (facts tree) []))
+
+let refactor_plan =
+  ( ".plans/p.md",
+    "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Tidy\n\n@scope lib/**\nTidy it.\n"
+  )
+
+let line_of (path, text) slug =
+  match Facts.plans (facts [ (path, text) ]) with
+  | [ plan ] -> (
+      match
+        List.find_opt
+          (fun (step : Facts.step) -> String.equal step.slug slug)
+          plan.steps
+      with
+      | Some step -> (
+          match Facts.delivery plan step with
+          | Some line -> Delivery_line.to_string line
+          | None -> Alcotest.fail "the step has no delivery line")
+      | None -> Alcotest.fail "no such step")
+  | _ -> Alcotest.fail "the text gives no plan"
+
+let stale message =
+  delivery_findings Finding_class.Stale_delivery message [ refactor_plan ]
+
+let stale_delivery_reports_each_line_that_does_not_count () =
+  let good = line_of refactor_plan "tidy" in
+  Alcotest.(check strings) "a line that counts" [] (stale (good ^ "\n"));
+  Alcotest.(check strings)
+    "a line with blanks at its end that counts" []
+    (stale (good ^ " \t\r\n"));
+  Alcotest.(check strings)
+    "a line of another form"
+    [
+      "- | finding:stale-delivery:message:" ^ commit
+      ^ "@L3 | the line \"Delivers: p@0a1b2c/tidy\" of commit 0123456 does not \
+         match the form Delivers: <plan>/<step> <hash>";
+    ]
+    (stale "Tidy\n\nDelivers: p@0a1b2c/tidy\n");
+  Alcotest.(check strings)
+    "a line of no step"
+    [
+      "- | finding:stale-delivery:message:" ^ commit
+      ^ "@L1 | the line \"Delivers: p@0a1b2c/other 000000\" of commit 0123456 \
+         names no step of an open plan";
+      "- | finding:stale-delivery:message:" ^ commit
+      ^ "@L2 | the line \"Delivers: p/tidy 000000\" of commit 0123456 names no \
+         step of an open plan";
+    ]
+    (stale "Delivers: p@0a1b2c/other 000000\nDelivers: p/tidy 000000\n");
+  Alcotest.(check strings)
+    "a line of another hash"
+    [
+      "- | finding:stale-delivery:message:" ^ commit
+      ^ "@L1 | the line \"Delivers: p@0a1b2c/tidy 000000\" of commit 0123456 \
+         does not match the step hash of step:p@0a1b2c/tidy; write \"" ^ good
+      ^ "\"";
+    ]
+    (stale "Delivers: p@0a1b2c/tidy 000000\n")
+
+let stale_delivery_names_the_step_and_has_no_place_and_no_fix () =
+  match
+    List.filter
+      (fun (finding : Finding.t) ->
+        finding.finding_class = Finding_class.Stale_delivery)
+      (Adjudicator.classes
+         ~deliveries:
+           (Delivery_line.read ~commit "Delivers: p@0a1b2c/tidy 000000\n"
+           @ Delivery_line.read ~commit:other_commit
+               "x\nDelivers: p@0a1b2c/tidy 000000\n")
+         ~base:(facts []) (facts [ refactor_plan ]) [])
+  with
+  | [ first; second ] ->
+      Alcotest.(check (list string))
+        "one finding for each commit"
+        [ "message:" ^ commit ^ "@L1"; "message:" ^ other_commit ^ "@L2" ]
+        (List.sort compare
+           (List.map
+              (fun (finding : Finding.t) -> Finding.ack_subject finding.subject)
+              [ first; second ]));
+      Alcotest.(check bool) "no place" true (Option.is_none first.place);
+      Alcotest.(check bool) "no fix" true (Option.is_none first.fix);
+      Alcotest.(check bool) "not ackable" false first.ackable;
+      Alcotest.(check (list string))
+        "the related place is the step"
+        [ "the step .plans/p.md:6" ]
+        (List.map
+           (fun (related : Finding.related) ->
+             match related.place with
+             | Some { path; span } ->
+                 Printf.sprintf "%s %s:%d" related.label path span.start.line
+             | None -> related.label)
+           first.related)
+  | findings ->
+      Alcotest.failf "two findings were expected, not %d" (List.length findings)
+
+let stale_delivery_shows_the_line_as_one_line_of_utf_8 () =
+  Alcotest.(check strings)
+    "the control characters and the bytes that are not UTF-8"
+    [
+      "- | finding:stale-delivery:message:" ^ commit
+      ^ "@L1 | the line \"Delivers: \\x1b[31mp\\xff/tidy 000000\" of commit \
+         0123456 does not match the form Delivers: <plan>/<step> <hash>";
+    ]
+    (stale "Delivers: \x1b[31mp\xff/tidy 000000\n")
+
+let two_promise_plan =
+  ( ".plans/p.md",
+    "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Do it\n\n@req a\n@req b\nText.\n" )
+
+let unmet ?(commit = commit) message files =
+  delivery_findings ~commit Finding_class.Delivery_on_unmet_step message files
+
+let related_parts (finding : Finding.t) =
+  List.map
+    (fun (related : Finding.related) ->
+      match related.place with
+      | Some { path; span } ->
+          Printf.sprintf "%s %s:%d" related.label path span.start.line
+      | None -> related.label)
+    finding.related
+
+let delivery_on_unmet_step_sits_at_a_step_with_an_unmet_promise () =
+  let line = line_of two_promise_plan "do-it" ^ "\n" in
+  let a = ("lib/a.md", "# A\n\n@req a\n")
+  and b = ("lib/b.md", "# B\n\n@req b\n") in
+  let finding =
+    ".plans/p.md:6 | finding:delivery-on-unmet-step:step:p@0a1b2c/do-it | \
+     commit 0123456 delivers step:p@0a1b2c/do-it, and 1 of its 2 promises are \
+     not met"
+  in
+  Alcotest.(check strings)
+    "one promise not met" [ finding ]
+    (unmet line [ two_promise_plan; a ]);
+  Alcotest.(check strings)
+    "every promise met" []
+    (unmet line [ two_promise_plan; a; b ]);
+  Alcotest.(check strings)
+    "a line that does not count" []
+    (unmet "Delivers: p@0a1b2c/do-it 000000\n" [ two_promise_plan; a ]);
+  Alcotest.(check strings)
+    "no line" []
+    (unmet "Fix it\n" [ two_promise_plan; a ]);
+  Alcotest.(check strings)
+    "two lines for one step give one finding" [ finding ]
+    (List.map show
+       (List.filter
+          (fun (finding : Finding.t) ->
+            finding.finding_class = Finding_class.Delivery_on_unmet_step)
+          (Adjudicator.classes
+             ~deliveries:
+               (Delivery_line.read ~commit ("Do it\n\n" ^ line ^ line)
+               @ Delivery_line.read ~commit:other_commit line)
+             ~base:(facts [])
+             (facts [ two_promise_plan; a ])
+             [])))
+
+let delivery_on_unmet_step_names_each_promise_not_met () =
+  match
+    List.filter
+      (fun (finding : Finding.t) ->
+        finding.finding_class = Finding_class.Delivery_on_unmet_step)
+      (Adjudicator.classes
+         ~deliveries:
+           (Delivery_line.read ~commit (line_of two_promise_plan "do-it"))
+         ~base:(facts [])
+         (facts [ two_promise_plan ])
+         [])
+  with
+  | [ finding ] ->
+      Alcotest.(check (list string))
+        "the related places"
+        [ "not met .plans/p.md:8"; "not met .plans/p.md:9" ]
+        (related_parts finding);
+      Alcotest.(check bool) "no fix" true (Option.is_none finding.fix);
+      Alcotest.(check bool) "not ackable" false finding.ackable
+  | findings ->
+      Alcotest.failf "one finding was expected, not %d" (List.length findings)
+
+let delivery_on_unmet_step_counts_no_verifies_edge_of_a_markdown_file () =
+  let plan =
+    ( ".plans/p.md",
+      "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Do it\n\n@req a\n@verifies a\n" )
+  in
+  Alcotest.(check int)
+    "the promised verifies is not met" 1
+    (List.length
+       (unmet
+          (line_of plan "do-it" ^ "\n")
+          [ plan; ("lib/a.md", "# A\n\n@req a\n\n## T\n\n@verifies a v1\n") ]))
+
+let two_step_plan =
+  ( ".plans/p.md",
+    "# P\n\n\
+     @plan p@0a1b2c\n\
+     @scope lib/**\n\n\
+     ## A\n\n\
+     @scope lib/a/**\n\
+     Do a.\n\n\
+     ## B\n\n\
+     @scope lib/b/**\n\
+     Do b.\n" )
+
+let without_change ?(base = []) changed message =
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) ->
+         finding.finding_class = Finding_class.Delivery_without_change)
+       (Adjudicator.classes ~changed
+          ~deliveries:(Delivery_line.read ~commit message)
+          ~base:(facts base) (facts [ two_step_plan ]) []))
+
+let delivery_without_change_sits_at_a_step_with_no_change_in_scope () =
+  let message =
+    line_of two_step_plan "a" ^ "\n" ^ line_of two_step_plan "b" ^ "\n"
+  in
+  let b =
+    ".plans/p.md:11 | finding:delivery-without-change:step:p@0a1b2c/b | commit \
+     0123456 delivers step:p@0a1b2c/b, and the diff changes no file in the \
+     scope of the step"
+  in
+  let a =
+    ".plans/p.md:6 | finding:delivery-without-change:step:p@0a1b2c/a | commit \
+     0123456 delivers step:p@0a1b2c/a, and the diff changes no file in the \
+     scope of the step"
+  in
+  Alcotest.(check strings)
+    "a change in the scope of a only" [ b ]
+    (without_change [ ".plans/p.md"; "lib/a/x.md" ] message);
+  Alcotest.(check strings)
+    "a change of plan files only" [ a; b ]
+    (without_change
+       ~base:[ (".plans/q.md", "# Q\n\n@plan q@111111\n@scope lib/**\n") ]
+       [ ".plans/p.md"; ".plans/q.md" ]
+       message);
+  Alcotest.(check strings)
+    "a change outside both scopes" [ a; b ]
+    (without_change [ "docs/a.md" ] message);
+  Alcotest.(check strings)
+    "a change in both scopes" []
+    (without_change [ "lib/a/x.md"; "lib/b/y.md" ] message);
+  Alcotest.(check strings)
+    "a line that does not count" []
+    (without_change [] "Delivers: p@0a1b2c/a 000000\n")
+
+let delivery_without_change_warns_and_has_no_fix () =
+  Alcotest.(check (list (option string)))
+    "the tiers at turn, review, and merged"
+    [ Some "warn"; Some "warn"; None ]
+    (List.map
+       (fun gate ->
+         Option.map Finding_class.tier_name
+           (Finding_class.builtin_tier Finding_class.Delivery_without_change
+              gate))
+       Finding_class.gates);
+  match
+    List.filter
+      (fun (finding : Finding.t) ->
+        finding.finding_class = Finding_class.Delivery_without_change)
+      (Adjudicator.classes
+         ~deliveries:(Delivery_line.read ~commit (line_of two_step_plan "a"))
+         ~base:(facts []) (facts [ two_step_plan ]) [])
+  with
+  | [ finding ] ->
+      Alcotest.(check bool) "no fix" true (Option.is_none finding.fix);
+      Alcotest.(check bool) "not ackable" false finding.ackable
+  | findings ->
+      Alcotest.failf "one finding was expected, not %d" (List.length findings)
+
+let missing ?same ?whole_base ?(message = "") base tree =
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) ->
+         finding.finding_class = Finding_class.Missing_delivery)
+       (Adjudicator.classes ?same ?whole_base
+          ~deliveries:(Delivery_line.read ~commit message)
+          ~base:(facts base) (facts tree) []))
+
+let promise_plan =
+  ( ".plans/p.md",
+    "# P\n\n@plan p@0a1b2c\n@scope **\n\n## Do it\n\n@req a\nText.\n" )
+
+let declared = ("docs/a.md", "# A\n\n@req a\n")
+
+let scoped_plan =
+  ( ".plans/p.md",
+    "# P\n\n\
+     @plan p@0a1b2c\n\
+     @scope **\n\n\
+     ## Do it\n\n\
+     @scope docs/**\n\
+     @req a\n\
+     Text.\n" )
+
+let missing_finding plan =
+  ".plans/p.md:6 | finding:missing-delivery:step:p@0a1b2c/do-it | the diff \
+   makes the promises of step:p@0a1b2c/do-it met, and no delivery line of the \
+   change counts for it; add the line \"" ^ line_of plan "do-it"
+  ^ "\" to a commit message"
+
+let missing_delivery_sits_at_a_step_that_the_diff_makes_met () =
+  let line = line_of promise_plan "do-it" in
+  Alcotest.check strings "the diff declares a"
+    [ missing_finding promise_plan ]
+    (missing [ promise_plan ] [ promise_plan; declared ]);
+  Alcotest.check strings "a new plan with its promise met"
+    [ missing_finding promise_plan ]
+    (missing [] [ promise_plan; declared ]);
+  Alcotest.check strings "a line that counts" []
+    (missing
+       ~message:("Do it\n\n" ^ line ^ "\n")
+       [ promise_plan ] [ promise_plan; declared ]);
+  Alcotest.check strings "a line that does not count"
+    [ missing_finding promise_plan ]
+    (missing ~message:"Delivers: p@0a1b2c/do-it 000000\n" [ promise_plan ]
+       [ promise_plan; declared ]);
+  Alcotest.check strings "a new plan whose promise the base meets" []
+    (missing [ declared ] [ promise_plan; declared ]);
+  Alcotest.check strings "a new plan whose citation the base holds" []
+    (missing
+       [ ("docs/guide.md", "# G\n\n@cites gh/1\n") ]
+       [
+         ( ".plans/p.md",
+           "# P\n\n@plan p@0a1b2c\n@scope docs/**\n\n## Do it\n\n@cites gh/1\n"
+         );
+         ("docs/guide.md", "# G\n\n@cites gh/1\n");
+       ]);
+  Alcotest.check strings "the base meets it outside the scope of the step"
+    [ missing_finding scoped_plan ]
+    (missing
+       [ scoped_plan; ("lib/a.md", "# A\n\n@req a\n") ]
+       [ scoped_plan; ("docs/a.md", "# A\n\n@req a\n") ]);
+  Alcotest.check strings "met in the base already" []
+    (missing [ promise_plan; declared ] [ promise_plan; declared ]);
+  Alcotest.check strings "not met in the tree" []
+    (missing [ promise_plan ] [ promise_plan ]);
+  Alcotest.check strings "a step without promises" []
+    (missing [] [ refactor_plan ])
+
+let missing_delivery_reads_the_unchanged_files_of_the_base () =
+  let tree_plan =
+    let path, text = promise_plan in
+    (path, text ^ "More text.\n")
+  in
+  let unchanged path = String.equal path "docs/a.md" in
+  Alcotest.check strings "the meeting fact sits in an unchanged file" []
+    (missing ~same:unchanged
+       ~whole_base:(lazy (facts [ promise_plan; declared ]))
+       [ promise_plan ] [ tree_plan; declared ])
+
+let missing_delivery_has_no_fix_and_takes_no_tier_at_turn () =
+  Alcotest.(check (list (option string)))
+    "the tiers at turn, review, and merged"
+    [ None; Some "block"; None ]
+    (List.map
+       (fun gate ->
+         Option.map Finding_class.tier_name
+           (Finding_class.builtin_tier Finding_class.Missing_delivery gate))
+       Finding_class.gates);
+  match
+    List.filter
+      (fun (finding : Finding.t) ->
+        finding.finding_class = Finding_class.Missing_delivery)
+      (Adjudicator.classes ~base:(facts [])
+         (facts [ promise_plan; declared ])
+         [])
+  with
+  | [ finding ] ->
+      Alcotest.(check bool) "no fix" true (Option.is_none finding.fix);
+      Alcotest.(check bool) "not ackable" false finding.ackable
+  | findings ->
+      Alcotest.failf "one finding was expected, not %d" (List.length findings)
+
+let missing_delivery_needs_wanted () =
+  Alcotest.check strings "not wanted" []
+    (List.map show
+       (Adjudicator.classes
+          ~wanted:(fun finding_class ->
+            finding_class <> Finding_class.Missing_delivery)
+          ~base:(facts [])
+          (facts [ promise_plan; declared ])
+          []))
+
 let tests =
   [
-    Alcotest.test_case "renamed-step reports each lost slug of a delivered step"
-      `Quick renamed_step_reports_each_lost_slug_of_a_delivered_step;
-    Alcotest.test_case "renamed-step reads the mark of a step without promises"
-      `Quick renamed_step_reads_the_mark_of_a_step_without_promises;
+    case "missing-delivery sits at a step that the diff makes met"
+      missing_delivery_sits_at_a_step_that_the_diff_makes_met;
+    case "missing-delivery reads the unchanged files of the base"
+      missing_delivery_reads_the_unchanged_files_of_the_base;
+    case "missing-delivery has no fix and takes no tier at turn"
+      missing_delivery_has_no_fix_and_takes_no_tier_at_turn;
+    case "missing-delivery needs wanted" missing_delivery_needs_wanted;
+    case "delivery-without-change sits at a step with no change in scope"
+      delivery_without_change_sits_at_a_step_with_no_change_in_scope;
+    case "delivery-without-change warns and has no fix"
+      delivery_without_change_warns_and_has_no_fix;
+    case "delivery-on-unmet-step sits at a step with an unmet promise"
+      delivery_on_unmet_step_sits_at_a_step_with_an_unmet_promise;
+    case "delivery-on-unmet-step names each promise not met"
+      delivery_on_unmet_step_names_each_promise_not_met;
+    case "delivery-on-unmet-step counts no verifies edge of a markdown file"
+      delivery_on_unmet_step_counts_no_verifies_edge_of_a_markdown_file;
+    case "stale-delivery reports each line that does not count"
+      stale_delivery_reports_each_line_that_does_not_count;
+    case "stale-delivery names the step and has no place and no fix"
+      stale_delivery_names_the_step_and_has_no_place_and_no_fix;
+    case "stale-delivery shows the line as one line of UTF-8"
+      stale_delivery_shows_the_line_as_one_line_of_utf_8;
+    Alcotest.test_case "renamed-step reports each lost slug of a started step"
+      `Quick renamed_step_reports_each_lost_slug_of_a_started_step;
     Alcotest.test_case "renamed-step reads the unchanged files of the base"
       `Quick renamed_step_reads_the_unchanged_files_of_the_base;
-    Alcotest.test_case "unmarked-step sits at a step that the diff makes met"
-      `Quick unmarked_step_sits_at_a_step_that_the_diff_makes_met;
-    Alcotest.test_case "unmarked-step reads the unchanged files of the base"
-      `Quick unmarked_step_reads_the_unchanged_files_of_the_base;
-    Alcotest.test_case "the fix of unmarked-step makes a mark that counts"
-      `Quick the_fix_of_unmarked_step_makes_a_mark_that_counts;
-    Alcotest.test_case
-      "mark-without-change sits at a mark with no change in scope" `Quick
-      mark_without_change_sits_at_a_mark_with_no_change_in_scope;
-    Alcotest.test_case "a new hash on a mark that counted is no added mark"
-      `Quick a_new_hash_on_a_mark_that_counted_is_no_added_mark;
     case "unbumped marks the revision or the word"
       unbumped_marks_the_revision_or_the_word;
     case "renamed marks the target and names the new declaration"
