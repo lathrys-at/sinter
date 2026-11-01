@@ -1,12 +1,12 @@
 # The ledger
 @plan ledger@b74038
-@scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**, .github/workflows/**, CLAUDE.md, README.md, CONTRIBUTING.md
+@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, plugins/**, .claude-plugin/**, .github/workflows/**, CLAUDE.md, README.md, CONTRIBUTING.md
 Read and write the ledger: approvals, declines, and closings, the job
 on the default branch that records deliveries, plans, and closings,
 and plans that live in the ledger without a file.
 
 ## Read and verify the ledger
-@scope spec/**, docs/**, lib/**, bin/**, test/**
+@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, CONTRIBUTING.md
 @decision ledger-layout
 Read `refs/sinter/ledger` in closed chunks, check each entry by its
 canonical bytes and its id, verify the history entry by entry, report
