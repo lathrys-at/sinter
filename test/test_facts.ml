@@ -1780,6 +1780,7 @@ let standing_refuses_a_promise_of_other_facts () =
           ("a plan of other facts", other, other_one, other_a);
           ("a step of another plan", plan, other_one, other_a);
           ("a promise of another step", plan, one, b);
+          ("the same promise of other facts", plan, one, other_a);
         ];
       ignore (Facts.standing facts plan one a)
   | _ -> Alcotest.fail "one plan with two steps of one promise in each"
@@ -2334,6 +2335,45 @@ let a_plan_grows_in_proportion_to_its_first_block () =
       ])
     (Facts.make manifest)
 
+let stand_each_promise facts =
+  List.iter
+    (fun (plan : Facts.plan) ->
+      List.iter
+        (fun (step : Facts.step) ->
+          let standing = Facts.standing facts plan step in
+          List.iter
+            (fun promise -> ignore (Sys.opaque_identity (standing promise)))
+            step.promises)
+        plan.steps)
+    (Facts.plans facts)
+
+let standing_grows_in_proportion_to_the_steps () =
+  Timed_work.check_growth ~margin:3. ~runs:3 ~sizes:(4_000, 32_000)
+    ~input:(fun count ->
+      facts
+        [
+          ( ".plans/p.md",
+            "# P\n\n@plan p\n@scope docs/**\n\n"
+            ^ String.concat ""
+                (List.init count (fun index ->
+                     Printf.sprintf "## Step %d\n\n@cites c%d\n\n" index index))
+          );
+        ])
+    stand_each_promise
+
+let standing_grows_in_proportion_to_the_promises () =
+  Timed_work.check_growth ~margin:3. ~runs:3 ~sizes:(4_000, 32_000)
+    ~input:(fun count ->
+      facts
+        [
+          ( ".plans/p.md",
+            "# P\n\n@plan p@abcdef\n@scope docs/**\n\n## Step\n\n"
+            ^ String.concat ""
+                (List.init count (fun index ->
+                     Printf.sprintf "@cites c%d\n" index)) );
+        ])
+    stand_each_promise
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -2433,6 +2473,10 @@ let tests =
       a_plan_grows_in_proportion_to_its_first_block;
     case "the first block of a plan belongs to no step"
       the_first_block_of_a_plan_belongs_to_no_step;
+    case "standing grows in proportion to the steps"
+      standing_grows_in_proportion_to_the_steps;
+    case "standing grows in proportion to the promises"
+      standing_grows_in_proportion_to_the_promises;
     case "a supersedes edge from a site is not effective"
       a_supersedes_edge_from_a_site_is_not_effective;
     case "an ack names the fact of its block" an_ack_names_the_fact_of_its_block;

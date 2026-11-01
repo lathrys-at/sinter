@@ -195,6 +195,7 @@ type t = {
   lookups : lookups Lazy.t;
   block_hashes : string array Paths.t Lazy.t;
   block_acks : ack list Blocks.t Lazy.t;
+  steps_by_name : (plan * step) list Pairs.t Lazy.t;
 }
 
 let site_id path (section : Markdown.section) =
@@ -699,6 +700,18 @@ let make manifest files =
                (fun found -> Some (ack :: Option.value found ~default:[]))
                groups)
            Blocks.empty (List.rev acks));
+    steps_by_name =
+      lazy
+        (List.fold_left
+           (fun names (plan : plan) ->
+             List.fold_left
+               (fun names (step : step) ->
+                 Pairs.update (plan.path, step.slug)
+                   (fun found ->
+                     Some ((plan, step) :: Option.value found ~default:[]))
+                   names)
+               names plan.steps)
+           Pairs.empty plans);
   }
 
 type fact = {
@@ -923,14 +936,29 @@ let standing_within facts ~in_scope (promise : promise) =
   in
   { by = List.find_opt inside meeting_facts; meeting_facts }
 
-let standing facts plan step =
-  if not (List.memq plan facts.plans && List.memq step plan.steps) then
-    invalid_arg "Facts.standing: the step is not one of these facts";
+let standing facts (plan : plan) (step : step) =
+  if
+    not
+      (List.exists
+         (fun (known, named) -> known == plan && named == step)
+         (Option.value
+            (Pairs.find_opt (plan.path, step.slug)
+               (Lazy.force facts.steps_by_name))
+            ~default:[]))
+  then invalid_arg "Facts.standing: the step is not one of these facts";
   let in_scope = Path_set.mem (path_set (effective_scope plan step)) in
+  let promises =
+    List.fold_left
+      (fun promises (promise : promise) ->
+        Pairs.add (promise.word, promise.target) promise promises)
+      Pairs.empty step.promises
+  in
   fun (promise : promise) ->
-    if not (List.memq promise step.promises) then
-      invalid_arg "Facts.standing: the promise is not one of this step";
-    standing_within facts ~in_scope promise
+    match Pairs.find_opt (promise.word, promise.target) promises with
+    | Some known when known == promise ->
+        standing_within facts ~in_scope promise
+    | Some _ | None ->
+        invalid_arg "Facts.standing: the promise is not one of this step"
 
 let met_within facts ~scope ~word ~target =
   let in_scope = Path_set.mem (path_set scope) in
