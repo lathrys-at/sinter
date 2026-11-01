@@ -1408,6 +1408,119 @@ let print_rendered (content, (finding : Finding.t), tier) =
           finding.related))
     (Option.fold ~none:"none" ~some:Fix.text finding.fix)
 
+let sarif_text =
+  let open Gen in
+  map (String.concat "")
+    (list_size (int_range 1 12)
+       (oneof_list
+          [
+            "a";
+            " ";
+            "{";
+            "}";
+            "{{";
+            "[";
+            "]";
+            "](";
+            "\\";
+            "(";
+            ")";
+            "%";
+            "\t";
+            "\n";
+            "\xc3\xa9";
+            "\xe6\x97\xa5";
+            "\xf0\x9f\xa6\x80";
+          ]))
+
+let sarif_path =
+  let open Gen in
+  map (String.concat "")
+    (list_size (int_range 1 8)
+       (oneof_list
+          [
+            "a";
+            "/";
+            ".";
+            "-";
+            "_";
+            "~";
+            "Z";
+            "9";
+            " ";
+            "%";
+            "#";
+            "?";
+            ":";
+            "+";
+            "{";
+            "[";
+            "\"";
+            "\\";
+            "\xc3\xa9";
+            "\xf0\x9f\xa6\x80";
+          ]))
+
+let sarif_place =
+  let open Gen in
+  let* place = rendered_place in
+  let+ path = sarif_path in
+  { place with Finding.path }
+
+let sarif_finding =
+  let open Gen in
+  let* finding_class = oneof_list Finding_class.all in
+  let* tier =
+    oneof_list [ Finding_class.Off; Finding_class.Warn; Finding_class.Block ]
+  in
+  let* detail = option sarif_text in
+  let* place = option sarif_place in
+  let* mark =
+    match place with
+    | Some place ->
+        let* mark = rendered_mark place in
+        let+ label = sarif_text in
+        Option.map (fun (mark : Finding.mark) -> { mark with label }) mark
+    | None -> return None
+  in
+  let* places = list_size (int_range 0 3) (option sarif_place) in
+  let* label = sarif_text in
+  let related =
+    List.mapi
+      (fun index place ->
+        { Finding.label = label ^ " " ^ string_of_int index; place })
+      places
+  in
+  let* fix =
+    match place with
+    | None -> return None
+    | Some _ ->
+        oneof_list
+          [
+            None;
+            Some (fun () -> Edits.word_fix "req");
+            Some (fun () -> Fix.pin (Edits.tag "@cites a v1\n") 2);
+            Some (fun () -> Fix.pin (Edits.tag "@cites a\n") 2);
+            Some (fun () -> Fix.spelling (Edits.tag "@cites a\n") "");
+            Some
+              (fun () ->
+                Fix.successors (Edits.tag "@cites a v1\n") ("b", 2) [ ("c", 3) ]);
+            Some
+              (fun () ->
+                Fix.ack (Edits.document "@cites a\r\n") ~block:0 ~target:"a");
+          ]
+  in
+  return
+    ( Finding.make finding_class
+        (Finding.Line { path = "a.md"; line = 1 })
+        ?place ?detail ?mark ~related
+        ?fix:(Option.map (fun make -> make ()) fix)
+        (),
+      tier )
+
+let print_sarif_finding ((finding : Finding.t), tier) =
+  print_rendered ("", finding, Some tier)
+
 let error_text =
   let open Gen in
   let position =

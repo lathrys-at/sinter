@@ -48,6 +48,20 @@ val print_rendered :
   QCheck2.Print.t
 (** [print_rendered] prints a value of {!rendered_finding}. *)
 
+val sarif_finding :
+  (Sinter_core.Finding.t * Sinter_core.Finding_class.tier) QCheck2.Gen.t
+(** A finding of any class and a tier: [Off], [Warn], or [Block]. Its detail,
+    the label of its mark, and the labels of its related places hold braces,
+    brackets, backslashes, tabs, line feeds, and characters of two, three, and
+    four bytes. Its place, when it has one, and each related place in a file
+    have a path that needs percent-encoding at times. A finding with a place can
+    have a mark, and a fix of one alternative or of two, an insert, or a
+    deletion. Every string is valid UTF-8. *)
+
+val print_sarif_finding :
+  (Sinter_core.Finding.t * Sinter_core.Finding_class.tier) QCheck2.Print.t
+(** [print_sarif_finding] prints a value of {!sarif_finding}. *)
+
 val error_text : Sinter_core.Error_text.t QCheck2.Gen.t
 (** An error whose fault, help, path, and line hold the pieces of
     {!terminal_text}. The help is sometimes empty. The place, when there is one,

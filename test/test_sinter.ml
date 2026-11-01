@@ -51,6 +51,7 @@ let () =
       ("style", Test_style.tests);
       ("render", Test_render.tests);
       ("porcelain", Test_porcelain.tests);
+      ("sarif", Test_sarif.tests);
       ("usage", Test_usage.tests);
       ("tag line", Test_tag_line.tests);
       ("slug", Test_slug.tests);
