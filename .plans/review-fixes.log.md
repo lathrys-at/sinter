@@ -28,3 +28,27 @@
 - Left for later: `Scan.escape_path` allocates more than in proportion
   to its path, as `Delivery_line.shown` does: 6,550 words for 100
   bytes of 0xff, and 254,612 words for 1,600.
+
+## Correct the messages of the manifest
+
+- `Toml`, `Glob`, `Branch_name`, and `Id_pattern` give each message in
+  two parts, the fault and the help. The manifest no longer splits a
+  message at its first "; ". The one-line `message` of each module
+  stays, as the two parts joined with "; ", so its text and its tests
+  do not change.
+- The bridge names the last table on the path of a dotted key that a
+  header made. An implicit table on the path does not count. An array
+  of tables counts, and the walk goes on into its last table.
+- Left for later: two forms still give a help that does not read when
+  the person follows it. Both are the same on `main`:
+  - The last key is itself a header table. For `[a.b.c]`, `[a.b]`,
+    then `[a]` and `b.c = 1`, the help says to write 'c' under
+    `[a.b]`, and that defines `c` twice.
+  - An inline table is on the path. For `[a.b]` with `c = {d = 1}`,
+    then `[a]` and `b.c.x = 1`, the help says to write 'c.x' under
+    `[a.b]`, and that gives the error of an inline table.
+- The test of a manifest that does not open uses a Unix socket. The
+  system refuses to open a socket for every user. A socket path holds
+  at most 104 bytes on macOS, and the folder of a worker of the
+  mutation pass is under the checkout. So the test makes the socket by
+  its name inside its folder.
