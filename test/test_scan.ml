@@ -1113,6 +1113,29 @@ let a_manifest_outside_the_repository_has_no_base () =
   | Error error ->
       Alcotest.failf "the load fails: %s" (String.concat "; " (messages error))
 
+let error_texts error =
+  List.concat_map
+    (fun { Error_text.fault; help; place } ->
+      let line = Option.bind place (fun { Error_text.line; _ } -> line) in
+      fault :: help :: Option.to_list line)
+    (Scan.explain error)
+
+let a_manifest_that_links_out_of_the_repository_is_not_read () =
+  let secret = Filename.concat (Git_fixture.temp_dir ()) "secret.env" in
+  Out_channel.with_open_bin secret (fun channel ->
+      Out_channel.output_string channel "TOKEN=hidden-value\n");
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "a.md" "# A\n";
+  Git_fixture.symlink repo ~target:secret "sinter.toml";
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  Alcotest.(check (list string))
+    "the texts of the outcome that hold the text of the target" []
+    (match scan ~base:"HEAD" repo with
+    | Ok _ -> [ "the scan reads the target as its manifest" ]
+    | Error error ->
+        List.filter (contains "hidden-value") (error_texts error))
+
 let case name f = Alcotest.test_case name `Quick f
 
 let a_manifest_whose_path_is_not_utf_8_gives_an_answer () =
@@ -1207,4 +1230,6 @@ let tests =
       a_manifest_error_with_no_text_shows_no_source_line;
     case "each error says what is wrong and what to do"
       each_error_says_what_is_wrong_and_what_to_do;
+    case "a manifest that links out of the repository is not read"
+      a_manifest_that_links_out_of_the_repository_is_not_read;
   ]
