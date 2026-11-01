@@ -2171,10 +2171,34 @@ let met_within_reads_the_facts_with_the_scope_of_a_step () =
 
 let case name f = Alcotest.test_case name `Quick f
 
+let a_plan_of_many_steps_makes_its_facts_quickly () =
+  let count = 30_000 in
+  let text =
+    "# P\n\n@plan p\n\n"
+    ^ String.concat ""
+        (List.init count (fun i ->
+             Printf.sprintf "## Step %d\n\n@cites s%d\n\n" i i))
+  in
+  let plan = document text in
+  let start = Unix.gettimeofday () in
+  let facts = Facts.make (manifest ()) [ (".plans/p.md", plan) ] in
+  let seconds = Unix.gettimeofday () -. start in
+  let steps =
+    match Facts.plans facts with
+    | [ plan ] -> List.length plan.steps
+    | _ -> Alcotest.fail "the file gives no plan"
+  in
+  Alcotest.(check int) "the steps" count steps;
+  Alcotest.(check bool)
+    (Printf.sprintf "%d steps: facts in %.3f s, under 5 s" count seconds)
+    true (seconds < 5.0)
+
 let tests =
   [
     case "the step hash covers the scope, the promises, and the prose"
       the_step_hash_covers_the_scope_the_promises_and_the_prose;
+    case "a plan of many steps makes its facts quickly"
+      a_plan_of_many_steps_makes_its_facts_quickly;
     case "met_within reads the facts with the scope of a step"
       met_within_reads_the_facts_with_the_scope_of_a_step;
     case "a plan file read without texts is refused"
