@@ -24,6 +24,11 @@
     successor, and bump the revision of the citing declaration (record
     `cite-the-successor`).
 - **Ledger commands and evidence import**
+- **`sinter explain`** — design notes section 11.7. `sinter explain
+  --short <class>` prints the sentence of the class that SARIF also
+  writes (record `sarif-output`). Without `--short`, a paragraph of
+  explanation and an example follow. SARIF can then take that
+  paragraph for the full description and the help of each rule.
 - **Show the approval delta so that a person reads it** — a person
   approves the changes to a set of items since their last approval
   (design notes section 6.4). How to show those changes so that the
