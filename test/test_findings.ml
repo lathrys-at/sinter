@@ -193,159 +193,13 @@ let misplaced_plan_sits_outside_the_first_block_of_a_plan_file () =
        is not in a file under .plans/";
     ]
 
-let mark_plan marks =
+let plan_with lines =
   ( ".plans/p.md",
-    "# P\n\n@plan p\n@scope **\n\n## Do it\n\n@req a\n" ^ marks
+    "# P\n\n@plan p\n@scope **\n\n## Do it\n\n@req a\n" ^ lines
     ^ "Text.\n\nMore.\n" )
 
-let invalid_target_sits_at_a_mark_with_a_bad_hash () =
-  check Finding_class.Invalid_target
-    [ mark_plan "@delivered\n@delivered ABCDEF\n@delivered 12345\n" ]
-    [
-      ".plans/p.md:9:1-9:11 | finding:invalid-target:tag:.plans/p.md@L9C1 | \
-       the mark names no hash";
-      ".plans/p.md:10:1-10:18 | finding:invalid-target:tag:.plans/p.md@L10C1 | \
-       the hash ABCDEF of the mark is not six lowercase hex digits";
-      ".plans/p.md:11:1-11:17 | finding:invalid-target:tag:.plans/p.md@L11C1 | \
-       the hash 12345 of the mark is not six lowercase hex digits";
-    ]
-
-let misplaced_plan_sits_at_a_mark_outside_the_tag_block_of_a_step () =
-  check Finding_class.Misplaced_plan
-    [
-      ( ".plans/p.md",
-        "# P\n\n\
-         @plan p\n\
-         @delivered 000000\n\n\
-         ## Do it\n\n\
-         @req a\n\
-         @delivered 000000\n\n\
-         - @delivered 000000\n\n\
-         ## Prose\n\n\
-         @delivered 000000\n" );
-      ("docs/a.md", "# A\n\n@delivered 000000\n");
-    ]
-    [
-      ".plans/p.md:4:1-4:18 | finding:misplaced-plan:tag:.plans/p.md@L4C1 | \
-       @delivered 000000 is not in the tag block of a step";
-      ".plans/p.md:11:3-11:20 | finding:misplaced-plan:tag:.plans/p.md@L11C3 | \
-       @delivered 000000 is not in the tag block of a step";
-      ".plans/p.md:15:1-15:18 | finding:misplaced-plan:tag:.plans/p.md@L15C1 | \
-       @delivered 000000 is not in the tag block of a step";
-      "docs/a.md:3:1-3:18 | finding:misplaced-plan:tag:docs/a.md@L3C1 | \
-       @delivered 000000 is not in the tag block of a step";
-    ]
-
-let duplicate_sits_at_each_mark_after_the_first () =
-  check Finding_class.Duplicate
-    [ mark_plan "@delivered 000000\n@delivered 111111\n@delivered\n" ]
-    [
-      ".plans/p.md:10:1-10:18 | finding:duplicate:tag:.plans/p.md@L10C1 | \
-       step:p/do-it holds a mark earlier";
-      ".plans/p.md:11:1-11:11 | finding:duplicate:tag:.plans/p.md@L11C1 | \
-       step:p/do-it holds a mark earlier";
-    ]
-
-let a_mark_is_no_typo_tag () =
-  check Finding_class.Typo_tag [ mark_plan "@delivered 000000\n" ] []
-
-let current_hash (path, text) =
-  match Facts.plans (Facts.make (manifest "") [ (path, document text) ]) with
-  | [ { steps = step :: _; _ } ] -> Facts.mark_hash step
-  | _ -> Alcotest.fail "the plan has no step"
-
-let stale_mark_sits_at_a_mark_that_does_not_count () =
-  let hash = current_hash (mark_plan "") in
-  check Finding_class.Stale_mark
-    [ mark_plan "@delivered 000000\n" ]
-    [
-      Printf.sprintf
-        ".plans/p.md:9:1-9:18 | finding:stale-mark:step:p/do-it | the mark of \
-         step:p/do-it names 000000, and the step hash starts with %s | fix: \
-         @delivered %s"
-        hash hash;
-    ];
-  check Finding_class.Stale_mark [ mark_plan ("@delivered " ^ hash ^ "\n") ] [];
-  check Finding_class.Stale_mark
-    [ mark_plan "@delivered ABCDEF\n"; mark_plan "@delivered\n" ]
-    [];
-  check Finding_class.Stale_mark [ mark_plan "" ] []
-
-let the_fix_of_stale_mark_makes_the_mark_count () =
-  let plan = mark_plan "@delivered 000000\n" in
-  match
-    List.filter
-      (fun (finding : Finding.t) ->
-        finding.finding_class = Finding_class.Stale_mark)
-      (findings [ plan ])
-  with
-  | [ { fix = Some fix; _ } ] ->
-      let text = Edits.apply (snd plan) (List.hd (Fix.alternatives fix)) in
-      check Finding_class.Stale_mark [ (fst plan, text) ] [];
-      Alcotest.(check bool)
-        "the fix is no ack" false
-        (List.exists
-           (fun (finding : Finding.t) ->
-             finding.finding_class = Finding_class.Stale_ack)
-           (findings [ (fst plan, text) ]))
-  | _ -> Alcotest.fail "one stale-mark with a fix"
-
-let stale_mark_is_not_ackable () =
-  List.iter
-    (fun (finding : Finding.t) ->
-      if finding.finding_class = Finding_class.Stale_mark then
-        Alcotest.(check bool) "not ackable" false finding.ackable)
-    (findings [ mark_plan "@delivered 000000\n" ])
-
-let two_promise_plan marks =
-  ( ".plans/p.md",
-    "# P\n\n@plan p\n@scope **\n\n## Do it\n\n@req a\n@req b\n" ^ marks
-    ^ "Text.\n" )
-
-let mark_on_unmet_step_sits_at_a_mark_that_counts () =
-  let hash = current_hash (two_promise_plan "") in
-  let mark = "@delivered " ^ hash ^ "\n" in
-  check Finding_class.Mark_on_unmet_step
-    [ two_promise_plan mark; ("lib/a.md", "# A\n\n@req a\n") ]
-    [
-      ".plans/p.md:10:1-10:18 | finding:mark-on-unmet-step:step:p/do-it | \
-       step:p/do-it is marked as delivered, and 1 of its 2 promises are not \
-       met";
-    ];
-  check Finding_class.Mark_on_unmet_step
-    [ two_promise_plan mark; ("lib/a.md", "# A\n\n@req a\n\n## B\n\n@req b\n") ]
-    [];
-  check Finding_class.Mark_on_unmet_step
-    [ two_promise_plan "@delivered 000000\n" ]
-    [];
-  check Finding_class.Mark_on_unmet_step [ two_promise_plan "" ] []
-
-let mark_on_unmet_step_counts_no_verifies_edge_of_a_markdown_file () =
-  let plan text =
-    ( ".plans/p.md",
-      "# P\n\n@plan p\n@scope **\n\n## Do it\n\n@req a\n@verifies a\n" ^ text )
-  in
-  let hash = current_hash (plan "") in
-  check Finding_class.Mark_on_unmet_step
-    [
-      plan ("@delivered " ^ hash ^ "\n");
-      ("lib/a.md", "# A\n\n@req a\n\n## T\n\n@verifies a v1\n");
-    ]
-    [
-      ".plans/p.md:10:1-10:18 | finding:mark-on-unmet-step:step:p/do-it | \
-       step:p/do-it is marked as delivered, and 1 of its 2 promises are not \
-       met";
-    ]
-
-let mark_on_unmet_step_is_not_ackable_and_has_no_fix () =
-  let hash = current_hash (two_promise_plan "") in
-  List.iter
-    (fun (finding : Finding.t) ->
-      if finding.finding_class = Finding_class.Mark_on_unmet_step then begin
-        Alcotest.(check bool) "not ackable" false finding.ackable;
-        Alcotest.(check bool) "no fix" true (Option.is_none finding.fix)
-      end)
-    (findings [ two_promise_plan ("@delivered " ^ hash ^ "\n") ])
+let the_word_delivered_is_no_typo_tag () =
+  check Finding_class.Typo_tag [ plan_with "@delivered 000000\n" ] []
 
 let duplicate_sits_at_each_later_member_of_a_group () =
   check Finding_class.Duplicate
@@ -1309,37 +1163,6 @@ let invalid_target_marks_the_target_of_a_plan () =
       ".plans/c.md:3 / 7-16 not a valid slug";
     ]
 
-let a_bad_mark_marks_its_part () =
-  check_parts Finding_class.Invalid_target
-    [ mark_plan "@delivered\n@delivered ABCDEF\n" ]
-    [
-      ".plans/p.md:9 / 1-11 no hash";
-      ".plans/p.md:10 / 12-18 not six lowercase hex digits";
-    ];
-  check_parts Finding_class.Misplaced_plan
-    [ ("docs/a.md", "# A\n\n@delivered 000000\n") ]
-    [ "docs/a.md:3 / 1-11 not in the tag block of a step" ];
-  check_parts Finding_class.Duplicate
-    [ mark_plan "@delivered 000000\n@delivered 111111\n" ]
-    [
-      ".plans/p.md:10 / 1-11 marked again here / the mark of the step at \
-       .plans/p.md:9:1-9:18";
-    ]
-
-let stale_mark_marks_the_hash () =
-  check_parts Finding_class.Stale_mark
-    [ mark_plan "@delivered 000000\n" ]
-    [ ".plans/p.md:9 / 12-18 not the step hash" ]
-
-let mark_on_unmet_step_names_each_promise_not_met () =
-  let hash = current_hash (two_promise_plan "") in
-  check_parts Finding_class.Mark_on_unmet_step
-    [ two_promise_plan ("@delivered " ^ hash ^ "\n") ]
-    [
-      ".plans/p.md:10 / 1-11 marked as delivered / not met at \
-       .plans/p.md:8:1-8:7 / not met at .plans/p.md:9:1-9:7";
-    ]
-
 let duplicate_marks_the_target_and_names_the_first () =
   check_parts Finding_class.Duplicate
     [
@@ -1836,34 +1659,13 @@ let tests =
     case "step-without-promises is not ackable and has no fix"
       step_without_promises_is_not_ackable_and_has_no_fix;
     case "the findings are sorted" the_findings_are_sorted;
-    case "invalid-target sits at a mark with a bad hash"
-      invalid_target_sits_at_a_mark_with_a_bad_hash;
-    case "misplaced-plan sits at a mark outside the tag block of a step"
-      misplaced_plan_sits_at_a_mark_outside_the_tag_block_of_a_step;
-    case "duplicate sits at each mark after the first"
-      duplicate_sits_at_each_mark_after_the_first;
-    case "a mark is no typo-tag" a_mark_is_no_typo_tag;
-    case "stale-mark sits at a mark that does not count"
-      stale_mark_sits_at_a_mark_that_does_not_count;
-    case "the fix of stale-mark makes the mark count"
-      the_fix_of_stale_mark_makes_the_mark_count;
-    case "stale-mark is not ackable" stale_mark_is_not_ackable;
-    case "mark-on-unmet-step sits at a mark that counts"
-      mark_on_unmet_step_sits_at_a_mark_that_counts;
-    case "mark-on-unmet-step counts no verifies edge of a markdown file"
-      mark_on_unmet_step_counts_no_verifies_edge_of_a_markdown_file;
-    case "mark-on-unmet-step is not ackable and has no fix"
-      mark_on_unmet_step_is_not_ackable_and_has_no_fix;
+    case "the word delivered is no typo-tag" the_word_delivered_is_no_typo_tag;
     case "merged-incomplete sits at a step with some promises met"
       merged_incomplete_sits_at_a_step_with_some_promises_met;
     case "merged-incomplete names each promise not met"
       merged_incomplete_names_each_promise_not_met;
     case "merged-incomplete counts no verifies edge of a markdown file"
       merged_incomplete_counts_no_verifies_edge_of_a_markdown_file;
-    case "a bad mark marks its part" a_bad_mark_marks_its_part;
-    case "stale-mark marks the hash" stale_mark_marks_the_hash;
-    case "mark-on-unmet-step names each promise not met"
-      mark_on_unmet_step_names_each_promise_not_met;
     case "merged-incomplete is not ackable and has no fix"
       merged_incomplete_is_not_ackable_and_has_no_fix;
   ]

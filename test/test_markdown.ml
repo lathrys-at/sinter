@@ -1296,7 +1296,7 @@ let the_text_of_a_section_leaves_out_its_heading_and_its_tag_lines () =
      @plan p\n\n\
      ## Step one  \n\n\
      @scope lib/**\n\
-     @delivered abc123\n\
+     @note abc123\n\
      Do the work.  \n\
      More.\n\n\
      ### 2.1 Detail\n\n\

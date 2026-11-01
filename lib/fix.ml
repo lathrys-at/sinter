@@ -14,8 +14,6 @@ type t =
     }
   | Plan_id of { tag : Markdown.tag; id : Plan_target.id }
   | Ack of { last : Markdown.tag; block : Markdown.block; target : string }
-  | Mark_hash of { tag : Markdown.tag; hash : string }
-  | Mark_line of { last : Markdown.tag; block : Markdown.block; hash : string }
 
 let fail reason = invalid_arg ("Fix: " ^ reason)
 
@@ -51,21 +49,10 @@ let plan_id tag id =
   targeted tag;
   Plan_id { tag; id }
 
-let mark_hash tag hash =
-  targeted tag;
-  Mark_hash { tag; hash }
-
-let last_tag (document : Markdown.t) block =
+let ack (document : Markdown.t) ~block ~target =
   let block = document.blocks.(block) in
-  (document.tags.(List.nth block.tags (List.length block.tags - 1)), block)
-
-let ack document ~block ~target =
-  let last, block = last_tag document block in
-  Ack { last; block; target }
-
-let mark_line document ~block ~hash =
-  let last, block = last_tag document block in
-  Mark_line { last; block; hash }
+  let last = List.nth block.tags (List.length block.tags - 1) in
+  Ack { last = document.tags.(last); block; target }
 
 type edit = { line : int; col : int; eline : int; ecol : int; text : string }
 
@@ -104,21 +91,10 @@ let retarget (tag : Markdown.tag) (slug, rev) =
 let ack_line target (block : Markdown.block) =
   Printf.sprintf "@ack retired %s %s" target (String.sub block.hash 0 8)
 
-let after (last : Markdown.tag) (block : Markdown.block) line =
-  let stop = last.span.stop in
-  {
-    line = stop.line;
-    col = stop.column;
-    eline = stop.line;
-    ecol = stop.column;
-    text = block.new_line ^ line;
-  }
-
 let alternatives = function
   | Word { tag; word } -> [ [ replace tag Tag_line.Word ("@" ^ word) ] ]
   | Pin { tag; rev } | Bump { tag; rev } -> [ [ revision tag rev ] ]
-  | Spelling { tag; target } | Mark_hash { tag; hash = target } ->
-      [ [ replace tag Tag_line.Target target ] ]
+  | Spelling { tag; target } -> [ [ replace tag Tag_line.Target target ] ]
   | Plan_id { tag; id } ->
       let _, ecol = columns tag Tag_line.Target in
       let line = tag.span.start.line in
@@ -131,9 +107,18 @@ let alternatives = function
   | Successors { tag; first; others } ->
       List.map (retarget tag) (first :: others)
   | Ack { last; block; target } ->
-      [ [ after last block (ack_line target block) ] ]
-  | Mark_line { last; block; hash } ->
-      [ [ after last block ("@delivered " ^ hash) ] ]
+      let stop = last.span.stop in
+      [
+        [
+          {
+            line = stop.line;
+            col = stop.column;
+            eline = stop.line;
+            ecol = stop.column;
+            text = block.new_line ^ ack_line target block;
+          };
+        ];
+      ]
 
 let help = function
   | Word _ -> "replace the tag word with the nearest tag word that Sinter knows"
@@ -150,9 +135,6 @@ let help = function
   | Successors { others = _ :: _; _ } ->
       "cite one of the successors in place of the retired item"
   | Ack _ -> "if the citation still holds, accept the finding with an @ack line"
-  | Mark_line _ -> "mark the step as delivered with this line"
-  | Mark_hash _ ->
-      "check that the step is still delivered, then write its current hash"
 
 let head (tag : Markdown.tag) target rev =
   Printf.sprintf "@%s %s%s" tag.word target
@@ -172,5 +154,3 @@ let text = function
              head tag slug (Option.map (fun _ -> rev) tag.rev))
            (first :: others))
   | Ack { block; target; _ } -> ack_line target block
-  | Mark_hash { tag; hash } -> head tag hash None
-  | Mark_line { hash; _ } -> "@delivered " ^ hash

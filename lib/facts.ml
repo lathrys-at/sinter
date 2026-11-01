@@ -140,8 +140,6 @@ type step = {
   span : Markdown.span;
   own_scope : string list option;
   promises : promise list;
-  block : int;
-  marks : Markdown.tag list;
   hash : string;
 }
 
@@ -452,8 +450,7 @@ let plan_file ~path (document : Markdown.t) plan_index =
             let own_scope = first_scope document held in
             let promises = promises_of document held in
             match held with
-            | first :: _ when Option.is_some own_scope || promises <> [] ->
-                let block = document.tags.(first).block in
+            | _ :: _ when Option.is_some own_scope || promises <> [] ->
                 let text =
                   match text with
                   | Some text -> text
@@ -469,17 +466,6 @@ let plan_file ~path (document : Markdown.t) plan_index =
                     span = heading.span;
                     own_scope;
                     promises;
-                    block;
-                    marks =
-                      List.filter_map
-                        (fun index ->
-                          let tag = document.tags.(index) in
-                          if
-                            String.equal tag.word "delivered"
-                            && tag.block = block
-                          then Some tag
-                          else None)
-                        held;
                     hash =
                       step_hash
                         ~scope:(Option.value own_scope ~default:plan_scope)
@@ -973,16 +959,6 @@ let promise_id plan step (promise : promise) =
   String.concat ":"
     [ "promise"; step_id plan step; promise.word; promise.target ]
 
-let mark (step : step) =
-  match step.marks with first :: _ -> Some first | [] -> None
-
-let mark_hash (step : step) = String.sub step.hash 0 6
-
-let delivered step =
-  match mark step with
-  | Some { target = Some target; _ } -> String.equal target (mark_hash step)
-  | Some { target = None; _ } | None -> false
-
 let plan_records facts plan =
   let plan_approved = not (needs_approval facts.manifest Manifest.Plan) in
   let plan_record =
@@ -1028,30 +1004,26 @@ let plan_records facts plan =
       if total > 0 then met = total
       else
         match Manifest.step facts.manifest with
-        | Manifest.Delivered -> delivered step
+        | Manifest.Delivered -> false
         | Manifest.Step_approval -> approved
         | Manifest.Promises -> false
     in
     let done_ = verified && settled in
     located ~kind:"step" ~id:step_id ~path:plan.path ~span:step.span
-      ([
-         ("plan", Jsonl.string (full_form plan));
-         ("slug", Jsonl.string step.slug);
-         ("title", Jsonl.string step.title);
-         ("scope", Jsonl.strings scope);
-         ("own_scope", Jsonl.bool (Option.is_some step.own_scope));
-         ("refactor", Jsonl.bool (total = 0));
-         ("met", Jsonl.int met);
-         ("total", Jsonl.int total);
-         ("done", Jsonl.bool done_);
-         ("csh", Jsonl.string step.hash);
-         ("delivered", Jsonl.bool (delivered step));
-         ("approved", Jsonl.bool approved);
-         ("active", Jsonl.bool false);
-       ]
-      @ optional "mark"
-          (Option.bind (mark step) (fun (tag : Markdown.tag) ->
-               Option.map Jsonl.string tag.target)))
+      [
+        ("plan", Jsonl.string (full_form plan));
+        ("slug", Jsonl.string step.slug);
+        ("title", Jsonl.string step.title);
+        ("scope", Jsonl.strings scope);
+        ("own_scope", Jsonl.bool (Option.is_some step.own_scope));
+        ("refactor", Jsonl.bool (total = 0));
+        ("met", Jsonl.int met);
+        ("total", Jsonl.int total);
+        ("done", Jsonl.bool done_);
+        ("csh", Jsonl.string step.hash);
+        ("approved", Jsonl.bool approved);
+        ("active", Jsonl.bool false);
+      ]
     :: List.map
          (fun ((promise : promise), by, out_of_scope) ->
            located ~kind:"promise"

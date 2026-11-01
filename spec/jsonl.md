@@ -230,18 +230,15 @@ Example: this plan file gives the canonical bytes below it.
 | `met` `total` | int | *derived* promise counts |
 | `done` | bool | *derived* |
 | `csh` | string | the step hash, as the text after this table gives it |
-| `delivered` | bool | *derived*: the step has a mark that counts ([vocabulary.md](vocabulary.md) section 10.8) |
-| `mark` | string | the tag target of the mark of the step, as written; omitted when the step has no mark |
 | `approved` | bool | *derived*: the step is approved ([algebra.md](algebra.md) section 6.5) |
 | `approval` | string | *derived*: the id of the `approval` entry of the ledger that approves the step ([ledger.md](ledger.md) section 5.1); omitted when none |
 | `active` | bool | *derived* from the session; `false` when there is no session |
 
 The **step hash** (`csh` of a step) is SHA-256 over canonical bytes
 that hold the agreement of the step: its effective scope, its
-promises, and its text ([vocabulary.md](vocabulary.md) section 10.8).
-The canonical bytes are one JSON object in the canonical form of RFC
-8785 (JCS) that section 2 uses, with no LF at the end. The object has
-three keys:
+promises, and its text. The canonical bytes are one JSON object in
+the canonical form of RFC 8785 (JCS) that section 2 uses, with no LF
+at the end. The object has three keys:
 
 - `promises`: an array with one object for each promise record of the
   step (section 5). Each object has two keys, `word` and `target`, as
@@ -275,13 +272,12 @@ are no part of the step hash. The rules of section 2 for the values of
 a record do not apply to this object.
 
 Example: this step gives the canonical bytes below it, and the step
-hash `23e47131fdb5…`. Its mark therefore names `23e471`.
+hash `23e47131fdb5…`.
 
 ```
 ## Tidy the cache
 
 @scope src/cache/**, src/**, src/cache/**
-@delivered 23e471
 Remove the dead code
 of the old cache.
 ```

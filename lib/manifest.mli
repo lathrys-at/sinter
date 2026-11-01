@@ -56,9 +56,7 @@ val verifies_name : verifies -> string
 
 (** When a step without promises is done: the value of [proof.step]. *)
 type step =
-  | Delivered
-      (** when the plan file holds a mark of the step that counts: ["delivered"]
-      *)
+  | Delivered  (** when a branch delivers the step: ["delivered"] *)
   | Step_approval
       (** when the ledger holds an approval of the step that matches its step
           hash: ["approval"] *)

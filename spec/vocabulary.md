@@ -127,8 +127,7 @@ machine meaning.
 
 A tag target is a **slug** or an **external id**. The tag target of
 `@plan` can also be the **full form** of a plan: a slug, `@`, and a
-plan id (section 4.3). The tag target of `@delivered` is a **mark
-hash** (section 4.4).
+plan id (section 4.3).
 
 ### 4.1 Slugs
 
@@ -226,13 +225,6 @@ open or closed. Two plans of any state with one full form are an error
 (finding class `duplicate`). The ledger names a plan by its full form
 ([ledger.md](ledger.md) section 5.1). Two full forms are equal only
 when their bytes are equal.
-
-### 4.4 Mark hashes
-
-A **mark hash** is exactly six lowercase hex digits, as the pattern
-`[0-9a-f]{6}` gives them. It is the tag target of a `@delivered` tag
-(section 10.8). A `@delivered` tag with any other tag target, or with
-no tag target, is an error (finding class `invalid-target`).
 
 ## 5. Revisions
 
@@ -354,7 +346,7 @@ that changed while its comment did not.
 
 ## 7. The vocabulary
 
-The vocabulary has sixteen words. One more word, `@pin`, is designed
+The vocabulary has fifteen words. One more word, `@pin`, is designed
 but deferred (section 7.4).
 
 ### 7.1 Declarations
@@ -440,27 +432,19 @@ that its tag target names (section 8).
 
 ### 7.3 Status tags
 
-A status tag records the state of the item that carries it.
-
-Three status tags record that the authors no longer endorse the
-declaration that carries them: `@deprecated`, `@rejected`, and
-`@deferred`. These tags have no tag target. They have effect only in
-the tag block of a declaration: the block whose tag lines hold the
-declaration. Anywhere else they are inert. In markdown the extent of a
-declaration is its whole section or its whole list item, but only the
-first paragraph is tag-bearing, so such a tag must stand in that
-paragraph.
-
-The status tag `@delivered <hash>` records that a branch delivered a
-step of a plan (section 10.8). Its tag target is a mark hash (section
-4.4). It has effect only in the tag block of a step.
+A status tag records that the authors no longer endorse the
+declaration that carries it. A status tag has no tag target. It has
+effect only in the tag block of a declaration: the block whose tag
+lines hold the declaration. Anywhere else it is inert. In markdown the
+extent of a declaration is its whole section or its whole list item,
+but only the first paragraph is tag-bearing, so a status tag must
+stand in that paragraph. There is no "done" status.
 
 | tag | applies to | meaning |
 |---|---|---|
 | `@deprecated` | `req`, `design`, `decision` | no longer applies; nothing replaces it |
 | `@rejected` | `decision` | considered and not chosen; the record stays |
 | `@deferred` | `decision` | not decided; the description says what would settle it |
-| `@delivered <hash>` | a step | a branch delivered the step; the hash ties the mark to the step |
 
 ### 7.4 Directives
 
@@ -718,12 +702,11 @@ Example: `## Verify against the reqs` becomes
 `verify-against-the-reqs`. Two steps of one plan with the same slug
 are an error (`duplicate`).
 
-A step is **delivered** in a tree when its mark counts there (section
-10.8), or when a promise of the step is met there. A step that is
-delivered in the base keeps its slug. A rename, a split, a merge, or a
-removal of such a step loses its slug, and it is an error (finding
-class `renamed-step`). A step with no mark that counts and no met
-promise can be renamed freely.
+A step is **started** in a tree when a promise of the step is met
+there. A step that is started in the base keeps its slug. A rename, a
+split, a merge, or a removal of such a step loses its slug, and it is
+an error (finding class `renamed-step`). A step that is not started
+can be renamed freely.
 
 Steps are unordered facts. The order of steps in the document is
 advice, not a constraint.
@@ -784,8 +767,8 @@ when both conditions hold: the first condition that the manifest key
 and every `@verifies` edge in its scope is at an allowed rung. The
 first condition is one of these:
 
-- `"delivered"`, the default: the step has a mark that counts
-  (section 10.8).
+- `"delivered"`, the default: a branch delivers the step (section
+  10.7).
 - `"approval"`: the ledger holds an approval of the step that matches
   its current step hash ([ledger.md](ledger.md) section 5.1).
 - `"promises"`: the condition never holds. A refactor step is never
@@ -805,23 +788,8 @@ amendments need a new approval, are in [ledger.md](ledger.md) section
 ### 10.7 Delivery
 
 A branch **delivers** a step when the diff between the base and the
-working tree does one of two things:
-
-- It adds a mark of the step (section 10.8). The working tree holds a
-  mark of the step. The base holds no mark of that step, or it holds a
-  mark that does not count in the base and that names another mark
-  hash.
-- It makes a promise of the step met: the promise is met in the
-  working tree, and it is not met in the base.
-
-A step of the base is "that step" when it has the slug of the step
-and its plan is the same plan, as the class `promise-collision`
-decides the same plan ([algebra.md](algebra.md) section 9).
-
-A new mark hash on a step whose mark counts in the base is no added
-mark. It repairs the mark after an edit of the step, and it delivers
-nothing. The diff shows the edit of the step and the new mark
-together, so the person who merges reads both.
+working tree makes a promise of the step met: the promise is met in
+the working tree, and it is not met in the base.
 
 One branch can deliver several steps, of one plan or of several
 plans. The steps of one plan can take several branches.
@@ -831,33 +799,6 @@ The gate `review` checks the steps that the branch delivers. The gate
 every step of each open plan ([algebra.md](algebra.md) section 9). The
 job that closes plans closes a plan when every step of the plan is
 done ([ledger.md](ledger.md) section 8).
-
-### 10.8 Delivery marks
-
-A branch that delivers a step marks the step in the plan file with the
-tag line `@delivered <hash>`. This tag line is the **mark** of the
-step. `<hash>` is the first six hex digits of the step hash
-([jsonl.md](jsonl.md) section 4). Sinter prints the line to add.
-
-The **tag block of a step** is the block (section 3.1) of the first
-tag line of the step. A mark has effect only in the tag block of a
-step. When that block holds several `@delivered` tags, the first one is
-the mark of the step. A `@delivered` tag in any other place is an error
-(finding class `misplaced-plan`), and so is each `@delivered` tag after
-the first in the tag block of one step (finding class `duplicate`).
-
-The step hash covers the agreement of the step: its effective scope,
-its promises, and its text. It does not cover the heading of the step,
-any tag line, or the text of other steps. A mark **counts** when its
-mark hash is the first six hex digits of the current step hash. A
-change of the effective scope, of a promise, or of the text of the
-step changes the step hash, so the mark no longer counts.
-
-A mark is a status tag, not a promise. Adding, changing, or removing a
-mark changes neither the commitment set (section 10.6) nor the
-commitment-set hash of the plan. A plan file is an exempt path
-([manifest.md](manifest.md) section 9.1), so such a change is never
-an unplanned change.
 
 ## 11. Rename
 
