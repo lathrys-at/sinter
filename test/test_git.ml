@@ -567,6 +567,29 @@ let open_repo_takes_the_first_executable_git_on_path () =
   Alcotest.(check string)
     "the root that the fake git printed" script (Git.root t)
 
+let open_repo_never_runs_a_git_of_the_current_directory () =
+  let repo = Lazy.force shared in
+  let here = Repo.temp_dir () in
+  let fake = Filename.concat here "git" in
+  Out_channel.with_open_bin fake (fun channel ->
+      Out_channel.output_string channel "#!/bin/sh\nexit 3\n");
+  Unix.chmod fake 0o755;
+  let env =
+    Array.append
+      (without_path (Repo.env repo))
+      [| "PATH=.:" ^ path_of (Repo.env repo) |]
+  in
+  let previous = Sys.getcwd () in
+  match
+    Fun.protect
+      ~finally:(fun () -> Sys.chdir previous)
+      (fun () ->
+        Sys.chdir here;
+        Git.open_repo ~env (Repo.root repo))
+  with
+  | Ok _ -> ()
+  | Error other -> Alcotest.fail (print_error other)
+
 let open_repo_reports_output_it_cannot_read () =
   let env, script = Repo.fake_git "printf 'sha1\\n'\n" in
   match error (Git.open_repo ~env script) with
@@ -1381,6 +1404,8 @@ let tests =
         child_environment_keeps_the_other_variables;
       quick "open_repo takes the first executable git on PATH"
         open_repo_takes_the_first_executable_git_on_path;
+      quick "open_repo never runs a git of the current directory"
+        open_repo_never_runs_a_git_of_the_current_directory;
       quick "open_repo reports output it cannot read"
         open_repo_reports_output_it_cannot_read;
       quick "open_repo gives what git wrote when it fails"
