@@ -317,6 +317,41 @@ let a_current_folder_that_is_gone_is_an_environment_error () =
           (Filename.quote (Filename.concat (Sys.getcwd ()) sinter)))
        ~input:"" ~bound:10.)
 
+let a_manifest_that_a_pipe_gives_is_read () =
+  let repo = Git_fixture.init () in
+  let manifest = "[scan]\npacks.markdown.files = [\"**/*.md\"]\n" in
+  Git_fixture.write repo "sinter.toml" manifest;
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  let errors = Filename.temp_file "sinter-pipe" ".err" in
+  let status =
+    Fun.protect
+      ~finally:(fun () -> Sys.remove errors)
+      (fun () ->
+        let code =
+          Unix.create_process_env "/bin/sh"
+            [|
+              "/bin/sh";
+              "-c";
+              "cd \"$1\" && cat sinter.toml \
+               | \"$2\" scan --manifest /dev/stdin >/dev/null 2>\"$3\"";
+              "sh";
+              Git_fixture.root repo;
+              Filename.concat (Sys.getcwd ()) sinter;
+              errors;
+            |]
+            (Git_fixture.env repo) Unix.stdin Unix.stdout Unix.stderr
+          |> Unix.waitpid []
+          |> snd
+        in
+        (code, contents errors))
+  in
+  Alcotest.(check (pair string string))
+    "the exit code and standard error" ("exited 0", "")
+    (match status with
+    | Unix.WEXITED code, text -> (Printf.sprintf "exited %d" code, text)
+    | (Unix.WSIGNALED _ | Unix.WSTOPPED _), text -> ("ended by a signal", text))
+
 let a_closed_standard_input_reads_as_no_request () =
   Alcotest.(check (pair string string))
     "the run ends clean and writes no error" ("exited 0", "")
@@ -685,6 +720,8 @@ let tests =
     Alcotest.test_case
       "a current folder that is gone is an environment error" `Quick
       a_current_folder_that_is_gone_is_an_environment_error;
+    Alcotest.test_case "a manifest that a pipe gives is read" `Quick
+      a_manifest_that_a_pipe_gives_is_read;
     Alcotest.test_case "a closed standard input reads as no request" `Quick
       a_closed_standard_input_reads_as_no_request;
     Alcotest.test_case "a failed read names the input" `Quick
