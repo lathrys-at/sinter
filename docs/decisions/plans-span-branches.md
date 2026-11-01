@@ -2,7 +2,7 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # A plan can span several branches and pull requests
-@decision plans-span-branches v2
+@decision plans-span-branches v3
 A plan reaches the main branch on its own, later branches each deliver some of its steps, and the plan closes when every step is done.
 
 ## Context
@@ -19,8 +19,8 @@ reader approves such a plan once and reads it as one document.
 - A plan reaches the target branch in a pull request of its own. Its
   merge is the approval. When `proof.plan` is `"approval"`, a person
   also approves the plan in the ledger before the merge.
-- A later branch delivers one or more of the plan's steps, and marks
-  each one in the plan file (record `delivery-marks`). The gates
+- A later branch delivers one or more of the plan's steps, and names
+  each one in a commit message (record `delivery-lines`). The gates
   `review` and `merged` check the steps that the branch delivers.
 - A step with some of its promises met and some not is the finding
   `merged-incomplete`: a step merged in part. It is computed from the

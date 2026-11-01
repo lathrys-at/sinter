@@ -252,6 +252,14 @@ on; add the mark `@delivered` and its checks; redefine
 `merged-incomplete`; report a delivered step that loses its slug; and
 let the plan skill say so.
 
+## Name a delivered step in its commit
+@scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**, CONTRIBUTING.md
+@decision delivery-lines
+Carry out the record `delivery-lines`: a commit names each step that
+it delivers with a `Delivers:` line, Sinter checks the delivery lines
+of a branch, the job on the default branch records each delivery
+line in the ledger, and the mark `@delivered` goes away.
+
 ## Release the binaries
 @scope .github/workflows/**, README.md, docs/**, THIRD_PARTY.md, REUSE.toml, LICENSES/**
 Build release binaries for Linux x86-64 and macOS arm64 on a version
