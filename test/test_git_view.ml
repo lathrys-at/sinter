@@ -554,6 +554,13 @@ let a_diff_driver_of_the_configuration_does_not_change_the_runs () =
     [ show "b.md" (Git.Modified (Git.Text [ hunk 3 3 2 3 1 1 ])) ]
     (shown repo)
 
+let a_diff_answers_for_an_untracked_path_that_git_does_not_add () =
+  let repo = with_base [ ("a.txt", "a\n") ] in
+  Repo.write repo "x/.GIT/f" "1\n";
+  Alcotest.(check bool)
+    "the diff gives a result" true
+    (Result.is_ok (diff_against (opened repo) "HEAD"))
+
 let a_file_behind_a_symbolic_link_is_not_in_the_file_set () =
   let repo = with_base [ ("d/x", "in\n") ] in
   let outside = Repo.temp_dir () in
@@ -656,6 +663,8 @@ let tests =
       a_deleted_path_gives_the_run_of_a_deletion;
     case "a diff driver of the configuration does not change the runs"
       a_diff_driver_of_the_configuration_does_not_change_the_runs;
+    case "a diff answers for an untracked path that git does not add"
+      a_diff_answers_for_an_untracked_path_that_git_does_not_add;
     case "a file behind a symbolic link is not in the file set"
       a_file_behind_a_symbolic_link_is_not_in_the_file_set;
     case "a repository under a name with a colon gives its diff"
