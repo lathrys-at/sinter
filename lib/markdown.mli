@@ -183,6 +183,9 @@ type t = {
           [ERROR] node and each [MISSING] node that no [ERROR] node holds; when
           the tree flags a failure and shows no such node, the first lowest
           error node alone *)
+  unterminated : int option;
+      (** the number of the last line, when the content does not end with an LF;
+          [None] when it ends with an LF or is empty *)
 }
 (** The structure of one markdown file. The caller owns the arrays. *)
 

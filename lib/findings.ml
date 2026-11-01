@@ -40,9 +40,12 @@ let parse_errors documents ~not_text =
           document.errors)
       documents
 
-let nearest_word word =
+let nearest word =
   if List.mem word vocabulary then None
   else Edit_distance.nearest word vocabulary
+
+let nearest_word word =
+  match nearest word with Some "ack" -> None | found -> found
 
 let typo_tags documents =
   List.filter_map
@@ -53,10 +56,12 @@ let typo_tags documents =
             (Finding.Line { path; line = tag.span.start.line })
             ~place:(place path tag.span)
             ~detail:(Printf.sprintf "@%s is not a tag word of sinter" tag.word)
-            ~fix:(Fix.word tag nearest)
+            ?fix:
+              (if String.equal nearest "ack" then None
+               else Some (Fix.word tag nearest))
             ?mark:(Finding.part tag Tag_line.Word "not a tag word")
             ())
-        (nearest_word tag.word))
+        (nearest tag.word))
     (tags documents)
 
 let ignored_tags documents =
@@ -526,17 +531,18 @@ let cycles facts =
                ()))
     (components successors)
 
+let by_path facts =
+  lazy
+    (List.fold_left
+       (fun documents (path, document) ->
+         Keys.update path
+           (function None -> Some document | kept -> kept)
+           documents)
+       Keys.empty (Facts.files facts))
+
 let retired facts =
   let declarations = Array.of_list (Facts.declarations facts) in
-  let documents =
-    lazy
-      (List.fold_left
-         (fun documents (path, document) ->
-           Keys.update path
-             (function None -> Some document | kept -> kept)
-             documents)
-         Keys.empty (Facts.files facts))
-  in
+  let documents = by_path facts in
   List.filter_map
     (fun ((edge : Facts.edge), target) ->
       match target with
@@ -624,22 +630,23 @@ let wrong_sources facts =
     (Facts.edges facts)
 
 let untraced facts =
-  let count = List.length (Facts.declarations facts) in
-  let satisfied = Array.make count false
-  and verified = Array.make count false in
-  List.iter
-    (fun ((edge : Facts.edge), target) ->
-      match (edge.word, target) with
-      | "satisfies", Facts.Declaration index -> satisfied.(index) <- true
-      | "verifies", Facts.Declaration index -> verified.(index) <- true
-      | _ -> ())
-    (Facts.edges facts);
+  let declarations = Array.of_list (Facts.declarations facts) in
+  let cited word =
+    List.fold_left
+      (fun ids ((edge : Facts.edge), target) ->
+        match target with
+        | Facts.Declaration index when String.equal edge.word word ->
+            Keys.add (Facts.declaration_id declarations.(index)) () ids
+        | Facts.Declaration _ | Facts.External _ | Facts.Unresolved _ -> ids)
+      Keys.empty (Facts.edges facts)
+  in
+  let satisfied = cited "satisfies" and verified = cited "verifies" in
   List.filter_map Fun.id
     (List.mapi
        (fun index (declaration : Facts.declaration) ->
          let item = Facts.declaration_id declaration in
          let found =
-           match (satisfied.(index), verified.(index)) with
+           match (Keys.mem item satisfied, Keys.mem item verified) with
            | false, false ->
                Some
                  ( Printf.sprintf
@@ -937,16 +944,189 @@ let ack_target target =
     if start = length then None
     else Some (String.sub target start (length - start)) )
 
+let matches facts (ack : Facts.ack) =
+  String.length ack.hash >= 8
+  && String.starts_with ~prefix:ack.hash
+       (Facts.block_hash facts ack.path ack.block_index)
+
+let names (ack : Facts.ack) (edge : Facts.edge) =
+  let finding_class, subject = ack_target ack.target in
+  String.equal finding_class "retired"
+  && Option.fold ~none:true ~some:(String.equal edge.target_text) subject
+
 let acked facts (edge : Facts.edge) =
-  let hash = Facts.block_hash facts edge.path edge.block_index in
   List.exists
-    (fun (ack : Facts.ack) ->
-      let finding_class, subject = ack_target ack.target in
-      String.length ack.hash >= 8
-      && String.starts_with ~prefix:ack.hash hash
-      && String.equal finding_class "retired"
-      && Option.fold ~none:true ~some:(String.equal edge.target_text) subject)
+    (fun ack -> matches facts ack && names ack edge)
     (Facts.block_acks facts edge.path edge.block_index)
+
+type void = Hash | Target of { detail : string; label : string }
+
+let void facts ~ackable ~rules (ack : Facts.ack) =
+  let finding_class, subject = ack_target ack.target in
+  let none name =
+    Target
+      {
+        detail =
+          (match subject with
+          | None ->
+              Printf.sprintf
+                "its block holds no %s finding that an @ack can accept" name
+          | Some subject ->
+              Printf.sprintf
+                "its block holds no %s finding of %s that an @ack can accept"
+                name subject);
+        label = "names no finding of its block";
+      }
+  in
+  if not (matches facts ack) then Some Hash
+  else
+    match Finding_class.of_name finding_class with
+    | Some (Finding_class.Unexercised | Finding_class.Unmet_rule) -> None
+    | Some Finding_class.Retired ->
+        if
+          List.exists (names ack)
+            (Hashtbl.find_all ackable (ack.path, ack.block_index))
+        then None
+        else Some (none "retired")
+    | Some other ->
+        Some
+          (Target
+             {
+               detail =
+                 Printf.sprintf "an @ack cannot accept a finding of %s"
+                   (Finding_class.name other);
+               label = "no @ack can accept this class";
+             })
+    | None when Keys.mem finding_class rules -> None
+    | None ->
+        Some
+          (Target
+             {
+               detail =
+                 Printf.sprintf
+                   "sinter knows no finding class and no rule with the name %s"
+                   finding_class;
+               label = "no finding class or rule has this name";
+             })
+
+let characters text = Line_index.characters text 0 (String.length text)
+
+let hash_mark (tag : Markdown.tag) hash =
+  let rest = tag.rest in
+  let rec stop index =
+    if index > 0 && (rest.[index - 1] = ' ' || rest.[index - 1] = '\t') then
+      stop (index - 1)
+    else index
+  in
+  let stop = stop (String.length rest) in
+  let start =
+    tag.span.start.column
+    + characters ("@" ^ tag.word)
+    + characters (String.sub rest 0 (stop - String.length hash))
+  in
+  {
+    Finding.start;
+    stop = start + characters hash;
+    label = "does not match the block";
+  }
+
+let ack_lines documents (ack : Facts.ack) =
+  let document = Keys.find ack.path (Lazy.force documents) in
+  let lines =
+    List.map
+      (Array.get document.Markdown.tags)
+      document.blocks.(ack.block_index).tags
+  in
+  let rec before = function
+    | (previous : Markdown.tag) :: (next : Markdown.tag) :: rest ->
+        if next.span = ack.span then Some (previous, next)
+        else before (next :: rest)
+    | [ _ ] | [] -> None
+  in
+  ( document,
+    List.find (fun (tag : Markdown.tag) -> tag.span = ack.span) lines,
+    before lines )
+
+let stale_ack facts documents ((ack : Facts.ack), void) others =
+  let document, tag, first = ack_lines documents ack in
+  let detail, mark =
+    match void with
+    | Hash when String.length ack.hash < 8 ->
+        ( Printf.sprintf
+            "the @ack names the hash %s, which has fewer than eight digits"
+            ack.hash,
+          Some (hash_mark tag ack.hash) )
+    | Hash ->
+        ( Printf.sprintf
+            "the @ack names the hash %s, and its block has the hash %s" ack.hash
+            (String.sub (Facts.block_hash facts ack.path ack.block_index) 0 8),
+          Some (hash_mark tag ack.hash) )
+    | Target { detail; label } ->
+        (detail, Finding.part tag Tag_line.Target label)
+  in
+  let removed =
+    List.fold_left
+      (fun pairs (other : Facts.ack) ->
+        match pairs with
+        | Some pairs when String.equal other.path ack.path ->
+            let _, _, pair = ack_lines documents other in
+            Option.map (fun pair -> pair :: pairs) pair
+        | Some _ | None -> None)
+      (Option.map (fun pair -> [ pair ]) first)
+      others
+  in
+  let id = Facts.ack_id ack in
+  Finding.make Finding_class.Stale_ack
+    (Finding.Fact { id; ack_name = id })
+    ~place:(place ack.path ack.span) ~detail
+    ?fix:(Option.map (Fix.remove_acks document) removed)
+    ?mark
+    ~related:
+      (List.map
+         (fun (other : Facts.ack) ->
+           related "another void @ack with this id" other.path other.span)
+         others)
+    ()
+
+let stale_acks facts retired =
+  let ackable = Hashtbl.create 16 in
+  List.iter
+    (fun ((edge : Facts.edge), (finding : Finding.t)) ->
+      if finding.ackable then
+        Hashtbl.add ackable (edge.path, edge.block_index) edge)
+    retired;
+  let rules =
+    List.fold_left
+      (fun rules (declaration : Facts.declaration) ->
+        if String.equal declaration.kind "rule" then
+          Keys.add declaration.slug () rules
+        else rules)
+      Keys.empty (Facts.declarations facts)
+  in
+  let documents = by_path facts in
+  let voids =
+    List.filter_map
+      (fun ack ->
+        Option.map (fun void -> (ack, void)) (void facts ~ackable ~rules ack))
+      (Facts.acks facts)
+  in
+  let groups =
+    List.fold_left
+      (fun groups ((ack : Facts.ack), _) ->
+        Keys.update (Facts.ack_id ack)
+          (function None -> Some [] | Some others -> Some (ack :: others))
+          groups)
+      Keys.empty voids
+  in
+  List.filter_map
+    (fun (((ack : Facts.ack), _) as first) ->
+      match Keys.find_opt (Facts.ack_id ack) groups with
+      | Some others
+        when not (List.exists (fun (other : Facts.ack) -> other == ack) others)
+        ->
+          Some (stale_ack facts documents first (List.rev others))
+      | Some _ | None -> None)
+    voids
 
 let historical manifest (finding : Finding.t) =
   List.exists
@@ -955,6 +1135,7 @@ let historical manifest (finding : Finding.t) =
 
 let of_facts facts ~base ~not_text =
   let manifest = Facts.manifest facts and documents = Facts.files facts in
+  let retired = retired facts in
   List.sort Finding.compare
     (List.filter
        (fun finding -> not (historical manifest finding))
@@ -975,7 +1156,8 @@ let of_facts facts ~base ~not_text =
               (fun (edge, (finding : Finding.t)) ->
                 if finding.ackable && acked facts edge then None
                 else Some finding)
-              (retired facts);
+              retired;
+            stale_acks facts retired;
             wrong_sources facts;
             untraced facts;
             scopes_outside_plans facts;

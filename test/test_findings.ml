@@ -102,7 +102,17 @@ let typo_tag_takes_the_first_word_in_byte_order_of_two_equally_near () =
     [ ("docs/a.md", "# A\n\n@reck x\n") ]
     [
       "docs/a.md:3:1-3:8 | finding:typo-tag:line:docs/a.md@L3 | @reck is not a \
-       tag word of sinter | fix: @ack";
+       tag word of sinter";
+    ]
+
+let typo_tag_near_ack_has_no_fix () =
+  check Finding_class.Typo_tag
+    [ ("docs/a.md", "# A\n\n@cites x\n@akc retired x 12345678\n@acks\n") ]
+    [
+      "docs/a.md:4:1-4:24 | finding:typo-tag:line:docs/a.md@L4 | @akc is not a \
+       tag word of sinter";
+      "docs/a.md:5:1-5:6 | finding:typo-tag:line:docs/a.md@L5 | @acks is not a \
+       tag word of sinter";
     ]
 
 let ignored_tag_sits_at_a_later_paragraph () =
@@ -484,6 +494,252 @@ let untraced_names_what_is_missing () =
     ]
     [ "docs/a.md:3:1-3:7 | finding:untraced:req:a | nothing satisfies req:a" ]
 
+let untraced_reports_no_declaration_whose_slug_an_edge_names () =
+  check Finding_class.Untraced
+    [
+      ("docs/a.md", "# A\n\n@req x v1\n");
+      ("docs/b.md", "# B\n\n@req x v1\n");
+      ("docs/c.md", "# C\n\nText.\n\n- @satisfies x v1\n- @verifies x v1\n");
+    ]
+    []
+
+let stale_ack_sits_at_an_ack_whose_hash_does_not_match_its_block () =
+  Alcotest.(check (list string))
+    "the lines of the stale-ack findings" [ "docs/b.md:6" ]
+    (List.filter_map
+       (fun (finding : Finding.t) ->
+         match (finding.finding_class, finding.place) with
+         | Finding_class.Stale_ack, Some place ->
+             Some (Printf.sprintf "%s:%d" place.path place.span.start.line)
+         | _ -> None)
+       (findings
+          [
+            ("docs/a.md", "# A\n\n@decision dep v1\n@deprecated\n");
+            ( "docs/b.md",
+              "# B\n\nText.\n\n- @cites dep\n  @ack retired dep 00000000\n" );
+          ]))
+
+let filled hash text = String.concat hash (String.split_on_char '~' text)
+
+let with_block_hash text =
+  let document = document (filled "00000000" text) in
+  let ack =
+    List.find
+      (fun (tag : Markdown.tag) -> String.equal tag.word "ack")
+      (Array.to_list document.tags)
+  in
+  let hash = String.sub document.blocks.(ack.block).hash 0 8 in
+  (hash, filled hash text)
+
+let acked_records =
+  [
+    ("docs/a.md", "# A\n\n@decision dep v1\n@deprecated\n");
+    ("docs/x.md", "# X\n\n@decision x v1\n");
+    ("docs/r.md", "# R\n\n@rule ste-docs v1\n");
+  ]
+
+let stale_ack ack =
+  let hash, text = with_block_hash ("# B\n\n@cites dep\n@cites x\n" ^ ack) in
+  ( hash,
+    List.map show
+      (List.filter
+         (fun (finding : Finding.t) ->
+           finding.finding_class = Finding_class.Stale_ack)
+         (findings (("docs/b.md", text) :: acked_records))) )
+
+let stale_ack_names_the_condition_that_fails () =
+  let expect ack detail =
+    let hash, found = stale_ack ack in
+    let target = String.trim (String.sub ack 5 (String.rindex ack ' ' - 5)) in
+    Alcotest.(check (list string))
+      ack
+      (List.map
+         (fun detail ->
+           Printf.sprintf
+             "docs/b.md:5:1-5:%d | finding:stale-ack:ack:site:docs/b.md#b:%s | \
+              %s | fix: remove %s"
+             (String.length (filled hash (String.trim ack)) + 1)
+             target (filled hash detail)
+             (filled hash (String.trim ack)))
+         (Option.to_list detail))
+      found
+  in
+  expect "@ack retired dep 00000000\n"
+    (Some "the @ack names the hash 00000000, and its block has the hash ~");
+  expect "@ack unexercised 0000000000\n"
+    (Some "the @ack names the hash 0000000000, and its block has the hash ~");
+  expect "@ack retired dep ~\n" None;
+  expect "@ack retired ~\n" None;
+  expect "@ack unexercised ~\n" None;
+  expect "@ack nothing ~\n"
+    (Some "sinter knows no finding class and no rule with the name nothing");
+  expect "@ack suspect dep ~\n"
+    (Some "an @ack cannot accept a finding of suspect");
+  expect "@ack unmet-rule ~\n" None;
+  expect "@ack ste-docs ~\n" None;
+  expect "@ack ste-doc ~\n"
+    (Some "sinter knows no finding class and no rule with the name ste-doc");
+  expect "@ack retired dep 485e\n"
+    (Some "the @ack names the hash 485e, which has fewer than eight digits");
+  expect "@ack retired x ~\n"
+    (Some "its block holds no retired finding of x that an @ack can accept")
+
+let stale_ack_needs_an_ackable_finding_in_its_block () =
+  let hash, text = with_block_hash "# B\n\n@cites x\n@ack retired ~\n" in
+  check Finding_class.Stale_ack
+    (("docs/b.md", text) :: acked_records)
+    [
+      Printf.sprintf
+        "docs/b.md:4:1-4:22 | finding:stale-ack:ack:site:docs/b.md#b:retired | \
+         its block holds no retired finding that an @ack can accept | fix: \
+         remove @ack retired %s"
+        hash;
+    ];
+  let hash, text =
+    with_block_hash
+      "# B\n\n@cites dep\n\n## C\n\n@cites x\n@ack retired dep ~\n"
+  in
+  check Finding_class.Stale_ack
+    (("docs/b.md", text) :: acked_records)
+    [
+      Printf.sprintf
+        "docs/b.md:8:1-8:26 | finding:stale-ack:ack:site:docs/b.md#c:retired \
+         dep | its block holds no retired finding of dep that an @ack can \
+         accept | fix: remove @ack retired dep %s"
+        hash;
+    ]
+
+let stale_ack_relates_the_other_void_acks_of_its_id () =
+  Alcotest.(check (list (list string)))
+    "the related places"
+    [ [ "another void @ack with this id at docs/b.md:5" ] ]
+    (List.filter_map
+       (fun (finding : Finding.t) ->
+         if finding.finding_class = Finding_class.Stale_ack then
+           Some
+             (List.map
+                (fun ({ label; place } : Finding.related) ->
+                  match place with
+                  | Some { path; span } ->
+                      Printf.sprintf "%s at %s:%d" label path span.start.line
+                  | None -> label)
+                finding.related)
+         else None)
+       (findings
+          (( "docs/b.md",
+             "# B\n\n\
+              @cites dep\n\
+              @ack retired dep 00000000\n\
+              @ack retired dep 11111111\n" )
+          :: acked_records)))
+
+let stale_ack_comes_once_for_one_id () =
+  check Finding_class.Stale_ack
+    (( "docs/b.md",
+       "# B\n\n\
+        @cites dep\n\
+        @ack retired dep 00000000\n\
+        @ack retired dep 11111111\n" )
+    :: acked_records)
+    [
+      "docs/b.md:4:1-4:26 | finding:stale-ack:ack:site:docs/b.md#b:retired dep \
+       | the @ack names the hash 00000000, and its block has the hash 485ef95f \
+       | fix: remove @ack retired dep 00000000 and @ack retired dep 11111111";
+    ];
+  check Finding_class.Stale_ack
+    (( "docs/b.md",
+       "# B\n\n\
+        @req b\n\n\
+        - @cites dep\n\
+       \  @ack retired dep 00000000\n\n\
+        - @cites dep\n\
+       \  @ack retired dep 11111111\n" )
+    :: acked_records)
+    [
+      "docs/b.md:6:3-6:28 | finding:stale-ack:ack:req:b:retired dep | the @ack \
+       names the hash 00000000, and its block has the hash 9b26ac71 | fix: \
+       remove @ack retired dep 00000000 and @ack retired dep 11111111";
+    ];
+  check Finding_class.Stale_ack
+    (( "docs/b.md",
+       "# B\n\n\
+        @req b\n\n\
+        - @cites dep\n\
+       \  @ack retired dep 00000000\n\n\
+        - @ack retired dep 11111111\n\
+       \  @cites dep\n" )
+    :: acked_records)
+    [
+      "docs/b.md:6:3-6:28 | finding:stale-ack:ack:req:b:retired dep | the @ack \
+       names the hash 00000000, and its block has the hash 9b26ac71";
+    ];
+  check Finding_class.Stale_ack
+    (( "docs/b.md",
+       "# B\n\n\
+        @cites dep\n\
+        @ack retired dep 485ef95f\n\
+        @ack retired dep 00000000\n" )
+    :: acked_records)
+    [
+      "docs/b.md:5:1-5:26 | finding:stale-ack:ack:site:docs/b.md#b:retired dep \
+       | the @ack names the hash 00000000, and its block has the hash 485ef95f \
+       | fix: remove @ack retired dep 00000000";
+    ]
+
+let stale_ack_of_one_id_in_two_files_has_no_fix () =
+  let file path =
+    (path, "# B\n\n@req b\n\n- @cites dep\n  @ack retired dep 0\n")
+  in
+  check Finding_class.Stale_ack
+    (file "docs/b.md" :: file "docs/c.md" :: acked_records)
+    [
+      "docs/b.md:6:3-6:21 | finding:stale-ack:ack:req:b:retired dep | the @ack \
+       names the hash 0, which has fewer than eight digits";
+    ]
+
+let stale_ack_on_the_first_tag_line_of_its_block_has_no_fix () =
+  check Finding_class.Stale_ack
+    (("docs/b.md", "# B\n\n- @ack retired dep 00000000\n  @cites dep\n")
+    :: acked_records)
+    [
+      "docs/b.md:3:3-3:28 | finding:stale-ack:ack:site:docs/b.md#b:retired dep \
+       | the @ack names the hash 00000000, and its block has the hash 11766ab1";
+    ]
+
+let stale_ack_marks_the_hash_or_the_target () =
+  let marks ack =
+    let _, text = with_block_hash ("# B\n\n- @cites dep\n  " ^ ack) in
+    List.filter_map
+      (fun (finding : Finding.t) ->
+        match (finding.finding_class, finding.mark) with
+        | Finding_class.Stale_ack, Some mark ->
+            Some (Printf.sprintf "%d-%d %s" mark.start mark.stop mark.label)
+        | _ -> None)
+      (findings (("docs/b.md", text) :: acked_records))
+  in
+  Alcotest.(check (list string))
+    "the hash"
+    [ "10-18 does not match the block" ]
+    (marks "@ack \xc3\xa9 00000000 \t\n");
+  Alcotest.(check (list string))
+    "the target"
+    [ "8-15 no @ack can accept this class" ]
+    (marks "@ack suspect ~\n");
+  Alcotest.(check (list string))
+    "a retired ack of nothing"
+    [ "8-15 names no finding of its block" ]
+    (marks "@ack retired x ~\n");
+  Alcotest.(check (list string))
+    "a name of nothing"
+    [ "8-15 no finding class or rule has this name" ]
+    (marks "@ack nothing ~\n")
+
+let stale_ack_under_a_historical_path_gives_no_finding () =
+  check ~extra:"[paths]\nhistorical = [\"docs/b.md\"]\n" Finding_class.Stale_ack
+    (("docs/b.md", "# B\n\n@cites dep\n@ack nothing 00000000\n")
+    :: acked_records)
+    []
+
 let plan steps =
   ( ".plans/p.md",
     "# P\n\n@plan p\n@scope lib/**, docs/, bin/main.ml, src/*/**, !lib/x/**\n"
@@ -787,9 +1043,9 @@ let a_lone_carriage_return_stays_in_one_line () =
   Alcotest.(check (list string))
     "the findings of a file with carriage returns for line endings"
     [
-      "docs/a.md:1:6-1:32 | finding:invalid-target:tag:docs/a.md@L1C6 | \
+      "docs/a.md:1:6-1:33 | finding:invalid-target:tag:docs/a.md@L1C6 | \
        x.\\r\\r## is not a valid slug";
-      "docs/a.md:1:23-1:32 | finding:untraced:req:b | nothing satisfies req:b, \
+      "docs/a.md:1:23-1:33 | finding:untraced:req:b | nothing satisfies req:b, \
        and nothing verifies it";
     ]
     (all [ ("docs/a.md", "# A\r\r@cites x.\r\r## B\r\r@req b v1\r") ])
@@ -947,9 +1203,19 @@ let the_findings_are_sorted () =
 let nearest_word_names_the_word_that_the_fix_of_typo_tag_writes () =
   Alcotest.(check (list (option string)))
     "the word of each tag word"
-    [ Some "req"; Some "req"; Some "verifies"; None; None; None; None ]
+    [
+      Some "req";
+      Some "req";
+      Some "verifies";
+      None;
+      None;
+      None;
+      None;
+      None;
+      None;
+    ]
     (List.map Findings.nearest_word
-       [ "reqq"; "Req"; "verifie"; "req"; "ack"; "param"; "" ])
+       [ "reqq"; "Req"; "verifie"; "req"; "ack"; "param"; ""; "akc"; "reck" ])
 
 module Gen = QCheck2.Gen
 
@@ -987,7 +1253,8 @@ let nearest_word_is_a_word_of_the_vocabulary_within_two_edits =
          match Findings.nearest_word word with
          | None -> true
          | Some nearest ->
-             (not (String.equal nearest word))
+             (not (String.equal nearest "ack"))
+             && (not (String.equal nearest word))
              && Edit_distance.distance word nearest <= 2
              && Findings.nearest_word nearest = None))
 
@@ -1587,6 +1854,7 @@ let tests =
     case "parse-error sits at each error and at a file that is not text"
       parse_error_sits_at_each_error_and_at_a_file_that_is_not_text;
     case "typo-tag names the nearest word" typo_tag_names_the_nearest_word;
+    case "typo-tag near ack has no fix" typo_tag_near_ack_has_no_fix;
     case "nearest_word names the word that the fix of typo-tag writes"
       nearest_word_names_the_word_that_the_fix_of_typo_tag_writes;
     nearest_word_is_a_word_of_the_vocabulary_within_two_edits;
@@ -1626,6 +1894,25 @@ let tests =
     case "wrong-source sits at a citation without its source"
       wrong_source_sits_at_a_citation_without_its_source;
     case "untraced names what is missing" untraced_names_what_is_missing;
+    case "untraced reports no declaration whose slug an edge names"
+      untraced_reports_no_declaration_whose_slug_an_edge_names;
+    case "stale-ack sits at an ack whose hash does not match its block"
+      stale_ack_sits_at_an_ack_whose_hash_does_not_match_its_block;
+    case "stale-ack names the condition that fails"
+      stale_ack_names_the_condition_that_fails;
+    case "stale-ack needs an ackable finding in its block"
+      stale_ack_needs_an_ackable_finding_in_its_block;
+    case "stale-ack comes once for one id" stale_ack_comes_once_for_one_id;
+    case "stale-ack of one id in two files has no fix"
+      stale_ack_of_one_id_in_two_files_has_no_fix;
+    case "stale-ack relates the other void acks of its id"
+      stale_ack_relates_the_other_void_acks_of_its_id;
+    case "stale-ack on the first tag line of its block has no fix"
+      stale_ack_on_the_first_tag_line_of_its_block_has_no_fix;
+    case "stale-ack marks the hash or the target"
+      stale_ack_marks_the_hash_or_the_target;
+    case "stale-ack under a historical path gives no finding"
+      stale_ack_under_a_historical_path_gives_no_finding;
     case "scope-outside-plan names the globs outside the plan"
       scope_outside_plan_names_the_globs_outside_the_plan;
     case "scope-overlap sits at the later step"

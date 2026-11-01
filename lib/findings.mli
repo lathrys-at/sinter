@@ -38,8 +38,9 @@ val nearest_word : string -> string option
 (** [nearest_word word] is the tag word, without its [@], that the fix of
     [typo-tag] names for a tag line of the word [word]: the word of the
     vocabulary of sinter nearest to [word], as {!Edit_distance.nearest} gives
-    it. It is [None] when [word] is in the vocabulary, and when no word of the
-    vocabulary is within two edits of [word]. *)
+    it. It is [None] when [word] is in the vocabulary, when no word of the
+    vocabulary is within two edits of [word], and when that nearest word is
+    [ack]: the fix of [typo-tag] never writes an [@ack] line. *)
 
 val declared_spelling : Facts.t -> string -> string option
 (** [declared_spelling facts target] is the tag target that the fix of

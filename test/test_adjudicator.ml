@@ -636,6 +636,25 @@ let unbumped_marks_the_revision_or_the_word () =
              ])
           []))
 
+let unbumped_has_no_fix_at_the_largest_revision () =
+  let unbumped rev =
+    List.map
+      (fun (finding : Finding.t) ->
+        Option.fold ~none:"no fix" ~some:Fix.text finding.fix)
+      (Adjudicator.classes
+         ~base:
+           (facts
+              [ ("docs/a.md", Printf.sprintf "# A\n\n@req a v%d\nOld.\n" rev) ])
+         (facts
+            [ ("docs/a.md", Printf.sprintf "# A\n\n@req a v%d\nNew.\n" rev) ])
+         [])
+  in
+  Alcotest.check strings "the largest revision" [ "no fix" ]
+    (unbumped Tag_line.largest_revision);
+  Alcotest.check strings "the revision below it"
+    [ Printf.sprintf "@req a v%d" Tag_line.largest_revision ]
+    (unbumped (Tag_line.largest_revision - 1))
+
 let renamed_marks_the_target_and_names_the_new_declaration () =
   let base =
     [
@@ -735,6 +754,31 @@ let renamed_step_reads_the_unchanged_files_of_the_base () =
        ~whole_base:(lazy (facts [ one; a ]))
        [ one ]
        [ steps_plan "\n## Do that\n\n@req a\n"; a ])
+
+let renamed_step_gives_one_finding_for_each_lost_slug () =
+  let a = ("docs/a.md", "# A\n\n@req a\n\n## B\n\n@req b\n") in
+  Alcotest.check strings "two started steps of one slug at the base"
+    [ lost "do-it" ]
+    (renamed_steps
+       [ steps_plan "\n## Do it\n\n@req a\n\n## Do it\n\n@req b\n"; a ]
+       [ steps_plan "\n## Do a\n\n@req a\n\n## Do b\n\n@req b\n"; a ])
+
+let renamed_step_gives_one_finding_when_two_base_plans_match () =
+  let a = ("docs/a.md", "# A\n\n@req a\n")
+  and p = (".plans/p.md", "# P\n\n@plan p\n@scope **\n\n## Do it\n\n@req a\n")
+  and q =
+    (".plans/q.md", "# Q\n\n@plan p@0a1b2c\n@scope **\n\n## Do it\n\n@req a\n")
+  in
+  List.iter
+    (fun base ->
+      Alcotest.check strings "the step of the first plan file in byte order"
+        [
+          ".plans/p.md:3 | finding:renamed-step:step:p/do-it | step:p/do-it is \
+           started in the base, and the plan has no step with the slug do-it \
+           now";
+        ]
+        (renamed_steps base [ steps_plan "\n## Do a\n\n@req a\n"; a ]))
+    [ [ p; q; a ]; [ q; p; a ] ]
 
 let commit = "0123456789abcdef0123456789abcdef01234567"
 let other_commit = "fedcba9876543210fedcba9876543210fedcba98"
@@ -1157,8 +1201,14 @@ let tests =
       `Quick renamed_step_reports_each_lost_slug_of_a_started_step;
     Alcotest.test_case "renamed-step reads the unchanged files of the base"
       `Quick renamed_step_reads_the_unchanged_files_of_the_base;
+    case "renamed-step gives one finding for each lost slug"
+      renamed_step_gives_one_finding_for_each_lost_slug;
+    case "renamed-step gives one finding when two base plans match"
+      renamed_step_gives_one_finding_when_two_base_plans_match;
     case "unbumped marks the revision or the word"
       unbumped_marks_the_revision_or_the_word;
+    case "unbumped has no fix at the largest revision"
+      unbumped_has_no_fix_at_the_largest_revision;
     case "renamed marks the target and names the new declaration"
       renamed_marks_the_target_and_names_the_new_declaration;
     case "promise-collision marks the target" promise_collision_marks_the_target;

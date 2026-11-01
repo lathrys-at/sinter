@@ -400,6 +400,156 @@ let an_ack_shows_an_inserted_line () =
        ~files:[ ("a.md", text) ]
        (fixed text (fun document _ -> Fix.ack document ~block:0 ~target:"x")))
 
+let removed text ~line ~eline =
+  let document = Edits.document text in
+  let tags = Array.to_list document.tags in
+  let at line =
+    List.find (fun (tag : Markdown.tag) -> tag.span.start.line = line) tags
+  in
+  Finding.make Finding_class.Stale_ack subject ~detail:"d"
+    ~place:{ Finding.path = "a.md"; span = (at eline).span }
+    ~fix:(Fix.remove_acks document [ (at line, at eline) ])
+    ()
+
+let a_removal_shows_the_removed_line () =
+  let text = "# A\n\n- @cites x\n  @ack retired x 00000000\r\n" in
+  check_lines "the block"
+    [
+      "stale-ack: d";
+      " --> a.md:4:3";
+      "  |";
+      "4 |   @ack retired x 00000000";
+      "  |   ^^^^^^^^^^^^^^^^^^^^^^^";
+      "  |";
+      "help: remove the @ack line, check the block, and write a new @ack if \
+       the finding still applies";
+      "  |";
+      "4 -   @ack retired x 00000000";
+      "  |";
+      "";
+    ]
+    (full ~files:[ ("a.md", text) ] (removed text ~line:3 ~eline:4))
+
+let a_removal_without_its_lines_shows_its_text () =
+  let text = "# A\n\n@cites x\n@ack retired x 00000000\n" in
+  check_lines "the block of a file that changed"
+    [
+      "stale-ack: d";
+      " --> a.md:4:1";
+      "help: remove the @ack line, check the block, and write a new @ack if \
+       the finding still applies";
+      "  fix: remove @ack retired x 00000000";
+      "";
+    ]
+    (full
+       ~files:[ ("a.md", "# A\n\n@cites x\n") ]
+       (removed text ~line:3 ~eline:4));
+  List.iter
+    (fun changed ->
+      check_lines "the block of a line that changed"
+        [
+          "stale-ack: d";
+          " --> a.md:4:1";
+          "  |";
+          "4 | @ack retired x 00000000";
+          "  | ^^^^^^^^^^^^^^^^^^^^^^^";
+          "  |";
+          "help: remove the @ack line, check the block, and write a new @ack \
+           if the finding still applies";
+          "  fix: remove @ack retired x 00000000";
+          "";
+        ]
+        (full ~files:[ ("a.md", changed) ] (removed text ~line:3 ~eline:4)))
+    [
+      "# A\n\n@cites xy\n@ack retired x 00000000\n";
+      "# A\n\n@cites x\n@ack retired x 00000000 \n";
+    ]
+
+let a_removal_of_the_last_line_shows_the_removed_line () =
+  let text = "# A\n\n@cites x\n@ack retired x 00000000" in
+  check_lines "the block"
+    [
+      "stale-ack: d";
+      " --> a.md:4:1";
+      "  |";
+      "4 | @ack retired x 00000000";
+      "  | ^^^^^^^^^^^^^^^^^^^^^^^";
+      "  |";
+      "help: remove the @ack line, check the block, and write a new @ack if \
+       the finding still applies";
+      "  |";
+      "4 - @ack retired x 00000000";
+      "  |";
+      "";
+    ]
+    (full ~files:[ ("a.md", text) ] (removed text ~line:3 ~eline:4))
+
+let a_removal_of_several_lines_shows_each_line () =
+  let text =
+    "# A\n\n\
+     @cites x\n\
+     @ack retired x 1\n\
+     @ack retired x 2\n\n\
+     ## B\n\n\
+     @cites y\n\
+     @ack retired x 3"
+  in
+  let document = Edits.document text in
+  let tag = document.tags.(1) in
+  check_lines "the block"
+    [
+      "stale-ack: d";
+      "  --> a.md:4:1";
+      "   |";
+      " 4 | @ack retired x 1";
+      "   | ^^^^^^^^^^^^^^^^";
+      "   |";
+      "help: remove the @ack line, check the block, and write a new @ack if \
+       the finding still applies";
+      "   |";
+      " 4 - @ack retired x 1";
+      " 5 - @ack retired x 2";
+      "10 - @ack retired x 3";
+      "   |";
+      "";
+    ]
+    (full
+       ~files:[ ("a.md", text) ]
+       (Finding.make Finding_class.Stale_ack subject ~detail:"d"
+          ~place:{ Finding.path = "a.md"; span = tag.span }
+          ~fix:
+            (Fix.remove_acks document
+               [
+                 (document.tags.(0), document.tags.(1));
+                 (document.tags.(1), document.tags.(2));
+                 (document.tags.(3), document.tags.(4));
+               ])
+          ()));
+  check_lines "the block of a file that changed"
+    [
+      "stale-ack: d";
+      " --> a.md:4:1";
+      "  |";
+      "4 | @ack retired x 1";
+      "  | ^^^^^^^^^^^^^^^^";
+      "  |";
+      "help: remove the @ack line, check the block, and write a new @ack if \
+       the finding still applies";
+      "  fix: remove @ack retired x 1 and @ack retired x 2";
+      "";
+    ]
+    (full
+       ~files:[ ("a.md", "# A\n\n@cites x\n@ack retired x 1\n@ack x 2\n") ]
+       (Finding.make Finding_class.Stale_ack subject ~detail:"d"
+          ~place:{ Finding.path = "a.md"; span = tag.span }
+          ~fix:
+            (Fix.remove_acks document
+               [
+                 (document.tags.(0), document.tags.(1));
+                 (document.tags.(1), document.tags.(2));
+               ])
+          ()))
+
 let each_alternative_gets_a_diff () =
   let text = "# A\n\n@cites x v1\n" in
   check_lines "the block"
@@ -1073,6 +1223,13 @@ let tests =
     case "an insertion marks the inserted columns"
       an_insertion_marks_the_inserted_columns;
     case "an ack shows an inserted line" an_ack_shows_an_inserted_line;
+    case "a removal shows the removed line" a_removal_shows_the_removed_line;
+    case "a removal without its lines shows its text"
+      a_removal_without_its_lines_shows_its_text;
+    case "a removal of the last line shows the removed line"
+      a_removal_of_the_last_line_shows_the_removed_line;
+    case "a removal of several lines shows each line"
+      a_removal_of_several_lines_shows_each_line;
     case "each alternative gets a diff" each_alternative_gets_a_diff;
     case "a fix without its line shows its text"
       a_fix_without_its_line_shows_its_text;

@@ -375,9 +375,9 @@ let write ?phases ppf report =
 
 module Paths = Map.Make (String)
 
-let configuration (tree : Scan.tree) (compared : Scan.compared) facts =
-  let read base =
-    let plan_files = Facts.plan_files facts in
+let configuration (tree : Scan.tree) (compared : Scan.compared) ~base facts =
+  let read text =
+    let plan_files = Facts.plan_files facts @ Facts.plan_files base in
     Config_change.findings
       ~plan_file:(fun path -> List.mem path plan_files)
       ~location:tree.location
@@ -385,7 +385,7 @@ let configuration (tree : Scan.tree) (compared : Scan.compared) facts =
         (match List.assoc_opt tree.location compared.diff with
         | Some change -> Git.hunks change
         | None -> [])
-      ~base
+      ~base:text
       (Manifest.document tree.manifest)
   in
   match compared.base_manifest with
@@ -450,7 +450,7 @@ let compare_with_base ?phases ~mode ~gate (tree : Scan.tree)
                  (if Filename.is_relative tree.location then Some tree.location
                   else None)
                facts compared.diff))
-        (List.sort Finding.compare (configuration tree compared facts)))
+        (List.sort Finding.compare (configuration tree compared ~base facts)))
 
 let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
     ~quiet ~tool () =

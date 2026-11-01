@@ -20,6 +20,9 @@ val read : string -> (int * t) option
     [@] in [text]: [Some] when [text], after the spaces and tabs at its start,
     starts with [@]. [text] holds no line ending. *)
 
+val largest_revision : int
+(** [largest_revision] is 2^53 - 1, the largest revision of {!parts}. *)
+
 type parts = {
   target : string option;  (** the first token, when there is one *)
   revision : int option;

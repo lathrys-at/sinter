@@ -39,9 +39,16 @@ val full :
       each alternative after an empty gutter line, and an empty gutter line
       after the last. Otherwise the line [  fix: ] and {!Fix.text} of the fix.
 
-    The diff of one alternative takes the line of its first edit, the anchor
-    line, applies the edits to it, and splits the result at its line endings. An
-    alternative has no diff when {!Source.line} does not give the anchor line,
+    An edit with an empty text removes the line [N] where it stops when it stops
+    at the end of that line and either starts at the end of line [N - 1], or
+    starts at column 1 of line [N] when [N] is the last line of the file and
+    holds a character. When every edit of an alternative removes a line, by the
+    lines that {!Source.line} gives, the diff of the alternative is [N - ] and
+    line [N] for each edit, in the order of the edits.
+
+    The diff of any other alternative takes the line of its first edit, the
+    anchor line, applies the edits to it, and splits the result at its line
+    endings. It has no diff when {!Source.line} does not give the anchor line,
     when an edit starts or stops on another line, when a column of an edit falls
     after the column past the last character of the line, or when two edits
     overlap. The lines of the diff, with each number right-aligned in [W]:

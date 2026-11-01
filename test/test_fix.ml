@@ -116,6 +116,53 @@ let ack_inserts_a_line_after_the_last_tag_line () =
     (Fix.ack document ~block:1 ~target:"z")
     [ [ Printf.sprintf "7:9-7:9 \"\\n@ack retired z %s\"" hash ] ]
 
+let remove_acks_removes_the_line_with_the_line_ending_before_it () =
+  let read = document in
+  let document =
+    read
+      "# A\n\n\
+       - @cites x\n\
+      \  @ack retired x 00000000 \t\r\n\n\
+       ## B\n\
+       @cites \xc3\xa9\n\
+       @ack retired z 1234abcd"
+  in
+  let fix =
+    Fix.remove_acks document [ (document.tags.(0), document.tags.(1)) ]
+  in
+  check_alternatives fix [ [ "3:11-4:28 \"\"" ] ];
+  check_text fix "remove @ack retired x 00000000";
+  check_alternatives
+    (Fix.remove_acks document [ (document.tags.(2), document.tags.(3)) ])
+    [ [ "8:1-8:24 \"\"" ] ];
+  let ended = read "# A\n@cites a\n@ack retired a 1\n" in
+  check_alternatives
+    (Fix.remove_acks ended [ (ended.tags.(0), ended.tags.(1)) ])
+    [ [ "2:9-3:17 \"\"" ] ]
+
+let remove_acks_removes_each_line_in_the_order_of_the_lines () =
+  let document =
+    document
+      "# A\n\
+       @cites a\n\
+       @ack retired a 1\n\
+       @ack retired a 2\n\n\
+       ## B\n\
+       @cites b\n\
+       @ack x 3"
+  in
+  let fix =
+    Fix.remove_acks document
+      [
+        (document.tags.(3), document.tags.(4));
+        (document.tags.(1), document.tags.(2));
+        (document.tags.(0), document.tags.(1));
+      ]
+  in
+  check_alternatives fix
+    [ [ "2:9-3:17 \"\""; "3:17-4:17 \"\""; "8:1-8:9 \"\"" ] ];
+  check_text fix "remove @ack retired a 1 and @ack retired a 2 and @ack x 3"
+
 let refuses name gives =
   Alcotest.(check bool)
     name true
@@ -140,8 +187,11 @@ let a_fix_changes_the_revision () =
       Fix.bump (tag "# A\n@req a v2\n" 0) 1);
   refuses "a bump to v1 of a tag with no revision" (fun () ->
       Fix.bump (tag "# A\n@req a\n" 0) 1);
+  refuses "a bump above the largest revision" (fun () ->
+      Fix.bump (tag "# A\n@req a v2\n" 0) (Tag_line.largest_revision + 1));
   ignore (Fix.pin (tag "# A\n@cites a v2\n" 0) 1 : Fix.t);
-  ignore (Fix.bump (tag "# A\n@req a v2\n" 0) 3 : Fix.t)
+  ignore (Fix.bump (tag "# A\n@req a v2\n" 0) 3 : Fix.t);
+  ignore (Fix.bump (tag "# A\n@req a v2\n" 0) Tag_line.largest_revision : Fix.t)
 
 let an_ack_needs_a_block () =
   let document = document "# A\n@cites a\n" in
@@ -149,6 +199,22 @@ let an_ack_needs_a_block () =
       Fix.ack document ~block:1 ~target:"a");
   refuses "a negative block" (fun () ->
       Fix.ack document ~block:(-1) ~target:"a")
+
+let remove_acks_needs_acks_right_after_tag_lines () =
+  let document = document "# A\n@cites a\n@ack retired a 1\n\n@cites b\n" in
+  refuses "a tag that is no @ack" (fun () ->
+      Fix.remove_acks document [ (document.tags.(1), document.tags.(0)) ]);
+  refuses "a tag two lines before" (fun () ->
+      Fix.remove_acks document [ (document.tags.(0), document.tags.(2)) ]);
+  refuses "a tag after the @ack" (fun () ->
+      Fix.remove_acks document [ (document.tags.(2), document.tags.(1)) ]);
+  refuses "no @ack" (fun () -> Fix.remove_acks document []);
+  refuses "one @ack twice" (fun () ->
+      Fix.remove_acks document
+        [
+          (document.tags.(0), document.tags.(1));
+          (document.tags.(0), document.tags.(1));
+        ])
 
 let fixes text =
   let document = document text in
@@ -166,9 +232,14 @@ let fixes text =
     Fix.ack document ~block:0 ~target:"a";
   ]
 
+let every_fix text =
+  let document = document text in
+  fixes text
+  @ [ Fix.remove_acks document [ (document.tags.(1), document.tags.(2)) ] ]
+
 let help_is_one_constant_for_each_form () =
-  let first = fixes "# A\n@cites a\n@cites b v1\n"
-  and second = fixes "# B\n\n- @req z Why.\n  @cites y v9\n" in
+  let first = every_fix "# A\n@cites a\n@cites b v1\n@ack retired a 1\n"
+  and second = every_fix "# B\n\n- @req z Why.\n  @cites y v9\n  @ack z 2\n" in
   Alcotest.(check bool)
     "the same string for each form" true
     (List.for_all2 (fun a b -> Fix.help a == Fix.help b) first second);
@@ -191,8 +262,11 @@ let help_messages_are_fixed () =
       "cite one of the successors in place of the retired item";
       "give the plan an id after its slug";
       "if the citation still holds, accept the finding with an @ack line";
+      "remove the @ack line, check the block, and write a new @ack if the \
+       finding still applies";
     ]
-    (List.map Fix.help (fixes "# A\n@cites a\n@cites b v1\n"))
+    (List.map Fix.help
+       (every_fix "# A\n@cites a\n@cites b v1\n@ack retired a 1\n"))
 
 let line_endings = Gen.oneof_list [ "\n"; "\r\n" ]
 
@@ -381,6 +455,13 @@ let tests =
       plan_id_inserts_after_the_target;
     Alcotest.test_case "Ack inserts a line after the last tag line" `Quick
       ack_inserts_a_line_after_the_last_tag_line;
+    Alcotest.test_case
+      "Remove_acks removes the line with the line ending before it" `Quick
+      remove_acks_removes_the_line_with_the_line_ending_before_it;
+    Alcotest.test_case "Remove_acks removes each line in the order of the lines"
+      `Quick remove_acks_removes_each_line_in_the_order_of_the_lines;
+    Alcotest.test_case "Remove_acks needs acks right after tag lines" `Quick
+      remove_acks_needs_acks_right_after_tag_lines;
     Alcotest.test_case "a fix needs a target" `Quick a_fix_needs_a_target;
     Alcotest.test_case "a fix changes the revision" `Quick
       a_fix_changes_the_revision;

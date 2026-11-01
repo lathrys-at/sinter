@@ -961,7 +961,9 @@ of the set has an id and a value, by the rules of sections 13.1 and
 3. one entry for each member of an array that the side writes, except
    a member that is also built in, and one entry for each runner table
    that the side writes, as section 13.1 says. On both sides, the
-   built-in members are those of the working tree (section 2.5). A
+   built-in members are those that sections 9.1 and 9.2 give for the
+   diff: each plan file of the working tree or of the base tree, the
+   manifest, the lock file `sinter.lock`, and the journals of plans. A
    member that a side writes twice gives one entry.
 
 `sinter-spec` has no entry. On the base side, only the key paths of

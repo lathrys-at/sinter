@@ -73,6 +73,7 @@ type t = {
   blocks : block array;
   unread : span list;
   errors : span list;
+  unterminated : int option;
 }
 
 type error = Not_utf_8 of int | No_tree of Sinter_bridge.Tree.error
@@ -574,12 +575,9 @@ let shared_new_lines ending =
 let shared_lf = shared_new_lines "\n"
 let shared_crlf = shared_new_lines "\r\n"
 
-let new_line lines ~open_end ~line ~at =
+let new_line lines ~line ~at =
   let text = Line_index.text lines in
-  let crlf =
-    text.[Line_index.content_end lines line] = '\r'
-    && not (open_end && line = Line_index.count lines)
-  in
+  let crlf = text.[Line_index.content_end lines line] = '\r' in
   let first = Line_index.first lines line in
   let rec width offset count =
     if offset = at then Some count
@@ -670,8 +668,7 @@ let assemble lines ~open_end ~texts walk errors =
         {
           tags = block.members;
           prose = List.map (Line_index.content lines) block.prose_lines;
-          new_line =
-            new_line lines ~open_end ~line:block.last_tag_line ~at:block.last_at;
+          new_line = new_line lines ~line:block.last_tag_line ~at:block.last_at;
           hash =
             hash_lines lines ~at ~numbered ~own
               (List.init
@@ -725,7 +722,14 @@ let assemble lines ~open_end ~texts walk errors =
         { section with extent; text })
       (Dynarray.to_array walk.sections)
   in
-  { sections; tags; blocks; unread = Dynarray.to_list walk.unread; errors }
+  {
+    sections;
+    tags;
+    blocks;
+    unread = Dynarray.to_list walk.unread;
+    errors;
+    unterminated = (if open_end then Some (Line_index.count lines) else None);
+  }
 
 let columns (tag : tag) part =
   let start = tag.span.start.column in
@@ -746,13 +750,16 @@ let read ?(texts = true) reader content =
   | Some offset -> Error (Not_utf_8 offset)
   | None -> (
       let text = Text_file.with_final_line_feed content in
+      let open_end =
+        content <> "" && String.length text <> String.length content
+      in
       match Sinter_bridge.Tree.parse reader.language text with
       | Error error -> Error (No_tree error)
       | Ok tree ->
           Fun.protect
             ~finally:(fun () -> Sinter_bridge.Tree.close tree)
             (fun () ->
-              let lines = Line_index.make text in
+              let lines = Line_index.make ~open_end text in
               let captures =
                 match Sinter_bridge.Query.run reader.query tree with
                 | Ok captures -> captures
@@ -763,6 +770,5 @@ let read ?(texts = true) reader content =
                 parse_errors lines (Sinter_bridge.Tree.errors tree)
               in
               Ok
-                (assemble lines
-                   ~open_end:(String.length text <> String.length content)
-                   ~texts (structure lines captures) errors)))
+                (assemble lines ~open_end ~texts (structure lines captures)
+                   errors)))

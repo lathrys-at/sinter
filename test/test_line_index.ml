@@ -81,6 +81,18 @@ let lone_carriage_return_is_a_character () =
   Alcotest.check position "the place of b" (at 1 3)
     (Line_index.position index 2)
 
+let an_added_line_feed_keeps_the_carriage_return_before_it () =
+  let index = Line_index.make ~open_end:true "a\r\nb\r\n" in
+  Alcotest.(check (list string))
+    "the contents" [ "a"; "b\r" ]
+    [ Line_index.content index 1; Line_index.content index 2 ];
+  Alcotest.(check int) "the end of line 2" 5 (Line_index.content_end index 2);
+  Alcotest.check position "the end of the text" (at 2 3)
+    (Line_index.position index 6);
+  Alcotest.(check string)
+    "an added line feed after no carriage return" "b"
+    (Line_index.content (Line_index.make ~open_end:true "a\nb\n") 2)
+
 let byte_order_mark_is_in_no_line () =
   let index = Line_index.make "\xEF\xBB\xBFab\n" in
   Alcotest.(check int) "the first byte of line 1" 3 (Line_index.first index 1);
@@ -273,6 +285,8 @@ let tests =
       empty_text_has_no_line;
     Alcotest.test_case "ends a line at a CR before an LF" `Quick
       carriage_return_before_a_line_feed_ends_the_line;
+    Alcotest.test_case "an added line feed keeps the CR before it" `Quick
+      an_added_line_feed_keeps_the_carriage_return_before_it;
     Alcotest.test_case "takes a lone CR as a character" `Quick
       lone_carriage_return_is_a_character;
     Alcotest.test_case "puts the byte order mark in no line" `Quick

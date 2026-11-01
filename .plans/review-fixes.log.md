@@ -52,3 +52,41 @@
   at most 104 bytes on macOS, and the folder of a worker of the
   mutation pass is under the checkout. So the test makes the socket by
   its name inside its folder.
+
+## Correct the findings
+
+- Rulings of the lead on details that the brief left open:
+  - `stale-ack` judges condition 2 of `spec/vocabulary.md` section 7.4
+    wherever Sinter can judge it in tree mode. An `@ack` of
+    `unexercised` is not void by its tag target, because Sinter reads
+    no evidence. An `@ack` of `unmet-rule` or of a declared `@rule` is
+    not void by its tag target either, because Sinter evaluates no
+    rules.
+  - The fix of `stale-ack` removes the `@ack` line, one edit from the
+    end of the tag line before it. The void acks of one id give one
+    finding, and its fix removes each of their lines. An `@ack` on the
+    first tag line of its block gets no fix.
+  - The help of that fix is "remove the @ack line, check the block,
+    and write a new @ack if the finding still applies".
+- A removal from the end of the line before the `@ack` fails on the
+  last line of a file with no final LF: git then shows the line before
+  as changed, and the test of mechanical repairs refuses the hunk. On
+  that line the edit starts at column 1. `Markdown.t.unterminated`
+  gives the line.
+- `typo-tag` takes the nearest word by the rule of the row, ties in
+  byte order included, and then gives no fix when that word is `ack`.
+  So `@reck`, two edits from both `ack` and `req`, gets no fix.
+- After the fix of the lone CR, an `@ack` on the last line of a file
+  with no final LF, whose hash ends in that CR, reads the CR as part of
+  its hash. The ack is then void.
+- `Facts.ack_id` replaces two copies of the id of an ack in
+  `lib/facts.ml`.
+- The review test of `unbumped` at 2^53 - 1 passes because the finding
+  has no fix, so it checks nothing there. A test of the adjudicator
+  states that the finding has no fix.
+- Left for later: the fix of `retired` inserts its `@ack` after the
+  last line of a file with no final LF. git's diff then shows that
+  line changed, and the test of mechanical repairs refuses the hunk.
+- Left for later: an `@ack` with no hash, or in a block with no
+  declaration and no site, gives no ack fact, so it gives no
+  `stale-ack`.

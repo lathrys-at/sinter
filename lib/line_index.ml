@@ -2,12 +2,18 @@
 (* Copyright 2026 The Sinter Authors *)
 
 type position = { line : int; column : int }
-type t = { text : string; starts : int array; ends : int array }
+
+type t = {
+  text : string;
+  starts : int array;
+  ends : int array;
+  open_end : bool;
+}
 
 let byte_order_mark text =
   if String.starts_with ~prefix:"\xEF\xBB\xBF" text then 3 else 0
 
-let make text =
+let make ?(open_end = false) text =
   let length = String.length text in
   let rec scan segment first starts ends =
     match String.index_from_opt text segment '\n' with
@@ -20,6 +26,7 @@ let make text =
     text;
     starts = Array.of_list (List.rev starts);
     ends = Array.of_list (List.rev ends);
+    open_end;
   }
 
 let text index = index.text
@@ -40,6 +47,7 @@ let content_end index line =
     stop < String.length index.text
     && stop > start
     && index.text.[stop - 1] = '\r'
+    && not (index.open_end && stop = String.length index.text - 1)
   then stop - 1
   else stop
 
