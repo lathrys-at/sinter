@@ -82,6 +82,7 @@ let () =
         ] );
       ("fixture", Test_fixture.tests);
       ("unreadable", Test_unreadable.tests);
+      ("counted work", Test_counted_work.tests);
       ("allocation", Test_allocation.tests);
       ("generated tree", Test_generated_tree.tests);
       ("bench", Test_bench.tests);
