@@ -533,6 +533,17 @@ let a_tracked_file_is_compared_like_an_untracked_file_of_its_content () =
     ]
     (shown repo)
 
+let a_deleted_path_gives_the_run_of_a_deletion () =
+  let repo = with_base [ ("x", "1\n2\n3\n") ] in
+  Repo.remove repo "x";
+  Repo.symlink repo ~target:"elsewhere" "x";
+  ignore (Repo.git repo [ "add"; "x" ]);
+  Repo.remove repo "x";
+  Repo.write repo "x" "1\nB\n3\n";
+  Alcotest.check strings "one run of all the lines of the base"
+    [ show "x" (Git.Deleted (Git.Text [ hunk 1 1 1 1 0 3 ])) ]
+    (shown repo)
+
 let a_file_behind_a_symbolic_link_is_not_in_the_file_set () =
   let repo = with_base [ ("d/x", "in\n") ] in
   let outside = Repo.temp_dir () in
@@ -631,6 +642,8 @@ let tests =
     the_tree_key_is_the_tree_of_git_add_all;
     case "a tracked file is compared like an untracked file of its content"
       a_tracked_file_is_compared_like_an_untracked_file_of_its_content;
+    case "a deleted path gives the run of a deletion"
+      a_deleted_path_gives_the_run_of_a_deletion;
     case "a file behind a symbolic link is not in the file set"
       a_file_behind_a_symbolic_link_is_not_in_the_file_set;
     case "a repository under a name with a colon gives its diff"
