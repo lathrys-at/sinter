@@ -1735,11 +1735,12 @@ format.
 `sinter pack add <name>` fetches a pack from the packs repository,
 checks its hash, and records it in `sinter.lock`. `sinter pack fetch`
 fills the cache from the lock file on another machine (`spec/packs.md`
-section 12). `verify` runs the conformance fixtures of a pack and checks
-the import sections of its wasm files (section 5.2). `list` and `info`
-describe the packs. A pack whose hash does not match the lock stops
-every command with exit code 3, because a pack that changed could change
-every extent hash of its language.
+section 12). `sinter pack verify` checks a pack folder, or each pack of
+the lock file, by the rules that Sinter applies when it loads a pack
+(`spec/packs.md` section 3.7). `list` and `info` describe the packs. A
+pack whose hash does not match the lock stops every command with exit
+code 3, because a pack that changed could change every extent hash of
+its language.
 
 ### 11.17 `sinter init`
 

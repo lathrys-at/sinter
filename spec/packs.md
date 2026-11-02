@@ -308,6 +308,48 @@ with exit code 3:
 The message names the pack and the cause. Section 10.6 gives the
 rules for an adapter.
 
+### 3.7 Checking a pack: `sinter pack verify`
+
+The command `sinter pack verify` checks packs by the rules of section
+3.6. It has two forms:
+
+- `sinter pack verify <folder>...` checks each folder as the pack root
+  of a pack. This form needs no repository. A pack fails in each of
+  these cases:
+  - the descriptor holds an error (section 3.1);
+  - the tool implements an older version of the specifications than
+    `sinter-spec`, by the comparison of [manifest.md](manifest.md)
+    section 5;
+  - a file that section 2.3 requires is missing, a path of the pack
+    breaks a rule of section 2.3, or the pack holds a file that is not
+    a regular file;
+  - the folder `licenses/` holds no file;
+  - the SHA-256 of a grammar or an adapter differs from the descriptor;
+  - a grammar does not load, or its ABI version lies outside the range
+    that the tool accepts (section 3.3);
+  - a query file does not compile against its grammar, or it breaks a
+    rule of section 4;
+  - an adapter is not valid (section 10.6).
+- `sinter pack verify --all` checks each pack of the lock file, with
+  its files in the cache, by every rule of section 3.6, and it checks
+  each adapter of the pack (section 10.6). This form reads the
+  repository, so it needs a manifest ([manifest.md](manifest.md)
+  section 2.4). A pack that the cache lacks fails, and its message
+  says to run `sinter pack fetch`.
+
+The command checks every pack, also after a pack fails. For each pack
+that fails, it prints a message that names the pack and the cause, as
+section 3.6 says. When a folder holds no descriptor that gives a name,
+the message names the folder. The command changes no file.
+
+The command exits with one of these codes:
+
+| code | when |
+|---|---|
+| 0 | every pack passes |
+| 2 | the command line names no folder and no `--all`, or it names a folder and `--all` |
+| 3 | a pack fails, or a folder that the command line names does not exist or cannot be read |
+
 ## 4. Query files
 
 ### 4.1 Queries and matches
