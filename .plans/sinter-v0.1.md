@@ -304,11 +304,14 @@ maintainer.
 @decision test-plan
 Write the plan that the rewrite of the tests follows. It names the
 levels of test: unit tests, property tests of a module and of an
-interface, fuzzing, tests of a component and of a subsystem, and
-tests of the whole system. For each level it says what the level
-proves, where its tests live, its oracles and fixtures, how each test
-names the requirement that it verifies, and its measures: coverage,
-mutation score, and run time.
+interface, fuzzing, tests of a component and of a subsystem, tests of
+the whole system, and acceptance tests. For each level it says what
+the level proves, where its tests live, its oracles and fixtures, how
+each test names the requirement that it verifies, and its measures:
+coverage, mutation score, and run time. It also tells a contributor
+which levels to run for a change, and when: while editing, before a
+commit, before a hand-back, on each pull request, on a schedule, and
+before a release. The contributor guide points to it.
 
 ## Rewrite the tests of the modules
 @scope lib/**, test/**, dune-project, sinter.opam, sinter.opam.locked
@@ -338,6 +341,16 @@ Run the `sinter` binary in real git checkouts of generated and
 recorded repositories, through each command, gate, and output form,
 on Linux and on macOS, and compare its output and its exit code with
 the specifications.
+
+## Write the acceptance tests
+@scope test/**, docs/**, .github/workflows/**
+Write one acceptance test for each use of Sinter that the design notes
+and the README promise: a person and an agent work through a plan in a
+real repository, from the plan file to its approval, its steps, its
+delivery, and its closing in the ledger, with the gates `turn`,
+`review`, and `merged` at each point. Each test states its use in the
+words of the person who relies on it, and passes only when Sinter
+gives that person what the documents promise.
 
 ## Settle the behaviour that the tests left open
 @scope spec/**, docs/**, lib/**, bin/**, test/**, sinter.toml
