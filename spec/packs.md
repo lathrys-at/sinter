@@ -79,11 +79,10 @@ in this table are relative to the pack root.
 | `adapters/<runner>.wasm` | the adapter of the runner `<runner>` (section 10) | one for each runner that has an adapter |
 | `licenses/` | the text of each license that the descriptor names, and the notices that those licenses require | yes |
 
-A pack can hold other files, for example the files of a conformance
-fixture ([jsonl.md](jsonl.md) section 11). Sinter does not read them,
-but the pack hash covers them. A pack holds only regular files and
-folders: no symbolic link, and no other kind of file, such as a device
-file.
+A pack can hold other files, for example a `README.md` file. Sinter
+does not read them, but the pack hash covers them. A pack holds only
+regular files and folders: no symbolic link, and no other kind of
+file, such as a device file.
 
 A **path of a pack** is the path of a file of the pack, or of a folder
 that holds a file of the pack. The path is relative to the pack root,
@@ -137,17 +136,48 @@ value. The lock file fixes one release that meets the value.
 The number of a release says what the release can change, compared
 with the release of the same pack before it:
 
-- A **patch release** raises only the third number. It changes no fact
-  and no extent hash of a file that the release before it parses
-  without a parse failure. It can make a file parse that failed to
+- A **patch release** raises only the third number. Take a file that
+  the release before it parses without a parse failure. The patch
+  release parses that file without a parse failure too, and it
+  changes no extent hash of the file and no **node fact** of the
+  file: no record of [jsonl.md](jsonl.md) section 4. It changes no
+  other fact of the file, unless it makes another file parse that
+  failed to parse before. It can make a file parse that failed to
   parse before, fix a crash, or fix the bindings of an adapter.
 - A **minor release** raises the second number. It changes no extent
   hash. It can add facts, for example the tests of a shape that the
   queries did not find before. It can add a runner adapter.
 - A **major release** raises the first number. It can change anything.
 
-The packs repository checks each release against the conformance
-fixtures ([jsonl.md](jsonl.md) section 11) of the release before it.
+The packs repository (section 12.1) holds the conformance fixtures of
+each pack ([jsonl.md](jsonl.md) section 11) in the folders
+`fixtures/<pack>/<case>/`, outside the pack root. It checks each
+release in two ways:
+
+1. It checks the release against its own fixtures, as
+   [jsonl.md](jsonl.md) section 11 says: the output of the scan of each
+   fixture, without the header line, is equal byte for byte to the
+   `expected.jsonl` of the fixture.
+2. It checks the release against the fixtures of the release before
+   it, as the tag of that release holds them. One tool scans each of
+   those fixtures twice: once with the release before, and once with
+   the new release. Then it compares the two outputs by the kind of
+   the new release:
+   - A patch release: each file that parses without a parse failure
+     with the release before also parses without a parse failure with
+     the new release. When the two releases give a parse failure in
+     the same files, the located facts of each file that parses with
+     both ([jsonl.md](jsonl.md) section 3) are equal byte for byte in
+     the two outputs. The located facts of a file are the lines whose
+     `path` is the path of the file. When the new release makes a file
+     of the fixture parse that failed to parse before, the rule of a
+     minor release applies to the fixture.
+   - A minor release: each node fact of the output of the release
+     before is in the output of the new release with the same `id`,
+     the same position (`path`, `line`, `col`, `eline`, and `ecol`),
+     and the same extent hash (`xh`) when the record has one. The
+     edges and the findings can change.
+   - A major release: no comparison.
 
 ## 3. The descriptor
 

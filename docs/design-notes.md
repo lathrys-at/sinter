@@ -576,9 +576,11 @@ when it runs. A **language pack** holds these parts:
 - a descriptor, `pack.toml`, which lists the grammars, the comment
   sigils, the foreign vocabulary (section 3.2), and the test runners;
 - the license notices;
-- runner adapters, when a runner needs one (section 4);
-- conformance fixtures: a small project, the JSONL that a scan of it
-  must give, and real output of a test runner.
+- runner adapters, when a runner needs one (section 4).
+
+The conformance fixtures of a pack live beside the pack in the
+packs repository, outside the pack: a small project, the JSONL that a
+scan of it must give, and real output of a test runner.
 
 **A pack holds no code that can read or write anything outside itself.**
 A grammar in wasm imports only memory and a few functions of the
@@ -1307,7 +1309,8 @@ only strings, integers, booleans, flat arrays of those, and arrays of
 flat objects, whose values are again strings, integers, or booleans
 (record `json-handling`). This makes the canonical form simple to write:
 sort the keys, and no floats exist. Only a machine writes the JSONL.
-Conformance is byte equality with fixtures that the repository holds.
+Conformance is byte equality with the fixtures that the packs
+repository holds (`spec/jsonl.md` section 11).
 
 - **The JSONL is always derived, never a source.**
 - **The two domains of hashes never mix.** An extent hashes as
