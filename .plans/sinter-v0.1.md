@@ -276,6 +276,76 @@ Write Sinter's findings on itself as SARIF at the gate `review` in CI,
 on each pull request from the repository and each push to the default
 branch, and upload them to GitHub code scanning in one category.
 
+## Review the design and the specifications
+@scope spec/**, docs/**
+Review the design notes, the seven specifications, and the decision
+records before the release, systematically and adversarially: find
+each contradiction, each gap, and each behaviour that a rule leaves
+open, and find where a rule can be simpler, or stated once for several
+places. A pair of reviewers proposes each finding with its evidence;
+the maintainer rules on each design question; this step writes the
+rulings into the text.
+
+## Declare the requirements of the specifications
+@scope spec/**, docs/**
+Give each normative rule of the specifications its own requirement
+with a `@req` slug, so that code and tests can name it. Merge two
+rules that say one thing, and split a rule that says two.
+
+## Trace the code to the requirements
+@scope lib/**, bin/**, bridge/**, sinter.toml
+Tag the code that carries out each requirement with `@satisfies`.
+Code that carries out no requirement is either a requirement that the
+specifications miss, or code to remove; each case goes to the
+maintainer.
+
+## Write the test plan
+@scope docs/**, CONTRIBUTING.md
+@decision test-plan
+Write the plan that the rewrite of the tests follows. It names the
+levels of test: unit tests, property tests of a module and of an
+interface, fuzzing, tests of a component and of a subsystem, and
+tests of the whole system. For each level it says what the level
+proves, where its tests live, its oracles and fixtures, how each test
+names the requirement that it verifies, and its measures: coverage,
+mutation score, and run time.
+
+## Rewrite the tests of the modules
+@scope lib/**, test/**, dune-project, sinter.opam, sinter.opam.locked
+Rewrite the tests of each module and each interface as the test plan
+says: a unit test only where one case shows one rule, and a property
+for the rest. Each test names the requirement that it verifies with
+`@verifies`. A behaviour that no test can pin, because the
+specification leaves it open, goes to the maintainer as a decision.
+
+## Fuzz the readers of untrusted input
+@scope lib/**, bridge/**, test/**, .github/workflows/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, REUSE.toml
+Fuzz each reader of input that a repository, a host, or a person
+controls: the manifest, the tags in markdown and source files, JSON
+lines, git objects and refs, the ledger, JUnit XML, pack archives, and
+the arguments of the command line. CI runs each fuzzer for a fixed
+time.
+
+## Test the subsystems
+@scope lib/**, bin/**, test/**
+Test each subsystem at its interface, against generated repositories:
+the scan, the check of a tree and of a diff, the ledger, the import of
+evidence, the loading of packs, and the parser bridge.
+
+## Test the whole system
+@scope bin/**, test/**, bench/**, .github/workflows/**
+Run the `sinter` binary in real git checkouts of generated and
+recorded repositories, through each command, gate, and output form,
+on Linux and on macOS, and compare its output and its exit code with
+the specifications.
+
+## Settle the behaviour that the tests left open
+@scope spec/**, docs/**, lib/**, bin/**, test/**, sinter.toml
+Write each ruling on a behaviour that the tests found open into the
+specifications, the code, and the tests. Then require, at the gate
+`merged` on Sinter itself, code that satisfies and a test that
+verifies each requirement of the specifications.
+
 ## Release the binaries
 @scope .github/workflows/**, README.md, docs/**, THIRD_PARTY.md, REUSE.toml, LICENSES/**
 Build release binaries for Linux x86-64 and macOS arm64 on a version
