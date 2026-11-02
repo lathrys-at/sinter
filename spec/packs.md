@@ -168,7 +168,7 @@ All four keys are required. No two grammars of a pack have one name.
 
 The ABI version of each grammar must lie in the range that the
 tree-sitter library of the tool accepts. A tool that uses tree-sitter
-0.25 accepts the ABI versions 13 to 15.
+0.26 accepts the ABI versions 13 to 15.
 
 Each member of `names` is a glob of [manifest.md](manifest.md) section
 7.1. It is matched against the name of a file, which is the last name
@@ -1099,7 +1099,7 @@ to the test.
 ### 12.1 The packs repository
 
 Sinter's own packs live in the **packs repository**: the repository
-`sinter-packs` on GitHub, `https://github.com/lathrys-at/sinter-packs`.
+`sinter-packs` on GitHub, `https://github.com/sinterworks/sinter-packs`.
 Each release of a pack is one GitHub release of that repository:
 
 - Its tag is `<name>-v<version>`, for example `rust-v1.0.3`.
@@ -1121,7 +1121,7 @@ packs repository. It lists each release of each pack. Sinter reads the
 index from one fixed address:
 
 ```
-https://raw.githubusercontent.com/lathrys-at/sinter-packs/main/index.jsonl
+https://raw.githubusercontent.com/sinterworks/sinter-packs/main/index.jsonl
 ```
 
 The option `--index <address>` of a command that reads the index names
@@ -1149,7 +1149,7 @@ stops with exit code 3.
 Example:
 
 ```json
-{"hash":"5e0c…","name":"rust","url":"https://github.com/lathrys-at/sinter-packs/releases/download/rust-v1.0.3/rust-1.0.3.tar.gz","v":1,"version":"1.0.3"}
+{"hash":"5e0c…","name":"rust","url":"https://github.com/sinterworks/sinter-packs/releases/download/rust-v1.0.3/rust-1.0.3.tar.gz","v":1,"version":"1.0.3"}
 ```
 
 ### 12.3 Adding a pack
