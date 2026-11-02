@@ -189,16 +189,24 @@ remain to the roadmap.
 Add the manifest of Sinter, fix the findings that Sinter reports on
 itself, and run `sinter check` on every pull request in CI.
 
+## Close the gaps of the pack specification
+@scope spec/**, docs/**
+Point the packs repository at sinterworks, set the rules of the paths
+of a pack, the reading of an archive, the check of a cached pack, a
+parse that gives no tree, the comparison of a release with the release
+before it, and the command `sinter pack verify`, and bring
+docs/licensing-setup.md to the specification.
+
 ## Fetch language packs
-@scope lib/**, bin/**, test/**, docs/**
+@scope lib/**, bin/**, bridge/**, test/**, docs/**, THIRD_PARTY.md
 Fetch a pack, with its grammars, queries, and runner adapters, from
 the packs repository with `sinter pack add`, record it in
 `sinter.lock`, and keep it in a user cache keyed by its hash.
 
-## Read TypeScript, Rust, and OCaml
-@scope lib/**, test/**
-Read the packs for TypeScript, Rust, and OCaml, and capture the tests
-that each one declares.
+## Read JavaScript, OCaml, Rust, and TypeScript
+@scope lib/**, test/**, THIRD_PARTY.md, REUSE.toml
+Read the packs for JavaScript, OCaml, Rust, and TypeScript, and
+capture the tests that each one declares.
 
 ## Import test evidence
 @scope lib/**, bin/**, test/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, docs/decisions/**
