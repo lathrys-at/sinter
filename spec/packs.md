@@ -426,10 +426,11 @@ text when the text does not end with one.
 
 ### 5.2 Parse failures
 
-A **parse failure** is a syntax tree that holds an `ERROR` node or a
-`MISSING` node. A `MISSING` node can have no text, and then only the
-error flag of the root node shows it. So Sinter reads a parse failure
-from the error flag of the root node.
+A **parse failure** of a file is one of two cases: the parser gives no
+syntax tree for the file, or the syntax tree of the file holds an
+`ERROR` node or a `MISSING` node. A `MISSING` node can have no text,
+and then only the error flag of the root node shows it. So Sinter reads
+a parse failure in a syntax tree from the error flag of the root node.
 
 The **error flag** of a node is set when the node, or a node below it,
 is an `ERROR` node or a `MISSING` node. A **lowest error node** is a
@@ -437,24 +438,33 @@ node whose error flag is set, when no child of the node that the tree
 shows has its error flag set. When a `MISSING` node has no text, the
 tree does not show it, and the lowest error node is near its place.
 
-In a file of a fetched pack, a parse failure means that the file
-yields no fact. Sinter reports one `parse-error` finding for the
-file. The finding sits at the first `ERROR` or `MISSING` node
+When the parser gives no syntax tree for a file, the file yields no
+fact. Sinter reports one `parse-error` finding at line 1, column 1 of
+the file, as for a file that is not valid UTF-8 (section 5.1), and it
+goes on with the other files. This rule holds for the files of every
+pack, the pack `markdown` included, and the finding takes the tier
+that applies to the class `parse-error`. A grammar that does not load
+is not a parse failure of a file: the pack does not load, and the
+command stops (section 3.6).
+
+In a file of a fetched pack, a syntax tree with a parse failure means
+that the file yields no fact. Sinter reports one `parse-error` finding
+for the file. The finding sits at the first `ERROR` or `MISSING` node
 in the order of the text. When the tree shows no such node, the
 finding sits at the first lowest error node in the order of the
 text.
 
-In a markdown file, Sinter takes the facts of the file from the tree,
-as it does for a file with no parse failure. It reports one
-`parse-error` finding at each `ERROR` node and each `MISSING` node
-that no other `ERROR` node holds. So an `ERROR` node inside an `ERROR`
-node gives no finding of its own, and one place of error gives one
-finding. When the flag of the root shows a failure
-and the tree shows no such node, Sinter reports one finding at the
-first lowest error node in the order of the text. At a gate where the tier that applies to the class
-`parse-error` is `block` ([manifest.md](manifest.md) section 11.3), the
-tier of such a finding is `warn`. At every other gate, the tier is the
-tier that applies.
+In a markdown file with a syntax tree, Sinter takes the facts of the
+file from the tree, as it does for a file with no parse failure. It
+reports one `parse-error` finding at each `ERROR` node and each
+`MISSING` node that no other `ERROR` node holds. So an `ERROR` node
+inside an `ERROR` node gives no finding of its own, and one place of
+error gives one finding. When the flag of the root shows a failure and
+the tree shows no such node, Sinter reports one finding at the first
+lowest error node in the order of the text. At a gate where the tier
+that applies to the class `parse-error` is `block`
+([manifest.md](manifest.md) section 11.3), the tier of such a finding
+is `warn`. At every other gate, the tier is the tier that applies.
 
 ### 5.3 Positions
 
