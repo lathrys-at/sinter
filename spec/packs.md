@@ -1131,11 +1131,56 @@ Each release of a pack is one GitHub release of that repository:
   path of each file in the archive is its path relative to the pack
   root.
 
-An archive holds regular files and folders only. Sinter refuses an
-archive that holds any other entry, such as a link, and an archive
-with a path that starts with `/` or that holds the name `..`. After
-Sinter unpacks an archive, it computes the pack hash of the files
-(section 2.4). So the pack hash does not depend on the archive.
+Sinter reads an archive by the rules below. It refuses an archive
+that breaks a rule, and the command stops with exit code 3. In these
+rules, a **MiB** is 1,048,576 bytes, and a **block** is 512 bytes.
+
+1. The archive has at most 64 MiB. It is one gzip member (RFC 1952),
+   and no byte follows the trailer of that member. The CRC-32 and the
+   size in the trailer match the data of the member.
+2. The data of the member, the **tar data**, has at most 128 MiB. It
+   is a sequence of entries, then the end marker. The **end marker**
+   is two blocks of zero bytes. After the end marker, the tar data
+   holds only zero bytes. Tar data with no end marker is refused.
+3. An **entry** is a header of one block, then the content of the
+   entry. The field `size` of the header gives the number of bytes of
+   the content. The content fills whole blocks: zero bytes follow the
+   content up to the end of its last block.
+4. Each header has the ustar form of POSIX.1-1988. The field `magic`
+   holds `ustar` and a NUL byte, and the field `version` holds `00`.
+   The field `chksum` holds the sum of the bytes of the header, each
+   byte read as an unsigned number, with each byte of the field
+   `chksum` counted as a space (0x20).
+5. Each numeric field of a header (`mode`, `uid`, `gid`, `size`,
+   `mtime`, `chksum`, `devmajor`, and `devminor`) holds octal digits
+   from `0` to `7`, then NUL bytes or spaces up to the end of the
+   field. The fields `size` and `chksum` hold one digit or more.
+6. The field `typeflag` of each header is `0` or a NUL byte, for a
+   regular file, or `5`, for a folder. The `size` of a folder is 0.
+   Every other type is refused, among them the links (`1`, `2`), the
+   PAX headers (`x`, `g`), and the long names of GNU tar (`L`, `K`).
+7. The fields `name` and `prefix` of a header each end at their first
+   NUL byte, or at the end of the field when it holds no NUL byte.
+   Every byte after that first NUL byte is a NUL byte. The `name` is
+   not empty. The path of the entry is the `name` when the `prefix` is
+   empty. Otherwise it is the `prefix`, `/`, and the `name`. The path
+   of the entry of a folder ends with one `/`, which is not part of the
+   path of the folder. The path of the entry of a regular file does
+   not end with `/`.
+8. The paths of the regular files of the archive, of the folders that
+   hold them, and of the folders that have an entry, are the paths of
+   a pack. Together they follow the rules of section 2.3. No path
+   occurs in two entries. Below each folder that has an entry, at any
+   depth, the archive holds the entry of a regular file.
+9. The archive has at most 4,096 entries, and each path has at most 16
+   names.
+
+Sinter computes the pack hash (section 2.4) from the entries of the
+regular files: from the path and the content of each entry. It writes
+no file of the pack before that hash matches the hash that it expects:
+the hash of the index (section 12.3) or of the lock file (section
+12.5). So the pack hash depends only on the paths and the contents of
+the files, and not on the archive that holds them.
 
 ### 12.2 The index
 
@@ -1185,13 +1230,14 @@ Example:
 2. It reads the index, and it takes the newest release of the pack
    whose number meets that value (section 2.5). When no release meets
    the value, the command stops with exit code 3.
-3. It downloads the archive of the release and unpacks it. It computes
-   the pack hash of the files and compares it with the hash in the
-   index. When the two differ, the command stops with exit code 3.
+3. It downloads the archive of the release, and it reads the archive
+   by the rules of section 12.1. It computes the pack hash from the
+   entries of the archive and compares it with the hash in the index.
+   When the two differ, the command stops with exit code 3.
 4. It checks the pack as section 3.6 says. It also checks each adapter
    (section 10.6).
-5. It keeps the files of the pack in the cache (section 12.5), and it
-   writes the line of the pack into the lock file. A line that the lock
+5. It writes the files of the pack into the cache (section 12.5), and
+   it writes the line of the pack into the lock file. A line that the lock
    file holds for the pack already is replaced.
 
 When the command stops, it changes neither the cache nor the lock
@@ -1250,19 +1296,25 @@ user, outside every repository, under the pack hash of the pack.
 
 `sinter pack fetch` reads the lock file. For each line, when the cache
 lacks the pack, the command finds the release of the line in the
-index, downloads the archive, and unpacks it. It then compares the pack
-hash of the files with the hash of the line. When the two are equal, it
-keeps the files in the cache. The command also downloads again a pack
-whose files in the cache no longer give its pack hash. It never changes
-the lock file. When the index holds no such release, or when a hash
-differs, the command keeps no file of that pack and stops with exit
-code 3.
+index, downloads the archive, and reads it by the rules of section
+12.1. It then compares the pack hash of the entries with the hash of
+the line. When the two are equal, it writes the files into the cache.
+The command also downloads again a pack whose files in the cache no
+longer give its pack hash. It never changes the lock file. When the
+index holds no such release, or when a hash differs, the command
+writes no file of that pack and stops with exit code 3.
 
 Only three commands fetch packs: `sinter pack add`,
 `sinter pack fetch`, and `sinter init`, which can do what
 `sinter pack fetch` does. Every other command takes the packs from the
 cache. A command that needs a pack that the cache lacks stops with exit
 code 3, and the message says to run `sinter pack fetch`.
+
+Each time a command loads a fetched pack, it computes the pack hash of
+the files of the pack in the cache again (section 3.6). When that hash
+differs from the hash of the lock file, the command stops with exit
+code 3 (`pack-mismatch`). The message names the pack and says to run
+`sinter pack fetch`.
 
 ## 13. Example
 
