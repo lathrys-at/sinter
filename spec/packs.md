@@ -81,7 +81,26 @@ in this table are relative to the pack root.
 
 A pack can hold other files, for example the files of a conformance
 fixture ([jsonl.md](jsonl.md) section 11). Sinter does not read them,
-but the pack hash covers them. A pack holds no symbolic link.
+but the pack hash covers them. A pack holds only regular files and
+folders: no symbolic link, and no other kind of file, such as a device
+file.
+
+A **path of a pack** is the path of a file of the pack, or of a folder
+that holds a file of the pack. The path is relative to the pack root,
+with `/` between its names. Each path of a pack follows these rules:
+
+1. Each byte of the path is a printable ASCII character, from 0x20 to
+   0x7E, and is not `\`. So a path can hold a space, but no line feed.
+2. The path does not start with `/`, and no name of the path is empty,
+   `.`, or `..`.
+3. The path has at most 255 bytes.
+4. No path of a file is also the path of a folder.
+5. No two paths of the pack are equal after **ASCII case folding**,
+   which changes each letter from `A` to `Z` to the same letter from
+   `a` to `z` and changes no other byte. Example: a pack cannot hold
+   both `queries/rust/tags.scm` and `queries/Rust/tests.scm`, because
+   the folders `queries/rust` and `queries/Rust` are equal after ASCII
+   case folding.
 
 ### 2.4 The pack hash
 
@@ -97,10 +116,12 @@ order of the paths of the files. Each line holds, in this order:
 
 Each line has the form of a line that the command `sha256sum` prints.
 This example is informative. In the pack root, this command prints the
-pack hash, when no path holds a space or a line feed:
+pack hash. No path holds a line feed (section 2.3), but a path can hold
+a space, so the command gives the paths to `xargs` with a NUL byte
+after each path:
 
 ```
-find . -type f | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum | sha256sum
+find . -type f | sed 's|^\./||' | LC_ALL=C sort | tr '\n' '\0' | xargs -0 sha256sum | sha256sum
 ```
 
 ### 2.5 Releases
@@ -244,8 +265,10 @@ with exit code 3:
   `scan.packs.<name>.version`;
 - the tool implements an older version of the specifications than
   `sinter-spec`, by the comparison of [manifest.md](manifest.md) section 5;
-- a file that section 2.3 requires is missing, or the SHA-256 of a
-  grammar or an adapter differs from the descriptor;
+- a file that section 2.3 requires is missing, a path of the pack
+  breaks a rule of section 2.3, or the pack holds a file that is not a
+  regular file, such as a symbolic link;
+- the SHA-256 of a grammar or an adapter differs from the descriptor;
 - a grammar does not load, or its ABI version lies outside the range
   that the tool accepts (section 3.3);
 - a query file does not compile against its grammar, or it breaks a
