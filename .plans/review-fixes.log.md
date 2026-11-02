@@ -126,3 +126,63 @@
   is not UTF-8 as raw bytes: "no manifest at", "cannot read the
   manifest", and the `-->` line of an error in the file. None of them
   crashes.
+
+## Bound the costs
+
+- Rulings of the maintainer and the lead on details that the brief
+  left open:
+  - The id pattern language gets a size limit (ruling F8): at most
+    1,000 literals and classes when each quantifier is written out.
+    A larger pattern gives the error `Too_large`. The matcher is a
+    Thompson automaton. By a ruling of the lead, `{0}` counts as one
+    copy, so that every pattern of the language passes the check of
+    RE2. That check divides 1,000 by the largest count of each nested
+    quantifier and refuses the pattern at 0 (`kMaxRepeat` in
+    `re2/parse.cc`). This comes from the source of RE2; no run of RE2
+    checked it.
+  - The bench grows its existing generated tree: the first plan has
+    `n / 5` steps, the first file of requirements holds a tenth of the
+    requirements, and the message of the commit `work` holds the
+    delivery line of each step. The existing growth limits apply.
+  - A phase can have a limit of its own in `bench/budgets.toml`. The
+    findings phase of `check` has the limit 16 (ruling F9); every
+    other phase keeps 12.
+- Each test bounds the growth between two sizes, never a time.
+  `Counted_work` counts allocated words. The slow loops of five
+  defects allocate nothing (`List.mem`, `List.assoc`, `List.exists`,
+  `List.memq`), so their tests use `Timed_work`: the processor time,
+  the shortest of three runs, a collection of the heap before each
+  run, and a margin of 2 or 3. The timed tests are, in `facts`, "a
+  file grows in proportion to its declarations", "a step grows in
+  proportion to its promises", "a plan grows in proportion to its
+  first block", "standing grows in proportion to the steps", and
+  "standing grows in proportion to the promises"; and in `markdown`,
+  "a section grows in proportion to its declared items". On the old
+  code each fails at 2.4 to 2.8 times its limit. In the mutation pass
+  a run that fails counts as a kill, so a timed test that fails by
+  chance would raise the score.
+- The bench found three more costs of the same shapes, each in its own
+  commit: `scope-overlap` compared each step with every earlier step;
+  `Facts.standing` checked its step and its promise with `List.memq`;
+  and `delivery-without-change` and `unplanned-change` matched each
+  changed path against the scope of each step. The last one needed an
+  index of the scopes, `Path_index`.
+- The search for strongly connected components moved from `Findings`
+  into `Components`, so that `Facts.make` uses the same search.
+- `Markdown.read` reads tags only in the first paragraph of a section
+  or an item, so no nested container lies before the start of an
+  extent. The walk of an extent starts at its first hole, with no
+  search.
+- The mutation pass counts 5 time-outs. Each is an endless loop that a
+  mutant makes: 3 in `Components`, the search that `Findings` had
+  before, and 2 in the walk of an extent.
+- Left for later:
+  - A glob with no leading names, such as `**/*.md`, is a candidate of
+    `Path_index` for every path. Many steps with such scopes still
+    cost the changed paths times those scopes.
+  - `scope-overlap` compares in pairs the steps that share a promise,
+    whether or not a finding comes out. Many steps that cite one
+    record and have their own scopes cost the square of their number.
+  - The findings phases of `check --diff` grow 11.95 and 11.97 times
+    on the bench, near their limit of 12, for the same n log n reason
+    as the findings phase of `check`.
