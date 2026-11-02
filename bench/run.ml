@@ -555,9 +555,11 @@ let () =
          table $(i,check-diff) when $(i,sinter check --diff) has a limit. Each \
          table holds $(i,allocation-growth), the limit, for each phase, of the \
          words on the tree of 10,000 declarations divided by the words on the \
-         tree of 1,000 declarations. The run skips the limit of a phase that \
-         does not have its words on both trees. No limit applies to the peak \
-         memory or to the instruction counts.";
+         tree of 1,000 declarations. A table may also hold the table \
+         $(i,phases), with the limit of a named phase in place of \
+         $(i,allocation-growth). The run skips the limit of a phase that does \
+         not have its words on both trees. No limit applies to the peak memory \
+         or to the instruction counts.";
       `S "OUTPUT";
       `P
         "A JSON object, on standard output or in the file of $(b,--json). Its \

@@ -52,10 +52,11 @@ let () =
          reads every markdown file.";
       `P
         "The branch main holds one commit with every file. The branch work \
-         holds one more commit, which changes one file in 100. HEAD is work. \
-         The working tree changes one more file in 1,000, with no commit. \
-         Every file has the modification time 1700000000, and the index holds \
-         that time, so git reads no file that did not change.";
+         holds one more commit, which changes one file in 100, and whose \
+         message holds the delivery line of each step of each plan. HEAD is \
+         work. The working tree changes one more file in 1,000, with no \
+         commit. Every file has the modification time 1700000000, and the \
+         index holds that time, so git reads no file that did not change.";
       `P
         "The same seed and the same $(i,N) give the same files and the same \
          commits, byte for byte, on every run of one build.";

@@ -118,6 +118,20 @@ let one_file_in_100_changes_on_work_and_one_in_1000_stays_uncommitted () =
     (max 1 (markdown / 1000))
     (Generated_tree.uncommitted tree)
 
+let the_first_plan_and_the_first_file_of_requirements_grow_with_the_tree () =
+  let tree = Generated_tree.make ~seed:3 ~declarations:2500 in
+  let main = Generated_tree.main tree in
+  let count prefix path =
+    List.length (lines_starting prefix [ (path, List.assoc path main) ])
+  in
+  Alcotest.(check (list int))
+    "the steps of the two plans" [ 500; 20 ]
+    (List.map (count "## Step ") [ ".plans/plan-000.md"; ".plans/plan-001.md" ]);
+  Alcotest.(check (list int))
+    "the requirements of the first two files" [ 125; 25 ]
+    (List.map (count "@req ")
+       [ "spec/reqs/reqs-0000.md"; "spec/reqs/reqs-0001.md" ])
+
 let a_small_tree_changes_one_file () =
   let tree = Generated_tree.make ~seed:1 ~declarations:2 in
   Alcotest.(check int) "work" 1 (List.length (Generated_tree.work tree));
@@ -137,6 +151,33 @@ let overlay tree =
     (fun files (path, text) -> (path, text) :: List.remove_assoc path files)
     (Generated_tree.main tree)
     (Generated_tree.work tree @ Generated_tree.uncommitted tree)
+
+let the_work_commit_delivers_each_step () =
+  let tree = make 19 in
+  let message = Generated_tree.message tree in
+  let deliveries =
+    match String.split_on_char '\n' message with
+    | "work" :: "" :: rest -> List.filter (fun line -> line <> "") rest
+    | _ ->
+        Alcotest.failf "%S does not start with work and an empty line" message
+  in
+  Alcotest.(check bool)
+    "a line feed at the end" true
+    (String.ends_with ~suffix:"\n" message);
+  Alcotest.(check (list bool))
+    "a delivery line of each step, in order"
+    (List.init 24 (fun _ -> true))
+    (List.mapi
+       (fun step line ->
+         Option.is_some (Sinter_core.Delivery_line.of_string line)
+         && String.starts_with
+              ~prefix:(Printf.sprintf "Delivers: plan-0/step-0-%d-" step)
+              line)
+       deliveries);
+  Alcotest.(check string)
+    "the message of the commit" message
+    ( Git_fixture.git (write tree) [ "log"; "-1"; "--format=%B"; "work" ]
+    |> fun text -> String.sub text 0 (String.length text - 1) )
 
 let the_repository_holds_the_tree () =
   let tree = make 11 in
@@ -258,6 +299,9 @@ let tests =
     case "one file in 100 changes on work and one in 1000 stays uncommitted"
       one_file_in_100_changes_on_work_and_one_in_1000_stays_uncommitted;
     case "a small tree changes one file" a_small_tree_changes_one_file;
+    case "the first plan and the first file of requirements grow with the tree"
+      the_first_plan_and_the_first_file_of_requirements_grow_with_the_tree;
+    case "the work commit delivers each step" the_work_commit_delivers_each_step;
     case "the tree retires decisions and acks their citations"
       the_tree_retires_decisions_and_acks_their_citations;
     case "fewer than 2 declarations are refused"

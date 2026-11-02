@@ -6,6 +6,7 @@ allocation-growth = 12.0
 
 [check]
 allocation-growth = 12.0
+phases.findings = 16.0
 
 [check-diff]
 allocation-growth = 12.0

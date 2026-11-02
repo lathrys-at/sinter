@@ -232,6 +232,12 @@ let budgets_refuse_a_bad_file () =
         "check-diff.allocation-growth is missing" );
       ( "check-diff = 1\n" ^ budgets_text,
         "[check-diff] is an integer, not a table" );
+      ( "[scan]\nallocation-growth = 1\nphases = 2\n",
+        "scan.phases is an integer, not a table" );
+      ( "[scan]\nallocation-growth = 1\nphases.read = 0\n",
+        "scan.phases.read is not a positive number" );
+      ( "[scan]\nallocation-growth = 1\nphases.read = \"2\"\n",
+        "scan.phases.read is not a positive number" );
     ]
 
 let verdict (verdict : Budgets.verdict) =
@@ -250,6 +256,41 @@ let outcomes budgets ~words =
         (Option.fold ~none:"" ~some:(fun phase -> " " ^ phase) outcome.phase)
         outcome.limit (verdict outcome.verdict))
     (Budgets.check budgets ~words:(words_of words))
+
+let budgets_give_a_phase_its_own_limit () =
+  let budgets =
+    budgets
+      "[scan]\n\
+       allocation-growth = 10\n\
+       phases.read = 20\n\n\
+       [check]\n\
+       allocation-growth = 11\n\n\
+       [check.phases]\n\
+       findings = 16.5\n\
+       output = 3\n"
+  in
+  Alcotest.(check (list (option (float 0.))))
+    "the limit of each command" [ Some 10.; Some 11. ]
+    [ Budgets.growth budgets "scan"; Budgets.growth budgets "check" ];
+  Alcotest.(check (list string))
+    "the outcomes"
+    [
+      "scan read 20 pass 15";
+      "scan records 10 fail 15";
+      "check findings 16.5 pass 15";
+      "check output 3 fail 15";
+      "check facts 11 fail 15";
+    ]
+    (outcomes budgets
+       ~words:
+         [
+           (("n1000", "scan"), [ ("read", 2.); ("records", 2.) ]);
+           (("n10000", "scan"), [ ("read", 30.); ("records", 30.) ]);
+           ( ("n1000", "check"),
+             [ ("findings", 2.); ("output", 2.); ("facts", 2.) ] );
+           ( ("n10000", "check"),
+             [ ("findings", 30.); ("output", 30.); ("facts", 30.) ] );
+         ])
 
 let check_judges_each_phase () =
   Alcotest.(check (list string))
@@ -1367,6 +1408,7 @@ let run_with_an_unknown_option_is_a_usage_error () =
 let tests =
   [
     case "budgets of check-diff are optional" budgets_of_check_diff_are_optional;
+    case "budgets give a phase its own limit" budgets_give_a_phase_its_own_limit;
     case "check judges the budgets of check-diff"
       check_judges_the_budgets_of_check_diff;
     case "gnu time reads the last line" gnu_time_reads_the_last_line;

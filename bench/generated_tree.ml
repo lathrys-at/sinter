@@ -4,6 +4,7 @@
 type t = {
   main : (string * string) list;
   work : (string * string) list;
+  message : string;
   uncommitted : (string * string) list;
   counts : (string * int) list;
 }
@@ -64,11 +65,15 @@ let section state ~heading tags ~lines =
   heading ^ String.concat "\n" tags ^ "\n" ^ prose state lines ^ "\n"
 
 let requirement_files state ~requirements =
+  let large = min requirements (max per_file (requirements / 10)) in
+  let rest = requirements - large in
   List.init
-    ((requirements + per_file - 1) / per_file)
+    (1 + ((rest + per_file - 1) / per_file))
     (fun file ->
-      let first = file * per_file in
-      let last = min (first + per_file) requirements - 1 in
+      let first = if file = 0 then 0 else large + ((file - 1) * per_file) in
+      let last =
+        if file = 0 then large - 1 else min (first + per_file) requirements - 1
+      in
       let sections =
         List.init
           (last - first + 1)
@@ -174,21 +179,33 @@ let note_files state ~declarations ~requirements =
       ( Printf.sprintf "docs/notes/notes-%04d.md" file,
         String.concat "\n" (Printf.sprintf "# Notes %d\n" first :: parts) ))
 
-let reader engine =
-  match Sinter_core.Markdown.create engine with
-  | Ok reader -> reader
-  | Error _ -> failwith "the markdown grammar does not load"
+let with_reader f =
+  let engine = Sinter_bridge.create () in
+  Fun.protect
+    ~finally:(fun () -> Sinter_bridge.close engine)
+    (fun () ->
+      let reader =
+        match Sinter_core.Markdown.create engine with
+        | Ok reader -> reader
+        | Error _ -> failwith "the markdown grammar does not load"
+      in
+      Fun.protect
+        ~finally:(fun () -> Sinter_core.Markdown.close reader)
+        (fun () -> f reader))
 
-let citation_hashes reader text =
+let document reader text =
   match Sinter_core.Markdown.read reader text with
   | Error _ -> failwith "a generated file does not parse"
-  | Ok (document : Sinter_core.Markdown.t) ->
-      List.filter_map
-        (fun (tag : Sinter_core.Markdown.tag) ->
-          if String.equal tag.word "cites" then
-            Some document.blocks.(tag.block).hash
-          else None)
-        (Array.to_list document.tags)
+  | Ok document -> document
+
+let citation_hashes reader text =
+  let document = document reader text in
+  List.filter_map
+    (fun (tag : Sinter_core.Markdown.tag) ->
+      if String.equal tag.word "cites" then
+        Some document.blocks.(tag.block).hash
+      else None)
+    (Array.to_list document.tags)
 
 let other_digit = function '0' -> '1' | _ -> '0'
 
@@ -223,62 +240,54 @@ let ack_files state ~declarations ~decisions =
             Printf.sprintf "## %s %d\n@cites %s\n" (title state) index target,
             prose state 2 ^ "\n" ))
     in
-    let engine = Sinter_bridge.create () in
-    Fun.protect
-      ~finally:(fun () -> Sinter_bridge.close engine)
-      (fun () ->
-        let reader = reader engine in
-        Fun.protect
-          ~finally:(fun () -> Sinter_core.Markdown.close reader)
-          (fun () ->
-            List.mapi
-              (fun file sections ->
-                let text heads =
-                  String.concat "\n"
-                    (Printf.sprintf "# Acks %d\n" file
-                    :: List.map2
-                         (fun head (_, _, tags, prose) -> tags ^ head ^ prose)
-                         heads sections)
-                in
-                let hashes =
-                  citation_hashes reader
-                    (text (List.map (fun _ -> "") sections))
-                in
-                let ack target hash =
-                  Printf.sprintf "@ack retired %s %s\n" target hash
-                in
-                let heads =
-                  List.map2
-                    (fun (kind, target, _, _) hash ->
-                      let matching = String.sub hash 0 8 in
-                      let wrong =
-                        String.make 1 (other_digit hash.[0])
-                        ^ String.sub hash 1 7
-                      in
-                      match kind with
-                      | 0 -> ack target matching
-                      | 1 -> ack target wrong
-                      | 2 -> ""
-                      | _ -> ack target wrong ^ ack target matching)
-                    sections hashes
-                in
-                (Printf.sprintf "docs/acks/acks-%04d.md" file, text heads))
-              (chunks sections)))
+    with_reader (fun reader ->
+        List.mapi
+          (fun file sections ->
+            let text heads =
+              String.concat "\n"
+                (Printf.sprintf "# Acks %d\n" file
+                :: List.map2
+                     (fun head (_, _, tags, prose) -> tags ^ head ^ prose)
+                     heads sections)
+            in
+            let hashes =
+              citation_hashes reader (text (List.map (fun _ -> "") sections))
+            in
+            let ack target hash =
+              Printf.sprintf "@ack retired %s %s\n" target hash
+            in
+            let heads =
+              List.map2
+                (fun (kind, target, _, _) hash ->
+                  let matching = String.sub hash 0 8 in
+                  let wrong =
+                    String.make 1 (other_digit hash.[0]) ^ String.sub hash 1 7
+                  in
+                  match kind with
+                  | 0 -> ack target matching
+                  | 1 -> ack target wrong
+                  | 2 -> ""
+                  | _ -> ack target wrong ^ ack target matching)
+                sections hashes
+            in
+            (Printf.sprintf "docs/acks/acks-%04d.md" file, text heads))
+          (chunks sections))
 
 let scopes =
   [| "spec/reqs/**"; "docs/design/**"; "docs/decisions/**"; "docs/**" |]
 
-let plan_files state ~plans ~requirements ~decisions =
+let plan_files state ~plans ~first_steps ~requirements ~decisions =
   List.init plans (fun plan ->
       let head =
         Printf.sprintf "# Plan %d\n@plan plan-%d\n@scope spec/**, docs/**\n%s\n"
           plan plan (prose state 2)
       in
+      let count = if plan = 0 then first_steps else 20 in
       let steps =
-        List.init 20 (fun step ->
+        List.init count (fun step ->
             let scope = Printf.sprintf "@scope %s" (pick state scopes) in
             let promises =
-              if step = 19 then []
+              if step = count - 1 then []
               else
                 List.init (between state 2 4) (fun _ ->
                     let draw = Random.State.float state 1.0 in
@@ -303,6 +312,26 @@ let manifest =
    packs.markdown.files = [\"**/*.md\"]\n\
    namespaces.gh = \"[1-9][0-9]*\"\n"
 
+let delivery_lines plans =
+  let manifest =
+    match Sinter_core.Manifest.of_string manifest with
+    | Ok manifest -> manifest
+    | Error _ -> failwith "the generated manifest does not read"
+  in
+  let facts =
+    with_reader (fun reader ->
+        Sinter_core.Facts.make manifest
+          (List.map (fun (path, text) -> (path, document reader text)) plans))
+  in
+  List.concat_map
+    (fun (plan : Sinter_core.Facts.plan) ->
+      List.filter_map
+        (fun step ->
+          Option.map Sinter_core.Delivery_line.to_string
+            (Sinter_core.Facts.delivery plan step))
+        plan.steps)
+    (Sinter_core.Facts.plans facts)
+
 let sample state items count =
   let items = Array.of_list items in
   let length = Array.length items in
@@ -326,6 +355,7 @@ let make ~seed ~declarations =
   let designs = declarations * 3 / 10 in
   let decisions = declarations - requirements - designs in
   let plans = max 1 (declarations / 1000) in
+  let first_steps = max 20 (declarations / 5) in
   let markdown =
     List.concat
       [
@@ -334,7 +364,7 @@ let make ~seed ~declarations =
         decision_files state ~decisions;
         note_files state ~declarations ~requirements;
         ack_files state ~declarations ~decisions;
-        plan_files state ~plans ~requirements ~decisions;
+        plan_files state ~plans ~first_steps ~requirements ~decisions;
         [ ("README.md", "# Generated tree\n\n" ^ prose state 3 ^ "\n") ];
       ]
   in
@@ -353,12 +383,25 @@ let make ~seed ~declarations =
   in
   let count = List.length paths in
   let work = append (sample state paths (max 1 (count / 100))) ~lines:2 in
+  let message =
+    String.concat "\n"
+      ("work" :: ""
+      :: delivery_lines
+           (List.filter_map
+              (fun path ->
+                if String.starts_with ~prefix:".plans/" path then
+                  Some (path, Hashtbl.find content path)
+                else None)
+              paths))
+    ^ "\n"
+  in
   let uncommitted =
     append (sample state paths (max 1 (count / 1000))) ~lines:1
   in
   {
     main = by_path (("sinter.toml", manifest) :: markdown);
     work = by_path work;
+    message;
     uncommitted = by_path uncommitted;
     counts =
       [
@@ -371,6 +414,7 @@ let make ~seed ~declarations =
 
 let main tree = tree.main
 let work tree = tree.work
+let message tree = tree.message
 let uncommitted tree = tree.uncommitted
 let count tree kind = Option.value (List.assoc_opt kind tree.counts) ~default:0
 
@@ -392,7 +436,7 @@ let write tree dir =
       Git_fixture.commit ~ref:"refs/heads/main" ~mark:1 ~message:"main"
         (files tree.main);
       Git_fixture.commit ~parents:[ 1 ] ~ref:"refs/heads/work" ~mark:2
-        ~message:"work" (files tree.work);
+        ~message:tree.message (files tree.work);
     ];
   ignore (Git_fixture.git repo [ "symbolic-ref"; "HEAD"; "refs/heads/work" ]);
   Git_fixture.checkout repo;
