@@ -319,10 +319,17 @@ Sinter ignores a capture whose name starts with `_`. A pattern can use
 such a capture for a predicate, for example `#eq?`. Any other capture
 name that section 4 does not define for the query file is an error.
 
-Two matches can give one node the same role, for example when two
-patterns of `definitions.scm` capture one node as `@definition`. Then
-Sinter takes the match of the pattern that comes first in the query
-file, and it ignores the other match.
+Two matches of one pattern can give one node the same role, for
+example when tree-sitter returns the pieces of one test name in two
+matches. Then Sinter joins the matches: it takes each node that they
+capture once, in the order of the text. The joined matches are one
+match for the rules of this document.
+
+Two matches of two different patterns can give one node the same
+role, for example when two patterns of `definitions.scm` capture one
+node as `@definition`. Then Sinter takes the match of the pattern that
+comes first in the query file, and it ignores the other match. Sinter
+joins the matches of each pattern before it applies this rule.
 
 ### 4.2 `tags.scm`: comments
 
@@ -401,9 +408,16 @@ This example is informative. In TypeScript, for vitest:
              (member_expression object: (identifier) @_fn)
              (call_expression function: (member_expression object: (identifier) @_fn))]
   arguments: (arguments .
-    [(string [(string_fragment) @name (escape_sequence) @placeholder]*)
-     (template_string [(string_fragment) @name (escape_sequence) @placeholder
-                       (template_substitution) @placeholder]*)])
+    (string [(string_fragment) @name (escape_sequence) @placeholder]*))
+  (#any-of? @_fn "it" "test")) @test
+
+(call_expression
+  function: [(identifier) @_fn
+             (member_expression object: (identifier) @_fn)
+             (call_expression function: (member_expression object: (identifier) @_fn))]
+  arguments: (arguments .
+    (template_string [(string_fragment) @name (escape_sequence) @placeholder
+                      (template_substitution) @placeholder]*))
   (#any-of? @_fn "it" "test")) @test
 
 (call_expression
