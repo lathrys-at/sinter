@@ -131,8 +131,9 @@
   Measurements of real sessions will decide; the metrics of the
   ledger (design notes section 6.4) will show the answer as fewer
   violations in each turn report. Not designed.
-- **`sinter-packs` repository** — the language packs, built and
-  verified as `docs/licensing-setup.md` describes.
+- **`sinter-packs` repository** — the language packs, in the
+  repository `sinterworks/sinter-packs`, with the licenses that
+  `docs/licensing-setup.md` describes.
 - **Test evidence for Sinter itself** — JUnit output from the test
   suite, for `evidence import`.
 - **Tests with no name** — the OCaml tests of `ppx_expect` and
