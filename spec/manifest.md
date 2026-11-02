@@ -591,6 +591,13 @@ These rules apply:
 7. A pattern that matches the empty id is an error. Example: `[0-9]*`.
 8. An id that holds a space, or a character outside printable ASCII,
    matches no pattern.
+9. When each quantifier is written out as copies of its part, a
+   pattern holds at most 1,000 literals and classes. `{n}` and `{n,m}`
+   count as the largest number of copies, `n` or `m`, and at least one
+   copy. `{n,}` counts as `n` copies and one more. `?`, `*`, and `+`
+   count as one copy. A larger pattern is an error. Examples:
+   `([0-9]{3}-){10}` holds 40, and `((a{0,255}){0,255})b` holds
+   65,026, so it is an error.
 
 A pattern in this language matches the same ids in POSIX extended
 regular expressions, in RE2, and in ECMAScript, when each of them must

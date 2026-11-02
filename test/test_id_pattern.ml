@@ -102,7 +102,7 @@ let an_id_with_a_space_or_a_control_character_matches_nothing () =
 
 let nested_quantifiers_answer_quickly () =
   let id = String.make 60 'a' ^ "c" in
-  check_match "((a{0,255}){0,255}){0,255}b" id false;
+  check_match "((a{0,9}){0,9}){0,9}b" id false;
   check_match "(a|aa)*b" id false;
   check_match "(a*)*b" (String.make 200 'a' ^ "c") false;
   check_match "(a*)*c" (String.make 200 'a' ^ "c") true
@@ -125,10 +125,63 @@ let long_ids_answer_quickly () =
     "(A{0,255})*B against 10000 letters" false
     (Id_pattern.matches (pattern "(A{0,255})*B") (String.make 10_000 'A'));
   Alcotest.(check bool)
-    "((a{0,255}){0,255}){0,255}b against 2000 letters" false
-    (Id_pattern.matches
-       (pattern "((a{0,255}){0,255}){0,255}b")
-       (String.make 2_000 'a'))
+    "((a{0,30}){0,30})b against 2000 letters" false
+    (Id_pattern.matches (pattern "((a{0,30}){0,30})b") (String.make 2_000 'a'))
+
+let check_size text expected =
+  Alcotest.(check bool)
+    (Printf.sprintf "%S is %s" text
+       (if expected then "accepted" else "too large"))
+    true
+    (match Id_pattern.of_string text with
+    | Ok _ -> expected
+    | Error Id_pattern.Too_large -> not expected
+    | Error _ -> false)
+
+let a_pattern_holds_at_most_1000_literals_and_classes_written_out () =
+  List.iter
+    (fun (text, expected) -> check_size text expected)
+    [
+      ("a{250}b{250}c{250}d{250}", true);
+      ("a{250}b{250}c{250}d{250}e", false);
+      ("a{250}b{250}c{250}d{249}e{1}", true);
+      ("a{250}b{250}c{250}d{249}e{1}f", false);
+      ("([a-z]{4}){250}", true);
+      ("([a-z]{4}){250}x", false);
+      ("(a{4}){249,}", true);
+      ("(a{4}){250,}", false);
+      ("(a{250}){3}(a{249}b)+", true);
+      ("(a{250}){3}(a{249}b)+c", false);
+      ("(a{250}){3}(a{249}b)*c", false);
+      ("(a{250}){3}(a{248}b)?c", true);
+      ("(a{250}){3}(a{249}b)?c", false);
+      ("((ab|cd){5}){50}", true);
+      ("((ab|cd){5}){50}e", false);
+      ("x(a{255}){0}", true);
+    ]
+
+let the_review_pattern_is_refused_in_proportion_to_its_length () =
+  check_size "((((a?){120}){120}){120}){120}b" false;
+  Counted_work.check_growth ~margin:1.5 ~sizes:(10, 160)
+    ~input:(fun depth ->
+      String.make depth '(' ^ "a?"
+      ^ String.concat "" (List.init depth (fun _ -> "){255}"))
+      ^ "b")
+    Id_pattern.of_string
+
+let a_part_under_a_count_of_0_counts_as_one_copy () =
+  check_size "((a{0}){255}){255}b" false;
+  check_size "((a{0}){10}){99}b" true;
+  check_match "((a{0}){10}){99}b" "b" true;
+  check_match "((a{0}){10}){99}b" "ab" false;
+  check_match "(a{0}|b)c" "c" true;
+  check_match "(a{0}|b)c" "bc" true
+
+let matching_grows_in_proportion_to_the_id () =
+  let pattern = pattern "((a?){10}){99}b" in
+  Counted_work.check_growth ~margin:1.5 ~sizes:(100, 1_600)
+    ~input:(fun length -> String.make length 'a' ^ "b")
+    (Id_pattern.matches pattern)
 
 let deep_groups_answer_quickly () =
   let deep = String.make 10_000 '(' ^ "a" ^ String.make 10_000 ')' in
@@ -157,6 +210,7 @@ let show_error = function
   | Count_too_large o -> Printf.sprintf "Count_too_large %d" o
   | Counts_out_of_order o -> Printf.sprintf "Counts_out_of_order %d" o
   | Matches_empty -> "Matches_empty"
+  | Too_large -> "Too_large"
 
 let error =
   Alcotest.testable (fun f e -> Format.pp_print_string f (show_error e)) ( = )
@@ -352,7 +406,10 @@ let each_error_has_its_message () =
   message "a{x}" "a '{' starts a quantifier {n}, {n,}, or {n,m}";
   message "a{256}" "a count of a quantifier is from 0 to 255";
   message "a{3,2}" "in the quantifier {n,m}, n is not greater than m";
-  message "a*" "the pattern matches an empty id"
+  message "a*" "the pattern matches an empty id";
+  message "((a{0,255}){0,255})b"
+    "the pattern is too large when its counts are written out; use smaller \
+     counts"
 
 type tree =
   | Literal of char
@@ -539,6 +596,124 @@ let matches_answers_any_id =
 
 let case name test = Alcotest.test_case name `Quick test
 
+type reference =
+  | Char of char
+  | Range of char * char
+  | Sequence of reference list
+  | Alternation of reference list
+  | Repeat of reference * int * int option * string
+
+let rec reference_text = function
+  | Char c -> String.make 1 c
+  | Range (low, high) -> Printf.sprintf "[%c-%c]" low high
+  | Sequence parts ->
+      String.concat ""
+        (List.map
+           (function
+             | Alternation _ as part -> "(" ^ reference_text part ^ ")"
+             | part -> reference_text part)
+           parts)
+  | Alternation parts -> String.concat "|" (List.map reference_text parts)
+  | Repeat (body, _, _, quantifier) ->
+      "(" ^ reference_text body ^ ")" ^ quantifier
+
+let reference_matches root id =
+  let module Places = Set.Make (Int) in
+  let length = String.length id in
+  let shift accepts from =
+    List.filter_map
+      (fun place ->
+        if place < length && accepts id.[place] then Some (place + 1) else None)
+      from
+  in
+  let rec ends node from =
+    match node with
+    | Char c -> shift (Char.equal c) from
+    | Range (low, high) -> shift (fun c -> c >= low && c <= high) from
+    | Alternation nodes ->
+        List.sort_uniq Int.compare
+          (List.concat_map (fun node -> ends node from) nodes)
+    | Sequence nodes ->
+        List.fold_left (fun from node -> ends node from) from nodes
+    | Repeat (body, low, high, _) ->
+        let rec exact rounds from =
+          if rounds = 0 || from = [] then from
+          else exact (rounds - 1) (ends body from)
+        in
+        let rec grow rounds reached frontier =
+          if frontier = [] || Some rounds = high then reached
+          else
+            let next =
+              List.filter
+                (fun place -> not (Places.mem place reached))
+                (ends body frontier)
+            in
+            grow (rounds + 1) (Places.union reached (Places.of_list next)) next
+        in
+        let first = exact low from in
+        Places.elements (grow low (Places.of_list first) first)
+  in
+  List.mem length (ends root [ 0 ])
+
+let reference =
+  Gen.(
+    sized_size (int_bound 3)
+    @@ fix (fun self size ->
+        let leaf =
+          oneof
+            [
+              map (fun c -> Char c) (oneof_list [ 'a'; 'b'; '-' ]);
+              return (Range ('a', 'b'));
+            ]
+        in
+        if size = 0 then leaf
+        else
+          let part = self (size - 1) in
+          oneof
+            [
+              leaf;
+              map (fun parts -> Sequence parts) (list_size (int_range 1 3) part);
+              map
+                (fun parts -> Alternation parts)
+                (list_size (int_range 2 3) part);
+              map2
+                (fun body (low, high, quantifier) ->
+                  Repeat (body, low, high, quantifier))
+                part
+                (oneof_list
+                   [
+                     (0, Some 1, "?");
+                     (0, None, "*");
+                     (1, None, "+");
+                     (2, Some 2, "{2}");
+                     (0, Some 3, "{0,3}");
+                     (1, Some 2, "{1,2}");
+                     (2, None, "{2,}");
+                     (0, Some 0, "{0}");
+                   ]);
+            ]))
+
+let the_automaton_agrees_with_the_matcher_of_sets_of_places =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:500
+       ~name:
+         "the automaton matches the ids that a matcher of sets of places \
+          matches, on small patterns"
+       ~print:
+         QCheck2.Print.(pair (fun root -> reference_text root) (list string))
+       Gen.(
+         pair reference
+           (list_size (int_range 1 8)
+              (string_size ~gen:(oneof_list [ 'a'; 'b'; '-' ]) (int_bound 6))))
+       (fun (root, ids) ->
+         match Id_pattern.of_string (reference_text root) with
+         | Ok pattern ->
+             List.for_all
+               (fun id ->
+                 Id_pattern.matches pattern id = reference_matches root id)
+               ids
+         | Error _ -> true))
+
 let tests =
   [
     case "the GitHub pattern matches issue numbers"
@@ -557,6 +732,15 @@ let tests =
       an_id_with_a_space_or_a_control_character_matches_nothing;
     case "nested quantifiers answer quickly" nested_quantifiers_answer_quickly;
     case "deep groups answer quickly" deep_groups_answer_quickly;
+    case "a pattern holds at most 1000 literals and classes written out"
+      a_pattern_holds_at_most_1000_literals_and_classes_written_out;
+    case "the review pattern is refused in proportion to its length"
+      the_review_pattern_is_refused_in_proportion_to_its_length;
+    case "a part under a count of 0 counts as one copy"
+      a_part_under_a_count_of_0_counts_as_one_copy;
+    case "matching grows in proportion to the id"
+      matching_grows_in_proportion_to_the_id;
+    the_automaton_agrees_with_the_matcher_of_sets_of_places;
     case "long ids answer quickly" long_ids_answer_quickly;
     case "to_string gives the text back" to_string_gives_the_text_back;
     case "characters outside the language are errors"

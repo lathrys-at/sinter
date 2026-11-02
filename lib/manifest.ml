@@ -329,6 +329,12 @@ let problem_text = function
           (Toml.render_path [ pack ]),
         Printf.sprintf "add 'version' to the pack %s, such as \"1.0\""
           (Toml.render_path [ pack ]) )
+  | Bad_id_pattern { namespace; error = Id_pattern.Too_large } ->
+      ( Printf.sprintf
+          "the id pattern of namespace %s is too large when its counts are \
+           written out"
+          (Toml.quote namespace),
+        "use smaller counts" )
   | Bad_id_pattern { namespace; error } ->
       with_help
         ~otherwise:
