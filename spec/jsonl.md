@@ -658,7 +658,7 @@ path can contain `@`.
 
 | subject | positional subject id | findings |
 |---|---|---|
-| a file | `file:<path>` | `parse-error` in a file that yields no fact: a file that is not valid UTF-8, or a file of a fetched pack with a parse failure ([packs.md](packs.md) sections 5.1 and 5.2) |
+| a file | `file:<path>` | `parse-error` in a file that yields no fact: a file that is not valid UTF-8, a file with no syntax tree, or a file of a fetched pack with a parse failure ([packs.md](packs.md) sections 5.1 and 5.2) |
 | an error node of a markdown file | `file:<path>@L<line>C<column>`, from the position where the node starts | `parse-error` in a markdown file ([packs.md](packs.md) section 5.2) |
 | a line | `line:<path>@L<line>` | `typo-tag` and `ignored-tag`, at the tag line; `duplicate` of a step, at the line of the step's heading |
 | a tag | `tag:<path>@L<line>C<column>`, from the position of the `@` of the tag | `invalid-target`; `misplaced-plan`; `duplicate` of a declaration or a plan |
