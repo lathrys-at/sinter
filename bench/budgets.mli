@@ -15,8 +15,8 @@
     on the tree of 10,000 declarations, divided by the words on the tree of
     1,000 declarations. Each key of [phases] names a phase, and its value, a
     positive integer or float, is the limit of that phase in place of
-    [allocation-growth]. A key of [phases] that names no phase of a run limits
-    nothing. *)
+    [allocation-growth]. {!check} refuses a key of [phases] that names no phase
+    of the run. *)
 
 type t
 (** The budgets of the commands. *)
@@ -50,7 +50,7 @@ type outcome = {
 val check :
   t ->
   words:(tree:string -> command:string -> (string * float) list) ->
-  outcome list
+  (outcome list, string) result
 (** [check budgets ~words] checks the growth limits of [scan], then of [check],
     then of [check-diff] when the budgets have that table.
     [words ~tree ~command] is the words of each phase of [command] on [tree], in
@@ -61,4 +61,8 @@ val check :
     skipped when [n1000] has no such phase or counts [0.] words in it. The limit
     of an outcome is the limit of its phase in [phases], or [allocation-growth].
     When [n10000] has no phase, the command gives one outcome with no phase,
-    skipped, with the limit [allocation-growth]. *)
+    skipped, with the limit [allocation-growth].
+
+    The result is [Error] when a key of [phases] names no phase that [n10000]
+    has for its command, with a message that names the key and those phases. A
+    command with no phase on [n10000] gives no such error. *)
