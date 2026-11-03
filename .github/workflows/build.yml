@@ -12,6 +12,8 @@ on:
 
 env:
   OCAML_VERSION: "5.5.2"
+  # @cites mutation-testing
+  MUTAML_COMMIT: "b41eaafd112350ec4d0e2ee9f2336eb37e7b8fd7"
 
 jobs:
   build:
@@ -304,14 +306,16 @@ jobs:
           test "$below" = 0
 
   mutation:
-    name: Measure the mutation score
+    name: Measure the mutation score (part ${{ matrix.part }} of ${{ strategy.job-total }})
     runs-on: ubuntu-26.04
     # @cites mutation-job-scope
-    env:
-      # @cites mutation-testing
-      MUTAML_COMMIT: "b41eaafd112350ec4d0e2ee9f2336eb37e7b8fd7"
-      # @cites mutation-gate
-      MUTATION_MINIMUM: "95"
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3, 4]
+    outputs:
+      mode: ${{ steps.scope.outputs.mode }}
+      parts: ${{ strategy.job-total }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -333,7 +337,8 @@ jobs:
             .github/workflows/build.yml \
             bridge/Cargo.lock bridge/Cargo.toml bridge/rust-toolchain.toml \
             lib/markdown/tree-sitter-markdown.wasm \
-            test/run-mutants.sh | wc -l)
+            test/run-mutants.sh test/mutant-shares.sh \
+            test/run-mutant-share.sh test/join-mutant-reports.sh | wc -l)
           if [ "$dependencies" -ne 0 ]; then
             echo "mode=full" >>"$GITHUB_OUTPUT"
             echo "Every mutant: the pull request changed $dependencies files of the dependencies."
@@ -410,47 +415,166 @@ jobs:
         run: >
           dune build @runtest --force
           --instrument-with mutaml
-      - name: Run the tests for each mutant under three seeds
+      - name: Run the tests for each mutant of this part under two seeds
         if: steps.scope.outputs.mode != 'none'
         env:
           MODE: ${{ steps.scope.outputs.mode }}
           BASE: ${{ steps.scope.outputs.base }}
+          PART: ${{ matrix.part }}
+          PARTS: ${{ strategy.job-total }}
         run: |
-          set -euo pipefail
-          mkdir -p _mutations
+          set -eu
           cores=$(nproc)
           workers=$cores
           if [ "$workers" -gt 1 ]; then
             workers=$((workers - 1))
           fi
           echo "Cores: $cores. Workers: $workers."
-          set -- test/run-mutants.sh
+          mkdir -p _mutations
+          sh test/mutant-shares.sh "$PARTS" "$PART" >_mutations/share.txt
+          mapfile -t files <_mutations/share.txt
+          set -- -j "$workers"
           if [ "$MODE" = changed ]; then
-            set -- --changed-since "$BASE" "$@"
+            set -- "$@" -c "$BASE"
           fi
-          mutaml-runner \
-            --build-context _build/default \
-            -j "$workers" \
-            --repeat 3 \
-            --test-env 'QCHECK_SEED={}' \
-            --baseline-env QCHECK_SEED=2 \
-            "$@" 2>&1 | tee _mutations/runner.log
-          if grep -q '^Skipping ' _mutations/runner.log; then
-            echo "The runner skipped a mutant file, so the pass measured" \
-              "part of the tree. The lines above that start with" \
-              "Skipping name the files. Run dune clean and build again."
+          sh test/run-mutant-share.sh "$@" "_mutations/part-$PART.json" "${files[@]}"
+      - name: Upload the report of this part
+        if: steps.scope.outputs.mode != 'none'
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-part-${{ matrix.part }}
+          path: _mutations/part-${{ matrix.part }}.json
+          if-no-files-found: error
+
+  mutation-report:
+    name: Report the mutation score
+    needs: mutation
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-26.04
+    env:
+      # @cites mutation-gate
+      MUTATION_MINIMUM: "95"
+    steps:
+      # @cites mutation-job-scope
+      - name: Check the parts
+        id: scope
+        env:
+          MODE: ${{ needs.mutation.outputs.mode }}
+          PARTS: ${{ needs.mutation.outputs.parts }}
+          RESULT: ${{ needs.mutation.result }}
+        run: |
+          set -eu
+          case $MODE in
+            none)
+              echo "mode=none" >>"$GITHUB_OUTPUT"
+              echo "No mutant: the pull request changed no file under lib/ or bin/."
+              exit 0
+              ;;
+            full | changed) ;;
+            *)
+              echo "The parts of the mutation run gave no mode, so none of" \
+                "them decided what to measure. Read the logs of the parts."
+              exit 1
+              ;;
+          esac
+          if [ "$RESULT" != success ]; then
+            echo "A part of the mutation run did not succeed: the result" \
+              "of the parts is $RESULT. A part does not apply the" \
+              "minimum, so the score is not the cause. Read the logs" \
+              "of the parts, and run the parts again."
             exit 1
           fi
+          echo "mode=$MODE" >>"$GITHUB_OUTPUT"
+          echo "parts=$PARTS" >>"$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        if: steps.scope.outputs.mode != 'none'
+      - name: Name the runner image
+        if: steps.scope.outputs.mode != 'none'
+        id: image
+        run: |
+          test -n "$ImageOS"
+          echo "os=$ImageOS" >>"$GITHUB_OUTPUT"
+      - name: Restore the opam switch
+        if: steps.scope.outputs.mode != 'none'
+        id: opam
+        uses: actions/cache@v6
+        with:
+          path: _opam
+          key: opam-mutation-v2-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.MUTAML_COMMIT }}-${{ hashFiles('sinter.opam.locked') }}
+          restore-keys: |
+            opam-mutation-v2-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ env.OCAML_VERSION }}-${{ env.MUTAML_COMMIT }}-
+      - name: Turn off git background maintenance
+        if: steps.scope.outputs.mode != 'none' && steps.opam.outputs.cache-hit != 'true'
+        run: git config --global maintenance.auto false
+      - uses: ocaml/setup-ocaml@v3
+        if: steps.scope.outputs.mode != 'none' && steps.opam.outputs.cache-hit != 'true'
+        with:
+          ocaml-compiler: ${{ env.OCAML_VERSION }}
+          cache: false
+      - name: Install the dependencies
+        if: steps.scope.outputs.mode != 'none' && steps.opam.outputs.cache-hit != 'true'
+        run: opam install . --deps-only --with-test --locked
+      - name: Install the pinned mutaml
+        if: steps.scope.outputs.mode != 'none' && steps.opam.outputs.cache-hit != 'true'
+        run: |
+          set -eu
+          opam pin add -y -n mutaml \
+            "git+https://github.com/lathrys-at/mutaml.git#$MUTAML_COMMIT"
+          opam install -y mutaml
+      - name: Put the switch on the path
+        if: steps.scope.outputs.mode != 'none'
+        run: |
+          prefix="$GITHUB_WORKSPACE/_opam"
+          echo "$prefix/bin" >>"$GITHUB_PATH"
+          echo "OPAM_SWITCH_PREFIX=$prefix" >>"$GITHUB_ENV"
+          echo "CAML_LD_LIBRARY_PATH=$prefix/lib/stublibs:$prefix/lib/ocaml/stublibs" >>"$GITHUB_ENV"
+      - name: Download the reports of the parts
+        if: steps.scope.outputs.mode != 'none'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: mutation-part-*
+          path: _mutations/parts
+      - name: Join the reports of the parts
+        if: steps.scope.outputs.mode != 'none'
+        env:
+          PARTS: ${{ steps.scope.outputs.parts }}
+        run: |
+          set -eu
+          set --
+          missing=0
+          part=1
+          while [ "$part" -le "$PARTS" ]; do
+            report="_mutations/parts/mutation-part-$part/part-$part.json"
+            if [ -f "$report" ]; then
+              set -- "$@" "$report"
+            else
+              echo "The report of part $part of $PARTS is missing."
+              missing=1
+            fi
+            part=$((part + 1))
+          done
+          if [ "$missing" != 0 ]; then
+            echo "The score needs the reports of all $PARTS parts." \
+              "Run the parts again."
+            exit 1
+          fi
+          sh test/join-mutant-reports.sh _mutations/mutaml-report.json "$@"
+          jq -r '.results[].mutant.loc.loc_start.pos_fname' \
+            _mutations/mutaml-report.json |
+            sed -n 's|/[^/]*$||p' | LC_ALL=C sort -u |
+            while IFS= read -r folder; do
+              mkdir -p "_mutations/$folder"
+            done
       - name: Report the mutation score
         if: steps.scope.outputs.mode != 'none'
         run: |
           set -eu
-          mkdir -p _mutations
           status=0
           mutaml-report \
             --fail-under "$MUTATION_MINIMUM" \
             --markdown "$GITHUB_STEP_SUMMARY" \
-            --json-report _mutations/report.json || status=$?
+            --json-report _mutations/report.json \
+            _mutations/mutaml-report.json || status=$?
           if [ "$status" = 2 ]; then
             echo "The mutation score is below the minimum of" \
               "$MUTATION_MINIMUM per cent. The summary of this job" \
@@ -463,20 +587,21 @@ jobs:
           fi
           if [ "$status" != 0 ]; then
             echo "mutaml-report failed with status $status. It is" \
-              "the run that failed, not the score: the report is" \
-              "missing, or it holds no mutant because the runner" \
-              "started in the wrong directory, or one of the two" \
+              "the run that failed, not the score: the joined report" \
+              "is missing, or it holds no mutant, or one of the two" \
               "report files could not be written."
             exit "$status"
           fi
           echo "The mutation score is at or above the minimum of" \
             "$MUTATION_MINIMUM per cent."
-      - name: Upload the JSON report
+      - name: Upload the reports
         if: always() && steps.scope.outputs.mode != 'none'
         uses: actions/upload-artifact@v7
         with:
           name: mutation-report
-          path: _mutations/report.json
+          path: |
+            _mutations/report.json
+            _mutations/mutaml-report.json
           if-no-files-found: warn
 
   performance:

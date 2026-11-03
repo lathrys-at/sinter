@@ -2,10 +2,11 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Measure a pull request on the lines it changed, a dependency move whole, and main whole
-@decision mutation-job-scope v2
+@decision mutation-job-scope v3
+@cites gh/158
 @cites mutation-testing
 @cites mutation-gate
-On a pull request the mutation job runs only the mutants on the lines the pull request changed, or the full set when the pull request changes a dependency, and never holds the merge; the full set runs on every push to main and once a day; an author runs the pass on the branch before opening the pull request.
+On a pull request the mutation job runs only the mutants on the lines the pull request changed, or the full set when the pull request changes a dependency, and never holds the merge; the full set runs on every push to main and once a day; an author runs the pass on the branch before opening the pull request; the job runs as four jobs that each test a share of the mutants, under two seeds that each job draws at random.
 
 ## Context
 
@@ -21,11 +22,18 @@ On 2026-10-26 the move to OCaml 5.5.2 changed no line under `lib/` or
 `bin/`, so its pull request ran no mutant, and nothing showed that the
 mutation build worked on the new compiler.
 
+On 2026-11-01 the full set held 4,726 mutants. Its pass on `main`
+stopped at the time limit of a GitHub job, six hours, after 4,041
+mutants. Until 2026-11-01 a benchmark test failed under every mutant
+(issue gh/158), so each mutant stopped at that first failure, and the
+pass looked short. With that test fixed, a mutant that survives runs
+the whole suite once for each seed.
+
 ## Decision
 
 - On a pull request, the `mutation` job runs the mutants that sit on
-  a line the pull request changed since its base, with the same three
-  seeds and the same gate. Every other mutant is recorded as not run
+  a line the pull request changed since its base, with the same seeds
+  and the same gate as the full set. Every other mutant is recorded as not run
   and stays outside the score.
 - A pull request that changes a dependency runs the full set: the
   lock file or the package files of the OCaml build, the CI workflow
@@ -47,8 +55,32 @@ mutation build worked on the new compiler.
 - The sentence in `mutation-testing` that every pull request runs the
   full set no longer applies. The rest of that record stands, and the
   gate of `mutation-gate` applies to whichever set ran.
+- The job runs as four jobs at the same time. Each job tests a share
+  of the source files, and the shares hold about the same number of
+  mutants. A last job joins the four reports and applies the gate to
+  the joined score.
+- Each mutant runs under two seeds of the property tests, not three.
+  Each job draws its two seeds at random and prints them, so that a
+  survivor can run again under the same seeds. The sentence in
+  `mutation-testing` that the runner passes fixed seeds no longer
+  applies.
 
 ## Alternatives considered
+
+- **Split the full set over several jobs, with three seeds** — taken
+  in part. The split is kept, with two seeds in place of three, so
+  that each job has more time to spare.
+- **Run each mutant under one seed** — taken in part. One seed would
+  save the most time, but a property test can miss under one seed a
+  change that another seed finds. Two seeds keep the second chance.
+- **Run the full set once a night on a runner of the project's own,
+  with a longer time limit** — not chosen. It needs a machine to set
+  up and keep, and a gap shows a day later.
+- **Split the mutants in the runner, with an option `--shard K/N` in
+  the fork of `mutaml`** — deferred, not rejected (lathrys-at/mutaml
+  issue 10). It balances the jobs better and runs the suite without a
+  mutant once for each job, not once for each file. The split in the
+  workflow comes first because it needs no change to the fork.
 
 - **Run the full set only when the OCaml toolchain or its packages
   change** — not chosen. The move to tree-sitter 0.26 changed the
@@ -73,9 +105,16 @@ mutant, so a test removed there can leave a survivor that the next
 run on `main` reports. A survivor found on `main` is then a fix to
 make, with no pull request to attach it to. The gate is harsher on a
 small set than on the whole, because one survivor in a file with few
-mutants is a large share of that file's set; since `main` stands at
-100 percent with every unkillable mutant marked, a survivor in a
-changed file is the thing the author should see. GitHub sends the
+mutants is a large share of that file's set; a survivor in a changed
+file is still the thing the author should see. GitHub sends the
 notice of a failed scheduled run to the person who last changed the
 workflow file, and it stops a schedule after sixty days without a
 commit to the repository.
+
+The seeds change from run to run, so the score can move between two
+runs of the same tree: a mutant that only some seeds kill survives in
+one run and not in another. Such a mutant is a gap in the tests, and
+the printed seeds let an author run it again. The four jobs use more
+runner time at one time than one job. Each job runs the suite twice
+without a mutant for each of its source files, which costs time that
+the option `--shard` of the fork would save.

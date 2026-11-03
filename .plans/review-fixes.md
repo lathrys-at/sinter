@@ -1,6 +1,6 @@
 # Fixes from the review of 2026-11
 @plan review-fixes@3ba194
-@scope lib/**, bin/**, bridge/**, test/**, bench/**, spec/**, docs/**
+@scope lib/**, bin/**, bridge/**, test/**, bench/**, spec/**, docs/**, .github/workflows/**, CONTRIBUTING.md
 Fix the 34 defects that the review of `main` at 39ab7b8 found
 (issue gh/158). Each defect has a failing test on the branch
 `xfail/cloud-review-2026-11`; each step takes the tests of its defects
@@ -53,3 +53,10 @@ a repository under a folder with a colon and for an untracked path
 that git refuses; give a deleted path the run of a deletion; let the
 tree key hold the files as they are on disk; order the commits of the
 change parents first; and read a delivery line after leading spaces.
+
+## Measure the whole mutation score within the time limit
+@scope .github/workflows/**, test/*.sh, CONTRIBUTING.md, docs/**
+Split the pass over all mutants into four jobs that run at the same
+time and give one score, and run each mutant under two seeds that
+each job draws at random, so that the pass ends within the time limit
+of a GitHub job.
