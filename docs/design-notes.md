@@ -119,14 +119,14 @@ promises facts that its work will add to the repository. A plan exists
 to turn itself into **static facts**: declarations of requirements and
 decisions in prose, `@satisfies` and `@verifies` citations in the code
 and the tests, test evidence, and entries in the ledger, Sinter's
-record of judgments (section 6.4). A plan is **open** until the ledger
-records that it closed. It closes in one of two ways (section 6.3).
-The job on the default branch records it as `completed` after the
-merge that delivers its last step, and only when every step is done.
-Or a person records it as `abandoned`. A closed plan can stay in the
-tree as a record, beside the facts that it produced, or its file and
-its journal can leave `.plans/`. The ledger, not the file system, says
-when a plan stopped being an agreement.
+event log of judgments and records (section 6.4). A plan is **open**
+until the ledger records that it closed. It closes in one of two ways
+(section 6.3). The job on the default branch records it as `completed`
+after the merge that delivers its last step, and only when every step
+is done. Or a person records it as `abandoned`. A closed plan can stay
+in the tree as a record, beside the facts that it produced, or its
+file and its journal can leave `.plans/`. The ledger, not the file
+system, says when a plan stopped being an agreement.
 
 The parts of the system:
 
@@ -136,10 +136,12 @@ The parts of the system:
   test runs and coverage.
 - **Compiled specifications** (section 6.4) are approved views of the
   graph. They outlast every plan that added to them.
-- The **ledger** (section 6.4) is the record of every judgment:
-  approvals, declines, completions, and abandonments. It lives on a
-  git ref outside the tree. The closing of a plan is one of its
-  entries.
+- The **ledger** (section 6.4) is an event log. Its entries are the
+  judgments of a person (approvals, declines, and abandonments) and
+  the records of the job on the default branch (deliveries and
+  completions). It lives on a git ref outside the tree. The closing of
+  a plan is one of its entries. Every state that Sinter reads from the
+  ledger is a fold over its entries in their order.
 - **Obligations** (section 7) are the difference between what the
   agreements demand and the facts that exist. Sinter never stores an
   obligation. It computes the obligations again at every gate.
@@ -864,18 +866,23 @@ person can read and approve. The approval attaches to the slug, the
 revision, and the extent hash of each item, never to the document. The
 document is only the way to read the items.
 
-**The ledger** is the record of approvals and other judgments. It is a
-set of files on a git ref of its own, `refs/sinter/ledger`, and
-entries are only ever added (`spec/ledger.md`). The entries are in
-chunks: files of about 50 entries each. A full chunk never changes.
+**The ledger** is an event log of approvals, other judgments, and the
+records of the job on the default branch. It is a set of files on a
+git ref of its own, `refs/sinter/ledger`, and entries are only ever
+added (`spec/ledger.md`). Each entry carries `seq`, its place in the
+order of appending, and every state that comes from the ledger, such
+as approved or declined, is a fold over the entries in that order
+(record `ledger-event-log`). The time of an entry orders nothing. The
+entries are in chunks: files of about 50 entries each. A write never
+changes a full chunk.
 CI can fetch the ref and every worktree shares it, but it is outside
 every path that an editor or a file tool touches. Only the low-level
 commands of git, its plumbing, reach it, so to write it is a
 deliberate act. A kind needs approval only when the manifest sets its
 key `proof.<kind>` to `"approval"` (`spec/manifest.md` section 10.1).
 
-Because the ledger is a shared record with timestamps, it gives five
-more uses, each one a kind of entry or a query, and none a new
+Because the ledger is a shared, ordered record, it gives five more
+uses, each one a kind of entry or a query, and none a new
 mechanism:
 
 - **Declines.** A person who reads a delta and thinks "no, not like
@@ -902,15 +909,16 @@ mechanism:
   shell puts the ref under `refs/heads/sinter/ledger`, where the push
   rules of the host apply. The manifest has no setting for signatures
   yet.
-- **History, release notes, and metrics.** Each entry has a commit and
-  a time, so `sinter compile spec --as-of` rebuilds what was approved
-  at any moment, and the delta between two points of the ledger is the
-  release notes of the requirements. The health signals of section 8
-  gain a time axis: the bumps of each item (a requirement at `v9` is
-  unstable or badly scoped), the amendments of each plan, the time from
-  approval to completion, and the seconds spent on each approval. The
-  last one measures directly the fatigue that this design calls its
-  real adversary.
+- **History, release notes, and metrics.** Each entry has a `seq`, so
+  `sinter compile spec --as-of` rebuilds what was approved below any
+  `seq` of the ledger or at any commit of the ledger, and the delta
+  between two points of the ledger is the release notes of the
+  requirements. Each entry also has a time, as information. The
+  health signals of section 8 gain a time axis: the bumps of each item
+  (a requirement at `v9` is unstable or badly scoped), the amendments
+  of each plan, the time from approval to completion, and the seconds
+  spent on each approval. The last one measures directly the fatigue
+  that this design calls its real adversary.
 
 The ledger works together with the revisions. An edit of an approved
 item needs a bump, and the item is then not approved until a person
@@ -1339,11 +1347,13 @@ Its principles:
   (`sinter patch`) on standard output, but it never applies one.
   Whoever applies the patch is the author of the diff, and the checks
   judge it like any other diff.
-- **Three commands change durable state.** `approve`, `decline`, and
-  `ledger abandon` write the ledger. All three refuse to run under an
-  agent (section 6.4), and they share one set of refusals. The job that
-  closes plans appends the `completed` entries, in CI or by a person's
-  hand (section 6.3).
+- **Four commands change durable state.** `approve`, `decline`,
+  `ledger abandon`, and `ledger repair` write the ledger. All four
+  refuse to run under an agent (section 6.4), and they share one set
+  of refusals. `ledger repair` is the one command that rewrites the
+  ledger and does not only append. The job on the default branch
+  appends the `delivered` and `completed` entries, in CI or by a
+  person's hand (section 6.3); it makes no judgment.
   `declare` and `evidence import` write the state of the session and
   the evidence under `.sinter/`, which git ignores and which is never
   truth.
@@ -1798,11 +1808,15 @@ functions, and built-in finding classes.
 **The universe is one fixed set of facts.** Sinter builds the facts
 from six inputs: one working tree, one base, the messages of the
 commits of the change, one ledger, one evidence set, and one session.
-A query selects a subset of those facts, and nothing else: it makes
-no numbers, no tuples, and no new facts. Two queries with the same six inputs give the same bytes,
-because the algebra has no access to the time, the environment, or the
-network. Every gate depends on this: a check on a laptop and a check
-in CI must agree.
+The ledger is an event log, and Sinter reads it as the sequence of the
+entries at its tip, in the order of their `seq`. Every fact that comes
+from the ledger is a fold over that sequence, which reads no git
+history, clock, or network. A query selects a subset of those facts,
+and nothing else: it makes no numbers, no tuples, and no new facts.
+For one version of the tool, two queries with the same six inputs give
+the same bytes, because the algebra has no access to the time, the
+environment, or the network. Every gate depends on this: a check on a
+laptop and a check in CI must agree.
 
 **Categories work as types.** Each kind of fact belongs to one category,
 such as `node`, `edge`, or `finding`. Sinter gives each expression a set
@@ -1953,17 +1967,20 @@ deletion and a declaration. The hash of a commitment set leaves out
 the names of the steps, so a free rename of a step does not change
 it, and a decline bound to it stays live.
 
-**The ledger is history.** The records of a scan are derived, so they
-carry no time and no author. Entries of the ledger record judgments,
-so they carry both. The id of an entry comes from its content, so two
-writers never make one id for two entries, and the recovery from a
-lost push race is a union of sets. Where order matters, the time of
-an entry decides it, never its place in the file. An approval of a
-plan stores the approved commitment set itself, because only the set
-can show that a later set lies inside it. Containment of globs is
-decided by structure and with caution: what the check cannot prove
-counts as a wider scope. So the check errs toward asking the person,
-which is the right direction for an approval.
+**The ledger is an event log.** The records of a scan are derived, so
+they carry no time and no author. Entries of the ledger record
+judgments and the records of the job, so they carry both. Each entry
+carries `seq`, its place in the order of appending, and its id covers
+`seq`. Where order matters, `seq` decides it, never the time of an
+entry or its place in a chunk. A writer that loses a push race replays
+its entries on the new tip: it checks each judgment again, and gives
+each entry that stays a new `seq` and a new id. The approval of a plan
+names a `commitment-set` entry that holds the approved set itself,
+because only the set can show that a later set lies inside it.
+Containment of globs is decided by structure and with caution: what
+the check cannot prove counts as a wider scope. So the check errs
+toward asking the person, which is the right direction for an
+approval.
 
 **SARIF output.** `sinter check -o sarif` writes the findings of one
 gate as one SARIF 2.1.0 run (record `sarif-output`). The interface of

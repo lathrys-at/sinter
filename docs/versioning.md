@@ -38,6 +38,28 @@ section 2) is not the specification version. It is an integer
 wire-format version. It increases only for an incompatible change to a
 record kind's required fields or identity.
 
+## The entries of the ledger
+
+The ledger is an event log, and every state that Sinter reads from it
+is a fold over its entries ([spec/ledger.md](../spec/ledger.md)
+section 2.3). A tool skips an entry of a kind that it does not know,
+and a field that it does not know. A tool stops at an entry whose `v`
+is above the version that it reads. These rules decide how the format
+of the entries can change:
+
+- A new kind or a new field that changes a state of an existing fold
+  takes the next `v`, so that a tool that does not know it stops
+  instead of computing another state.
+- A change of the fold of an existing kind is a major change of the
+  specifications. A new `v` cannot stop an older tool from such a
+  change, because the entries that the older tool reads keep their
+  `v`.
+- Every kind of entry that Sinter plans to read is defined, at the
+  version `1`, before the first release of a tool that reads the
+  ledger.
+- Until `spec/v1.0.0`, a change of the entries needs none of these
+  rules.
+
 ## The tool
 
 The `sinter` binary and its libraries have their own version,
