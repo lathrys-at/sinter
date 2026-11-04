@@ -475,3 +475,33 @@ Linux only, gives 1 on every leg: 0 is false in GitHub expressions.
 - Left for later: no upload to GitHub has run. Whether GitHub accepts
   the file, and whether the token of a pull request can upload, shows
   only on a real run.
+
+## Close the gaps of the pack specification
+
+- Rulings of the lead on details that the brief left open:
+  - A release is checked against the fixtures of the release before it
+    by two scans of those fixtures, one with each release, under one
+    tool. The `expected.jsonl` of an old tag is not read, so a new
+    release of the tool breaks no such check.
+  - `sinter pack verify` exits with 3 when a pack fails, as for a
+    folder that does not exist, by the record `exit-codes`.
+  - The patch rule of section 2.5 compares the located facts of a
+    file only when the two releases fail on the same files. When a
+    patch release makes a file parse, the rule of a minor release
+    applies to the fixture, because an edge of another file can then
+    resolve. The maintainer approved this change of ruling K8.
+- The rule of the paths of a pack covers the folders that hold a file,
+  so that a file `A` and a file `a/x` clash on a file system that
+  ignores case.
+- A parse that gives no tree is a parse failure in a markdown file
+  too. The finding of such a file takes the tier of its class, not
+  `warn`, because the file yields no fact.
+- A numeric field of a tar header that Sinter does not read can hold
+  no digit, because writers differ there. `size` and `chksum` need a
+  digit.
+- `sinter pack verify` with folders needs no manifest, and
+  `spec/manifest.md` section 2.4 says so.
+- The example of section 4.4 gives one match for each of 7 tests and
+  2 groups with `sinter parse` and tree-sitter-typescript 0.23.2. The
+  example before it gave 2 to 4 matches for each test with an escape
+  or a substitution.

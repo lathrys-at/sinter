@@ -2,7 +2,7 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # License the code under Apache-2.0 and the specifications under CC-BY-4.0
-@decision licensing
+@decision licensing v2
 The code uses Apache-2.0, the specifications and documentation use CC-BY-4.0 with a statement that implementing the formats needs no license, and contributions come in under a DCO.
 
 ## Context
@@ -24,9 +24,11 @@ stands behind each commit.
   implement the formats in any software under any license, with no
   permission from and no obligation to The Sinter Authors beyond
   attribution of the specification text.
-- Files that a language pack authors (queries, descriptor, fixtures)
-  use Apache-2.0. A compiled grammar keeps its upstream license,
-  verbatim, and the pack records the upstream repository and commit.
+- Files that the authors of a language pack write (queries,
+  descriptor) use Apache-2.0, and so do the conformance fixtures,
+  which the packs repository holds outside each pack. A compiled
+  grammar keeps its upstream license, verbatim, and the pack records
+  the upstream repository and commit.
 - Contributions come in under the same license as the file they
   change (inbound = outbound), certified by a Developer Certificate
   of Origin sign-off on every commit. There is no Contributor License

@@ -113,7 +113,8 @@ stops with exit code 3 in each of these cases:
 - The manifest names no pack (section 8.1).
 - The manifest holds an error (section 4).
 
-`sinter parse` and `sinter serve` need no manifest.
+`sinter parse`, `sinter serve`, and `sinter pack verify` with the
+folders of packs need no manifest ([packs.md](packs.md) section 3.7).
 
 ### 2.5 One configuration for both trees
 

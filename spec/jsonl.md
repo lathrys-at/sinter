@@ -658,7 +658,7 @@ path can contain `@`.
 
 | subject | positional subject id | findings |
 |---|---|---|
-| a file | `file:<path>` | `parse-error` in a file that yields no fact: a file that is not valid UTF-8, or a file of a fetched pack with a parse failure ([packs.md](packs.md) sections 5.1 and 5.2) |
+| a file | `file:<path>` | `parse-error` in a file that yields no fact: a file that is not valid UTF-8, a file with no syntax tree, or a file of a fetched pack with a parse failure ([packs.md](packs.md) sections 5.1 and 5.2) |
 | an error node of a markdown file | `file:<path>@L<line>C<column>`, from the position where the node starts | `parse-error` in a markdown file ([packs.md](packs.md) section 5.2) |
 | a line | `line:<path>@L<line>` | `typo-tag` and `ignored-tag`, at the tag line; `duplicate` of a step, at the line of the step's heading |
 | a tag | `tag:<path>@L<line>C<column>`, from the position of the `@` of the tag | `invalid-target`; `misplaced-plan`; `duplicate` of a declaration or a plan |
@@ -714,8 +714,10 @@ use the tiers of the `turn` gate.
 
 ## 11. Conformance
 
-A language pack's fixture directory contains a small project, an
-`expected.jsonl` file, a fixture ledger, and real artifacts from a
+A conformance fixture of a language pack is a folder
+`fixtures/<pack>/<case>/` of the packs repository, outside the pack
+root ([packs.md](packs.md) section 2.5). It contains a small project,
+an `expected.jsonl` file, a fixture ledger, and real artifacts from a
 test runner and a coverage tool, with the coverage of each test. The
 verifier scans the fixture with the fixture's own ledger and evidence.
 It drops the header line from the output. It then compares the output
@@ -723,4 +725,8 @@ with `expected.jsonl`; the two must be equal byte for byte. Because
 the comparison includes derived fields, the fixture tests the whole
 path from artifact import to evidence binding, not only parsing. A
 tool release that changes any derived field's semantics must
-regenerate every pack's fixture.
+regenerate every pack's fixture on the branch `main` of the packs
+repository.
+
+A release of a pack is also checked against the fixtures of the
+release before it, by the rules of [packs.md](packs.md) section 2.5.
