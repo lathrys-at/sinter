@@ -10,3 +10,5 @@ phases.findings = 16.0
 
 [check-diff]
 allocation-growth = 12.0
+phases.findings = 16.0
+phases.base-findings = 16.0
