@@ -249,8 +249,8 @@ and runs the suite with that change switched on. The changed program
 is a **mutant**. A mutant that makes a test fail is **killed**. A
 mutant that the whole suite passes on **survives**, and it names a
 behaviour that no test checks. A mutant that makes the suite run past
-its time limit counts as killed. The **mutation score** is the share
-of the mutants that were killed.
+its time limit counts as killed. The **mutation score** is the
+percentage of the mutants that were killed.
 
 Sinter measures `lib/` and `bin/` with the project's fork of `mutaml`;
 `docs/decisions/mutation-testing.md` gives the reasons for the fork.
@@ -264,7 +264,7 @@ opam install mutaml
 ```
 
 The pin names a commit and never a branch, as the pin of `bisect_ppx`
-does, and the `mutation` job pins the same commit. The pin is not in
+does, and the CI workflow pins the same commit. The pin is not in
 `dune-project` or in the lock file, because the tool is not a
 dependency of the package. The install changes no version that the
 lock file pins. A move of the pin is a pull request of its own that
@@ -276,22 +276,27 @@ names the new commit.
 MUTAML_MUT_RATE=100 MUTAML_SEED=42 \
   dune build @runtest --force --instrument-with mutaml
 cores=$(getconf _NPROCESSORS_ONLN)
+number=$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')
+echo "The seeds are ${number}1 and ${number}2."
 mutaml-runner --build-context _build/default \
   -j "$(( cores > 1 ? cores - 1 : 1 ))" \
-  --repeat 3 --test-env 'QCHECK_SEED={}' \
-  --baseline-env QCHECK_SEED=2 \
+  --repeat 2 --test-env "QCHECK_SEED=${number}{}" \
+  --baseline-env "QCHECK_SEED=${number}2" \
   test/run-mutants.sh
 mutaml-report --fail-under 95 \
   --markdown _mutations/summary.md \
   --json-report _mutations/report.json
 ```
 
-This is the pass that the `mutation` job makes on `main`.
+One runner tests every mutant, and the pass takes some hours. A
+machine has no time limit for one command, so this pass needs no
+split. The `mutation` job splits the same pass into four parts, as
+"The CI job" below says.
 
 **A pass on a branch.** Run `git fetch origin`, and put
 `--changed-since origin/main` in front of the script name in the
 `mutaml-runner` line. The runner then tests only the mutants on the
-lines that the branch changed, and the score is a share of those. When
+lines that the branch changed, and the score counts only those. When
 no mutant sits on a changed line, `mutaml-report` says that the run has
 no score and exits 0. The `mutation` job makes this pass on a pull
 request. It makes the full pass on a pull request that changes a
@@ -299,14 +304,16 @@ dependency, and it skips a pull request that changed no dependency and
 no file under `lib/` or `bin/`
 (`docs/decisions/mutation-job-scope.md`).
 
-**What each part does.**
+**What each command and option does.**
 
 - `--instrument-with mutaml` switches the instrumentation on. Without
   it, a build carries no instrumentation and costs nothing.
   `MUTAML_MUT_RATE=100` puts a mutant at every place that can hold
   one. `MUTAML_SEED` fixes the draw, which decides anything only at a
-  rate below 100. The build writes one side file for each instrumented
-  source file in `_build/.mutaml/default`.
+  rate below 100. The build writes one **mutation file** for each
+  instrumented source file in `_build/.mutaml/default`: a `.muts` file
+  that lists the mutants of that source file and its marked places,
+  and the list `mutaml-mut-files.txt` of the mutation files.
 - `test/run-mutants.sh` is the test command. The suite reads its
   fixtures from paths relative to its own folder under `_build`, so
   the script starts at the root, where the runner starts it, and runs
@@ -321,37 +328,116 @@ no file under `lib/` or `bin/`
   number of cores less one, and never below 1.
   `getconf _NPROCESSORS_ONLN` gives the number of cores on macOS and on
   Linux; the `mutation` job uses `nproc`.
-- `--repeat 3` with `--test-env 'QCHECK_SEED={}'` runs a mutant up to
-  three times. The runner replaces `{}` with the number of the run, so
-  the seeds are 1, 2, and 3. A mutant that any run kills is killed.
-  The property tests draw a new seed on each ordinary run, and one
-  fixed seed can miss a change that another seed catches.
-- `--baseline-env QCHECK_SEED=2` checks the suite itself. The runner
-  runs the suite twice with no mutant, under the seeds 1 and 2, and
-  stops when the two runs disagree, because a suite that answers
-  differently under two seeds gives the score no meaning. Give
-  `--baseline-env` a fixed seed and never `{}`: both runs with no
-  mutant are run number 1, so `{}` would compare a run with itself.
+- `QCHECK_SEED` is the seed of the property tests. `od` reads a
+  random number from `/dev/urandom`, and the seeds are that number
+  with the digit 1 after it and with the digit 2 after it. The seed
+  must fit in an OCaml `int`. The property tests read a value that
+  does not fit as no seed, and draw a seed of their own, which the
+  runner cannot repeat. A number of 17 digits or fewer, with one digit
+  after it, always fits.
+- `--repeat 2` with `--test-env "QCHECK_SEED=${number}{}"` runs a
+  mutant up to two times. The runner replaces `{}` with the number of
+  the run, 1 or 2, so a mutant runs under the two seeds. A mutant that
+  either run kills is killed. One fixed seed can miss a change that
+  another seed catches, and a seed that changes from pass to pass
+  tries new inputs on each pass.
+- `--baseline-env "QCHECK_SEED=${number}2"` checks the suite itself.
+  The runner runs the suite twice with no mutant, under the two seeds,
+  and stops when the two runs disagree, because a suite that answers
+  differently under two seeds gives the score no meaning. The runner
+  also replaces `{}` with 1 and 2 in these two runs, so the option
+  gives the second run the seed that it already has; it makes that
+  seed plain in the command.
 - The runner sets the time limit of one run: five times the run with
   no mutant, and never less than 10 seconds. Give `--timeout` only to
   set the limit yourself, and never near the time that the suite
   really takes: a run cut short counts as a kill, and the score then
   reads higher than it is.
-- `mutaml-report` reads `mutaml-report.json`, which the runner writes
-  at the root. It prints the score and, for each survivor, its name
-  and a diff of the change. `--markdown` writes the same report with
-  one row per source file. `--json-report` writes the
-  mutation-testing-elements format that Stryker, Infection, and Mull
-  share. Run the report after a pass of the runner: the runner makes
-  the folder `_mutations/`, and the report does not.
+- `mutaml-report` reads `mutaml-report.json`, which the runner writes at
+  the root. It prints the score and, for each survivor, its name and a
+  diff of the change. `--markdown` writes the same report with one row
+  per source file. `--json-report` writes the mutation-testing-elements
+  format that Stryker, Infection, and Mull also write. Run the report
+  after a pass of the runner: the runner makes the folder `_mutations/`,
+  and the report does not.
+
+**The CI job.** A job on GitHub stops after six hours, and a full
+pass takes longer than that on one runner of GitHub. So the
+`mutation` job runs as four jobs at the same time, "Measure the
+mutation score (part 1 of 4)" to "(part 4 of 4)", and a fifth job,
+"Report the mutation score", gives one score from the four. Each of
+the four jobs is a **part**:
+
+1. Each part decides what the run measures: every mutant, the mutants
+   on the lines that the pull request changed, or no mutant, as "A
+   pass on a branch" above says.
+2. Each part builds the tests with the code instrumented and runs
+   `test/mutant-shares.sh 4 <part>`. The script reads the list of
+   mutation files that the build wrote, counts the mutants in each file,
+   and gives the files to four **shares**. A share is a set of mutation
+   files, and each part tests one share. The script takes the files from
+   the most mutants to the fewest, and gives each file to the share with
+   the fewest mutants so far. Files with the same number of mutants go
+   in the order of their paths. Every part computes the same four
+   shares, so each file is in exactly one share. A file with no mutant
+   and no marked place is in no share, because it has nothing to report.
+3. Each part runs `test/run-mutant-share.sh` on the files of its
+   share. The script runs `mutaml-runner --muts <file>` once for each
+   file, with the options of the full pass, and with
+   `--changed-since` when the run measures the changed lines. Each run
+   writes `mutaml-report.json`, so the script moves that file away
+   after each run. At the end, `test/join-mutant-reports.sh` joins the
+   reports into one report of the part, and the part keeps it as an
+   artifact.
+4. "Report the mutation score" runs after the four parts, also when a
+   part fails. It joins the four reports, and runs `mutaml-report` on
+   the joined report with `--fail-under`. It fails when a part failed
+   or a report is missing, and it passes at once when the run measures
+   no mutant. It keeps the joined report and the JSON report as the
+   artifact `mutation-report`.
+
+The joined report holds the same results as the report of one runner
+over all the files, so the score is the score of the full pass. The
+join refuses two reports that hold the same mutant. Each run of the
+runner on one file runs the suite twice without a mutant before it
+tests a mutant of that file. A run with `--changed-since` that finds no
+mutant on a changed line in its file runs no test at all.
+
+**The seeds of the CI job.** Each part draws its own random number and
+prints the seeds at the start of the log of its step "Run the tests
+for each mutant of this part under two seeds". For the number 2807,
+the seeds are 28071 and 28072. The summary of "Report the mutation
+score" names each mutant that survived. To test a survivor again under
+the same seeds:
+
+1. Find the part whose log names the mutation file of the survivor,
+   and read its seeds.
+2. Build the tests with the code instrumented, as in "A full pass".
+3. Run at the root, with the name of the survivor from the summary and
+   each of the two seeds:
+
+   ```
+   MUTAML_MUTANT='<name of the survivor>' QCHECK_SEED=28071 test/run-mutants.sh
+   MUTAML_MUTANT='<name of the survivor>' QCHECK_SEED=28072 test/run-mutants.sh
+   ```
+
+The joined report in the artifact, `mutaml-report.json`, also holds a
+seed for each mutant that ran, in its field `test_env`: the seed of the
+run that ended the mutant. For a survivor, that is the second seed. The
+random number that the part drew is that seed without its last digit. To
+test a share again on a machine under the seeds of its part, give that
+number to `test/run-mutant-share.sh` with `-s`. The seeds change from
+run to run, so the score of one tree can change between two runs: a
+mutant that only some seeds kill survives in one run and not in another.
+Such a mutant is a gap in the tests.
 
 **Rules for a pass.**
 
 1. Start the runner at the repository root. Started anywhere else, it
-   finds no side file and tests nothing, and `mutaml-report` then
+   finds no mutation file and tests nothing, and `mutaml-report` then
    prints `Found no test results` and exits 1. A full pass makes
-   several hundred mutants; a much smaller number means that the pass
-   missed part of the tree.
+   several thousand mutants; a much smaller number means that the pass
+   missed some of the tree.
 2. Run no other `dune` command while a pass runs, and build again with
    `--instrument-with mutaml` after any ordinary `dune` command. An
    ordinary build links the executables again without the
@@ -399,7 +485,7 @@ survivor, and nothing else draws a reader to it. Read a survivor as a
 question: which test would have failed on this change? That test is
 the answer. A few survivors have no answer, because no input can tell
 the change from the original. Those are **equivalent mutants**, and
-the next part says how to mark one.
+the next paragraph says how to mark one.
 
 **How to mark a mutant that no test can kill.** Write
 `[@mutaml.skip "reason"]` on the smallest expression that holds the
@@ -431,21 +517,22 @@ test could kill the mutant, that test is the answer, and the mark is
 a way of not writing it.
 
 **The gate.** `mutaml-report` exits 0 when the score is at or above
-`--fail-under`, 2 when it is below, and 1 when the tool could not do
-its work. Give it the number that the `mutation` job holds in
-`MUTATION_MINIMUM`, so that a pass on your own machine answers as the
-job does. The job is not a required check: it never holds a merge, and
-a failure stays red on the pull request for the author and the
-reviewer to read. The number is fixed at 95 by a ruling of the
-maintainer (`docs/decisions/mutation-gate.md`). It does not rise when
-the score rises, it does not fall, and it changes only on another
-ruling of the maintainer.
+`--fail-under`, 2 when it is below, and 1 when the tool could not do its
+work. Give it the number that the job "Report the mutation score" holds
+in `MUTATION_MINIMUM`, so that a pass on your own machine answers as the
+job does. The five jobs of the mutation pass are not required checks:
+they never hold a merge, and a failure stays red on the pull request for
+the author and the reviewer to read. The number is fixed at 95 by a
+ruling of the maintainer (`docs/decisions/mutation-gate.md`). It does
+not rise when the score rises, it does not fall, and it changes only on
+another ruling of the maintainer.
 
-95 is the gate and not the target. **The score to aim for is 100.**
-The job prints the score of every run in its summary and names every
-mutant that survived. The gap between 95 and 100 is there so that one
-mutant that nobody has got to yet does not stop a pull request that is
-sound in every other way; it is not room to leave survivors in.
+95 is the gate and not the target. **The score to aim for is 100.** The
+job "Report the mutation score" prints the score of every run in its
+summary and names every mutant that survived. The gap between 95 and 100
+is there so that one mutant that nobody has got to yet does not stop a
+pull request that is sound in every other way; it is not room to leave
+survivors in.
 
 ### Performance
 

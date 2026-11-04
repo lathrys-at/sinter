@@ -186,3 +186,38 @@
   - The findings phases of `check --diff` grow 11.95 and 11.97 times
     on the bench, near their limit of 12, for the same n log n reason
     as the findings phase of `check`.
+## Measure the whole mutation score within the time limit
+
+- In changed mode each part runs every file of its share with
+  `--changed-since`, not only the files that the pull request changed.
+  The brief limited the files because a run on an unchanged file would
+  cost the two runs without a mutant. That reason did not hold: the
+  runner runs no test when it finds no mutant to run (runner.ml,
+  `if to_run = []`). An unchanged file costs one start of the runner
+  and one `git diff`, and the joined report then holds the mutants
+  that did not run, as the report of one runner does (ruling of the
+  lead).
+- The loop over the files of a share is a third script,
+  `test/run-mutant-share.sh`, so that a share runs on a machine with
+  the same code as in CI.
+- `mutaml-report` writes a mutated copy of each survivor under
+  `_mutations/` and does not make the folder; without it, the report
+  exits 1. The last job makes the folder of each source file first.
+- The property tests read `QCHECK_SEED` with `int_of_string`, and take
+  a seed of their own when the value does not fit. The number is 32
+  bits from `/dev/urandom`, and the script refuses more than 17 digits.
+- The artifact `mutation-report` holds the elements report and the
+  joined runner report (ruling of the lead).
+- The new scripts join the files whose change runs the full set.
+  `MUTAML_COMMIT` moves to the env of the workflow, because two jobs
+  read it.
+- The CI run of the pull request in full mode (run 41536056030) gave
+  each part 1,185 mutants, and took 1 h 39 min, 1 h 53 min, 2 h 51 min,
+  and 1 h 15 min. The longest part is 2.3 times the shortest: a timeout
+  costs the whole limit of a run, and the slow part held 30 of the 70
+  timeouts and the slowest files (`lib/findings.ml`, 57 min;
+  `lib/toml.ml`, 35 min). The longest part has more than two hours to
+  spare, so the shares stay by count. The option `--shard` of the fork
+  (lathrys-at/mutaml issue 10) would balance by mutant across files.
+  The joined score was 97.4 percent: 4,740 mutants, 4,546 killed, 70
+  timed out, 124 survived.
