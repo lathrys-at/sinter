@@ -39,7 +39,9 @@ a terminal and refuses under an agent, and `--dry-run` writes nothing.
 @scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**
 Add `sinter approve`: show the delta since the last approval, ask for
 each subject, refuse text that HEAD does not hold, and write the
-approval with the commitment set of a plan.
+approval of a plan with the version of the plan that the person read.
+Define the `plan-version` entry: the whole text of a plan, linked to
+the version before it and to its commitment set.
 
 ## Run the job on the default branch
 @scope spec/**, docs/**, lib/**, bin/**, test/**, .github/workflows/**
@@ -47,13 +49,15 @@ approval with the commitment set of a plan.
 Add the job that runs at each push to the default branch, in CI or by
 hand. It reads the commits from the head of its last entry to the
 current head, imports the evidence of its run, and writes the
-`delivered`, `plan`, and `completed` entries.
+`delivered` and `completed` entries, and a `plan-version` entry for
+each plan whose file differs from its latest version.
 
 ## Record a plan without a file
 @scope spec/**, docs/**, lib/**, bin/**, test/**, plugins/**, .claude-plugin/**, CLAUDE.md, README.md, CONTRIBUTING.md
 @decision ledger-only-plans
-Let `sinter approve <draft>` record a plan that has no file, read each
-plan from the tree first and then from the ledger, make the checks of
-the recording command, publish the format of a draft, and revise the
-record `agent-statements` and the thesis of the design notes to name
-the ledger as the second channel for a statement.
+Let `sinter approve <draft>` record a plan that has no file as a
+`plan-version` entry, read each plan from the tree first and then
+from the ledger, make the checks of the recording command, publish
+the format of a draft, and revise the record `agent-statements` and
+the thesis of the design notes to name the ledger as the second
+channel for a statement.
