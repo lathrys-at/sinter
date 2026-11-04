@@ -195,6 +195,7 @@ type t = {
   lookups : lookups Lazy.t;
   block_hashes : string array Paths.t Lazy.t;
   block_acks : ack list Blocks.t Lazy.t;
+  steps_by_name : (plan * step) list Pairs.t Lazy.t;
 }
 
 let site_id path (section : Markdown.section) =
@@ -209,14 +210,13 @@ let ordinary_file ~base ~path (document : Markdown.t) =
   let tags = document.tags in
   let count = Array.length tags in
   let indices = List.init count Fun.id in
-  let numbers =
-    List.mapi
-      (fun n index -> (index, base + n))
-      (List.filter
-         (fun index -> Option.is_some tags.(index).Markdown.extent)
-         indices)
+  let declared =
+    List.filter
+      (fun index -> Option.is_some tags.(index).Markdown.extent)
+      indices
   in
-  let declared = List.map fst numbers in
+  let numbers = Array.make count None in
+  List.iteri (fun n index -> numbers.(index) <- Some (base + n)) declared;
   let owner (tag : Markdown.tag) = tag.owner in
   let id_of index =
     let tag = tags.(index) in
@@ -242,10 +242,14 @@ let ordinary_file ~base ~path (document : Markdown.t) =
           status.(index) <- Some tag.word
       | Some _ | None -> ())
     tags;
-  let last block =
-    List.fold_left
-      (fun found index -> if List.mem index declared then Some index else found)
-      None document.blocks.(block).tags
+  let last =
+    Array.map
+      (fun (block : Markdown.block) ->
+        List.fold_left
+          (fun found index ->
+            if Option.is_some numbers.(index) then Some index else found)
+          None block.tags)
+      document.blocks
   in
   let declarations =
     List.filter_map
@@ -262,7 +266,7 @@ let ordinary_file ~base ~path (document : Markdown.t) =
                     document.sections.(tag.section).heading
             in
             let prose =
-              if last tag.block = Some index then
+              if last.(tag.block) = Some index then
                 List.map trim document.blocks.(tag.block).prose
               else []
             in
@@ -292,7 +296,7 @@ let ordinary_file ~base ~path (document : Markdown.t) =
         | Some target_text when is_citation tag ->
             let src, source =
               match owner tag with
-              | Some index -> (id_of index, Some (List.assoc index numbers))
+              | Some index -> (id_of index, numbers.(index))
               | None -> (site_id path document.sections.(tag.section), None)
             in
             Some
@@ -389,22 +393,20 @@ let rec step_section (document : Markdown.t) index =
   | _ -> Option.bind section.parent (step_section document)
 
 let promises_of (document : Markdown.t) indices =
-  List.rev
-    (List.fold_left
-       (fun found index ->
-         let tag = document.tags.(index) in
-         match tag.target with
-         | Some target
-           when List.mem tag.word promise_words
-                && not
-                     (List.exists
-                        (fun (promise : promise) ->
-                          String.equal promise.word tag.word
-                          && String.equal promise.target target)
-                        found) ->
-             { word = tag.word; target; span = tag.span; tag } :: found
-         | Some _ | None -> found)
-       [] indices)
+  let found, _ =
+    List.fold_left
+      (fun (found, seen) index ->
+        let tag = document.tags.(index) in
+        match tag.target with
+        | Some target
+          when List.mem tag.word promise_words
+               && not (Pairs.mem (tag.word, target) seen) ->
+            ( { word = tag.word; target; span = tag.span; tag } :: found,
+              Pairs.add (tag.word, target) () seen )
+        | Some _ | None -> (found, seen))
+      ([], Pairs.empty) indices
+  in
+  List.rev found
 
 let step_hash ~scope promises prose =
   Sha256.hex
@@ -431,24 +433,27 @@ let plan_file ~path (document : Markdown.t) plan_index =
   match Option.map Plan_target.parse plan_tag.target with
   | Some (Ok { slug; id }) ->
       let first_block = document.blocks.(0).tags in
+      let in_first_block = Array.make (Array.length document.tags) false in
+      List.iter (fun index -> in_first_block.(index) <- true) first_block;
       let later =
         List.filter
-          (fun index -> not (List.mem index first_block))
+          (fun index -> not in_first_block.(index))
           (List.init (Array.length document.tags) Fun.id)
       in
       let plan_scope =
         Option.value (first_scope document first_block) ~default:[]
       in
+      let held_by = Array.make (Array.length document.sections) [] in
+      List.iter
+        (fun index ->
+          Option.iter
+            (fun section -> held_by.(section) <- index :: held_by.(section))
+            (step_section document document.tags.(index).section))
+        (List.rev later);
       let step section_index =
         match document.sections.(section_index) with
         | { level = 2; heading = Some heading; text; _ } -> (
-            let held =
-              List.filter
-                (fun index ->
-                  step_section document document.tags.(index).section
-                  = Some section_index)
-                later
-            in
+            let held = held_by.(section_index) in
             let own_scope = first_scope document held in
             let promises = promises_of document held in
             match held with
@@ -550,6 +555,16 @@ let retirers manifest (declarations : declaration array) edges targets =
     edges targets;
   found
 
+let cycle_members graph =
+  let members = Array.make (Array.length graph) false in
+  List.iter
+    (function
+      | [ single ] ->
+          if List.mem single graph.(single) then members.(single) <- true
+      | cycle -> List.iter (fun member -> members.(member) <- true) cycle)
+    (Components.of_graph graph);
+  members
+
 let in_force ~retirers (declarations : declaration array) edges targets =
   let count = Array.length declarations in
   let superseded = Array.make count [] in
@@ -560,20 +575,10 @@ let in_force ~retirers (declarations : declaration array) edges targets =
           superseded.(source) <- target :: superseded.(source)
       | _ -> ())
     edges targets;
-  let on_cycle node =
-    let rec search seen = function
-      | [] -> false
-      | next :: rest ->
-          next = node
-          ||
-          if List.mem next seen then search seen rest
-          else search (next :: seen) (superseded.(next) @ rest)
-    in
-    search [] superseded.(node)
-  in
+  let on_cycle = cycle_members superseded in
   Array.init count (fun node ->
       Option.is_none declarations.(node).status
-      && (retirers.(node) = [] || on_cycle node))
+      && (retirers.(node) = [] || on_cycle.(node)))
 
 let in_place_order (a : meeting_fact) (b : meeting_fact) =
   compare
@@ -695,6 +700,18 @@ let make manifest files =
                (fun found -> Some (ack :: Option.value found ~default:[]))
                groups)
            Blocks.empty (List.rev acks));
+    steps_by_name =
+      lazy
+        (List.fold_left
+           (fun names (plan : plan) ->
+             List.fold_left
+               (fun names (step : step) ->
+                 Pairs.update (plan.path, step.slug)
+                   (fun found ->
+                     Some ((plan, step) :: Option.value found ~default:[]))
+                   names)
+               names plan.steps)
+           Pairs.empty plans);
   }
 
 type fact = {
@@ -919,14 +936,29 @@ let standing_within facts ~in_scope (promise : promise) =
   in
   { by = List.find_opt inside meeting_facts; meeting_facts }
 
-let standing facts plan step =
-  if not (List.memq plan facts.plans && List.memq step plan.steps) then
-    invalid_arg "Facts.standing: the step is not one of these facts";
+let standing facts (plan : plan) (step : step) =
+  if
+    not
+      (List.exists
+         (fun (known, named) -> known == plan && named == step)
+         (Option.value
+            (Pairs.find_opt (plan.path, step.slug)
+               (Lazy.force facts.steps_by_name))
+            ~default:[]))
+  then invalid_arg "Facts.standing: the step is not one of these facts";
   let in_scope = Path_set.mem (path_set (effective_scope plan step)) in
+  let promises =
+    List.fold_left
+      (fun promises (promise : promise) ->
+        Pairs.add (promise.word, promise.target) promise promises)
+      Pairs.empty step.promises
+  in
   fun (promise : promise) ->
-    if not (List.memq promise step.promises) then
-      invalid_arg "Facts.standing: the promise is not one of this step";
-    standing_within facts ~in_scope promise
+    match Pairs.find_opt (promise.word, promise.target) promises with
+    | Some known when known == promise ->
+        standing_within facts ~in_scope promise
+    | Some _ | None ->
+        invalid_arg "Facts.standing: the promise is not one of this step"
 
 let met_within facts ~scope ~word ~target =
   let in_scope = Path_set.mem (path_set scope) in
@@ -1223,20 +1255,72 @@ let acks facts = facts.acks
 let plans facts = facts.plans
 let plan_files facts = facts.plan_files
 
-let covering facts =
-  let scopes =
+module Scopes = Map.Make (struct
+  type t = string list
+
+  let compare = compare
+end)
+
+type coverage = {
+  index : Path_index.t;
+  steps : (string * int) array;
+  by_scope : int list array;
+}
+
+let coverage facts =
+  let steps =
     List.concat_map
       (fun plan ->
         List.map
           (fun step ->
-            (step_id plan step, path_set (effective_scope plan step)))
+            (step_id plan step, canonical (effective_scope plan step)))
           plan.steps)
       facts.plans
   in
+  let positions, scopes, count =
+    List.fold_left
+      (fun ((positions, scopes, count) as kept) (_, scope) ->
+        if Scopes.mem scope positions then kept
+        else (Scopes.add scope count positions, scope :: scopes, count + 1))
+      (Scopes.empty, [], 0) steps
+  in
+  let steps =
+    Array.of_list
+      (List.map (fun (id, scope) -> (id, Scopes.find scope positions)) steps)
+  in
+  let by_scope = Array.make count [] in
+  for step = Array.length steps - 1 downto 0 do
+    let scope = snd steps.(step) in
+    by_scope.(scope) <- step :: by_scope.(scope)
+  done;
+  { index = Path_index.make (List.rev_map path_set scopes); steps; by_scope }
+
+let covering facts =
+  let { index; steps; by_scope } = coverage facts in
   fun path ->
-    List.filter_map
-      (fun (id, scope) -> if Path_set.mem scope path then Some id else None)
-      scopes
+    List.map
+      (fun step -> fst steps.(step))
+      (List.sort Int.compare
+         (List.concat_map
+            (fun scope -> by_scope.(scope))
+            (Path_index.holders index path)))
+
+let covers facts =
+  let { index; _ } = coverage facts in
+  fun path -> Path_index.holders index path <> []
+
+let covered facts paths =
+  let { index; steps; by_scope } = coverage facts in
+  let held = Array.make (Array.length by_scope) false in
+  List.iter
+    (fun path ->
+      List.iter
+        (fun scope -> held.(scope) <- true)
+        (Path_index.holders index path))
+    paths;
+  List.filter_map
+    (fun (id, scope) -> if held.(scope) then Some id else None)
+    (Array.to_list steps)
 
 let index ~tree ~base ~default_branch ~manifest ~tool ~mode =
   [

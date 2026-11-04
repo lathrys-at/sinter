@@ -6,9 +6,10 @@ type node =
   | Class of (char * char) list
   | Sequence of node list
   | Alternation of node list
-  | Repeat of node * int * int option
+  | Repeat of { body : node; low : int; high : int option; copies : int }
 
-type t = { text : string; root : node }
+type state = Char of (char * char) list * int | Split of int * int | Accept
+type t = { text : string; program : state array; start : int }
 
 type error =
   | Not_allowed of { offset : int; character : string }
@@ -26,6 +27,7 @@ type error =
   | Count_too_large of int
   | Counts_out_of_order of int
   | Matches_empty
+  | Too_large
 
 let is_printable c = c >= '!' && c <= '~'
 
@@ -102,14 +104,17 @@ let parse text =
     match peek () with
     | Some '?' ->
         incr at;
-        Some (0, Some 1)
+        Some (0, Some 1, 1)
     | Some '*' ->
         incr at;
-        Some (0, None)
+        Some (0, None, 1)
     | Some '+' ->
         incr at;
-        Some (1, None)
-    | Some '{' -> Some (counts !at)
+        Some (1, None, 1)
+    | Some '{' -> (
+        match counts !at with
+        | low, (Some high as bound) -> Some (low, bound, max 1 high)
+        | low, None -> Some (low, None, low + 1))
     | _ -> None
   in
   let rec members start acc =
@@ -152,7 +157,7 @@ let parse text =
           more (sequence () :: acc)
       | _ -> List.rev acc
     in
-    Alternation (more [ first ])
+    match more [ first ] with [ one ] -> one | many -> Alternation many
   and sequence () =
     let rec parts acc =
       match peek () with
@@ -166,8 +171,8 @@ let parse text =
     let part = atom c in
     match quantifier () with
     | None -> part
-    | Some (low, high) -> (
-        let quantified = Repeat (part, low, high) in
+    | Some (low, high, copies) -> (
+        let quantified = Repeat { body = part; low; high; copies } in
         match peek () with
         | Some ('?' | '*' | '+' | '{') -> fail (Two_quantifiers !at)
         | _ -> quantified)
@@ -201,59 +206,104 @@ let rec nullable = function
   | Literal _ | Class _ -> false
   | Sequence nodes -> List.for_all nullable nodes
   | Alternation nodes -> List.exists nullable nodes
-  | Repeat (body, low, _) -> low = 0 || nullable body
+  | Repeat { body; low; _ } -> low = 0 || nullable body
+
+let largest = 1_000
+
+let rec size = function
+  | Literal _ | Class _ -> 1
+  | Sequence nodes | Alternation nodes ->
+      List.fold_left
+        (fun total node -> min (largest + 1) (total + size node))
+        0 nodes
+  | Repeat { body; copies; _ } -> min (largest + 1) (size body * copies)
+
+let compile root =
+  let states = Dynarray.create () in
+  let add state =
+    Dynarray.add_last states state;
+    Dynarray.length states - 1
+  in
+  let rec build node next =
+    match node with
+    | Literal c -> add (Char ([ (c, c) ], next))
+    | Class ranges -> add (Char (ranges, next))
+    | Sequence nodes -> List.fold_right build nodes next
+    | Alternation nodes -> (
+        match List.rev nodes with
+        | [] -> next
+        | last :: earlier ->
+            List.fold_left
+              (fun other node -> add (Split (build node next, other)))
+              (build last next) earlier)
+    | Repeat { body; low; high = Some high; _ } ->
+        let rec optional count =
+          if count = 0 then next
+          else
+            let rest = optional (count - 1) in
+            add (Split (build body rest, rest))
+        in
+        repeat body low (optional (high - low))
+    | Repeat { body; low; high = None; _ } ->
+        let loop = add Accept in
+        let entry = build body loop in
+        Dynarray.set states loop (Split (entry, next));
+        if low = 0 then loop else repeat body (low - 1) entry
+  and repeat body count next =
+    if count = 0 then next else build body (repeat body (count - 1) next)
+  in
+  let start = build root (add Accept) in
+  (Dynarray.to_array states, start)
 
 let of_string text =
   match parse text with
   | exception Stop error -> Error error
+  | root when size root > largest -> Error Too_large
   | root when nullable root -> Error Matches_empty
-  | root -> Ok { text; root }
+  | root ->
+      let program, start = compile root in
+      Ok { text; program; start }
 
 let to_string pattern = pattern.text
 
-module Places = Set.Make (Int)
-
 let matches pattern id =
+  let program = pattern.program in
+  let seen = Array.make (Array.length program) (-1) in
+  let rec close round state found =
+    if seen.(state) = round then found
+    else begin
+      seen.(state) <- round;
+      match program.(state) with
+      | Split (first, second) -> close round second (close round first found)
+      | Char _ | Accept -> state :: found
+    end
+  in
   let length = String.length id in
-  let shift accepts from =
-    List.filter_map
-      (fun place ->
-        if place < length && accepts id.[place] then Some (place + 1) else None)
-      from
+  let rec run position states =
+    if position = length then
+      List.exists
+        (fun state -> match program.(state) with Accept -> true | _ -> false)
+        states
+    else
+      let c = id.[position] in
+      match
+        List.fold_left
+          (fun found state ->
+            match program.(state) with
+            | Char (ranges, next)
+              when List.exists (fun (low, high) -> c >= low && c <= high) ranges
+              ->
+                close (position + 1) next found
+            | Char _ | Split _ | Accept -> found)
+          [] states
+      with
+      | [] -> false
+      | states -> run (position + 1) states
   in
-  let rec ends node from =
-    match node with
-    | Literal c -> shift (Char.equal c) from
-    | Class ranges ->
-        shift
-          (fun c -> List.exists (fun (l, h) -> c >= l && c <= h) ranges)
-          from
-    | Alternation nodes ->
-        List.sort_uniq Int.compare
-          (List.concat_map (fun n -> ends n from) nodes)
-    | Sequence nodes -> List.fold_left (fun from n -> ends n from) from nodes
-    | Repeat (body, low, high) ->
-        let rec exact rounds from =
-          if rounds = 0 || from = [] then from
-          else exact (rounds - 1) (ends body from)
-        in
-        let rec grow rounds reached frontier =
-          if frontier = [] || Some rounds = high then reached
-          else
-            let next =
-              List.filter
-                (fun place -> not (Places.mem place reached))
-                (ends body frontier)
-            in
-            grow (rounds + 1) (Places.union reached (Places.of_list next)) next
-        in
-        let first = exact low from in
-        Places.elements (grow low (Places.of_list first) first)
-  in
-  String.for_all is_printable id && List.mem length (ends pattern.root [ 0 ])
+  String.for_all is_printable id && run 0 (close 0 pattern.start [])
 
 let error_offset = function
-  | Matches_empty -> 0
+  | Matches_empty | Too_large -> 0
   | Not_allowed { offset; _ } -> offset
   | Unclosed_class offset
   | Empty_class offset
@@ -335,6 +385,9 @@ let parts = function
   | Counts_out_of_order _ ->
       ("in the quantifier {n,m}, n is not greater than m", None)
   | Matches_empty -> ("the pattern matches an empty id", None)
+  | Too_large ->
+      ( "the pattern is too large when its counts are written out",
+        Some "use smaller counts" )
 
 let message error =
   match parts error with

@@ -232,6 +232,12 @@ let budgets_refuse_a_bad_file () =
         "check-diff.allocation-growth is missing" );
       ( "check-diff = 1\n" ^ budgets_text,
         "[check-diff] is an integer, not a table" );
+      ( "[scan]\nallocation-growth = 1\nphases = 2\n",
+        "scan.phases is an integer, not a table" );
+      ( "[scan]\nallocation-growth = 1\nphases.read = 0\n",
+        "scan.phases.read is not a positive number" );
+      ( "[scan]\nallocation-growth = 1\nphases.read = \"2\"\n",
+        "scan.phases.read is not a positive number" );
     ]
 
 let verdict (verdict : Budgets.verdict) =
@@ -249,7 +255,112 @@ let outcomes budgets ~words =
       Printf.sprintf "%s%s %g %s" outcome.command
         (Option.fold ~none:"" ~some:(fun phase -> " " ^ phase) outcome.phase)
         outcome.limit (verdict outcome.verdict))
-    (Budgets.check budgets ~words:(words_of words))
+    (match Budgets.check budgets ~words:(words_of words) with
+    | Ok outcomes -> outcomes
+    | Error message -> Alcotest.failf "check refused the budgets: %s" message)
+
+let budgets_give_a_phase_its_own_limit () =
+  let budgets =
+    budgets
+      "[scan]\n\
+       allocation-growth = 10\n\
+       phases.read = 20\n\n\
+       [check]\n\
+       allocation-growth = 11\n\n\
+       [check.phases]\n\
+       findings = 16.5\n\
+       output = 3\n"
+  in
+  Alcotest.(check (list (option (float 0.))))
+    "the limit of each command" [ Some 10.; Some 11. ]
+    [ Budgets.growth budgets "scan"; Budgets.growth budgets "check" ];
+  Alcotest.(check (list string))
+    "the outcomes"
+    [
+      "scan read 20 pass 15";
+      "scan records 10 fail 15";
+      "check findings 16.5 pass 15";
+      "check output 3 fail 15";
+      "check facts 11 fail 15";
+    ]
+    (outcomes budgets
+       ~words:
+         [
+           (("n1000", "scan"), [ ("read", 2.); ("records", 2.) ]);
+           (("n10000", "scan"), [ ("read", 30.); ("records", 30.) ]);
+           ( ("n1000", "check"),
+             [ ("findings", 2.); ("output", 2.); ("facts", 2.) ] );
+           ( ("n10000", "check"),
+             [ ("findings", 30.); ("output", 30.); ("facts", 30.) ] );
+         ])
+
+let check_refuses_a_phase_that_the_run_does_not_have () =
+  let words =
+    words_of
+      [
+        (("n1000", "scan"), [ ("read", 2.) ]);
+        (("n10000", "scan"), [ ("read", 20.) ]);
+        (("n1000", "check"), [ ("facts", 2.); ("findings", 2.) ]);
+        (("n10000", "check"), [ ("facts", 20.); ("findings", 30.) ]);
+      ]
+  in
+  let check text =
+    Result.map List.length (Budgets.check (budgets text) ~words)
+  in
+  Alcotest.(check (list (result int string)))
+    "the result of each budgets"
+    [
+      Error
+        "check.phases.findigns names no phase of check; its phases are facts \
+         and findings";
+      Error "scan.phases.parse names no phase of scan; its phases are read";
+      Ok 3;
+      Ok 4;
+      Error
+        "check-diff.phases.x names no phase of check-diff; its phases are \
+         read, facts, and findings";
+    ]
+    [
+      check
+        "[scan]\n\
+         allocation-growth = 12\n\
+         [check]\n\
+         allocation-growth = 12\n\
+         phases.findigns = 16\n";
+      check
+        "[scan]\n\
+         allocation-growth = 12\n\
+         phases.parse = 3\n\
+         [check]\n\
+         allocation-growth = 12\n";
+      check
+        "[scan]\n\
+         allocation-growth = 12\n\
+         [check]\n\
+         allocation-growth = 12\n\
+         phases.findings = 16\n";
+      check
+        "[scan]\n\
+         allocation-growth = 12\n\
+         [check]\n\
+         allocation-growth = 12\n\
+         [check-diff]\n\
+         allocation-growth = 12\n\
+         phases.findigns = 16\n";
+      Result.map List.length
+        (Budgets.check
+           (budgets
+              "[scan]\n\
+               allocation-growth = 12\n\
+               [check]\n\
+               allocation-growth = 12\n\
+               [check-diff]\n\
+               allocation-growth = 12\n\
+               phases.x = 2\n") ~words:(fun ~tree ~command ->
+             if String.equal command "check-diff" then
+               [ ("read", 1.); ("facts", 1.); ("findings", 1.) ]
+             else words ~tree ~command));
+    ]
 
 let check_judges_each_phase () =
   Alcotest.(check (list string))
@@ -350,7 +461,8 @@ let check_passes_a_phase_at_or_under_its_limit =
            List.filter
              (fun (outcome : Budgets.outcome) ->
                String.equal outcome.command "scan")
-             (Budgets.check budgets ~words:(words_of words))
+             (Result.value ~default:[]
+                (Budgets.check budgets ~words:(words_of words)))
          in
          match phases with
          | [] -> (
@@ -958,6 +1070,26 @@ let run_fails_a_recorded_budget_with_exit_1 () =
     ]
     outcomes
 
+let run_stops_at_a_phase_limit_that_names_no_phase () =
+  let results = Filename.temp_file "sinter-results" ".json" in
+  write results
+    (recorded ~platform:"linux" ~small:(20000., 2e6) ~large:(70000., 19e6) ());
+  let budgets = budgets_file (limits ^ "phases.findigns = 16\n") in
+  let code, output, errors =
+    run [ "--results"; results; "--budgets"; budgets ]
+  in
+  Alcotest.(check (list string))
+    "exit, output, and errors"
+    [
+      "2";
+      "";
+      Printf.sprintf
+        "run: %s: check.phases.findigns names no phase of check; its phases \
+         are read and records\n"
+        budgets;
+    ]
+    [ string_of_int code; output; errors ]
+
 let run_passes_recorded_budgets_with_exit_0 () =
   let code, outcomes, errors =
     check_recorded ~platform:"linux" ~small:(20000., 2e6) ~large:(70000., 19e6)
@@ -1367,6 +1499,9 @@ let run_with_an_unknown_option_is_a_usage_error () =
 let tests =
   [
     case "budgets of check-diff are optional" budgets_of_check_diff_are_optional;
+    case "budgets give a phase its own limit" budgets_give_a_phase_its_own_limit;
+    case "check refuses a phase that the run does not have"
+      check_refuses_a_phase_that_the_run_does_not_have;
     case "check judges the budgets of check-diff"
       check_judges_the_budgets_of_check_diff;
     case "gnu time reads the last line" gnu_time_reads_the_last_line;
@@ -1412,6 +1547,8 @@ let tests =
       run_fails_a_recorded_budget_with_exit_1;
     case "run passes recorded budgets with exit 0"
       run_passes_recorded_budgets_with_exit_0;
+    case "run stops at a phase limit that names no phase"
+      run_stops_at_a_phase_limit_that_names_no_phase;
     case "run checks the growth on macos" run_checks_the_growth_on_macos;
     case "run compares the peak with a baseline"
       run_compares_the_peak_with_a_baseline;

@@ -1374,6 +1374,58 @@ let successors_end_in_force_and_only_effective_edges_retire =
              && (Option.is_none declarations.(index).status || not in_force))
            (List.init (Array.length declarations) Fun.id)))
 
+let in_force_is_no_status_and_no_retirer_or_a_cycle =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200
+       ~name:
+         "a declaration is in force when it has no status, and no effective \
+          edge retires it or it reaches itself by supersedes edges"
+       ~print:graph_text graph (fun graph ->
+         let facts =
+           facts ~extra:"[proof]\ndesign = \"approval\"\n"
+             [ ("a.md", graph_text graph) ]
+         in
+         let declarations = Array.of_list (Facts.declarations facts) in
+         let supersedes =
+           List.filter_map
+             (fun ((edge : Facts.edge), target) ->
+               match (edge.word, edge.source, target) with
+               | "supersedes", Some source, Facts.Declaration target ->
+                   Some (source, target)
+               | _ -> None)
+             (Facts.edges facts)
+         in
+         let effective (source, _) =
+           Option.is_none declarations.(source).status
+           && not (String.equal declarations.(source).kind "design")
+         in
+         let reaches_itself index =
+           let rec walk seen = function
+             | [] -> false
+             | node :: rest ->
+                 if List.mem node seen then walk seen rest
+                 else
+                   let next =
+                     List.filter_map
+                       (fun (source, target) ->
+                         if source = node then Some target else None)
+                       supersedes
+                   in
+                   List.mem index next || walk (node :: seen) (next @ rest)
+           in
+           walk [] [ index ]
+         in
+         List.for_all
+           (fun index ->
+             Facts.is_in_force facts index
+             = (Option.is_none declarations.(index).status
+               && ((not
+                      (List.exists
+                         (fun edge -> snd edge = index && effective edge)
+                         supersedes))
+                  || reaches_itself index)))
+           (List.init (Array.length declarations) Fun.id)))
+
 let edges_give_what_their_targets_resolve_to () =
   let facts =
     facts
@@ -1728,6 +1780,7 @@ let standing_refuses_a_promise_of_other_facts () =
           ("a plan of other facts", other, other_one, other_a);
           ("a step of another plan", plan, other_one, other_a);
           ("a promise of another step", plan, one, b);
+          ("the same promise of other facts", plan, one, other_a);
         ];
       ignore (Facts.standing facts plan one a)
   | _ -> Alcotest.fail "one plan with two steps of one promise in each"
@@ -1962,7 +2015,24 @@ let covering_names_each_step_whose_effective_scope_holds_a_path () =
     ]
     (List.map
        (fun path -> (path, covering path))
-       [ "src/lib/a.ml"; "src/b.ml"; "docs/a.md"; "docs/secret.md"; "notes.md" ])
+       [ "src/lib/a.ml"; "src/b.ml"; "docs/a.md"; "docs/secret.md"; "notes.md" ]);
+  let covers =
+    Facts.covers
+      (facts_of_files
+         [
+           ( ".plans/p.md",
+             "# P\n\n@plan p\n\n## A\n\n@scope src/**, !src/x.ml\n@req x\n" );
+         ])
+  in
+  Alcotest.(check (list bool))
+    "whether a step covers each path" [ true; false; false ]
+    (List.map covers [ "src/a.ml"; "src/x.ml"; "docs/a.md" ]);
+  Alcotest.(check (list string))
+    "the steps that cover one or more paths, each once and in order"
+    [ "step:p/own"; "step:p/inherits"; "step:r/all" ]
+    (Facts.covered facts [ "docs/a.md"; "src/lib/a.ml"; "src/b.ml" ]);
+  Alcotest.(check (list string))
+    "the steps that cover no path" [] (Facts.covered facts [])
 
 let step_plan ?(heading = "Do it") ?(tag = "") ?(scope = "lib/**")
     ?(promise = "a") ?(prose = "Write the code.") ?(spaces = "") ?(blanks = "")
@@ -2169,6 +2239,141 @@ let met_within_reads_the_facts_with_the_scope_of_a_step () =
        (facts_of_files [ ("lib/a.md", "# A\n\n@req a v1\n@cites a v2\n") ])
        ~scope:[ "lib/**" ] ~word:"cites" ~target:"a")
 
+let a_chain_of_supersedes_edges_grows_in_proportion_to_its_length () =
+  let manifest = manifest () in
+  Counted_work.check_growth ~margin:1.5 ~sizes:(100, 1_600)
+    ~input:(fun count ->
+      List.init count (fun index ->
+          ( Printf.sprintf "docs/d%04d.md" index,
+            document
+              (if index = 0 then "# D\n\n@decision d0\n"
+               else
+                 Printf.sprintf "# D\n\n@decision d%d\n@supersedes d%d v1\n"
+                   index (index - 1)) )))
+    (Facts.make manifest)
+
+let a_plan_grows_in_proportion_to_its_steps () =
+  let manifest = manifest () in
+  Counted_work.check_growth ~margin:1.5 ~sizes:(500, 8_000)
+    ~input:(fun count ->
+      [
+        ( ".plans/p.md",
+          document
+            ("# P\n\n@plan p\n\n"
+            ^ String.concat ""
+                (List.init count (fun index ->
+                     Printf.sprintf "## Step %d\n\n@cites s%d\n\n" index index))
+            ) );
+      ])
+    (Facts.make manifest)
+
+let a_file_grows_in_proportion_to_its_declarations () =
+  let manifest = manifest () in
+  Timed_work.check_growth ~margin:3. ~runs:3 ~sizes:(1_000, 8_000)
+    ~input:(fun count ->
+      [
+        ( "docs/a.md",
+          document
+            (String.concat ""
+               (List.init count (fun index ->
+                    Printf.sprintf "## H%d\n\n@req r%d\n@cites r%d v1\n\n" index
+                      index
+                      ((index + 1) mod count)))) );
+      ])
+    (Facts.make manifest)
+
+let a_step_grows_in_proportion_to_its_promises () =
+  let manifest = manifest () in
+  Timed_work.check_growth ~margin:3. ~runs:3 ~sizes:(2_000, 16_000)
+    ~input:(fun count ->
+      [
+        ( ".plans/p.md",
+          document
+            ("# P\n\n@plan p@abcdef\n@scope docs/**\n\n## Step\n\n"
+            ^ String.concat ""
+                (List.init count (fun index ->
+                     Printf.sprintf "@cites c%d\n" index))) );
+      ])
+    (Facts.make manifest)
+
+let the_first_block_of_a_plan_belongs_to_no_step () =
+  match
+    Facts.plans
+      (facts_of_files
+         [
+           ( ".plans/p.md",
+             "## Head\n\n@plan p\n@scope src/**\n@req x\n\n## Work\n\n@req y\n"
+           );
+         ])
+  with
+  | [ plan ] ->
+      Alcotest.(check (list (pair string (list string))))
+        "the steps and their promises"
+        [ ("work", [ "req y" ]) ]
+        (List.map
+           (fun (step : Facts.step) ->
+             ( step.slug,
+               List.map
+                 (fun (promise : Facts.promise) ->
+                   promise.word ^ " " ^ promise.target)
+                 step.promises ))
+           plan.steps)
+  | _ -> Alcotest.fail "the file gives one plan"
+
+let a_plan_grows_in_proportion_to_its_first_block () =
+  let manifest = manifest () in
+  Timed_work.check_growth ~margin:3. ~runs:3 ~sizes:(2_000, 16_000)
+    ~input:(fun count ->
+      [
+        ( ".plans/p.md",
+          document
+            ("# P\n\n@plan p@abcdef\n"
+            ^ String.concat ""
+                (List.init count (fun index ->
+                     Printf.sprintf "@cites c%d\n" index))
+            ^ "\n## Step\n\n@req x\n") );
+      ])
+    (Facts.make manifest)
+
+let stand_each_promise facts =
+  List.iter
+    (fun (plan : Facts.plan) ->
+      List.iter
+        (fun (step : Facts.step) ->
+          let standing = Facts.standing facts plan step in
+          List.iter
+            (fun promise -> ignore (Sys.opaque_identity (standing promise)))
+            step.promises)
+        plan.steps)
+    (Facts.plans facts)
+
+let standing_grows_in_proportion_to_the_steps () =
+  Timed_work.check_growth ~margin:3. ~runs:3 ~sizes:(4_000, 32_000)
+    ~input:(fun count ->
+      facts
+        [
+          ( ".plans/p.md",
+            "# P\n\n@plan p\n@scope docs/**\n\n"
+            ^ String.concat ""
+                (List.init count (fun index ->
+                     Printf.sprintf "## Step %d\n\n@cites c%d\n\n" index index))
+          );
+        ])
+    stand_each_promise
+
+let standing_grows_in_proportion_to_the_promises () =
+  Timed_work.check_growth ~margin:3. ~runs:3 ~sizes:(4_000, 32_000)
+    ~input:(fun count ->
+      facts
+        [
+          ( ".plans/p.md",
+            "# P\n\n@plan p@abcdef\n@scope docs/**\n\n## Step\n\n"
+            ^ String.concat ""
+                (List.init count (fun index ->
+                     Printf.sprintf "@cites c%d\n" index)) );
+        ])
+    stand_each_promise
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -2255,6 +2460,23 @@ let tests =
       every_member_of_a_supersedes_cycle_is_in_force;
     case "a cycle counts its edges that are not effective"
       a_cycle_counts_its_edges_that_are_not_effective;
+    case "a chain of supersedes edges grows in proportion to its length"
+      a_chain_of_supersedes_edges_grows_in_proportion_to_its_length;
+    in_force_is_no_status_and_no_retirer_or_a_cycle;
+    case "a plan grows in proportion to its steps"
+      a_plan_grows_in_proportion_to_its_steps;
+    case "a file grows in proportion to its declarations"
+      a_file_grows_in_proportion_to_its_declarations;
+    case "a step grows in proportion to its promises"
+      a_step_grows_in_proportion_to_its_promises;
+    case "a plan grows in proportion to its first block"
+      a_plan_grows_in_proportion_to_its_first_block;
+    case "the first block of a plan belongs to no step"
+      the_first_block_of_a_plan_belongs_to_no_step;
+    case "standing grows in proportion to the steps"
+      standing_grows_in_proportion_to_the_steps;
+    case "standing grows in proportion to the promises"
+      standing_grows_in_proportion_to_the_promises;
     case "a supersedes edge from a site is not effective"
       a_supersedes_edge_from_a_site_is_not_effective;
     case "an ack names the fact of its block" an_ack_names_the_fact_of_its_block;

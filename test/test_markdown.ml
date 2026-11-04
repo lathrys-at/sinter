@@ -734,6 +734,37 @@ let deep_nesting_reads_quickly () =
          first - extent 1:1-3:20002" );
     ]
 
+let an_extent_skips_an_item_inside_an_item () =
+  let hash ~outer ~last =
+    match
+      (file
+         ("# S\n\n@req top\nTop text.\n\n- @req outer\n\n  - @req inner\n\n  "
+        ^ outer ^ "\n  More outer text.\n\n" ^ last ^ "\n"))
+        .tags.(0)
+        .extent
+    with
+    | Some extent -> extent.hash
+    | None -> Alcotest.fail "the first tag has no extent"
+  in
+  let first = hash ~outer:"Outer text." ~last:"Last text." in
+  Alcotest.(check (list bool))
+    "the hash of the section is the same for other text of the outer item, and \
+     differs for other text of the section"
+    [ true; false ]
+    [
+      String.equal first (hash ~outer:"Other text." ~last:"Last text.");
+      String.equal first (hash ~outer:"Outer text." ~last:"Other text.");
+    ]
+
+let a_section_grows_in_proportion_to_its_declared_items () =
+  Timed_work.check_growth ~margin:2. ~runs:3 ~sizes:(1_000, 32_000)
+    ~input:(fun count ->
+      "# Reqs\n\n"
+      ^ String.concat ""
+          (List.init count (fun index ->
+               Printf.sprintf "- @req r%d\n  Text.\n" index)))
+    read
+
 let error_node_gives_its_span =
   check_structure
     "# T\n\n| Name | D |\n| ---- | - |\n| `x`  | y |\n|      |   |\n"
@@ -1438,6 +1469,10 @@ let tests =
       long_runs_read_quickly;
     Alcotest.test_case "deep nesting reads quickly" `Quick
       deep_nesting_reads_quickly;
+    Alcotest.test_case "a section grows in proportion to its declared items"
+      `Quick a_section_grows_in_proportion_to_its_declared_items;
+    Alcotest.test_case "an extent skips an item inside an item" `Quick
+      an_extent_skips_an_item_inside_an_item;
     Alcotest.test_case "an ERROR node gives its span" `Quick
       error_node_gives_its_span;
     Alcotest.test_case "a MISSING node gives an empty span" `Quick

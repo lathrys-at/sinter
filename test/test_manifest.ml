@@ -1106,7 +1106,11 @@ let the_example_messages_of_the_specification () =
   check
     (markdown ^ "namespaces.gh = \"[0-9]*\"\n")
     "the pattern matches an empty id; correct the id pattern of the namespace \
-     'gh'"
+     'gh'";
+  check
+    (markdown ^ "namespaces.gh = \"((a{0,255}){0,255})b\"\n")
+    "the id pattern of namespace 'gh' is too large when its counts are written \
+     out; use smaller counts"
 
 let rec value_text node =
   match Toml.value node with
@@ -1489,6 +1493,7 @@ let pattern_errors =
       Count_too_large 0;
       Counts_out_of_order 0;
       Matches_empty;
+      Too_large;
     ]
 
 let every_problem =

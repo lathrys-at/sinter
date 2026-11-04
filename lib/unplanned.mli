@@ -19,7 +19,7 @@ val findings :
 
     + The path of the change is not under a historical path of the manifest of
       [facts] ({!Manifest.is_historical}).
-    + {!Facts.covering} [facts] gives no step for the path.
+    + {!Facts.covers} [facts] is [false] for the path.
     + The path is not exempt, by {!Manifest.is_exempt} with the manifest of
       [facts]. A path is a plan file when it is a path of {!Facts.plan_files} of
       [facts] or of [base]. [manifest] is the path of the manifest relative to

@@ -9,10 +9,14 @@
 
     The budgets file is TOML. It holds the tables [scan] and [check], the table
     [check-diff] when [sinter check --diff] has a budget, and nothing else. Each
-    table holds one key, [allocation-growth], and nothing else: a positive
-    integer or float, the limit, for each phase of the command, of the words
-    that the phase allocates on the tree of 10,000 declarations, divided by the
-    words on the tree of 1,000 declarations. *)
+    table holds the key [allocation-growth], and may hold the table [phases],
+    and nothing else. [allocation-growth] is a positive integer or float, the
+    limit, for each phase of the command, of the words that the phase allocates
+    on the tree of 10,000 declarations, divided by the words on the tree of
+    1,000 declarations. Each key of [phases] names a phase, and its value, a
+    positive integer or float, is the limit of that phase in place of
+    [allocation-growth]. {!check} refuses a key of [phases] that names no phase
+    of the run. *)
 
 type t
 (** The budgets of the commands. *)
@@ -25,9 +29,9 @@ val of_string : string -> (t, string) result
     @raise Sinter_bridge.Error as {!Sinter_core.Toml.parse} raises it. *)
 
 val growth : t -> string -> float option
-(** [growth budgets command] is the growth limit of the phases of [command],
-    [scan], [check], or [check-diff]; [None] for any other command, and for
-    [check-diff] when the budgets have no table [check-diff]. *)
+(** [growth budgets command] is the growth limit [allocation-growth] of
+    [command], [scan], [check], or [check-diff]; [None] for any other command,
+    and for [check-diff] when the budgets have no table [check-diff]. *)
 
 (** The outcome of one growth limit. *)
 type verdict =
@@ -46,7 +50,7 @@ type outcome = {
 val check :
   t ->
   words:(tree:string -> command:string -> (string * float) list) ->
-  outcome list
+  (outcome list, string) result
 (** [check budgets ~words] checks the growth limits of [scan], then of [check],
     then of [check-diff] when the budgets have that table.
     [words ~tree ~command] is the words of each phase of [command] on [tree], in
@@ -54,6 +58,11 @@ val check :
     are [n1000] and [n10000].
 
     A command gives one outcome for each phase of [n10000], in its order,
-    skipped when [n1000] has no such phase or counts [0.] words in it. When
-    [n10000] has no phase, the command gives one outcome with no phase, skipped.
-*)
+    skipped when [n1000] has no such phase or counts [0.] words in it. The limit
+    of an outcome is the limit of its phase in [phases], or [allocation-growth].
+    When [n10000] has no phase, the command gives one outcome with no phase,
+    skipped, with the limit [allocation-growth].
+
+    The result is [Error] when a key of [phases] names no phase that [n10000]
+    has for its command, with a message that names the key and those phases. A
+    command with no phase on [n10000] gives no such error. *)

@@ -854,6 +854,23 @@ let scope_overlap_sits_at_the_later_step () =
        shares promises and scope with step:p/one, step:p/two, step:p/three";
     ]
 
+let the_findings_of_a_plan_grow_in_proportion_to_its_steps () =
+  let manifest = manifest "" in
+  Counted_work.check_growth ~margin:1.5 ~sizes:(100, 1_600)
+    ~input:(fun count ->
+      Facts.make manifest
+        [
+          ( ".plans/p.md",
+            document
+              ("# P\n\n@plan p\n@scope docs/**\n\n"
+              ^ String.concat ""
+                  (List.init count (fun index ->
+                       Printf.sprintf
+                         "## Step %d\n\n@scope docs/**\n@cites c%d\n\n" index
+                         index))) );
+        ])
+    (fun facts -> Findings.of_facts facts ~base:base_commit ~not_text:[])
+
 let unverified_promise_sits_at_a_promise_with_no_verifies () =
   check Finding_class.Unverified_promise
     [
@@ -1650,6 +1667,68 @@ let scope_overlap_names_each_earlier_step () =
        .plans/p.md:11:1-11:7";
     ]
 
+let a_step_overlaps_each_earlier_step_that_shares_a_promise =
+  let promise =
+    Gen.pair
+      (Gen.oneof_list [ "req"; "cites" ])
+      (Gen.oneof_list [ "a"; "b"; "c" ])
+  in
+  let plan =
+    Gen.list_size (Gen.int_range 1 8)
+      (Gen.list_size (Gen.int_range 1 3) promise)
+  in
+  let text steps =
+    "# P\n\n@plan p\n@scope lib/**\n\n"
+    ^ String.concat ""
+        (List.mapi
+           (fun index promises ->
+             Printf.sprintf "## S%d\n\n%s\n" index
+               (String.concat ""
+                  (List.map
+                     (fun (word, target) ->
+                       Printf.sprintf "@%s %s\n" word target)
+                     promises)))
+           steps)
+  in
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:200
+       ~name:
+         "with one scope for every step, a step overlaps each earlier step \
+          that shares a promise with it, in the order of the steps"
+       ~print:text plan (fun steps ->
+         let shares a b = List.exists (fun key -> List.mem key b) a in
+         let expected =
+           List.concat
+             (List.mapi
+                (fun index promises ->
+                  match
+                    List.filter_map Fun.id
+                      (List.mapi
+                         (fun other earlier ->
+                           if other < index && shares earlier promises then
+                             Some (Printf.sprintf "step:p/s%d" other)
+                           else None)
+                         steps)
+                  with
+                  | [] -> []
+                  | others ->
+                      [
+                        Printf.sprintf
+                          "step:p/s%d shares promises and scope with %s" index
+                          (String.concat ", " others);
+                      ])
+                steps)
+         in
+         let found =
+           List.filter_map
+             (fun (finding : Finding.t) ->
+               if finding.finding_class = Finding_class.Scope_overlap then
+                 finding.detail
+               else None)
+             (findings [ (".plans/p.md", text steps) ])
+         in
+         found = expected))
+
 let tag_line =
   Gen.map
     (fun ((prefix, word), (blank, target), revision) ->
@@ -1917,6 +1996,9 @@ let tests =
       scope_outside_plan_names_the_globs_outside_the_plan;
     case "scope-overlap sits at the later step"
       scope_overlap_sits_at_the_later_step;
+    case "the findings of a plan grow in proportion to its steps"
+      the_findings_of_a_plan_grow_in_proportion_to_its_steps;
+    a_step_overlaps_each_earlier_step_that_shares_a_promise;
     case "unverified-promise sits at a promise with no verifies"
       unverified_promise_sits_at_a_promise_with_no_verifies;
     case "promise-out-of-scope names the facts outside"

@@ -594,7 +594,10 @@ limit (`docs/decisions/performance-budgets.md`). The growth of a phase
 is the words on the tree of 10,000 declarations, divided by the words
 on the tree of 1,000 declarations. A step whose cost grows faster than
 the tree raises the growth of its phase. The limit applies to each
-phase, on every platform. No budget applies to the peak memory.
+phase, on every platform. A command can give one phase a limit of its
+own, under `phases`: the findings phase of `sinter check` has the limit
+16. A name under `phases` that is not a phase of the command stops the
+run. No budget applies to the peak memory.
 
 The CI job "Measure performance" makes the same measures as `@bench`
 on `ubuntu-26.04`. It fails only when the growth of a phase exceeds

@@ -421,65 +421,6 @@ let suspect facts =
       | _ -> None)
     (Facts.edges facts)
 
-type visit = { number : int; mutable low : int; mutable on_stack : bool }
-type call = Start of int list | Visit of int * visit * int list
-
-let components successors =
-  let visits = Array.make (Array.length successors) None in
-  let next =
-    ref
-      (0
-      [@mutaml.skip
-        "the numbers of arrival only order the nodes, so every first number \
-         gives the same components"])
-  in
-  let stack = ref [] in
-  let found = ref [] in
-  let enter node =
-    let visit = { number = !next; low = !next; on_stack = true } in
-    visits.(node) <- Some visit;
-    incr next;
-    stack := (node, visit) :: !stack;
-    visit
-  in
-  let rec pop root members =
-    match !stack with
-    | [] -> members
-    | (node, visit) :: rest ->
-        stack := rest;
-        visit.on_stack <- false;
-        if node = root then node :: members else pop root (node :: members)
-  in
-  let rec run = function
-    | [] -> ()
-    | Start [] :: calls -> run calls
-    | Start (node :: rest) :: calls -> (
-        match visits.(node) with
-        | Some _ -> run (Start rest :: calls)
-        | None ->
-            let visit = enter node in
-            run (Visit (node, visit, successors.(node)) :: Start rest :: calls))
-    | Visit (node, visit, successor :: rest) :: calls -> (
-        match visits.(successor) with
-        | Some reached ->
-            if reached.on_stack then visit.low <- min visit.low reached.number;
-            run (Visit (node, visit, rest) :: calls)
-        | None ->
-            let reached = enter successor in
-            run
-              (Visit (successor, reached, successors.(successor))
-              :: Visit (node, visit, rest)
-              :: calls))
-    | Visit (node, visit, []) :: calls ->
-        (match calls with
-        | Visit (_, caller, _) :: _ -> caller.low <- min caller.low visit.low
-        | Start _ :: _ | [] -> ());
-        if visit.low = visit.number then found := pop node [] :: !found;
-        run calls
-  in
-  run [ Start (List.init (Array.length successors) Fun.id) ];
-  !found
-
 let cycles facts =
   let declarations = Array.of_list (Facts.declarations facts) in
   let successors = Array.make (Array.length declarations) [] in
@@ -529,7 +470,7 @@ let cycles facts =
                       related "part of the cycle" member.Facts.path member.span)
                     others)
                ()))
-    (components successors)
+    (Components.of_graph successors)
 
 let by_path facts =
   lazy
@@ -768,27 +709,59 @@ let intersect a b =
         (plain b))
     (plain a)
 
+module Promises = Map.Make (struct
+  type t = string * string
+
+  let compare = compare
+end)
+
+module Steps = Set.Make (Int)
+
 let scope_overlaps facts =
   List.concat_map
     (fun (plan : Facts.plan) ->
-      let shares (a : Facts.step) (b : Facts.step) =
-        intersect (Facts.effective_scope plan a) (Facts.effective_scope plan b)
-        && List.exists
-             (fun (promise : Facts.promise) ->
-               List.exists
-                 (fun (other : Facts.promise) ->
-                   String.equal promise.word other.word
-                   && String.equal promise.target other.target)
-                 b.promises)
-             a.promises
+      let steps = Array.of_list plan.steps in
+      let keys (step : Facts.step) =
+        List.map
+          (fun (promise : Facts.promise) -> (promise.word, promise.target))
+          step.promises
       in
-      let rec walk earlier = function
+      let rec walk index earlier = function
         | [] -> []
         | (step : Facts.step) :: rest -> (
+            let candidates =
+              List.fold_left
+                (fun found key ->
+                  Steps.union found
+                    (Option.value
+                       (Promises.find_opt key earlier)
+                       ~default:Steps.empty))
+                Steps.empty (keys step)
+            in
+            let earlier =
+              List.fold_left
+                (fun earlier key ->
+                  Promises.update key
+                    (fun found ->
+                      Some
+                        (Steps.add index
+                           (Option.value found ~default:Steps.empty)))
+                    earlier)
+                earlier (keys step)
+            in
             match
-              List.filter (fun other -> shares other step) (List.rev earlier)
+              List.filter_map
+                (fun other ->
+                  let other = steps.(other) in
+                  if
+                    intersect
+                      (Facts.effective_scope plan other)
+                      (Facts.effective_scope plan step)
+                  then Some other
+                  else None)
+                (Steps.elements candidates)
             with
-            | [] -> walk (step :: earlier) rest
+            | [] -> walk (index + 1) earlier rest
             | others ->
                 Finding.make Finding_class.Scope_overlap
                   (Finding.Fact
@@ -806,9 +779,9 @@ let scope_overlaps facts =
                            other.span)
                        others)
                   ()
-                :: walk (step :: earlier) rest)
+                :: walk (index + 1) earlier rest)
       in
-      walk [] plan.steps)
+      walk 0 Promises.empty plan.steps)
     (Facts.plans facts)
 
 let promise_subject plan step promise =

@@ -431,6 +431,68 @@ let path_set members =
   | Error _ ->
       Alcotest.failf "not a path set: [%s]" (String.concat "; " members)
 
+let leading_names_are_the_names_before_a_star () =
+  Alcotest.(check (list (list string)))
+    "the leading names"
+    [ [ "docs"; "a" ]; []; [ "a" ]; [ "a"; "b.md" ]; [ "docs" ]; [] ]
+    (List.map
+       (fun text -> Glob.leading_names (glob text))
+       [ "docs/a/**"; "*.md"; "a/b*c/d"; "a/b.md"; "docs/"; "**/x" ])
+
+let a_matched_path_starts_with_the_leading_names =
+  property ~name:"a path that a glob matches starts with its leading names"
+    ~print:QCheck2.Print.(pair string string)
+    Gen.(pair valid_glob path)
+    (fun (text, path) ->
+      let rec starts names path =
+        match (names, path) with
+        | [], _ -> true
+        | name :: names, first :: path -> name = first && starts names path
+        | _ :: _, [] -> false
+      in
+      (not (matches text path))
+      || starts (Glob.leading_names (glob text)) (String.split_on_char '/' path))
+
+let holders_are_the_sets_that_hold_the_path =
+  let member =
+    Gen.(
+      map2
+        (fun excluded text -> if excluded then "!" ^ text else text)
+        bool valid_glob)
+  in
+  let sets =
+    Gen.(
+      list_size (0 -- 5)
+        (map
+           (fun members ->
+             match Path_set.of_strings members with
+             | Ok set -> set
+             | Error _ -> Path_set.empty)
+           (list_size (1 -- 3) member)))
+  in
+  let print (sets, path) =
+    String.concat " | "
+      (List.map
+         (fun set ->
+           String.concat ", "
+             (List.map Path_set.member_to_string (Path_set.members set)))
+         sets)
+    ^ " : " ^ path
+  in
+  property
+    ~name:
+      "holders gives, in rising order, the position of each set that holds the \
+       path"
+    ~print
+    Gen.(pair sets path)
+    (fun (sets, path) ->
+      Path_index.holders (Path_index.make sets) path
+      = List.filter_map Fun.id
+          (List.mapi
+             (fun position set ->
+               if Path_set.mem set path then Some position else None)
+             sets))
+
 let a_path_in_a_plain_glob_is_in_the_set () =
   let set = path_set [ "**/*.md"; "!test/fixtures/" ] in
   Alcotest.(check bool) "a.md" true (Path_set.mem set "a.md");
@@ -581,6 +643,10 @@ let case name test = Alcotest.test_case name `Quick test
 
 let tests =
   [
+    case "leading names are the names before a star"
+      leading_names_are_the_names_before_a_star;
+    a_matched_path_starts_with_the_leading_names;
+    holders_are_the_sets_that_hold_the_path;
     case "a glob matches from the root" a_glob_matches_from_the_root;
     case "a glob matches the whole path" a_glob_matches_the_whole_path;
     case "a leading double star matches at any depth"

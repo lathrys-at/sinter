@@ -83,11 +83,13 @@ let () =
       ("fixture", Test_fixture.tests);
       ("unreadable", Test_unreadable.tests);
       ("counted work", Test_counted_work.tests);
+      ("timed work", Test_timed_work.tests);
       ("allocation", Test_allocation.tests);
       ("generated tree", Test_generated_tree.tests);
       ("bench", Test_bench.tests);
       ("edit distance", Test_edit_distance.tests);
       ("glob", Test_glob.tests);
+      ("components", Test_components.tests);
       ("id pattern", Test_id_pattern.tests);
       ("branch name", Test_branch_name.tests);
       ("finding class", Test_finding_class.tests);

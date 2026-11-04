@@ -5,8 +5,9 @@
 
     A tree of [n] declarations holds:
 
-    - requirements: [n * 5 / 10] sections of [@req], 25 to a file under
-      [spec/reqs/]; a tenth of them also [@refines] an earlier requirement
+    - requirements: [n * 5 / 10] sections of [@req] under [spec/reqs/]: a tenth
+      of them, and at least 25, in the first file, and the rest 25 to a file; a
+      tenth of them also [@refines] an earlier requirement
     - designs: [n * 3 / 10] sections of [@design], 25 to a file under
       [docs/design/], each with one or two [@satisfies] of a requirement; about
       3 in 10 pin [v1], and about 1 in 100 name a slug that no file declares
@@ -24,8 +25,9 @@
       of the hash of their block; a quarter carry one whose first digit differs;
       a quarter carry both, the wrong one first; and a quarter carry none
     - plans: one plan for each 1,000 declarations, and at least one, under
-      [.plans/]; each has 20 steps with a [@scope], and each step but the last
-      makes two to four promises
+      [.plans/]; the first has [n / 5] steps, and at least 20, and each other
+      plan has 20 steps; each step has a [@scope], and each step but the last of
+      its plan makes two to four promises
     - [README.md], and the manifest [sinter.toml], which reads every markdown
       file and declares the namespace [gh]
 
@@ -54,6 +56,11 @@ val work : t -> (string * string) list
     file in 100 of {!main}, and at least one; [sinter.toml] is never one of
     them. *)
 
+val message : t -> string
+(** [message tree] is the message of the commit on the branch [work]: the line
+    [work], an empty line, and the delivery line of each step of each plan, as
+    the plan files of that commit give them, each line with a line feed. *)
+
 val uncommitted : t -> (string * string) list
 (** [uncommitted tree] is each file whose content in the working tree differs
     from the branch [work], by its path and its content in the working tree, in
@@ -69,11 +76,11 @@ val write : t -> string -> Git_fixture.t
 (** [write tree dir] makes the repository of [tree] in [dir], as
     {!Git_fixture.init_in} does: the working tree is [dir/repo]. The branch
     [main] holds one commit with the files of {!main}. The branch [work] holds
-    one more commit, with the changes of {!work}. [HEAD] is [work]. The working
-    tree holds the content of {!uncommitted}. Every file of the working tree has
-    the modification time 1700000000, and the index holds the stat data of each
-    file whose content it holds, so git reads no file whose stat data match the
-    index.
+    one more commit, with the changes of {!work} and the message {!message}.
+    [HEAD] is [work]. The working tree holds the content of {!uncommitted}.
+    Every file of the working tree has the modification time 1700000000, and the
+    index holds the stat data of each file whose content it holds, so git reads
+    no file whose stat data match the index.
 
     @raise Invalid_argument as {!Git_fixture.init_in} raises it.
     @raise Failure when git fails, with the standard error of git. *)

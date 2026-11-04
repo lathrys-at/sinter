@@ -27,7 +27,12 @@
     }
 
     A pattern matches an id only when it matches the whole id, and case always
-    matters. A valid pattern does not match the empty id. *)
+    matters. A valid pattern does not match the empty id.
+
+    A valid pattern holds at most 1,000 literals and classes when each
+    quantifier is written out as copies of its part. [{n}] and [{n,m}] count as
+    the largest number of copies, [n] or [m], and at least one copy; [{n,}]
+    counts as [n] copies and one more; [?], [*], and [+] count as one copy. *)
 
 type t
 (** A valid id pattern. *)
@@ -67,12 +72,16 @@ type error =
   | Counts_out_of_order of int
       (** in the quantifier [{n,m}] at the offset, [n] is above [m] *)
   | Matches_empty  (** the pattern matches the empty id *)
+  | Too_large
+      (** the pattern holds more than 1,000 literals and classes when each
+          quantifier is written out as copies of its part *)
 
 val of_string : string -> (t, error) result
 (** [of_string text] is the id pattern that [text] writes. The parser reads
     [text] from the start, and the error is the first that it meets. A pattern
-    that matches the empty id gives [Matches_empty] only when it holds no other
-    error. *)
+    gives [Too_large] only when it holds no error of the parser, and
+    [Matches_empty] only when it holds no other error. The time is in proportion
+    to the length of [text]. *)
 
 val to_string : t -> string
 (** [to_string pattern] is the text that {!of_string} read, as it was written.
@@ -83,20 +92,17 @@ val matches : t -> string -> bool
     id that holds a space, or a character outside printable ASCII, matches no
     pattern.
 
-    The function does not backtrack. It follows, part by part from the start of
-    [id], the set of places where a match can stand. After the rounds that a
-    quantifier needs, each round goes on only from the places that no earlier
-    round reached, and the quantifier stops at its upper count or when a round
-    reaches no new place. So a quantifier makes at most [n + 1] such rounds for
-    an id of [n] characters, and a pattern with no quantifier inside another
-    takes time about in proportion to [n]. With [d] quantifiers nested, the
-    rounds are at most about [n + 2] to the power [d]. An id that holds a space
-    or a character outside printable ASCII gets its answer before any part is
+    The function does not backtrack. It follows an automaton with about two
+    states for each literal and class of the pattern written out, and it keeps
+    the set of states that the characters of [id] read so far can reach. So the
+    time is at most in proportion to the length of [id] times the size of the
+    pattern written out, which is at most 1,000. An id that holds a space or a
+    character outside printable ASCII gets its answer before any character is
     matched. *)
 
 val error_offset : error -> int
 (** [error_offset error] is the offset that [error] names. It is [0] for
-    [Matches_empty]. *)
+    [Matches_empty] and [Too_large]. *)
 
 val message : error -> string
 (** [message error] says what is wrong with the pattern and, when it can, what

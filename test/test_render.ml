@@ -1164,6 +1164,34 @@ let a_warning_and_a_note_are_one_line_each () =
       print (fun ppf -> Render.note ppf "base abc");
     ]
 
+let the_full_form_grows_in_proportion_to_the_related_places () =
+  let largest = 16_000 in
+  let place line =
+    {
+      Finding.path = "p.md";
+      span = { start = { line; column = 1 }; stop = { line; column = 5 } };
+    }
+  in
+  let finding count =
+    Finding.make Finding_class.Merged_incomplete
+      (Finding.Line { path = "p.md"; line = 1 })
+      ~place:(place 1) ~detail:"d"
+      ~related:
+        (List.init (count - 1) (fun index ->
+             { Finding.label = "not met"; place = Some (place (index + 2)) }))
+      ()
+  in
+  let text =
+    String.concat ""
+      (List.init largest (fun index -> Printf.sprintf "line %d\n" (index + 1)))
+  in
+  in_files
+    [ ("p.md", text) ]
+    (fun source ->
+      Counted_work.check_growth ~margin:1.5 ~sizes:(1_000, largest)
+        ~input:finding (fun finding ->
+          print (fun ppf -> Render.full ppf source ~tier:None finding)))
+
 let a_warning_and_a_note_take_their_styles () =
   Alcotest.(check (list string))
     "the word in its style, and the text plain"
@@ -1250,4 +1278,6 @@ let tests =
     a_mark_starts_at_the_width_of_the_printed_text_before_it;
     styles_change_no_character;
     the_output_is_the_same_on_each_run;
+    case "the full form grows in proportion to the related places"
+      the_full_form_grows_in_proportion_to_the_related_places;
   ]

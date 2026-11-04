@@ -3,10 +3,11 @@
 
 open Sinter_core
 
-type t = { scan : float; check : float; check_diff : float option }
+type limits = { all : float; phases : (string * float) list }
+type t = { scan : limits; check : limits; check_diff : limits option }
 
 let commands = [ "scan"; "check"; "check-diff" ]
-let keys = [ "allocation-growth" ]
+let keys = [ "allocation-growth"; "phases" ]
 
 let unknown ~where names allowed =
   List.find_opt (fun name -> not (List.mem name allowed)) names
@@ -38,13 +39,37 @@ let limit (table : Toml.table) command =
     | Some message -> Error message
     | None -> Ok ()
   in
-  let key = command ^ ".allocation-growth" in
-  match find table "allocation-growth" with
-  | Some (Toml.Integer value) when Int64.compare value 0L > 0 ->
-      Ok (Int64.to_float value)
-  | Some (Toml.Float value) when value > 0. && Float.is_finite value -> Ok value
-  | Some _ -> Error (key ^ " is not a positive number")
-  | None -> Error (key ^ " is missing")
+  let positive key = function
+    | Some (Toml.Integer value) when Int64.compare value 0L > 0 ->
+        Ok (Int64.to_float value)
+    | Some (Toml.Float value) when value > 0. && Float.is_finite value ->
+        Ok value
+    | Some _ -> Error (key ^ " is not a positive number")
+    | None -> Error (key ^ " is missing")
+  in
+  let* all =
+    positive (command ^ ".allocation-growth") (find table "allocation-growth")
+  in
+  let* phases =
+    match find table "phases" with
+    | None -> Ok []
+    | Some (Toml.Table phases) ->
+        List.fold_left
+          (fun found ((key : Toml.key), node) ->
+            let* found = found in
+            let* limit =
+              positive
+                (command ^ ".phases." ^ key.name)
+                (Some (Toml.value node))
+            in
+            Ok (found @ [ (key.name, limit) ]))
+          (Ok []) phases
+    | Some value ->
+        Error
+          (Printf.sprintf "%s.phases is %s, not a table" command
+             (Toml.Kind.name (Toml.Kind.of_value value)))
+  in
+  Ok { all; phases }
 
 let of_string text =
   match Toml.parse text with
@@ -68,11 +93,14 @@ let of_string text =
       in
       Ok { scan; check; check_diff }
 
-let growth budgets = function
+let limits budgets = function
   | "scan" -> Some budgets.scan
   | "check" -> Some budgets.check
   | "check-diff" -> budgets.check_diff
   | _ -> None
+
+let growth budgets command =
+  Option.map (fun limits -> limits.all) (limits budgets command)
 
 type verdict = Pass of float | Fail of float | Skipped of string
 
@@ -85,29 +113,73 @@ type outcome = {
 
 let judge limit value = if value <= limit then Pass value else Fail value
 
+let commas = function
+  | [] -> "none"
+  | [ one ] -> one
+  | [ first; second ] -> first ^ " and " ^ second
+  | names -> (
+      match List.rev names with
+      | last :: earlier ->
+          String.concat ", " (List.rev earlier) ^ ", and " ^ last
+      | [] -> "none")
+
 let check budgets ~words =
-  List.concat_map
-    (fun (command, limit) ->
-      let outcome phase verdict = { command; phase; limit; verdict } in
-      let small = words ~tree:"n1000" ~command in
-      match words ~tree:"n10000" ~command with
-      | [] ->
-          [
-            outcome None
-              (Skipped
-                 "the run counted no phase on the tree n1000 or on the tree \
-                  n10000");
-          ]
-      | large ->
-          List.map
-            (fun (phase, words) ->
-              outcome (Some phase)
-                (match List.assoc_opt phase small with
-                | Some base when base > 0. -> judge limit (words /. base)
-                | Some _ | None ->
-                    Skipped "the tree n1000 counts no word in the phase"))
-            large)
-    ([ ("scan", budgets.scan); ("check", budgets.check) ]
+  let commands =
+    [ ("scan", budgets.scan); ("check", budgets.check) ]
     @ Option.fold ~none:[]
         ~some:(fun limit -> [ ("check-diff", limit) ])
-        budgets.check_diff)
+        budgets.check_diff
+  in
+  let unknown =
+    List.find_map
+      (fun (command, limits) ->
+        match List.map fst (words ~tree:"n10000" ~command) with
+        | [] -> None
+        | phases ->
+            List.find_map
+              (fun (name, _) ->
+                if List.mem name phases then None
+                else
+                  Some
+                    (Printf.sprintf
+                       "%s.phases.%s names no phase of %s; its phases are %s"
+                       command name command (commas phases)))
+              limits.phases)
+      commands
+  in
+  match unknown with
+  | Some message -> Error message
+  | None ->
+      Ok
+        (List.concat_map
+           (fun (command, limits) ->
+             let limit = function
+               | Some phase ->
+                   Option.value
+                     (List.assoc_opt phase limits.phases)
+                     ~default:limits.all
+               | None -> limits.all
+             in
+             let outcome phase verdict =
+               { command; phase; limit = limit phase; verdict }
+             in
+             let small = words ~tree:"n1000" ~command in
+             match words ~tree:"n10000" ~command with
+             | [] ->
+                 [
+                   outcome None
+                     (Skipped
+                        "the run counted no phase on the tree n1000 or on the \
+                         tree n10000");
+                 ]
+             | large ->
+                 List.map
+                   (fun (phase, words) ->
+                     outcome (Some phase)
+                       (match List.assoc_opt phase small with
+                       | Some base when base > 0. ->
+                           judge (limit (Some phase)) (words /. base)
+                       | Some _ | None ->
+                           Skipped "the tree n1000 counts no word in the phase"))
+                   large)
+           commands)

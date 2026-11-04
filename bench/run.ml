@@ -448,6 +448,7 @@ let comparable baseline ~platform ~seed =
 let main sinter time generator self self_manifest sizes seed runs budgets trees
     outputs results baseline json markdown =
   try
+    let budgets_path = budgets in
     let budgets =
       Option.map
         (fun path ->
@@ -472,10 +473,12 @@ let main sinter time generator self self_manifest sizes seed runs budgets trees
       | None, None -> stop "either --sinter or --results is required"
     in
     let outcomes =
-      Option.fold ~none:[]
-        ~some:(fun budgets ->
-          Budgets.check budgets ~words:(Report.words report))
-        budgets
+      match (budgets, budgets_path) with
+      | Some budgets, Some path -> (
+          match Budgets.check budgets ~words:(Report.words report) with
+          | Ok outcomes -> outcomes
+          | Error message -> stop "%s: %s" path message)
+      | _ -> []
     in
     let text =
       Yojson.Basic.pretty_to_string (Report.to_json report outcomes) ^ "\n"
@@ -555,9 +558,12 @@ let () =
          table $(i,check-diff) when $(i,sinter check --diff) has a limit. Each \
          table holds $(i,allocation-growth), the limit, for each phase, of the \
          words on the tree of 10,000 declarations divided by the words on the \
-         tree of 1,000 declarations. The run skips the limit of a phase that \
-         does not have its words on both trees. No limit applies to the peak \
-         memory or to the instruction counts.";
+         tree of 1,000 declarations. A table may also hold the table \
+         $(i,phases), with the limit of a named phase in place of \
+         $(i,allocation-growth); a name there that is not a phase of the run \
+         stops the run. The run skips the limit of a phase that does not have \
+         its words on both trees. No limit applies to the peak memory or to \
+         the instruction counts.";
       `S "OUTPUT";
       `P
         "A JSON object, on standard output or in the file of $(b,--json). Its \
