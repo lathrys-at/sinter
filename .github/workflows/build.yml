@@ -398,7 +398,7 @@ jobs:
         run: |
           set -eu
           opam pin add -y -n mutaml \
-            "git+https://github.com/lathrys-at/mutaml.git#$MUTAML_COMMIT"
+            "git+https://github.com/sinterworks/mutaml.git#$MUTAML_COMMIT"
           opam install -y mutaml
       - name: Put the switch on the path
         if: steps.scope.outputs.mode != 'none'
@@ -519,7 +519,7 @@ jobs:
         run: |
           set -eu
           opam pin add -y -n mutaml \
-            "git+https://github.com/lathrys-at/mutaml.git#$MUTAML_COMMIT"
+            "git+https://github.com/sinterworks/mutaml.git#$MUTAML_COMMIT"
           opam install -y mutaml
       - name: Put the switch on the path
         if: steps.scope.outputs.mode != 'none'

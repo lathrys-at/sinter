@@ -259,7 +259,7 @@ The fork needs no other command, except `git` for the option
 
 ```
 opam pin add -y -n mutaml \
-  git+https://github.com/lathrys-at/mutaml.git#b41eaafd112350ec4d0e2ee9f2336eb37e7b8fd7
+  git+https://github.com/sinterworks/mutaml.git#b41eaafd112350ec4d0e2ee9f2336eb37e7b8fd7
 opam install mutaml
 ```
 

@@ -3,7 +3,7 @@
     "sinter": {
       "source": {
         "source": "github",
-        "repo": "lathrys-at/sinter"
+        "repo": "sinterworks/sinter"
       }
     }
   },
