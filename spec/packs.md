@@ -79,9 +79,27 @@ in this table are relative to the pack root.
 | `adapters/<runner>.wasm` | the adapter of the runner `<runner>` (section 10) | one for each runner that has an adapter |
 | `licenses/` | the text of each license that the descriptor names, and the notices that those licenses require | yes |
 
-A pack can hold other files, for example the files of a conformance
-fixture ([jsonl.md](jsonl.md) section 11). Sinter does not read them,
-but the pack hash covers them. A pack holds no symbolic link.
+A pack can hold other files, for example a `README.md` file. Sinter
+does not read them, but the pack hash covers them. A pack holds only
+regular files and folders: no symbolic link, and no other kind of
+file, such as a device file.
+
+A **path of a pack** is the path of a file of the pack, or of a folder
+that holds a file of the pack. The path is relative to the pack root,
+with `/` between its names. Each path of a pack follows these rules:
+
+1. Each byte of the path is a printable ASCII character, from 0x20 to
+   0x7E, and is not `\`. So a path can hold a space, but no line feed.
+2. The path does not start with `/`, and no name of the path is empty,
+   `.`, or `..`.
+3. The path has at most 255 bytes.
+4. No path of a file is also the path of a folder.
+5. No two paths of the pack are equal after **ASCII case folding**,
+   which changes each letter from `A` to `Z` to the same letter from
+   `a` to `z` and changes no other byte. Example: a pack cannot hold
+   both `queries/rust/tags.scm` and `queries/Rust/tests.scm`, because
+   the folders `queries/rust` and `queries/Rust` are equal after ASCII
+   case folding.
 
 ### 2.4 The pack hash
 
@@ -97,10 +115,12 @@ order of the paths of the files. Each line holds, in this order:
 
 Each line has the form of a line that the command `sha256sum` prints.
 This example is informative. In the pack root, this command prints the
-pack hash, when no path holds a space or a line feed:
+pack hash. No path holds a line feed (section 2.3), but a path can hold
+a space, so the command gives the paths to `xargs` with a NUL byte
+after each path:
 
 ```
-find . -type f | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum | sha256sum
+find . -type f | sed 's|^\./||' | LC_ALL=C sort | tr '\n' '\0' | xargs -0 sha256sum | sha256sum
 ```
 
 ### 2.5 Releases
@@ -116,17 +136,48 @@ value. The lock file fixes one release that meets the value.
 The number of a release says what the release can change, compared
 with the release of the same pack before it:
 
-- A **patch release** raises only the third number. It changes no fact
-  and no extent hash of a file that the release before it parses
-  without a parse failure. It can make a file parse that failed to
+- A **patch release** raises only the third number. Take a file that
+  the release before it parses without a parse failure. The patch
+  release parses that file without a parse failure too, and it
+  changes no extent hash of the file and no **node fact** of the
+  file: no record of [jsonl.md](jsonl.md) section 4. It changes no
+  other fact of the file, unless it makes another file parse that
+  failed to parse before. It can make a file parse that failed to
   parse before, fix a crash, or fix the bindings of an adapter.
 - A **minor release** raises the second number. It changes no extent
   hash. It can add facts, for example the tests of a shape that the
   queries did not find before. It can add a runner adapter.
 - A **major release** raises the first number. It can change anything.
 
-The packs repository checks each release against the conformance
-fixtures ([jsonl.md](jsonl.md) section 11) of the release before it.
+The packs repository (section 12.1) holds the conformance fixtures of
+each pack ([jsonl.md](jsonl.md) section 11) in the folders
+`fixtures/<pack>/<case>/`, outside the pack root. It checks each
+release in two ways:
+
+1. It checks the release against its own fixtures, as
+   [jsonl.md](jsonl.md) section 11 says: the output of the scan of each
+   fixture, without the header line, is equal byte for byte to the
+   `expected.jsonl` of the fixture.
+2. It checks the release against the fixtures of the release before
+   it, as the tag of that release holds them. One tool scans each of
+   those fixtures twice: once with the release before, and once with
+   the new release. Then it compares the two outputs by the kind of
+   the new release:
+   - A patch release: each file that parses without a parse failure
+     with the release before also parses without a parse failure with
+     the new release. When the two releases give a parse failure in
+     the same files, the located facts of each file that parses with
+     both ([jsonl.md](jsonl.md) section 3) are equal byte for byte in
+     the two outputs. The located facts of a file are the lines whose
+     `path` is the path of the file. When the new release makes a file
+     of the fixture parse that failed to parse before, the rule of a
+     minor release applies to the fixture.
+   - A minor release: each node fact of the output of the release
+     before is in the output of the new release with the same `id`,
+     the same position (`path`, `line`, `col`, `eline`, and `ecol`),
+     and the same extent hash (`xh`) when the record has one. The
+     edges and the findings can change.
+   - A major release: no comparison.
 
 ## 3. The descriptor
 
@@ -168,7 +219,7 @@ All four keys are required. No two grammars of a pack have one name.
 
 The ABI version of each grammar must lie in the range that the
 tree-sitter library of the tool accepts. A tool that uses tree-sitter
-0.25 accepts the ABI versions 13 to 15.
+0.26 accepts the ABI versions 13 to 15.
 
 Each member of `names` is a glob of [manifest.md](manifest.md) section
 7.1. It is matched against the name of a file, which is the last name
@@ -244,8 +295,10 @@ with exit code 3:
   `scan.packs.<name>.version`;
 - the tool implements an older version of the specifications than
   `sinter-spec`, by the comparison of [manifest.md](manifest.md) section 5;
-- a file that section 2.3 requires is missing, or the SHA-256 of a
-  grammar or an adapter differs from the descriptor;
+- a file that section 2.3 requires is missing, a path of the pack
+  breaks a rule of section 2.3, or the pack holds a file that is not a
+  regular file, such as a symbolic link;
+- the SHA-256 of a grammar or an adapter differs from the descriptor;
 - a grammar does not load, or its ABI version lies outside the range
   that the tool accepts (section 3.3);
 - a query file does not compile against its grammar, or it breaks a
@@ -254,6 +307,48 @@ with exit code 3:
 
 The message names the pack and the cause. Section 10.6 gives the
 rules for an adapter.
+
+### 3.7 Checking a pack: `sinter pack verify`
+
+The command `sinter pack verify` checks packs by the rules of section
+3.6. It has two forms:
+
+- `sinter pack verify <folder>...` checks each folder as the pack root
+  of a pack. This form needs no repository. A pack fails in each of
+  these cases:
+  - the descriptor holds an error (section 3.1);
+  - the tool implements an older version of the specifications than
+    `sinter-spec`, by the comparison of [manifest.md](manifest.md)
+    section 5;
+  - a file that section 2.3 requires is missing, a path of the pack
+    breaks a rule of section 2.3, or the pack holds a file that is not
+    a regular file;
+  - the folder `licenses/` holds no file;
+  - the SHA-256 of a grammar or an adapter differs from the descriptor;
+  - a grammar does not load, or its ABI version lies outside the range
+    that the tool accepts (section 3.3);
+  - a query file does not compile against its grammar, or it breaks a
+    rule of section 4;
+  - an adapter is not valid (section 10.6).
+- `sinter pack verify --all` checks each pack of the lock file, with
+  its files in the cache, by every rule of section 3.6, and it checks
+  each adapter of the pack (section 10.6). This form reads the
+  repository, so it needs a manifest ([manifest.md](manifest.md)
+  section 2.4). A pack that the cache lacks fails, and its message
+  says to run `sinter pack fetch`.
+
+The command checks every pack, also after a pack fails. For each pack
+that fails, it prints a message that names the pack and the cause, as
+section 3.6 says. When a folder holds no descriptor that gives a name,
+the message names the folder. The command changes no file.
+
+The command exits with one of these codes:
+
+| code | when |
+|---|---|
+| 0 | every pack passes |
+| 2 | the command line names no folder and no `--all`, or it names a folder and `--all` |
+| 3 | a pack fails, or a folder that the command line names does not exist or cannot be read |
 
 ## 4. Query files
 
@@ -296,10 +391,17 @@ Sinter ignores a capture whose name starts with `_`. A pattern can use
 such a capture for a predicate, for example `#eq?`. Any other capture
 name that section 4 does not define for the query file is an error.
 
-Two matches can give one node the same role, for example when two
-patterns of `definitions.scm` capture one node as `@definition`. Then
-Sinter takes the match of the pattern that comes first in the query
-file, and it ignores the other match.
+Two matches of one pattern can give one node the same role, for
+example when tree-sitter returns the pieces of one test name in two
+matches. Then Sinter joins the matches: it takes each node that they
+capture once, in the order of the text. The joined matches are one
+match for the rules of this document.
+
+Two matches of two different patterns can give one node the same
+role, for example when two patterns of `definitions.scm` capture one
+node as `@definition`. Then Sinter takes the match of the pattern that
+comes first in the query file, and it ignores the other match. Sinter
+joins the matches of each pattern before it applies this rule.
 
 ### 4.2 `tags.scm`: comments
 
@@ -378,9 +480,16 @@ This example is informative. In TypeScript, for vitest:
              (member_expression object: (identifier) @_fn)
              (call_expression function: (member_expression object: (identifier) @_fn))]
   arguments: (arguments .
-    [(string [(string_fragment) @name (escape_sequence) @placeholder]*)
-     (template_string [(string_fragment) @name (escape_sequence) @placeholder
-                       (template_substitution) @placeholder]*)])
+    (string [(string_fragment) @name (escape_sequence) @placeholder]*))
+  (#any-of? @_fn "it" "test")) @test
+
+(call_expression
+  function: [(identifier) @_fn
+             (member_expression object: (identifier) @_fn)
+             (call_expression function: (member_expression object: (identifier) @_fn))]
+  arguments: (arguments .
+    (template_string [(string_fragment) @name (escape_sequence) @placeholder
+                      (template_substitution) @placeholder]*))
   (#any-of? @_fn "it" "test")) @test
 
 (call_expression
@@ -403,10 +512,11 @@ text when the text does not end with one.
 
 ### 5.2 Parse failures
 
-A **parse failure** is a syntax tree that holds an `ERROR` node or a
-`MISSING` node. A `MISSING` node can have no text, and then only the
-error flag of the root node shows it. So Sinter reads a parse failure
-from the error flag of the root node.
+A **parse failure** of a file is one of two cases: the parser gives no
+syntax tree for the file, or the syntax tree of the file holds an
+`ERROR` node or a `MISSING` node. A `MISSING` node can have no text,
+and then only the error flag of the root node shows it. So Sinter reads
+a parse failure in a syntax tree from the error flag of the root node.
 
 The **error flag** of a node is set when the node, or a node below it,
 is an `ERROR` node or a `MISSING` node. A **lowest error node** is a
@@ -414,24 +524,33 @@ node whose error flag is set, when no child of the node that the tree
 shows has its error flag set. When a `MISSING` node has no text, the
 tree does not show it, and the lowest error node is near its place.
 
-In a file of a fetched pack, a parse failure means that the file
-yields no fact. Sinter reports one `parse-error` finding for the
-file. The finding sits at the first `ERROR` or `MISSING` node
+When the parser gives no syntax tree for a file, the file yields no
+fact. Sinter reports one `parse-error` finding at line 1, column 1 of
+the file, as for a file that is not valid UTF-8 (section 5.1), and it
+goes on with the other files. This rule holds for the files of every
+pack, the pack `markdown` included, and the finding takes the tier
+that applies to the class `parse-error`. A grammar that does not load
+is not a parse failure of a file: the pack does not load, and the
+command stops (section 3.6).
+
+In a file of a fetched pack, a syntax tree with a parse failure means
+that the file yields no fact. Sinter reports one `parse-error` finding
+for the file. The finding sits at the first `ERROR` or `MISSING` node
 in the order of the text. When the tree shows no such node, the
 finding sits at the first lowest error node in the order of the
 text.
 
-In a markdown file, Sinter takes the facts of the file from the tree,
-as it does for a file with no parse failure. It reports one
-`parse-error` finding at each `ERROR` node and each `MISSING` node
-that no other `ERROR` node holds. So an `ERROR` node inside an `ERROR`
-node gives no finding of its own, and one place of error gives one
-finding. When the flag of the root shows a failure
-and the tree shows no such node, Sinter reports one finding at the
-first lowest error node in the order of the text. At a gate where the tier that applies to the class
-`parse-error` is `block` ([manifest.md](manifest.md) section 11.3), the
-tier of such a finding is `warn`. At every other gate, the tier is the
-tier that applies.
+In a markdown file with a syntax tree, Sinter takes the facts of the
+file from the tree, as it does for a file with no parse failure. It
+reports one `parse-error` finding at each `ERROR` node and each
+`MISSING` node that no other `ERROR` node holds. So an `ERROR` node
+inside an `ERROR` node gives no finding of its own, and one place of
+error gives one finding. When the flag of the root shows a failure and
+the tree shows no such node, Sinter reports one finding at the first
+lowest error node in the order of the text. At a gate where the tier
+that applies to the class `parse-error` is `block`
+([manifest.md](manifest.md) section 11.3), the tier of such a finding
+is `warn`. At every other gate, the tier is the tier that applies.
 
 ### 5.3 Positions
 
@@ -1099,7 +1218,7 @@ to the test.
 ### 12.1 The packs repository
 
 Sinter's own packs live in the **packs repository**: the repository
-`sinter-packs` on GitHub, `https://github.com/lathrys-at/sinter-packs`.
+`sinter-packs` on GitHub, `https://github.com/sinterworks/sinter-packs`.
 Each release of a pack is one GitHub release of that repository:
 
 - Its tag is `<name>-v<version>`, for example `rust-v1.0.3`.
@@ -1108,11 +1227,56 @@ Each release of a pack is one GitHub release of that repository:
   path of each file in the archive is its path relative to the pack
   root.
 
-An archive holds regular files and folders only. Sinter refuses an
-archive that holds any other entry, such as a link, and an archive
-with a path that starts with `/` or that holds the name `..`. After
-Sinter unpacks an archive, it computes the pack hash of the files
-(section 2.4). So the pack hash does not depend on the archive.
+Sinter reads an archive by the rules below. It refuses an archive
+that breaks a rule, and the command stops with exit code 3. In these
+rules, a **MiB** is 1,048,576 bytes, and a **block** is 512 bytes.
+
+1. The archive has at most 64 MiB. It is one gzip member (RFC 1952),
+   and no byte follows the trailer of that member. The CRC-32 and the
+   size in the trailer match the data of the member.
+2. The data of the member, the **tar data**, has at most 128 MiB. It
+   is a sequence of entries, then the end marker. The **end marker**
+   is two blocks of zero bytes. After the end marker, the tar data
+   holds only zero bytes. Tar data with no end marker is refused.
+3. An **entry** is a header of one block, then the content of the
+   entry. The field `size` of the header gives the number of bytes of
+   the content. The content fills whole blocks: zero bytes follow the
+   content up to the end of its last block.
+4. Each header has the ustar form of POSIX.1-1988. The field `magic`
+   holds `ustar` and a NUL byte, and the field `version` holds `00`.
+   The field `chksum` holds the sum of the bytes of the header, each
+   byte read as an unsigned number, with each byte of the field
+   `chksum` counted as a space (0x20).
+5. Each numeric field of a header (`mode`, `uid`, `gid`, `size`,
+   `mtime`, `chksum`, `devmajor`, and `devminor`) holds octal digits
+   from `0` to `7`, then NUL bytes or spaces up to the end of the
+   field. The fields `size` and `chksum` hold one digit or more.
+6. The field `typeflag` of each header is `0` or a NUL byte, for a
+   regular file, or `5`, for a folder. The `size` of a folder is 0.
+   Every other type is refused, among them the links (`1`, `2`), the
+   PAX headers (`x`, `g`), and the long names of GNU tar (`L`, `K`).
+7. The fields `name` and `prefix` of a header each end at their first
+   NUL byte, or at the end of the field when it holds no NUL byte.
+   Every byte after that first NUL byte is a NUL byte. The `name` is
+   not empty. The path of the entry is the `name` when the `prefix` is
+   empty. Otherwise it is the `prefix`, `/`, and the `name`. The path
+   of the entry of a folder ends with one `/`, which is not part of the
+   path of the folder. The path of the entry of a regular file does
+   not end with `/`.
+8. The paths of the regular files of the archive, of the folders that
+   hold them, and of the folders that have an entry, are the paths of
+   a pack. Together they follow the rules of section 2.3. No path
+   occurs in two entries. Below each folder that has an entry, at any
+   depth, the archive holds the entry of a regular file.
+9. The archive has at most 4,096 entries, and each path has at most 16
+   names.
+
+Sinter computes the pack hash (section 2.4) from the entries of the
+regular files: from the path and the content of each entry. It writes
+no file of the pack before that hash matches the hash that it expects:
+the hash of the index (section 12.3) or of the lock file (section
+12.5). So the pack hash depends only on the paths and the contents of
+the files, and not on the archive that holds them.
 
 ### 12.2 The index
 
@@ -1121,7 +1285,7 @@ packs repository. It lists each release of each pack. Sinter reads the
 index from one fixed address:
 
 ```
-https://raw.githubusercontent.com/lathrys-at/sinter-packs/main/index.jsonl
+https://raw.githubusercontent.com/sinterworks/sinter-packs/main/index.jsonl
 ```
 
 The option `--index <address>` of a command that reads the index names
@@ -1149,7 +1313,7 @@ stops with exit code 3.
 Example:
 
 ```json
-{"hash":"5e0c…","name":"rust","url":"https://github.com/lathrys-at/sinter-packs/releases/download/rust-v1.0.3/rust-1.0.3.tar.gz","v":1,"version":"1.0.3"}
+{"hash":"5e0c…","name":"rust","url":"https://github.com/sinterworks/sinter-packs/releases/download/rust-v1.0.3/rust-1.0.3.tar.gz","v":1,"version":"1.0.3"}
 ```
 
 ### 12.3 Adding a pack
@@ -1162,13 +1326,14 @@ Example:
 2. It reads the index, and it takes the newest release of the pack
    whose number meets that value (section 2.5). When no release meets
    the value, the command stops with exit code 3.
-3. It downloads the archive of the release and unpacks it. It computes
-   the pack hash of the files and compares it with the hash in the
-   index. When the two differ, the command stops with exit code 3.
+3. It downloads the archive of the release, and it reads the archive
+   by the rules of section 12.1. It computes the pack hash from the
+   entries of the archive and compares it with the hash in the index.
+   When the two differ, the command stops with exit code 3.
 4. It checks the pack as section 3.6 says. It also checks each adapter
    (section 10.6).
-5. It keeps the files of the pack in the cache (section 12.5), and it
-   writes the line of the pack into the lock file. A line that the lock
+5. It writes the files of the pack into the cache (section 12.5), and
+   it writes the line of the pack into the lock file. A line that the lock
    file holds for the pack already is replaced.
 
 When the command stops, it changes neither the cache nor the lock
@@ -1227,19 +1392,25 @@ user, outside every repository, under the pack hash of the pack.
 
 `sinter pack fetch` reads the lock file. For each line, when the cache
 lacks the pack, the command finds the release of the line in the
-index, downloads the archive, and unpacks it. It then compares the pack
-hash of the files with the hash of the line. When the two are equal, it
-keeps the files in the cache. The command also downloads again a pack
-whose files in the cache no longer give its pack hash. It never changes
-the lock file. When the index holds no such release, or when a hash
-differs, the command keeps no file of that pack and stops with exit
-code 3.
+index, downloads the archive, and reads it by the rules of section
+12.1. It then compares the pack hash of the entries with the hash of
+the line. When the two are equal, it writes the files into the cache.
+The command also downloads again a pack whose files in the cache no
+longer give its pack hash. It never changes the lock file. When the
+index holds no such release, or when a hash differs, the command
+writes no file of that pack and stops with exit code 3.
 
 Only three commands fetch packs: `sinter pack add`,
 `sinter pack fetch`, and `sinter init`, which can do what
 `sinter pack fetch` does. Every other command takes the packs from the
 cache. A command that needs a pack that the cache lacks stops with exit
 code 3, and the message says to run `sinter pack fetch`.
+
+Each time a command loads a fetched pack, it computes the pack hash of
+the files of the pack in the cache again (section 3.6). When that hash
+differs from the hash of the lock file, the command stops with exit
+code 3 (`pack-mismatch`). The message names the pack and says to run
+`sinter pack fetch`.
 
 ## 13. Example
 
