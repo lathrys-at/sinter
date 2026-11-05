@@ -368,6 +368,28 @@ let a_write_past_the_file_size_limit_exits_with_3_in_each_command () =
       ("serve", tree_request "1" ^ "\n");
     ]
 
+let a_failed_write_of_serve_takes_the_color_of_its_option () =
+  Alcotest.(check (pair string (list string)))
+    "the exit code and the styled lines of standard error"
+    ( "exited 3",
+      [
+        "\x1b[1m\x1b[91merror:\x1b[0;1m\x1b[0m cannot write the output: File \
+         too large";
+        "  \x1b[1m\x1b[94m=\x1b[0;1m\x1b[0m \
+         \x1b[1m\x1b[36mhelp:\x1b[0;1m\x1b[0m check that the output stays open \
+         and that the disk has space";
+      ] )
+    (errors_of_a_limited_run
+       (Filename.quote sinter ^ " serve --color always")
+       ~input:(tree_request "1" ^ "\n"))
+
+let the_exit_codes_are_those_of_the_specification () =
+  Alcotest.(check (list int))
+    "clean, findings, usage error, environment error, and refused"
+    [ 0; 1; 2; 3; 4 ]
+    Sinter_core.Exit_code.
+      [ clean; findings; usage_error; environment_error; refused ]
+
 let a_current_folder_that_is_gone_is_an_environment_error () =
   List.iter
     (fun command ->
@@ -866,6 +888,10 @@ let tests =
       the_version_starts_with_the_release_version;
     Alcotest.test_case "a parse run that fails names no module of the library"
       `Quick a_parse_run_that_fails_names_no_module_of_the_library;
+    Alcotest.test_case "a failed write of serve takes the color of its option"
+      `Quick a_failed_write_of_serve_takes_the_color_of_its_option;
+    Alcotest.test_case "the exit codes are those of the specification" `Quick
+      the_exit_codes_are_those_of_the_specification;
     Alcotest.test_case "the help lists the exit codes that a command returns"
       `Quick the_help_lists_the_exit_codes_that_a_command_returns;
     Alcotest.test_case "the help lists scan, parse, and serve as plumbing"

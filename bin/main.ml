@@ -210,8 +210,12 @@ let parse_cmd =
             report color [ error ];
             `Ok environment_error
         | Sys_error message ->
-            report color [ output_failure message ];
-            `Ok environment_error)
+            (report color [ output_failure message ];
+             `Ok environment_error)
+            [@mutaml.skip
+              "Parse.run raises Parse.Error and never Sys_error: it turns a \
+               failure to write to its channel into Parse.Error, and reads \
+               each file through a result, so this branch never runs"])
   in
   Cmd.v info Term.(ret (const run $ color $ grammar $ query $ tree $ paths))
 
@@ -635,7 +639,12 @@ let check_cmd =
                      colored color Unix.stdout
                  | Sinter_core.Check.Json | Sinter_core.Check.Porcelain _
                  | Sinter_core.Check.Sarif ->
-                     false))
+                     false
+                     [@mutaml.skip
+                       "Check.write prints a Json, Porcelain, or Sarif outcome \
+                        with pp_print_string and pp_force_newline only, and no \
+                        style, so the renderer of the formatter shows in no \
+                        byte"]))
             outcome
         with
         | () -> (
@@ -778,7 +787,14 @@ let () =
           "cannot write the output: standard output is closed";
       ];
     exit environment_error);
-  let buffer = Buffer.create 256 in
+  let buffer =
+    Buffer.create
+      (256
+      [@mutaml.skip
+        "Buffer.create takes any size and raises a size below 1 to 1; the size \
+         is only the first room of a buffer that grows as it needs, and no \
+         output reads it"])
+  in
   let err = Format.formatter_of_buffer buffer in
   Sinter_core.Style.prepare err `None;
   let run () =
