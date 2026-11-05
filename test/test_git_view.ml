@@ -510,6 +510,123 @@ let the_tree_key_is_the_tree_of_git_add_all =
          List.iteri (apply repo) steps;
          String.equal (tree_of_git_add_all repo) (key repo)))
 
+let recording_script ~dir ~path =
+  Printf.sprintf
+    "#!/bin/sh\n\
+     dir='%s'\n\
+     real='%s'\n\
+     case \" $* \" in\n\
+     *\" ls-files -z -v \"*)\n\
+    \  if [ -f \"$dir/flags\" ]; then cat \"$dir/flags\"; exit 0; fi ;;\n\
+     *\" hash-object \"*)\n\
+    \  ls -ld \"$GIT_OBJECT_DIRECTORY\" | cut -c1-10 >> \"$dir/store\" ;;\n\
+     *\" --no-assume-unchanged \"*)\n\
+    \  tee -a \"$dir/assumed\" | PATH=\"$real\" git \"$@\"; exit $? ;;\n\
+     *\" --no-skip-worktree \"*)\n\
+    \  tee -a \"$dir/skipped\" | PATH=\"$real\" git \"$@\"; exit $? ;;\n\
+     *\" --intent-to-add \"*)\n\
+    \  tee -a \"$dir/intent\" | PATH=\"$real\" git \"$@\"; exit $? ;;\n\
+     esac\n\
+     PATH=\"$real\" exec git \"$@\"\n"
+    dir path
+
+let recorded repo ?flags f =
+  let dir = Repo.temp_dir () in
+  let bin = Filename.concat dir "bin" in
+  Unix.mkdir bin 0o755;
+  let path =
+    Array.fold_left
+      (fun found entry ->
+        if String.starts_with ~prefix:"PATH=" entry then
+          String.sub entry 5 (String.length entry - 5)
+        else found)
+      "" (Repo.env repo)
+  in
+  let git = Filename.concat bin "git" in
+  Out_channel.with_open_bin git (fun channel ->
+      Out_channel.output_string channel (recording_script ~dir ~path));
+  Unix.chmod git 0o755;
+  Option.iter
+    (fun text ->
+      Out_channel.with_open_bin (Filename.concat dir "flags") (fun channel ->
+          Out_channel.output_string channel text))
+    flags;
+  let env =
+    Array.map
+      (fun entry ->
+        if String.starts_with ~prefix:"PATH=" entry then
+          "PATH=" ^ bin ^ ":" ^ path
+        else entry)
+      (Repo.env repo)
+  in
+  let result =
+    match Git.open_repo ~env (Repo.root repo) with
+    | Ok t -> f t
+    | Error _ -> Alcotest.fail "the repository does not open"
+  in
+  let read name =
+    let file = Filename.concat dir name in
+    if Sys.file_exists file then
+      In_channel.with_open_bin file In_channel.input_all
+    else ""
+  in
+  (result, read)
+
+let the_view_clears_each_flag_on_the_entries_that_hold_it () =
+  let repo =
+    with_base
+      [
+        ("au.txt", "1\n");
+        ("both.txt", "1\n");
+        ("plain.txt", "1\n");
+        ("sw.txt", "1\n");
+      ]
+  in
+  ignore (Repo.git repo [ "update-index"; "--assume-unchanged"; "au.txt" ]);
+  ignore (Repo.git repo [ "update-index"; "--skip-worktree"; "sw.txt" ]);
+  ignore (Repo.git repo [ "update-index"; "--assume-unchanged"; "both.txt" ]);
+  ignore (Repo.git repo [ "update-index"; "--skip-worktree"; "both.txt" ]);
+  let _, read = recorded repo (fun t -> diff_against t "HEAD") in
+  Alcotest.(check (pair string string))
+    "the paths of each flag"
+    ("au.txt\000both.txt\000", "both.txt\000sw.txt\000")
+    (read "assumed", read "skipped")
+
+let the_view_adds_only_the_untracked_files_with_intent_to_add () =
+  let repo = with_base [ ("a.txt", "1\n") ] in
+  Repo.write repo "a.txt" "2\n";
+  Repo.write repo "n.txt" "1\n";
+  let _, read = recorded repo (fun t -> diff_against t "HEAD") in
+  Alcotest.(check string) "the paths" "n.txt\000" (read "intent")
+
+let the_object_store_of_the_view_is_private () =
+  let repo = with_base [ ("a.txt", "1\n") ] in
+  let mask = Unix.umask 0 in
+  let _, read =
+    Fun.protect
+      ~finally:(fun () -> ignore (Unix.umask mask))
+      (fun () -> recorded repo (fun t -> diff_against t "HEAD"))
+  in
+  Alcotest.(check string) "the mode" "drwx------\n" (read "store")
+
+let the_view_refuses_a_flag_entry_it_cannot_read () =
+  let repo = with_base [ ("a.txt", "1\n") ] in
+  List.iter
+    (fun entry ->
+      match
+        fst
+          (recorded repo ~flags:(entry ^ "\000") (fun t ->
+               diff_against t "HEAD"))
+      with
+      | Error (Git.Malformed_output { detail; _ }) ->
+          Alcotest.(check string)
+            (Printf.sprintf "%S" entry)
+            (Printf.sprintf "%S is not an entry of git ls-files -v" entry)
+            detail
+      | Ok _ | Error _ ->
+          Alcotest.failf "the entry %S gives no error of its output" entry)
+    [ "h "; "abc"; "a" ]
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -549,4 +666,12 @@ let tests =
     case "the tree key writes no file under the git directory"
       the_tree_key_writes_no_file_under_the_git_directory;
     the_tree_key_is_the_tree_of_git_add_all;
+    case "the view clears each flag on the entries that hold it"
+      the_view_clears_each_flag_on_the_entries_that_hold_it;
+    case "the view adds only the untracked files with intent to add"
+      the_view_adds_only_the_untracked_files_with_intent_to_add;
+    case "the object store of the view is private"
+      the_object_store_of_the_view_is_private;
+    case "the view refuses a flag entry it cannot read"
+      the_view_refuses_a_flag_entry_it_cannot_read;
   ]
