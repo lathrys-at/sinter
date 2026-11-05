@@ -15,10 +15,7 @@ let rec trimmed_length text length =
   if length > 0 && text.[length - 1] = ' ' then trimmed_length text (length - 1)
   else length
 
-let trim text =
-  let length = trimmed_length text (String.length text) in
-  if length = String.length text then text else String.sub text 0 length
-
+let trim text = String.sub text 0 (trimmed_length text (String.length text))
 let shown text = trim (Display.clean text)
 let top_number rows = List.fold_left (fun top row -> max top row.number) 0 rows
 let rec digits number = if number < 10 then 1 else 1 + digits (number / 10)
