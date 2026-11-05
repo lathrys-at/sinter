@@ -128,6 +128,23 @@ let two_facts_of_one_id_give_one_tombstone () =
                ])
           (facts [ ("a.md", "# A\n") ])))
 
+let a_tombstone_holds_the_first_declaration_of_its_id () =
+  Alcotest.(check (list (option int)))
+    "the revision of the declaration in the first file" [ Some 1 ]
+    (List.map
+       (fun (t : Adjudicator.tombstone) ->
+         Option.map (fun (d : Adjudicator.declared) -> d.rev) t.declared)
+       (List.filter
+          (fun (t : Adjudicator.tombstone) -> String.equal t.kind "req")
+          (Adjudicator.tombstones
+             ~base:
+               (facts
+                  [
+                    ("a.md", "# A\n\n@req x v1 One.\n");
+                    ("b.md", "# B\n\n@req x v2 Two.\n");
+                  ])
+             (facts [ ("a.md", "# A\n") ]))))
+
 let a_tree_like_its_base_has_no_tombstone () =
   let files = [ ("a.md", "# A\n\n@req x v1\n@cites gh/1\n") ] in
   Alcotest.(check int)
@@ -233,6 +250,46 @@ let unbumped_reads_every_declaration_of_the_slug_at_the_base () =
          ("docs/c.md", "# C\n\n@req y v2 New.\n");
        ])
 
+let unbumped_of base tree =
+  List.map show
+    (List.filter
+       (fun (finding : Finding.t) ->
+         finding.finding_class = Finding_class.Unbumped)
+       (Adjudicator.classes ~base:(facts base) (facts tree) []))
+
+let unbumped_reads_no_rule () =
+  Alcotest.check strings "a rule of the base with the slug of a changed req"
+    [
+      "docs/a.md:3 | finding:unbumped:req:x | the extent of req:x differs from \
+       the base, and its revision is not above v1 | fix: @req x v2";
+    ]
+    (unbumped_of
+       [ ("docs/a.md", "# A\n\n@req x v1 Old.\n\n## R\n\n@rule x v3 R.\n") ]
+       [ ("docs/a.md", "# A\n\n@req x v1 New.\n\n## R\n\n@rule x v3 R.\n") ]);
+  Alcotest.check strings "a rule of the tree with the slug of a req of the base"
+    []
+    (unbumped_of
+       [ ("docs/a.md", "# A\n\n@req x v1 Text.\n") ]
+       [ ("docs/a.md", "# A\n\n@rule x v1 Text.\n") ])
+
+let unbumped_names_the_first_of_two_highest_revisions () =
+  Alcotest.check strings "a req and a design of v2 at the base"
+    [
+      "docs/c.md:3 | finding:unbumped:decision:x | the base declares req:x v2, \
+       so decision:x needs a higher revision for its change of kind | fix: \
+       @decision x v3";
+    ]
+    (unbumped_of
+       [
+         ("docs/a.md", "# A\n\n@req x v2 One.\n");
+         ("docs/b.md", "# B\n\n@design x v2 Two.\n");
+       ]
+       [
+         ("docs/a.md", "# A\n");
+         ("docs/b.md", "# B\n");
+         ("docs/c.md", "# C\n\n@decision x v2 Three.\n");
+       ])
+
 let the_findings_keep_their_order_with_the_new_ones () =
   let finding path line =
     Finding.make Finding_class.Typo_tag
@@ -333,6 +390,23 @@ let two_candidates_leave_the_edge_dangling () =
        ]
        [
          ("docs/one.md", "# Spec\n\n@req b v1 Other.\n");
+         ("docs/use.md", "# Use\n\n@cites a v1\n");
+       ])
+
+let a_rule_with_the_extent_hash_is_no_candidate () =
+  Alcotest.check strings "a new req and a new rule with the extent hash"
+    [
+      "docs/use.md:3 | finding:renamed:cites:site:docs/use.md#use->a | the \
+       base declares req:a, and req:b has its extent now | fix: @cites b v1";
+    ]
+    (with_tree_findings
+       [
+         ("docs/spec.md", "# Spec\n\n@req a v1 Same.\n");
+         ("docs/use.md", "# Use\n\n@cites a v1\n");
+       ]
+       [
+         ("docs/one.md", "# Spec\n\n@req b v1 Same.\n");
+         ("docs/two.md", "# Spec\n\n@rule c v1 Same.\n");
          ("docs/use.md", "# Use\n\n@cites a v1\n");
        ])
 
@@ -780,6 +854,26 @@ let renamed_step_gives_one_finding_when_two_base_plans_match () =
         (renamed_steps base [ steps_plan "\n## Do a\n\n@req a\n"; a ]))
     [ [ p; q; a ]; [ q; p; a ] ]
 
+let a_plan_with_no_id_is_the_same_plan_only_at_its_path () =
+  let a = ("docs/a.md", "# A\n\n@req a\n") in
+  let base =
+    [ (".plans/p.md", "# P\n\n@plan p\n@scope **\n\n## Do it\n\n@req a\n"); a ]
+  in
+  Alcotest.check strings "the slug at another path" []
+    (renamed_steps base
+       [
+         ( ".plans/q.md",
+           "# Q\n\n@plan p@0a1b2c\n@scope **\n\n## Other\n\nText.\n" );
+         a;
+       ]);
+  Alcotest.check strings "another slug at the path" []
+    (renamed_steps base
+       [
+         ( ".plans/p.md",
+           "# P\n\n@plan q@0a1b2c\n@scope **\n\n## Other\n\nText.\n" );
+         a;
+       ])
+
 let commit = "0123456789abcdef0123456789abcdef01234567"
 let other_commit = "fedcba9876543210fedcba9876543210fedcba98"
 
@@ -848,6 +942,35 @@ let stale_delivery_reports_each_line_that_does_not_count () =
       ^ "\"";
     ]
     (stale "Delivers: p@0a1b2c/tidy 000000\n")
+
+let stale_delivery_names_the_first_7_characters_of_the_commit =
+  property ~count:100
+    ~name:"stale-delivery names the commit by its first 7 characters"
+    ~print:Fun.id
+    Gen.(
+      string_size
+        ~gen:(map (String.get "0123456789abcdef") (int_bound 15))
+        (int_range 1 12))
+    (fun commit ->
+      let head = "the line \"Delivers: p\" of commit "
+      and tail = " does not match the form Delivers: <plan>/<step> <hash>" in
+      match
+        List.map
+          (fun (finding : Finding.t) -> finding.detail)
+          (Adjudicator.classes
+             ~deliveries:(Delivery_line.read ~commit "Delivers: p\n")
+             ~base:(facts []) (facts []) [])
+      with
+      | [ Some detail ]
+        when String.starts_with ~prefix:head detail
+             && String.ends_with ~suffix:tail detail ->
+          let named =
+            String.sub detail (String.length head)
+              (String.length detail - String.length head - String.length tail)
+          in
+          String.starts_with ~prefix:named commit
+          && String.length named = min 7 (String.length commit)
+      | _ -> false)
 
 let stale_delivery_names_the_step_and_has_no_place_and_no_fix () =
   match
@@ -1234,6 +1357,16 @@ let missing_delivery_needs_wanted () =
 
 let tests =
   [
+    case "a tombstone holds the first declaration of its id"
+      a_tombstone_holds_the_first_declaration_of_its_id;
+    case "unbumped reads no rule" unbumped_reads_no_rule;
+    case "unbumped names the first of two highest revisions"
+      unbumped_names_the_first_of_two_highest_revisions;
+    case "a rule with the extent hash is no candidate"
+      a_rule_with_the_extent_hash_is_no_candidate;
+    case "a plan with no id is the same plan only at its path"
+      a_plan_with_no_id_is_the_same_plan_only_at_its_path;
+    stale_delivery_names_the_first_7_characters_of_the_commit;
     case "missing-delivery sits at a step that the diff makes met"
       missing_delivery_sits_at_a_step_that_the_diff_makes_met;
     case "missing-delivery reads the unchanged files of the base"

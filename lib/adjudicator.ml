@@ -378,7 +378,13 @@ let renamed_steps ~base ~same ~whole_base facts =
   let key ((plan : Facts.plan), _, (step : Facts.step)) =
     (plan.path, plan.span.start.line, step.slug)
   in
-  let seen = Hashtbl.create 8 in
+  let seen =
+    Hashtbl.create
+      (8
+      [@mutaml.skip
+        "Hashtbl.create raises its argument to power_2_above 16, which gives \
+         16 for 8 and for 9, so both build the same table"])
+  in
   List.filter_map
     (fun ((plan : Facts.plan), old, (step : Facts.step)) ->
       if Hashtbl.mem seen (key (plan, old, step)) then None
@@ -449,7 +455,13 @@ let stale_deliveries ~deliveries facts =
 
 let counted ~deliveries facts =
   let named = Facts.named facts in
-  let first = Hashtbl.create 16 in
+  let first =
+    Hashtbl.create
+      (16
+      [@mutaml.skip
+        "the number is only the first size of a table that grows as it needs, \
+         and the code reads the table only by its keys, never in its order"])
+  in
   List.iter
     (fun (found : Delivery_line.found) ->
       match
