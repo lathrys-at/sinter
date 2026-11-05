@@ -178,6 +178,33 @@ let a_base_note_names_the_short_ref_and_the_short_commit () =
          Scan.Given { revision = "x\x1b[31m"; commit };
        ])
 
+let a_base_note_names_at_most_7_characters_of_the_commit =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:100
+       ~name:"a base note names the first 7 characters of the commit, or all"
+       ~print:QCheck2.Print.string
+       QCheck2.Gen.(
+         string_size
+           ~gen:(map (String.get "0123456789abcdef") (int_bound 15))
+           (int_range 0 12))
+       (fun commit ->
+         List.for_all
+           (fun (base, tail) ->
+             let note = Scan.base_note base in
+             String.starts_with ~prefix:"base " note
+             && String.ends_with ~suffix:tail note
+             &&
+             let named =
+               String.sub note 5 (String.length note - 5 - String.length tail)
+             in
+             String.starts_with ~prefix:named commit
+             && String.length named = min 7 (String.length commit))
+           [
+             (Scan.Given { revision = "HEAD"; commit }, ", from --base HEAD");
+             ( Scan.Merge_base { refname = "refs/heads/main"; commit },
+               ", the merge base of HEAD and main" );
+           ]))
+
 let the_index_of_a_tree_is_the_first_record_of_its_scan () =
   let _, _, { Scan.records; _ } = Lazy.force shared in
   let _, tree = Lazy.force shared_tree in
@@ -1181,6 +1208,7 @@ let tests =
       a_path_warning_holds_no_control_character;
     case "a base note names the short ref and the short commit"
       a_base_note_names_the_short_ref_and_the_short_commit;
+    a_base_note_names_at_most_7_characters_of_the_commit;
     case "a scan starts with the index of the tree and the base"
       a_scan_starts_with_the_index_of_the_tree_and_the_base;
     case "a path that is not UTF-8 gives a warning and no fact"
