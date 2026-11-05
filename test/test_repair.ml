@@ -137,6 +137,7 @@ let a_bump_writes_any_higher_revision () =
       ("no revision to v2", true);
       ("no revision to v1", false);
       ("v1 to no revision", false);
+      ("v0 to no revision", true);
       ("v2 to v2", false);
       ("v3 to v2", false);
       ("design v1 to v2", true);
@@ -150,6 +151,7 @@ let a_bump_writes_any_higher_revision () =
       ("no revision to v2", repair [ req () ] [ req ~rev:2 () ]);
       ("no revision to v1", repair [ req () ] [ req ~rev:1 () ]);
       ("v1 to no revision", repair [ req ~rev:1 () ] [ req () ]);
+      ("v0 to no revision", repair [ req ~rev:0 () ] [ req () ]);
       ("v2 to v2", repair [ req ~rev:2 () ] [ req ~rev:2 () ]);
       ("v3 to v2", repair [ req ~rev:3 () ] [ req ~rev:2 () ]);
       ( "design v1 to v2",
@@ -181,6 +183,7 @@ let an_added_plan_id_is_any_id () =
       ("a revision changed", false);
       ("nothing changed", false);
       ("an id on a req", false);
+      ("an id on a rule", false);
       ("an id on an invalid slug", false);
     ]
     [
@@ -194,6 +197,8 @@ let an_added_plan_id_is_any_id () =
       ("nothing changed", repair [ plan "a" ] [ plan "a" ]);
       ( "an id on a req",
         repair [ tag "req" ~target:"a" ] [ tag "req" ~target:"a@3f2a9c" ] );
+      ( "an id on a rule",
+        repair [ tag "rule" ~target:"a" ] [ tag "rule" ~target:"a@3f2a9c" ] );
       ("an id on an invalid slug", repair [ plan "-a" ] [ plan "-a@3f2a9c" ]);
     ]
 
@@ -776,7 +781,8 @@ let a_bump_needs_a_higher_revision =
     Gen.(
       triple
         (oneof_list [ "req"; "design"; "decision" ])
-        (option rev_gen) (option rev_gen))
+        (option (int_range 0 4))
+        (option (int_range 0 4)))
     (fun (word, old_rev, rev) ->
       repair [ tag word ~target:"a" ?rev:old_rev ] [ tag word ~target:"a" ?rev ]
       = (Option.value rev ~default:1 > Option.value old_rev ~default:1))
