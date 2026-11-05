@@ -47,6 +47,10 @@ let report setting errors =
 
 let failure ~help fault = { Sinter_core.Error_text.fault; help; place = None }
 
+let fail_environment setting error =
+  report setting [ error ];
+  environment_error
+
 let output_failure message =
   failure ~help:Sinter_core.Error_text.output_help
     ("cannot write the output: " ^ message)
@@ -66,26 +70,20 @@ let with_phases setting run =
             close_out channel);
         code
       with Sys_error message ->
-        report setting
-          [
-            failure
-              ~help:
-                ("name a file that you can write in "
-               ^ Sinter_core.Allocation.variable)
-              ("cannot write the words of the phases: " ^ message);
-          ];
-        environment_error)
+        fail_environment setting
+          (failure
+             ~help:
+               ("name a file that you can write in "
+              ^ Sinter_core.Allocation.variable)
+             ("cannot write the words of the phases: " ^ message)))
 
 let in_current_folder setting run =
   match Sys.getcwd () with
   | dir -> run dir
   | exception Sys_error message ->
-      report setting
-        [
-          failure ~help:"run the command in a folder that exists"
-            ("cannot read the current folder: " ^ message);
-        ];
-      environment_error
+      fail_environment setting
+        (failure ~help:"run the command in a folder that exists"
+           ("cannot read the current folder: " ^ message))
 
 let plumbing = "PLUMBING COMMANDS"
 
@@ -265,12 +263,9 @@ let serve_cmd =
   let rec answer color state =
     match In_channel.input_line stdin with
     | exception Sys_error message ->
-        report color
-          [
-            failure ~help:"give the command an input that it can read"
-              ("cannot read the input: " ^ message);
-          ];
-        environment_error
+        fail_environment color
+          (failure ~help:"give the command an input that it can read"
+             ("cannot read the input: " ^ message))
     | None -> clean
     | Some line ->
         let response = Sinter_core.Serve.respond state line in
@@ -282,17 +277,14 @@ let serve_cmd =
   in
   let run color =
     match Sinter_core.Serve.create () with
-    | exception Sinter_core.Serve.Error error ->
-        report color [ error ];
-        environment_error
+    | exception Sinter_core.Serve.Error error -> fail_environment color error
     | state ->
         Fun.protect
           ~finally:(fun () -> Sinter_core.Serve.close state)
           (fun () ->
             try answer color state
             with Sys_error message ->
-              report color [ output_failure message ];
-              environment_error)
+              fail_environment color (output_failure message))
   in
   Cmd.v info Term.(const run $ color)
 
@@ -364,8 +356,7 @@ let scan_cmd =
                   flush stdout);
               clean
             with Sys_error message ->
-              report color [ output_failure message ];
-              environment_error))
+              fail_environment color (output_failure message)))
   in
   Cmd.v info Term.(const run $ color $ manifest $ base)
 
@@ -656,8 +647,7 @@ let check_cmd =
               Sinter_core.Check.code outcome
             with Sys_error _ -> environment_error)
         | exception Sys_error message ->
-            report color [ output_failure message ];
-            environment_error)
+            fail_environment color (output_failure message))
   in
   let run color manifest base diff gate strict output nul headers no_headers
       verbose quiet =
@@ -803,5 +793,4 @@ let () =
     (match run () with
     | code -> code
     | exception Sys_error message ->
-        report Sinter_core.Style.Auto [ output_failure message ];
-        environment_error)
+        fail_environment Sinter_core.Style.Auto (output_failure message))
