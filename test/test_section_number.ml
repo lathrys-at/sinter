@@ -25,6 +25,7 @@ let removes_a_section_number =
       ("4.5 \t  Blanks", "Blanks");
       ("1. 2. Twice", "2. Twice");
       ("1.2. x", "x");
+      ("1.2 3 x", "3 x");
     ]
 
 let keeps_a_text_without_one =
@@ -41,6 +42,9 @@ let keeps_a_text_without_one =
       ("1.2.3.4.x y", "1.2.3.4.x y");
       ("", "");
       ("1.a b", "1.a b");
+      ("1.2.", "1.2.");
+      ("1.2.3.", "1.2.3.");
+      ("1.2a3 x", "1.2a3 x");
     ]
 
 let length_counts_the_number_and_its_blanks () =
@@ -48,23 +52,26 @@ let length_counts_the_number_and_its_blanks () =
   Alcotest.(check int) "no number" 0 (Section_number.length "X 2.1 Y");
   Alcotest.(check int) "all blanks" 4 (Section_number.length "3. \t")
 
-let number =
+let body =
   let open Gen in
   let digits = string_size ~gen:(char_range '0' '9') (int_range 1 3) in
   let* first = digits in
   let* more = list_size (int_bound 3) digits in
   let* final_dot = bool in
-  let body =
-    match more with
+  pure
+    (match more with
     | [] -> first ^ "."
-    | _ -> first ^ "." ^ String.concat "." more ^ if final_dot then "." else ""
-  in
+    | _ -> first ^ "." ^ String.concat "." more ^ if final_dot then "." else "")
+
+let number =
+  let open Gen in
+  let* body = body in
   let* blanks = string_size ~gen:(oneof_list [ ' '; '\t' ]) (int_range 1 3) in
   pure (body ^ blanks)
 
 let rest =
   Gen.(
-    let* first = oneof_list [ 'A'; 'z'; '#'; '-'; '('; '\xc3' ] in
+    let* first = oneof_list [ 'A'; 'z'; '#'; '-'; '('; '\xc3'; '0'; '7' ] in
     let* tail = string_size ~gen:printable (int_bound 12) in
     pure (String.make 1 first ^ tail))
 
@@ -75,6 +82,11 @@ let a_number_and_its_blanks_go =
     (fun (number, rest) ->
       Section_number.length (number ^ rest) = String.length number
       && String.equal (Section_number.remove (number ^ rest)) rest)
+
+let a_number_with_no_blank_after_it_stays =
+  property ~name:"a section number with no blank after it is no section number"
+    ~print:(Printf.sprintf "%S") body (fun body ->
+      Section_number.length body = 0)
 
 let a_text_that_starts_otherwise_stays =
   property ~name:"a text that does not start with a digit keeps every byte"
@@ -107,6 +119,7 @@ let tests =
     Alcotest.test_case "length counts the number and its blanks" `Quick
       length_counts_the_number_and_its_blanks;
     a_number_and_its_blanks_go;
+    a_number_with_no_blank_after_it_stays;
     a_text_that_starts_otherwise_stays;
     remove_is_a_suffix;
   ]
