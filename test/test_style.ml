@@ -196,6 +196,19 @@ let a_formatter_breaks_no_line () =
         "the lines" (long ^ " b\nx")
         (In_channel.with_open_bin path In_channel.input_all))
 
+let a_box_far_to_the_right_breaks_no_line () =
+  let buffer = Buffer.create 16 in
+  let ppf = Format.formatter_of_buffer buffer in
+  Style.prepare ppf `None;
+  Format.pp_print_as ppf (Format.pp_infinity - 2) "";
+  Format.pp_open_box ppf 0;
+  Format.pp_print_string ppf "x";
+  Format.pp_close_box ppf ();
+  Format.pp_print_flush ppf ();
+  Alcotest.(check string)
+    "a box at the column 2 below the infinity of Format" "x"
+    (Buffer.contents buffer)
+
 let tests =
   [
     case "each element has its escape codes" each_element_has_its_escape_codes;
@@ -220,4 +233,6 @@ let tests =
     case "rule 5: the stream decides at the end"
       rule_5_the_stream_decides_at_the_end;
     case "a formatter breaks no line" a_formatter_breaks_no_line;
+    case "a box far to the right breaks no line"
+      a_box_far_to_the_right_breaks_no_line;
   ]
