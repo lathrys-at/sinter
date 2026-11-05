@@ -56,9 +56,8 @@ let a_flagged_entry_is_compared_by_its_content () =
 
 let an_entry_with_both_flags_is_compared_by_its_content () =
   let repo = with_base [ ("both.txt", "1\n") ] in
-  ignore
-    (Repo.git repo
-       [ "update-index"; "--assume-unchanged"; "--skip-worktree"; "both.txt" ]);
+  ignore (Repo.git repo [ "update-index"; "--assume-unchanged"; "both.txt" ]);
+  ignore (Repo.git repo [ "update-index"; "--skip-worktree"; "both.txt" ]);
   Repo.write repo "both.txt" "2\n";
   Alcotest.check strings "the change"
     [ show "both.txt" (Git.Modified (Git.Text [ hunk 1 1 2 1 1 1 ])) ]
