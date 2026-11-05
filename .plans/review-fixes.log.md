@@ -221,3 +221,47 @@
   (lathrys-at/mutaml issue 10) would balance by mutant across files.
   The joined score was 97.4 percent: 4,740 mutants, 4,546 killed, 70
   timed out, 124 survived.
+
+## Kill the surviving mutants of the commands and the output
+
+- `lib/` and `test/` did not change between b52bcb2 and the base of
+  this branch, so the 82 survivors and the 8 timeouts of run
+  41912076553 are those of the base.
+- `test/test_check.ml` defined two tests that its list `tests` left
+  out. One of them kills the mutant of `Check.reports`. Both are now
+  in the list.
+- The test of the refusals of `Fix.remove_acks` accepted any
+  `Invalid_argument`. Two of its pairs index past the tags of their
+  document, because a tag line after an empty line of a section is no
+  tag, so those pairs never reached the checks. The test now checks
+  the message of each refusal, with a pair that only that check
+  refuses.
+- mutaml makes the off-by-one mutants of an argument at the call that
+  takes the argument. A mark on the argument alone takes out no
+  mutant, and the `.muts` file lists that place with no operator. A
+  mark must name the whole call. A mark on the result of a call, such
+  as `String.length text`, takes out the two mutants of that result.
+- A mark changes the names of other mutants: the ordinals of a name
+  move when a mark takes out a mutant of the same name in the same
+  binding, and the digest of a mutant holds the text of a mark inside
+  it. A run of old names after a mark must map them by their text.
+- Two marks in `lib/usage.ml` also take out mutants that the tests
+  kill, because no smaller expression holds the equivalent one. The
+  mark in `escape_end` also takes out the length plus 1, which the
+  test "an escape code at the end is left out" kills. The mark on
+  `String.sub line 0 colon` also takes out `colon - 1`, which the case
+  "a name that ends with a space" kills; 1 in place of 0 and `0 + 1`,
+  which the case "a name that starts with a space" kills; and
+  `0 - 1`, which makes `String.sub` raise in the test "a usage and a
+  message give the fault and the help".
+- `trim` in `lib/render.ml` lost its branch, which had an equivalent
+  mutant. The output phase of `@bench` allocates the same words before
+  and after, on each tree.
+- The eight branches of `bin/main.ml` that report an error and give
+  the exit code 3 call one function, so the branch that no test
+  reaches holds no sequence of its own. No test reaches the branch
+  where the parser bridge does not start: no option reaches it, and
+  `ulimit -v` does not limit memory on macOS. A test under `ulimit -v`
+  on Linux is left for later.
+- The test of `Exit_code.refused` is in `test/test_cli.ml`: no code of
+  `lib/` or `bin/` uses the value.
