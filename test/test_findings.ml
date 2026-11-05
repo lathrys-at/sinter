@@ -581,6 +581,8 @@ let stale_ack_names_the_condition_that_fails () =
     (Some "sinter knows no finding class and no rule with the name ste-doc");
   expect "@ack retired dep 485e\n"
     (Some "the @ack names the hash 485e, which has fewer than eight digits");
+  expect "@ack retired dep 0000000\n"
+    (Some "the @ack names the hash 0000000, which has fewer than eight digits");
   expect "@ack retired x ~\n"
     (Some "its block holds no retired finding of x that an @ack can accept")
 
@@ -721,6 +723,10 @@ let stale_ack_marks_the_hash_or_the_target () =
     "the hash"
     [ "10-18 does not match the block" ]
     (marks "@ack \xc3\xa9 00000000 \t\n");
+  Alcotest.(check (list string))
+    "a hash of fewer than eight digits"
+    [ "20-27 does not match the block" ]
+    (marks "@ack retired dep 0000000\n");
   Alcotest.(check (list string))
     "the target"
     [ "8-15 no @ack can accept this class" ]
