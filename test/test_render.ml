@@ -463,6 +463,7 @@ let a_removal_without_its_lines_shows_its_text () =
     [
       "# A\n\n@cites xy\n@ack retired x 00000000\n";
       "# A\n\n@cites x\n@ack retired x 00000000 \n";
+      "# A\n\n@cites x and more words here\n@ack retired x 00000000 \n";
     ]
 
 let a_removal_of_the_last_line_shows_the_removed_line () =
@@ -549,6 +550,132 @@ let a_removal_of_several_lines_shows_each_line () =
                  (document.tags.(1), document.tags.(2));
                ])
           ()))
+
+let a_removal_before_a_further_line_shows_the_new_line () =
+  let text = "# A\n\n@cites x\n@ack retired x 00000000" in
+  check_lines "the block of a file with a line after the @ack line"
+    [
+      "stale-ack: d";
+      " --> a.md:4:1";
+      "  |";
+      "4 | @ack retired x 00000000";
+      "  | ^^^^^^^^^^^^^^^^^^^^^^^";
+      "  |";
+      "help: remove the @ack line, check the block, and write a new @ack if \
+       the finding still applies";
+      "  |";
+      "4 - @ack retired x 00000000";
+      "4 +";
+      "  |";
+      "";
+    ]
+    (full
+       ~files:[ ("a.md", text ^ "\nmore\n") ]
+       (removed text ~line:3 ~eline:4))
+
+let an_empty_text_inside_a_line_shows_the_new_line () =
+  let text = "# A\n\n@cites x\n" in
+  check_lines "the block"
+    [
+      "suspect: d";
+      " --> a.md:3:1";
+      "  |";
+      "3 | @cites x";
+      "  | ^^^^^^^^";
+      "  |";
+      "help: write the slug as the declaration spells it";
+      "  |";
+      "3 - @cites x";
+      "3 + @cites";
+      "  |";
+      "";
+    ]
+    (full
+       ~files:[ ("a.md", text) ]
+       (fixed text (fun _ tag -> Fix.spelling tag "")))
+
+let a_replacement_on_line_9_has_a_gutter_of_one_digit () =
+  let text = "# A\n" ^ String.make 7 '\n' ^ "@cites x v1\n" in
+  check_lines "the block"
+    [
+      "suspect: d";
+      " --> a.md:9:1";
+      "  |";
+      "9 | @cites x v1";
+      "  | ^^^^^^^^^^^";
+      "  |";
+      "help: check that the citation still holds, then pin it to the current \
+       revision";
+      "  |";
+      "9 - @cites x v1";
+      "9 + @cites x v2";
+      "  |";
+      "";
+    ]
+    (full ~files:[ ("a.md", text) ] (fixed text (fun _ tag -> Fix.pin tag 2)))
+
+let each_new_line_of_a_fix_takes_its_own_number () =
+  let text = "# A\n\n@cites x\n@cites y\n" in
+  let hash = String.sub (Edits.document text).blocks.(0).hash 0 8 in
+  check_lines "an @ack line whose target holds a line feed"
+    [
+      "suspect: d";
+      " --> a.md:3:1";
+      "  |";
+      "3 | @cites x";
+      "  | ^^^^^^^^";
+      "  |";
+      "help: if the citation still holds, accept the finding with an @ack line";
+      "  |";
+      "5 + @ack retired x";
+      "6 + y " ^ hash;
+      "  |";
+      "";
+    ]
+    (full
+       ~files:[ ("a.md", text) ]
+       (fixed text (fun document _ -> Fix.ack document ~block:0 ~target:"x\ny")));
+  let text = "# A\n\n@cites x v1\n" in
+  check_lines "a slug that holds a line feed"
+    [
+      "suspect: d";
+      " --> a.md:3:1";
+      "  |";
+      "3 | @cites x v1";
+      "  | ^^^^^^^^^^^";
+      "  |";
+      "help: write the slug as the declaration spells it";
+      "  |";
+      "3 - @cites x v1";
+      "3 + @cites b";
+      "4 + c v1";
+      "  |";
+      "";
+    ]
+    (full
+       ~files:[ ("a.md", text) ]
+       (fixed text (fun _ tag -> Fix.spelling tag "b\nc")))
+
+let an_insertion_after_a_tab_marks_the_inserted_columns () =
+  let text = "# A\n\n@cites x\n" in
+  check_lines "the block of a line that starts with a tab"
+    [
+      "suspect: d";
+      " --> a.md:3:1";
+      "  |";
+      "3 |     cites x";
+      "  | ^^^^^^^^^^^";
+      "  |";
+      "help: pin the citation to the revision of the declaration";
+      "  |";
+      "3 |     cites x v1";
+      "  |            +++";
+      "  |";
+      "";
+    ]
+    (full
+       ~files:[ ("a.md", "# A\n\n\tcites x\n") ]
+       (fixed text (fun _ tag -> Fix.pin tag 1)))
 
 let each_alternative_gets_a_diff () =
   let text = "# A\n\n@cites x v1\n" in
@@ -1090,6 +1217,26 @@ let an_error_over_two_lines_marks_its_first_line () =
     ]
     (error (failure ~place:(at ~line:"warn-only = [" (2, 13) (3, 5)) "f"))
 
+let an_error_before_column_1_shows_no_line () =
+  check_lines "a span that starts at column 0"
+    [ "error: f"; " --> sinter.toml:1:0"; "  = help: do this"; "" ]
+    (error (failure ~place:(at ~line:"[scan" (1, 0) (1, 2)) "f"))
+
+let the_gutter_of_an_error_is_as_wide_as_its_line_number =
+  property ~count:100
+    "the gutter of an error is as wide as the number of its line"
+    QCheck2.Gen.(int_range 1 10_000_000)
+    string_of_int
+    (fun number ->
+      let width = String.length (string_of_int number) in
+      List.nth_opt
+        (lines
+           (error (failure ~place:(at ~line:"x" (number, 1) (number, 2)) "f")))
+        1
+      = Some
+          (String.make width ' ' ^ "--> sinter.toml:" ^ string_of_int number
+         ^ ":1"))
+
 let an_error_with_no_help_has_no_help_line () =
   check_lines "the headline alone" [ "error: f"; "" ]
     (error (failure ~help:"" "f"))
@@ -1219,6 +1366,9 @@ let tests =
       an_error_past_its_line_shows_no_line;
     case "an error over two lines marks its first line"
       an_error_over_two_lines_marks_its_first_line;
+    case "an error before column 1 shows no line"
+      an_error_before_column_1_shows_no_line;
+    the_gutter_of_an_error_is_as_wide_as_its_line_number;
     case "an error with no help has no help line"
       an_error_with_no_help_has_no_help_line;
     case "an error prints its text clean" an_error_prints_its_text_clean;
@@ -1258,6 +1408,16 @@ let tests =
       a_removal_of_the_last_line_shows_the_removed_line;
     case "a removal of several lines shows each line"
       a_removal_of_several_lines_shows_each_line;
+    case "a removal before a further line shows the new line"
+      a_removal_before_a_further_line_shows_the_new_line;
+    case "an empty text inside a line shows the new line"
+      an_empty_text_inside_a_line_shows_the_new_line;
+    case "a replacement on line 9 has a gutter of one digit"
+      a_replacement_on_line_9_has_a_gutter_of_one_digit;
+    case "each new line of a fix takes its own number"
+      each_new_line_of_a_fix_takes_its_own_number;
+    case "an insertion after a tab marks the inserted columns"
+      an_insertion_after_a_tab_marks_the_inserted_columns;
     case "each alternative gets a diff" each_alternative_gets_a_diff;
     case "a fix without its line shows its text"
       a_fix_without_its_line_shows_its_text;
