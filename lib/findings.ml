@@ -995,7 +995,7 @@ let hash_mark (tag : Markdown.tag) hash =
   let start =
     tag.span.start.column
     + characters ("@" ^ tag.word)
-    + characters (String.sub rest 0 (stop - String.length hash))
+    + Line_index.characters rest 0 (stop - String.length hash)
   in
   {
     Finding.start;
