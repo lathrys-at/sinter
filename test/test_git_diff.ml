@@ -250,6 +250,14 @@ let a_carriage_return_before_the_line_feed_ends_the_line () =
   decoded sections "the carriage return is part of the line ending"
     (Ok (text "f" [ hunk 1 1 2 1 1 0 ]))
     (Git.Decode.diff (lines (section "f" [ "@@ -0,0 +1 @@"; "+b\r" ])));
+  decoded sections "the carriage return comes off before the byte order mark"
+    (Ok (text "f" [ hunk 1 1 2 1 1 0 ]))
+    (Git.Decode.diff
+       (lines (section "f" [ "@@ -0,0 +1 @@"; "+\xef\xbb\xbfb\r" ])));
+  decoded sections
+    "the carriage return comes off a line that starts inside a character"
+    (Ok (text "f" [ hunk 1 1 2 1 1 0 ]))
+    (Git.Decode.diff (lines (section "f" [ "@@ -0,0 +1 @@"; "+\x80b\r" ])));
   decoded sections "with no line feed, the carriage return is a character"
     (Ok (text "f" [ hunk 1 1 3 1 1 0 ]))
     (Git.Decode.diff
