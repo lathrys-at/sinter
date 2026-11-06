@@ -2,11 +2,12 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Measure a pull request on the lines it changed, a dependency move whole, and main whole
-@decision mutation-job-scope v3
+@decision mutation-job-scope v4
 @cites gh/158
+@cites ci-main-runs
 @cites mutation-testing
 @cites mutation-gate
-On a pull request the mutation job runs only the mutants on the lines the pull request changed, or the full set when the pull request changes a dependency, and never holds the merge; the full set runs on every push to main and once a day; an author runs the pass on the branch before opening the pull request; the job runs as four jobs that each test a share of the mutants, under two seeds that each job draws at random.
+On a pull request the mutation job runs only the mutants on the lines the pull request changed, or the full set when the pull request changes a dependency, and never holds the merge; the full set runs once a day on main; an author runs the pass on the branch before opening the pull request; the job runs as four jobs that each test a share of the mutants, under two seeds that each job draws at random.
 
 ## Context
 
@@ -43,8 +44,9 @@ the whole suite once for each seed.
   that the pull request did not change.
 - A pull request that changed no dependency and no file under `lib/`
   or `bin/` runs no mutant. The job ends at once and passes.
-- The full set runs on every push to `main` and once a day on a
-  schedule, so that `main` is always measured whole.
+- The full set runs once a day on `main`, in the scheduled run of the
+  workflow, so that `main` is measured whole each day. A push to
+  `main` runs no mutant (record `ci-main-runs`).
 - The job is not a required check. It never holds a merge. A failure
   stays red on the pull request, with the survivors in the job's
   summary, for the author and the reviewer to read.
@@ -102,8 +104,8 @@ the whole suite once for each seed.
 
 A pull request that only adds, changes, or removes tests runs no
 mutant, so a test removed there can leave a survivor that the next
-run on `main` reports. A survivor found on `main` is then a fix to
-make, with no pull request to attach it to. The gate is harsher on a
+daily run on `main` reports. A survivor found on `main` is then a fix
+to make, with no pull request to attach it to. The gate is harsher on a
 small set than on the whole, because one survivor in a file with few
 mutants is a large share of that file's set; a survivor in a changed
 file is still the thing the author should see. GitHub sends the
