@@ -234,7 +234,14 @@ let group entry =
 let fold ~strict ~verbose entries =
   if strict || verbose then List.map (fun entry -> Single entry) entries
   else
-    let sizes = Hashtbl.create 16 in
+    let sizes =
+      Hashtbl.create
+        (16
+        [@mutaml.skip
+          "the number is only the first size of a table that grows as it \
+           needs, and the code reads the table only by its keys, never in its \
+           order"])
+    in
     List.iter
       (fun entry ->
         Option.iter
@@ -243,7 +250,14 @@ let fold ~strict ~verbose entries =
               (1 + Option.value (Hashtbl.find_opt sizes key) ~default:0))
           (group entry))
       entries;
-    let seen = Hashtbl.create 16 in
+    let seen =
+      Hashtbl.create
+        (16
+        [@mutaml.skip
+          "the number is only the first size of a table that grows as it \
+           needs, and the code reads the table only by its keys, never in its \
+           order"])
+    in
     List.filter_map
       (fun entry ->
         match group entry with
@@ -349,7 +363,14 @@ let write ?phases ppf report =
           line index;
           List.iter (fun entry -> line (record ~mode:report.mode entry)) entries
       | Fields { nul; headers; entries } ->
-          let buffer = Buffer.create 256 in
+          let buffer =
+            Buffer.create
+              (256
+              [@mutaml.skip
+                "Buffer.create takes any size and raises a size below 1 to 1; \
+                 the size is only the first room of a buffer that grows as it \
+                 needs, and no output reads it"])
+          in
           let print () =
             Format.pp_print_string ppf (Buffer.contents buffer);
             Buffer.clear buffer
@@ -546,7 +567,14 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
                   | Porcelain.Mode -> Ok (Mode.name mode)
                   | Porcelain.Tool -> Ok tool
                 in
-                let buffer = Buffer.create 128 in
+                let buffer =
+                  Buffer.create
+                    (128
+                    [@mutaml.skip
+                      "Buffer.create takes any size and raises a size below 1 \
+                       to 1; the size is only the first room of a buffer that \
+                       grows as it needs, and no output reads it"])
+                in
                 Porcelain.add_header buffer ~nul "porcelain"
                   (Int.to_string Porcelain.version);
                 let* () =

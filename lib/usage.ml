@@ -13,12 +13,29 @@ let rec sequence_end text index =
     | _ -> index + 1
 
 let escape_end text index =
-  if index + 1 < String.length text && text.[index + 1] = '[' then
-    sequence_end text (index + 2)
+  if
+    index + 1
+    < (String.length text
+       [@mutaml.skip
+         "the two forms differ only when index + 1 is the last index of text, \
+          and there both branches give the length of text: when the last byte \
+          is [, sequence_end at index + 2 gives index + 2, which is that \
+          length; otherwise min gives that length. The mark also takes out the \
+          mutant that adds 1 to this length, which reads the byte past the end \
+          of text when an escape byte ends it"])
+    && text.[index + 1] = '['
+  then sequence_end text (index + 2)
   else min (String.length text) (index + 2)
 
 let plain ~quotes text =
-  let buffer = Buffer.create (String.length text) in
+  let buffer =
+    Buffer.create
+      (String.length text
+       [@mutaml.skip
+         "Buffer.create takes any size and raises a size below 1 to 1; the \
+          size is only the first room of a buffer that grows as it needs, and \
+          no output reads it"])
+  in
   let rec walk index ~opened =
     if index < String.length text then
       if text.[index] = escape then
@@ -58,7 +75,14 @@ let message line =
          && not
               (String.exists
                  (fun c -> c = ' ' || c = escape)
-                 (String.sub line 0 colon)) ->
+                 (String.sub line 0 colon
+                  [@mutaml.skip
+                    "one byte more than colon adds only the byte at colon, the \
+                     colon itself, which is neither a space nor the escape \
+                     code. The mark also takes out colon - 1, which leaves the \
+                     last byte of the name unchecked; 1 in place of 0 and 0 + \
+                     1, which leave the first byte of the name unchecked; and \
+                     0 - 1, which makes String.sub raise"])) ->
       Some (String.sub line (colon + 2) (String.length line - colon - 2))
   | Some _ | None -> None
 

@@ -15,15 +15,28 @@ let rec trimmed_length text length =
   if length > 0 && text.[length - 1] = ' ' then trimmed_length text (length - 1)
   else length
 
-let trim text =
-  let length = trimmed_length text (String.length text) in
-  if length = String.length text then text else String.sub text 0 length
-
+let trim text = String.sub text 0 (trimmed_length text (String.length text))
 let shown text = trim (Display.clean text)
-let top_number rows = List.fold_left (fun top row -> max top row.number) 0 rows
+
+let top_number rows =
+  List.fold_left
+    (fun top row -> max top row.number)
+    (0
+    [@mutaml.skip
+      "every row number is 1 or more, and this value reaches only digits, \
+       through max, and digits gives 1 for 0 and for 1"])
+    rows
+
 let rec digits number = if number < 10 then 1 else 1 + digits (number / 10)
 let newline ppf = Format.pp_force_newline ppf ()
-let spaces ppf count = if count > 0 then Fmt.string ppf (String.make count ' ')
+
+let spaces ppf count =
+  if
+    (count > 0)
+    [@mutaml.skip
+      "String.make 0 ' ' is the empty string, so a count of 0 prints nothing \
+       either way"]
+  then Fmt.string ppf (String.make count ' ')
 
 let empty_gutter ppf width =
   spaces ppf (width + 1);
@@ -229,7 +242,14 @@ let rec placed raw = function
       | _ -> None)
 
 let applied raw edits =
-  let buffer = Buffer.create (String.length raw + 32) in
+  let buffer =
+    Buffer.create
+      ((String.length raw + 32)
+       [@mutaml.skip
+         "Buffer.create takes any size and raises a size below 1 to 1; the \
+          size is only the first room of a buffer that grows as it needs, and \
+          no output reads it"])
+  in
   let stop, inserted =
     List.fold_left
       (fun (position, inserted) (start, stop, (edit : Fix.edit)) ->
@@ -244,13 +264,24 @@ let applied raw edits =
 
 let rec ordered = function
   | (_, stop, _) :: ((start, _, _) :: _ as rest) ->
-      stop <= start && ordered rest
+      ((stop <= start && ordered rest)
+       [@mutaml.skip
+         "Fix.alternatives gives the edits of one alternative sorted and \
+          apart, with a space or a tab between two edits of one line, and \
+          offset keeps the order of the columns, so each stop is below the \
+          next start and ordered is true for every list that reaches it"])
   | [ _ ] | [] -> true
 
 let insertions line inserted =
   List.map
     (fun (at, text) ->
-      (Display.width (String.sub line 0 at), max 1 (Display.width text)))
+      ( Display.width (String.sub line 0 at),
+        max
+          (1
+          [@mutaml.skip
+            "every text that a fix inserts with no line feed starts with a \
+             space or @ and has a display width of 1 or more"])
+          (Display.width text) ))
     inserted
 
 let ends raw column = offset raw column = Some (String.length raw)
@@ -326,7 +357,13 @@ let last_number = function
   | Inserted { anchor; _ } -> anchor
   | Replaced { anchor; lines; _ } -> anchor + List.length lines - 1
   | Removed lines ->
-      List.fold_left (fun top (number, _) -> max top number) 0 lines
+      List.fold_left
+        (fun top (number, _) -> max top number)
+        (0
+        [@mutaml.skip
+          "every row number is 1 or more, and this value reaches only digits, \
+           through max, and digits gives 1 for 0 and for 1"])
+        lines
 
 let signed ppf width number sign style text =
   Style.string Style.Frame ppf (Printf.sprintf "%*d " width number);
@@ -345,16 +382,31 @@ let diff_rows ppf width = function
         lines
   | Inserted { anchor; line; marks } ->
       source_row ppf width
-        { number = anchor; text = shown line; marks = []; continues = false };
+        {
+          number = anchor;
+          text = shown line;
+          marks = [];
+          continues =
+            false
+            [@mutaml.skip
+              "source_row reads only the number and the text of a row"];
+        };
       spaces ppf (width + 1);
       Style.string Style.Frame ppf "|";
       Fmt.string ppf " ";
       ignore
         (List.fold_left
            (fun column (start, size) ->
-             spaces ppf (start - column);
+             spaces ppf
+               ((start - column)
+                [@mutaml.skip
+                  "no fix inserts at two places of one line, so marks holds \
+                   one pair at most, and column is 0 at that pair"]);
              Style.string Style.Inserted ppf (String.make size '+');
-             start + size)
+             (start + size)
+             [@mutaml.skip
+               "no fix inserts at two places of one line, so marks holds one \
+                pair at most, and the fold throws its last value away"])
            0 marks);
       newline ppf
   | Replaced { anchor; old; lines } ->
@@ -506,7 +558,9 @@ let error_row (place : Error_text.place) =
 let error ppf (error : Error_text.t) =
   let row = Option.bind error.place error_row in
   let width =
-    match row with Some row -> digits row.number | None -> digits 0
+    match row with
+    | Some row -> digits row.number
+    | None -> digits (0 [@mutaml.skip "digits gives 1 for 0 and for 1"])
   in
   message ppf Style.Block "error:" error.fault;
   Option.iter

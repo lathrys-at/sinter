@@ -3,7 +3,17 @@
 
 type t = { root : string; files : (string, Line_index.t option) Hashtbl.t }
 
-let create ~root = { root; files = Hashtbl.create 64 }
+let create ~root =
+  {
+    root;
+    files =
+      Hashtbl.create
+        (64
+        [@mutaml.skip
+          "the number is only the first size of a table that grows as it \
+           needs, and the code reads the table only by its keys, never in its \
+           order"]);
+  }
 
 let read source path =
   let full =

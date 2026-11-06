@@ -36,7 +36,14 @@ let replacement = "\xef\xbf\xbd"
 let clean text =
   if unchanged text 0 then text
   else
-    let buffer = Buffer.create (String.length text + 8) in
+    let buffer =
+      Buffer.create
+        ((String.length text + 8)
+         [@mutaml.skip
+           "Buffer.create takes any size and raises a size below 1 to 1; the \
+            size is only the first room of a buffer that grows as it needs, \
+            and no output reads it"])
+    in
     let rec copy offset =
       if offset < String.length text then (
         let decoded = String.get_utf_8_uchar text offset in

@@ -986,6 +986,16 @@ let a_diff_against_the_merge_base_reports_what_the_branch_adds () =
     ]
     (diff_lines repo)
 
+let sarif_with_no_gate_raises_before_the_check_reads_the_tree () =
+  Fixture.with_temporary_folder (fun folder ->
+      Alcotest.check_raises "an empty temporary folder"
+        (Invalid_argument "Sinter_core.Check.run: the form Sarif needs a gate")
+        (fun () ->
+          ignore
+            (Check.run ~env:[||] ~dir:folder ~manifest:None ~base:None
+               ~mode:Mode.Tree ~gate:None ~strict:false ~form:Check.Sarif
+               ~verbose:false ~quiet:false ~tool:"v1" ())))
+
 let tree_lines repo =
   match
     Check.run ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
@@ -1468,4 +1478,10 @@ let tests =
       notices_write_the_warning_and_the_note_in_their_styles;
     case "a check reads the repository and reports at its gate"
       a_check_reads_the_repository_and_reports_at_its_gate;
+    case "a check reports a class only where it has a tier"
+      a_check_reports_a_class_only_where_it_has_a_tier;
+    case "a diff against the merge base reports what the branch adds"
+      a_diff_against_the_merge_base_reports_what_the_branch_adds;
+    case "SARIF with no gate raises before the check reads the tree"
+      sarif_with_no_gate_raises_before_the_check_reads_the_tree;
   ]
