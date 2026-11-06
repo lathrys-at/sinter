@@ -15,7 +15,7 @@ would otherwise re-argue the decision then finds the reasoning.
 Never delete a decision record.
 
 The full tag specification is at
-<https://github.com/lathrys-at/sinter/blob/main/spec/vocabulary.md>,
+<https://github.com/sinterworks/sinter/blob/main/spec/vocabulary.md>,
 sections 4, 6, 7.1, 8, and 9. The rules below are the parts this
 skill needs.
 

@@ -17,7 +17,7 @@ repository. This skill writes the plan file from a plan that the user
 approved, and says how a commit names a step that it delivers.
 
 The full specification is at
-<https://github.com/lathrys-at/sinter/blob/main/spec/vocabulary.md>,
+<https://github.com/sinterworks/sinter/blob/main/spec/vocabulary.md>,
 section 10. The rules below are the parts this skill needs.
 
 ## Input

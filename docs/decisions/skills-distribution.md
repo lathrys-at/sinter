@@ -2,7 +2,7 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Ship the Claude Code skills as a plugin marketplace in this repository
-@decision skills-distribution
+@decision skills-distribution v2
 The Sinter repository is a Claude Code plugin marketplace with one plugin, `sinter`, whose skills a user invokes as `/sinter:<skill>`.
 
 ## Context
@@ -34,7 +34,7 @@ The repository root holds `.claude-plugin/marketplace.json`. This
 file names one plugin with the source `./plugins/sinter`. The plugin
 holds `.claude-plugin/plugin.json` and one `skills/<name>/SKILL.md`
 file for each skill. A user installs the plugin with two commands:
-`/plugin marketplace add lathrys-at/sinter` and
+`/plugin marketplace add sinterworks/sinter` and
 `/plugin install sinter@sinter`. The user then invokes a skill as
 `/sinter:<name>`. The plugin has its own semantic version,
 independent of the tool's version.

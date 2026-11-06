@@ -6,8 +6,8 @@ description:
 maintainer: ["The Sinter Authors"]
 authors: ["The Sinter Authors"]
 license: "Apache-2.0"
-homepage: "https://github.com/lathrys-at/sinter"
-bug-reports: "https://github.com/lathrys-at/sinter/issues"
+homepage: "https://github.com/sinterworks/sinter"
+bug-reports: "https://github.com/sinterworks/sinter/issues"
 depends: [
   "ocaml" {>= "5.5"}
   "dune" {>= "3.16"}
@@ -36,4 +36,4 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/lathrys-at/sinter.git"
+dev-repo: "git+https://github.com/sinterworks/sinter.git"

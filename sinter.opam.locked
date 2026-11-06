@@ -71,6 +71,6 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-homepage: "https://github.com/lathrys-at/sinter"
-bug-reports: "https://github.com/lathrys-at/sinter/issues"
-dev-repo: "git+https://github.com/lathrys-at/sinter.git"
+homepage: "https://github.com/sinterworks/sinter"
+bug-reports: "https://github.com/sinterworks/sinter/issues"
+dev-repo: "git+https://github.com/sinterworks/sinter.git"
