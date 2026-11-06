@@ -42,3 +42,32 @@ val message : string -> error -> string
 (** [message path error] says what is wrong with the file at [path], for the
     person who runs the tool. The message names [path], and it holds no text of
     the target of a symbolic link. *)
+
+(** Where a path that the person gives leads. *)
+type place =
+  | Inside of string
+      (** the path is below the repository root. The string is the path relative
+          to the root, for {!read}. *)
+  | Outside of string
+      (** the path is not below the repository root. The string is the absolute
+          path, with each [.] and [..] resolved in its text. *)
+
+val place : root:string -> dir:string -> string -> (place, string) result
+(** [place ~root ~dir path] says where [path] leads. A relative [path] is
+    relative to the [realpath] of the folder [dir]. The function first resolves
+    each [.] and [..] in the text of [path], and it follows no link for that. It
+    then takes each folder that the result names, shortest first. The first one
+    whose [realpath] is the [realpath] of [root], or is below it, gives
+    [Inside]: the rest of that [realpath] below the root, then the rest of the
+    path. So a symbolic link below the root never makes a path [Outside]. A path
+    that no such folder holds is [Outside], and so is the root itself.
+
+    A [path] that ends in [/], [/.], or [/..] names a folder. The string of the
+    result then ends in [/], so {!read} gives [Not_a_repository_path] for it,
+    and the system does not open a file by that path.
+
+    [Unix.realpath] gives the case of the name on the disk, so a folder in
+    another case on a disk that ignores case still leads inside.
+
+    The error is the message of the system, when [root] or a [dir] that a
+    relative path needs has no [realpath]. *)

@@ -31,14 +31,36 @@ permission, and a **bold** term is defined where it first appears.
 ### 2.1 Name and place
 
 The manifest is the file `sinter.toml` at the repository root. The
-**repository root** is the top folder of the git working tree.
+**repository root** is the top folder of the git working tree. This
+file must be a regular file. A symbolic link or another kind of file
+at this path is an error (section 2.4).
 
 The option `--manifest <path>` names another file as the manifest. The
 path is relative to the current folder, as every path on the command
-line is. The file can be inside or outside the repository. The tool
-reads the file once, so the path can also name a pipe, such as
-`/dev/stdin`. Every glob in the manifest is relative to the repository
-root, wherever the file is.
+line is. The file can be inside or outside the repository. Every glob
+in the manifest is relative to the repository root, wherever the file
+is.
+
+The tool decides where the path leads in these steps:
+
+1. The tool resolves each `.` and `..` in the text of the path. It
+   follows no symbolic link for this step.
+2. The tool takes each folder that the result names, shortest first.
+   When the real path of a folder is the repository root or a folder
+   below it, the file is inside the repository. Its path below the root
+   is the rest of the real path of that folder, then the rest of the
+   path. A symbolic link below the root does not change this result.
+3. When no such folder exists, the file is outside the repository.
+
+A path that ends in `/`, `/.`, or `/..` names a folder, so it names no
+manifest.
+
+A file inside the repository must be a regular file, and no part of
+the path below the root can be a symbolic link. For a file outside the
+repository, the tool follows symbolic links, and it reads the file
+once, so the path can also name a pipe, such as `/dev/stdin`. A symbolic
+link that the person made outside the repository is followed, also when
+it leads into the repository.
 
 ### 2.2 TOML
 
@@ -107,9 +129,13 @@ stops with exit code 3 in each of these cases:
   `sinter.toml`.
 - The file that `--manifest` names does not exist, or the tool cannot
   read it.
-- The path of the manifest is not valid UTF-8. For a manifest that is
-  a symbolic link, this is the path of the file that the link names.
-  The message gives the path as the warning of section 7.3 does.
+- A part of the path of a manifest inside the repository is a symbolic
+  link. The message does not show the target of the link.
+- A manifest inside the repository is not a regular file.
+- The path of the manifest is not valid UTF-8. For a manifest outside
+  the repository that is a symbolic link, this is the path of the file
+  that the link names. The message gives the path as the warning of
+  section 7.3 does.
 - The manifest names no pack (section 8.1).
 - The manifest holds an error (section 4).
 

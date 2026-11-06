@@ -414,6 +414,200 @@ let each_message_names_the_path () =
       ("a/b: Input/output error", Repo_file.Cannot_read "Input/output error");
     ]
 
+let place_testable =
+  Alcotest.testable
+    (fun formatter place ->
+      Format.pp_print_string formatter
+        (match place with
+        | Repo_file.Inside path -> "inside " ^ path
+        | Repo_file.Outside path -> "outside " ^ path))
+    ( = )
+
+let place_result = Alcotest.(result place_testable string)
+
+let with_root f =
+  Fixture.with_temporary_folder (fun scratch ->
+      let root = scratch / "root" in
+      Unix.mkdir root 0o755;
+      Unix.mkdir (root / "ci") 0o755;
+      f ~scratch ~root)
+
+let a_path_below_the_root_is_inside () =
+  with_root (fun ~scratch:_ ~root ->
+      List.iter
+        (fun (path, expected) ->
+          Alcotest.check place_result path (Ok (Repo_file.Inside expected))
+            (Repo_file.place ~root ~dir:root path))
+        [
+          (root / "sinter.toml", "sinter.toml");
+          (root / "ci/m.toml", "ci/m.toml");
+          (root / "ci/../m.toml", "m.toml");
+          (root / "./ci/./m.toml", "ci/m.toml");
+          (root ^ "//ci//m.toml", "ci/m.toml");
+          (root / "missing/m.toml", "missing/m.toml");
+          (root / "ci/", "ci/");
+          (root / "ci/.", "ci/");
+          (root / "ci/a/..", "ci/");
+          (root / "sinter.toml/", "sinter.toml/");
+        ])
+
+let a_link_below_the_root_stays_inside () =
+  with_root (fun ~scratch ~root ->
+      Unix.symlink scratch (root / "link");
+      Unix.symlink scratch (root / "ci" / "link");
+      List.iter
+        (fun (path, expected) ->
+          Alcotest.check place_result path (Ok (Repo_file.Inside expected))
+            (Repo_file.place ~root ~dir:root path))
+        [
+          (root / "link", "link");
+          (root / "link/m.toml", "link/m.toml");
+          (root / "ci/link/m.toml", "ci/link/m.toml");
+        ])
+
+let a_link_to_the_root_outside_it_leads_inside () =
+  with_root (fun ~scratch ~root ->
+      Unix.symlink root (scratch / "alias");
+      Alcotest.check place_result "through the alias"
+        (Ok (Repo_file.Inside "ci/m.toml"))
+        (Repo_file.place ~root ~dir:root (scratch / "alias/ci/m.toml"));
+      Alcotest.check place_result "from the alias of the root"
+        (Ok (Repo_file.Inside "m.toml"))
+        (Repo_file.place ~root:(scratch / "alias") ~dir:root (root / "m.toml")))
+
+let a_link_to_a_folder_below_the_root_leads_inside () =
+  with_root (fun ~scratch ~root ->
+      Unix.mkdir (root / "ci" / "deep") 0o755;
+      Unix.symlink (root / "ci") (scratch / "alias");
+      Unix.symlink (root / "ci" / "deep") (scratch / "deep");
+      Alcotest.check place_result "one folder below"
+        (Ok (Repo_file.Inside "ci/l.toml"))
+        (Repo_file.place ~root ~dir:root (scratch / "alias/l.toml"));
+      Alcotest.check place_result "two folders below"
+        (Ok (Repo_file.Inside "ci/deep/x/l.toml"))
+        (Repo_file.place ~root ~dir:root (scratch / "deep/x/l.toml"));
+      Alcotest.check place_result "a name that starts like the root"
+        (Ok (Repo_file.Outside (root ^ "2/m.toml")))
+        (Repo_file.place ~root ~dir:root (root ^ "2/m.toml")))
+
+let a_link_at_the_last_part_outside_the_root_stays_outside () =
+  with_root (fun ~scratch ~root ->
+      write (root / "m.toml") "text\n";
+      Unix.symlink (root / "m.toml") (scratch / "alias.toml");
+      Alcotest.check place_result "the path"
+        (Ok (Repo_file.Outside (scratch / "alias.toml")))
+        (Repo_file.place ~root ~dir:root (scratch / "alias.toml")))
+
+let a_path_not_below_the_root_is_outside () =
+  with_root (fun ~scratch ~root ->
+      List.iter
+        (fun (path, expected) ->
+          Alcotest.check place_result path (Ok (Repo_file.Outside expected))
+            (Repo_file.place ~root ~dir:root path))
+        [
+          (root, root);
+          (root ^ "/", root ^ "/");
+          (root / "ci/..", root ^ "/");
+          (scratch / "m.toml", scratch / "m.toml");
+          (scratch / "m.toml/", scratch / "m.toml/");
+          (root / "../m.toml", scratch / "m.toml");
+          ("/", "/");
+          ("/.", "/");
+          ("/..", "/");
+          ("/../../x", "/x");
+        ])
+
+let the_text_of_a_link_and_two_dots_stays_in_the_text () =
+  with_root (fun ~scratch ~root ->
+      Unix.mkdir (scratch / "far") 0o755;
+      Unix.mkdir (scratch / "far" / "deep") 0o755;
+      Unix.symlink (scratch / "far" / "deep") (root / "ci" / "link");
+      Alcotest.check place_result "two levels up, by the text"
+        (Ok (Repo_file.Inside "m.toml"))
+        (Repo_file.place ~root ~dir:root (root / "ci/link/../../m.toml"));
+      Alcotest.check place_result "three levels up, by the text"
+        (Ok (Repo_file.Outside (scratch / "m.toml")))
+        (Repo_file.place ~root ~dir:root (root / "ci/link/../../../m.toml")))
+
+let a_relative_path_is_relative_to_the_folder () =
+  with_root (fun ~scratch ~root ->
+      Alcotest.check place_result "from a folder below the root"
+        (Ok (Repo_file.Inside "ci/m.toml"))
+        (Repo_file.place ~root ~dir:(root / "ci") "m.toml");
+      Alcotest.check place_result "up to the root"
+        (Ok (Repo_file.Inside "m.toml"))
+        (Repo_file.place ~root ~dir:(root / "ci") "../m.toml");
+      Alcotest.check place_result "out of the root"
+        (Ok (Repo_file.Outside (scratch / "m.toml")))
+        (Repo_file.place ~root ~dir:root "../m.toml"))
+
+let a_root_with_no_real_path_is_an_error () =
+  with_root (fun ~scratch ~root ->
+      Alcotest.check place_result "the root"
+        (Error (Unix.error_message Unix.ENOENT))
+        (Repo_file.place ~root:(scratch / "gone") ~dir:root (root / "m.toml"));
+      Alcotest.check place_result "the folder of a relative path"
+        (Error (Unix.error_message Unix.ENOENT))
+        (Repo_file.place ~root ~dir:(scratch / "gone") "m.toml"))
+
+let an_absolute_path_does_not_need_the_folder () =
+  with_root (fun ~scratch ~root ->
+      Alcotest.check place_result "the place" (Ok (Repo_file.Inside "m.toml"))
+        (Repo_file.place ~root ~dir:(scratch / "gone") (root / "m.toml")))
+
+let oracle ~scratch path =
+  let parts =
+    List.fold_left
+      (fun kept part ->
+        match (part, kept) with
+        | ("" | "."), _ -> kept
+        | "..", [] -> []
+        | "..", _ :: above -> above
+        | _ -> part :: kept)
+      []
+      (String.split_on_char '/' path)
+    |> List.rev
+  in
+  let root_parts =
+    List.filter (fun part -> part <> "") (String.split_on_char '/' scratch)
+    @ [ "root" ]
+  in
+  let ending =
+    if
+      (String.ends_with ~suffix:"/" path
+      || String.ends_with ~suffix:"/." path
+      || String.ends_with ~suffix:"/.." path)
+      && parts <> []
+    then "/"
+    else ""
+  in
+  let rec below root parts =
+    match (root, parts) with
+    | [], (_ :: _ as rest) -> Some rest
+    | same :: root, part :: parts when String.equal same part ->
+        below root parts
+    | _ -> None
+  in
+  match below root_parts parts with
+  | Some rest -> Repo_file.Inside (String.concat "/" rest ^ ending)
+  | None -> Repo_file.Outside ("/" ^ String.concat "/" parts ^ ending)
+
+let place_is_the_text_of_the_path_against_the_root =
+  property ~name:"place is the text of the path against the root"
+    ~print:(String.concat "/")
+    QCheck2.Gen.(
+      list_size (int_bound 8)
+        (oneof_list [ "a"; "b"; "link"; "root"; "."; ".."; "" ]))
+    (fun segments ->
+      with_root (fun ~scratch ~root ->
+          Unix.mkdir (root / "a") 0o755;
+          Unix.mkdir (root / "b") 0o755;
+          Unix.symlink scratch (root / "link");
+          Unix.symlink scratch (root / "a" / "link");
+          Unix.symlink "/" (root / "b" / "link");
+          let path = root ^ "/" ^ String.concat "/" segments in
+          Repo_file.place ~root ~dir:root path = Ok (oracle ~scratch path)))
+
 let tests =
   [
     each_tree_gives_the_answer_of_its_case;
@@ -451,4 +645,23 @@ let tests =
     case "no read during a swap gives the secret"
       no_read_during_a_swap_gives_the_secret;
     case "each message names the path" each_message_names_the_path;
+    case "a path below the root is inside" a_path_below_the_root_is_inside;
+    case "a link below the root stays inside" a_link_below_the_root_stays_inside;
+    case "a link to the root outside it leads inside"
+      a_link_to_the_root_outside_it_leads_inside;
+    case "a link to a folder below the root leads inside"
+      a_link_to_a_folder_below_the_root_leads_inside;
+    case "a link at the last part outside the root stays outside"
+      a_link_at_the_last_part_outside_the_root_stays_outside;
+    case "a path not below the root is outside"
+      a_path_not_below_the_root_is_outside;
+    case "the text of a link and two dots stays in the text"
+      the_text_of_a_link_and_two_dots_stays_in_the_text;
+    case "a relative path is relative to the folder"
+      a_relative_path_is_relative_to_the_folder;
+    case "a root with no real path is an error"
+      a_root_with_no_real_path_is_an_error;
+    case "an absolute path does not need the folder"
+      an_absolute_path_does_not_need_the_folder;
+    place_is_the_text_of_the_path_against_the_root;
   ]

@@ -99,3 +99,57 @@ let message path = function
   | Not_regular ->
       path ^ " is not a regular file, and Sinter reads only regular files"
   | Cannot_open reason | Cannot_read reason -> path ^ ": " ^ reason
+
+type place = Inside of string | Outside of string
+
+let resolved path =
+  List.rev
+    (List.fold_left
+       (fun kept part ->
+         match (part, kept) with
+         | ("" | "."), _ -> kept
+         | "..", [] -> []
+         | "..", _ :: above -> above
+         | _ -> part :: kept)
+       []
+       (String.split_on_char '/' path))
+
+let names_a_folder path =
+  List.exists (fun suffix -> String.ends_with ~suffix path) [ "/"; "/."; "/.." ]
+
+let at_or_below ~root real =
+  let prefix = root ^ "/" in
+  if String.equal real root then Some []
+  else if String.starts_with ~prefix real then
+    Some
+      (String.split_on_char '/'
+         (String.sub real (String.length prefix)
+            (String.length real - String.length prefix)))
+  else None
+
+let repository_folder ~root taken =
+  match Unix.realpath ("/" ^ String.concat "/" (List.rev taken)) with
+  | real -> at_or_below ~root real
+  | exception Unix.Unix_error _ -> None
+
+let full_path ~dir path =
+  if Filename.is_relative path then Filename.concat (Unix.realpath dir) path
+  else path
+
+let place ~root ~dir path =
+  match (Unix.realpath root, full_path ~dir path) with
+  | exception Unix.Unix_error (code, _, _) -> Error (Unix.error_message code)
+  | root, full ->
+      let parts = resolved full in
+      let ending =
+        if names_a_folder full && not (List.is_empty parts) then "/" else ""
+      in
+      let text parts = String.concat "/" parts ^ ending in
+      let rec search taken = function
+        | [] -> Outside ("/" ^ text parts)
+        | part :: rest as remaining -> (
+            match repository_folder ~root taken with
+            | Some folder -> Inside (text (folder @ remaining))
+            | None -> search (part :: taken) rest)
+      in
+      Ok (search [] parts)

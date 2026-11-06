@@ -460,6 +460,50 @@ let a_manifest_whose_path_is_not_utf_8_exits_with_3 () =
       \  = help: move the manifest to a path that is UTF-8\n" )
     (run_in repo "\"$2\" scan --manifest \"$(printf 'm\\377.toml')\" >/dev/null")
 
+let a_manifest_behind_a_link_exits_with_3 () =
+  let repo =
+    committed [ ("a.md", "# A\n"); ("real/m.toml", markdown_manifest) ]
+  in
+  let secret = Filename.temp_file "sinter-secret" ".env" in
+  write secret "TOKEN=hidden-value\n";
+  let root = Git_fixture.root repo in
+  Unix.symlink secret (Filename.concat root "sinter.toml");
+  Unix.symlink "real" (Filename.concat root "way");
+  Fun.protect
+    ~finally:(fun () -> Sys.remove secret)
+    (fun () ->
+      List.iter
+        (fun (arguments, shown) ->
+          Alcotest.(check (pair string string))
+            shown
+            ( "exited 3",
+              "error: " ^ shown
+              ^ " is a symbolic link, and Sinter does not follow links\n\
+                \  = help: commit the manifest as a regular file\n" )
+            (run_in repo ("\"$2\" " ^ arguments ^ " >/dev/null")))
+        [
+          ("scan", "sinter.toml");
+          ("check", "sinter.toml");
+          ("scan --manifest way/m.toml", "way/m.toml");
+          ("check --manifest way/m.toml", "way/m.toml");
+        ])
+
+let a_manifest_that_is_not_regular_exits_with_3 () =
+  let repo =
+    committed [ ("a.md", "# A\n"); ("ci/m.toml", markdown_manifest) ]
+  in
+  Unix.mkdir (Filename.concat (Git_fixture.root repo) "sinter.toml") 0o755;
+  List.iter
+    (fun (arguments, shown) ->
+      Alcotest.(check (pair string string))
+        shown
+        ( "exited 3",
+          "error: " ^ shown
+          ^ " is not a regular file, and Sinter reads only regular files\n\
+            \  = help: commit the manifest as a regular file\n" )
+        (run_in repo ("\"$2\" " ^ arguments ^ " >/dev/null")))
+    [ ("scan", "sinter.toml"); ("scan --manifest ci", "ci") ]
+
 let a_file_that_becomes_a_link_exits_with_3 () =
   let repo =
     committed [ ("sinter.toml", markdown_manifest); ("a.md", "# A\n") ]
@@ -598,14 +642,13 @@ let a_manifest_that_a_pipe_gives_is_read () =
   let repo =
     committed [ ("sinter.toml", markdown_manifest); ("a.md", "# A\n") ]
   in
-  Unix.symlink "/dev" (Filename.concat (Git_fixture.root repo) "dev");
   let output = Filename.temp_file "sinter-pipe" ".out" in
   Fun.protect
     ~finally:(fun () -> Sys.remove output)
     (fun () ->
       let outcome =
         run_in repo
-          ("cat sinter.toml | \"$2\" scan --manifest dev/stdin >"
+          ("cat sinter.toml | \"$2\" scan --manifest /dev/stdin >"
          ^ Filename.quote output)
       in
       let index =
@@ -1048,6 +1091,10 @@ let tests =
     Alcotest.test_case
       "a file that the branch deleted and ignored shows no line" `Quick
       a_file_that_the_branch_deleted_and_ignored_shows_no_line;
+    Alcotest.test_case "a manifest behind a link exits with 3" `Quick
+      a_manifest_behind_a_link_exits_with_3;
+    Alcotest.test_case "a manifest that is not regular exits with 3" `Quick
+      a_manifest_that_is_not_regular_exits_with_3;
     Alcotest.test_case "a file that becomes a link exits with 3" `Quick
       a_file_that_becomes_a_link_exits_with_3;
     Alcotest.test_case "a manifest whose path is not UTF-8 exits with 3" `Quick

@@ -6,6 +6,8 @@ type error =
   | No_manifest
   | Missing_manifest of string
   | Unreadable_manifest of { path : string; reason : string }
+  | Manifest_is_a_link of string
+  | Manifest_not_regular of string
   | Manifest_not_utf_8 of string
   | Invalid_manifest of {
       path : string;
@@ -62,6 +64,18 @@ let explain = function
         plain
           ( Printf.sprintf "cannot read the manifest %s: %s" path reason,
             "name a manifest that is a file that you can read" );
+      ]
+  | Manifest_is_a_link path ->
+      [
+        plain
+          ( Repo_file.message path Repo_file.Symbolic_link,
+            "commit the manifest as a regular file" );
+      ]
+  | Manifest_not_regular path ->
+      [
+        plain
+          ( Repo_file.message path Repo_file.Not_regular,
+            "commit the manifest as a regular file" );
       ]
   | Manifest_not_utf_8 path ->
       [
@@ -177,14 +191,32 @@ let is_plan_path path =
   String.starts_with ~prefix:".plans/" path
   && String.ends_with ~suffix:".md" path
 
-let load_manifest ~path ~shown ~missing =
-  match Manifest.load path with
-  | Ok manifest -> Ok manifest
-  | Error Manifest.Missing -> Error missing
-  | Error (Manifest.Unreadable reason) ->
-      Error (Unreadable_manifest { path = shown; reason })
-  | Error (Manifest.Invalid { text; errors }) ->
-      Error (Invalid_manifest { path = shown; text; errors })
+let load_manifest ~root ~place ~shown ~missing =
+  let unreadable reason =
+    Error (Unreadable_manifest { path = shown; reason })
+  in
+  let invalid text errors =
+    Error (Invalid_manifest { path = shown; text; errors })
+  in
+  match place with
+  | Repo_file.Inside path -> (
+      match Repo_file.read ~root path with
+      | Ok text -> (
+          match Manifest.of_string text with
+          | Ok manifest -> Ok manifest
+          | Error errors -> invalid text errors)
+      | Error (Repo_file.Nothing_at_path | Repo_file.Not_a_repository_path) ->
+          Error missing
+      | Error Repo_file.Symbolic_link -> Error (Manifest_is_a_link shown)
+      | Error Repo_file.Not_regular -> Error (Manifest_not_regular shown)
+      | Error (Repo_file.Cannot_open reason | Repo_file.Cannot_read reason) ->
+          unreadable reason)
+  | Repo_file.Outside path -> (
+      match Manifest.load path with
+      | Ok manifest -> Ok manifest
+      | Error Manifest.Missing -> Error missing
+      | Error (Manifest.Unreadable reason) -> unreadable reason
+      | Error (Manifest.Invalid { text; errors }) -> invalid text errors)
 
 let real_path path =
   match Unix.realpath path with
@@ -194,7 +226,7 @@ let real_path path =
         (Unix.realpath (Filename.dirname path))
         (Filename.basename path)
 
-let manifest_location ~root path =
+let outside_location ~root path =
   match (Unix.realpath root, real_path path) with
   | root, path ->
       let prefix = root ^ "/" in
@@ -329,20 +361,25 @@ type tree = {
 let prepare ~env ~dir ~manifest ~base =
   let* repo = repository (Git.open_repo ~env dir) in
   let root = Git.root repo in
-  let path, shown, missing =
+  let shown = Option.value manifest ~default:"sinter.toml" in
+  let unreadable reason = Unreadable_manifest { path = shown; reason } in
+  let* place =
     match manifest with
-    | None -> (Filename.concat root "sinter.toml", "sinter.toml", No_manifest)
+    | None -> Ok (Repo_file.Inside "sinter.toml")
     | Some given ->
-        ( (if Filename.is_relative given then Filename.concat dir given
-           else given),
-          given,
-          Missing_manifest given )
+        Result.map_error unreadable (Repo_file.place ~root ~dir given)
   in
-  let* manifest_value = load_manifest ~path ~shown ~missing in
+  let missing =
+    match manifest with
+    | None -> No_manifest
+    | Some given -> Missing_manifest given
+  in
+  let* manifest_value = load_manifest ~root ~place ~shown ~missing in
   let* location =
-    Result.map_error
-      (fun reason -> Unreadable_manifest { path = shown; reason })
-      (manifest_location ~root path)
+    match place with
+    | Repo_file.Inside path -> Ok path
+    | Repo_file.Outside path ->
+        Result.map_error unreadable (outside_location ~root path)
   in
   let* () =
     if Sinter_bridge.Utf_8.is_valid location then Ok ()

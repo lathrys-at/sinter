@@ -605,6 +605,8 @@ let every_error =
     Scan.No_manifest;
     Scan.Missing_manifest "m.toml";
     Scan.Unreadable_manifest { path = "m.toml"; reason = "Is a directory" };
+    Scan.Manifest_is_a_link "ci/m.toml";
+    Scan.Manifest_not_regular "ci/m.toml";
     Scan.Manifest_not_utf_8 "m\xff.toml";
     Scan.Invalid_manifest
       { path = "m.toml"; text = "[scan]\n"; errors = [ Manifest.No_pack ] };
@@ -648,6 +650,8 @@ let constructor = function
   | Scan.No_manifest -> "No_manifest"
   | Scan.Missing_manifest _ -> "Missing_manifest"
   | Scan.Unreadable_manifest _ -> "Unreadable_manifest"
+  | Scan.Manifest_is_a_link _ -> "Manifest_is_a_link"
+  | Scan.Manifest_not_regular _ -> "Manifest_not_regular"
   | Scan.Manifest_not_utf_8 _ -> "Manifest_not_utf_8"
   | Scan.Invalid_manifest _ -> "Invalid_manifest"
   | Scan.Two_packs _ -> "Two_packs"
@@ -681,8 +685,8 @@ let constructor = function
 
 let every_error_has_a_fault_and_a_help () =
   Alcotest.(check int)
-    "the examples are of 34 distinct cases, the cases that [constructor] names"
-    34
+    "the examples are of 36 distinct cases, the cases that [constructor] names"
+    36
     (List.length
        (List.sort_uniq String.compare (List.map constructor every_error)));
   List.iter
@@ -745,6 +749,14 @@ let each_error_says_what_is_wrong_and_what_to_do () =
       [
         ( "cannot read the manifest m.toml: Is a directory",
           "name a manifest that is a file that you can read" );
+      ];
+      [
+        ( "ci/m.toml is a symbolic link, and Sinter does not follow links",
+          "commit the manifest as a regular file" );
+      ];
+      [
+        ( "ci/m.toml is not a regular file, and Sinter reads only regular files",
+          "commit the manifest as a regular file" );
       ];
       [
         ( "the path of the manifest d/m\\xff\\xfe.toml is not UTF-8",
@@ -837,6 +849,8 @@ let each_error_says_what_is_wrong_and_what_to_do () =
          Scan.No_manifest;
          Scan.Missing_manifest "m.toml";
          Scan.Unreadable_manifest { path = "m.toml"; reason = "Is a directory" };
+         Scan.Manifest_is_a_link "ci/m.toml";
+         Scan.Manifest_not_regular "ci/m.toml";
          Scan.Manifest_not_utf_8 "d/m\xff\xfe.toml";
          Scan.Invalid_manifest
            { path = "m.toml"; text = "[scan]\n"; errors = manifest_error };
@@ -1306,22 +1320,271 @@ let a_manifest_whose_path_is_not_utf_8_is_an_error () =
     | Error error -> messages error
     | Ok _ -> [ "the scan gives records" ])
 
-let a_manifest_link_to_a_path_that_is_not_utf_8_is_an_error () =
-  let help = not_utf_8_help in
-  let repo = Git_fixture.init () in
-  (match Git_fixture.write repo "conf\xff.toml" manifest with
+let an_outside_link_to_a_path_that_is_not_utf_8_is_an_error () =
+  let repo = repository [ ("a.md", "# A\n") ] in
+  let folder = Unix.realpath (Git_fixture.temp_dir ()) in
+  let target = Filename.concat folder "conf\xff.toml" in
+  (match
+     Out_channel.with_open_bin target (fun channel ->
+         Out_channel.output_string channel manifest)
+   with
   | () -> ()
   | exception Sys_error _ -> Alcotest.skip ());
-  Git_fixture.write repo "a.md" "# A\n";
-  Git_fixture.symlink repo ~target:"conf\xff.toml" "sinter.toml";
-  ignore (Git_fixture.git repo [ "add"; "-A" ]);
-  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  let link = Filename.concat folder "link.toml" in
+  Unix.symlink target link;
   Alcotest.(check (list string))
     "the error names the path that the link names"
-    [ "the path of the manifest conf\\xff.toml is not UTF-8; " ^ help ]
+    [
+      Printf.sprintf "the path of the manifest %s is not UTF-8; %s"
+        (Scan.escape_path target) not_utf_8_help;
+    ]
+    (match scan ~manifest:link ~base:"HEAD" repo with
+    | Error error -> messages error
+    | Ok _ -> [ "the scan gives records" ])
+
+let error_texts error =
+  List.concat_map
+    (fun { Error_text.fault; help; place } ->
+      let line = Option.bind place (fun { Error_text.line; _ } -> line) in
+      fault :: help :: Option.to_list line)
+    (Scan.explain error)
+
+let secret_folder () =
+  let folder = Unix.realpath (Git_fixture.temp_dir ()) in
+  Out_channel.with_open_bin (Filename.concat folder "secret.env")
+    (fun channel -> Out_channel.output_string channel "TOKEN=hidden-value\n");
+  folder
+
+let a_manifest_that_links_out_of_the_repository_is_not_read () =
+  let secret = Filename.concat (secret_folder ()) "secret.env" in
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "a.md" "# A\n";
+  Git_fixture.symlink repo ~target:secret "sinter.toml";
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  match scan ~base:"HEAD" repo with
+  | Error (Scan.Manifest_is_a_link path as error) ->
+      Alcotest.(check string) "the path" "sinter.toml" path;
+      Alcotest.(check (list string))
+        "the texts of the outcome that hold the text of the target" []
+        (List.filter
+           (fun text -> contains "hidden-value" text || contains "secret" text)
+           (error_texts error))
+  | Ok _ -> Alcotest.fail "the scan reads the target as its manifest"
+  | Error error -> Alcotest.fail (String.concat "\n" (messages error))
+
+let a_link_to_a_manifest_in_the_repository_is_an_error () =
+  let repo = repository [ ("conf.toml", manifest); ("a.md", "# A\n") ] in
+  Git_fixture.symlink repo ~target:"conf.toml" "sinter.toml";
+  Alcotest.(check (list string))
+    "the error"
+    [
+      "sinter.toml is a symbolic link, and Sinter does not follow links; \
+       commit the manifest as a regular file";
+    ]
     (match scan ~base:"HEAD" repo with
     | Error error -> messages error
     | Ok _ -> [ "the scan gives records" ])
+
+let a_named_manifest_behind_a_link_in_the_repository_is_an_error () =
+  let repo =
+    repository
+      [
+        ("sinter.toml", manifest); ("real/m.toml", manifest); ("a.md", "# A\n");
+      ]
+  in
+  Git_fixture.symlink repo ~target:"real/m.toml" "last.toml";
+  Git_fixture.symlink repo ~target:"real" "way";
+  Git_fixture.symlink repo ~target:(secret_folder ()) "out";
+  Git_fixture.symlink repo ~target:"nowhere" "dangling";
+  List.iter
+    (fun (dir, given) ->
+      Alcotest.(check (list string))
+        given
+        [
+          given
+          ^ " is a symbolic link, and Sinter does not follow links; commit the \
+             manifest as a regular file";
+        ]
+        (match scan ~dir ~manifest:given ~base:"HEAD" repo with
+        | Error error -> messages error
+        | Ok _ -> [ "the scan gives records" ]))
+    [
+      ("", "last.toml");
+      ("", "way/m.toml");
+      ("", "out/secret.env");
+      ("", "dangling");
+      ("", "dangling/m.toml");
+      ("real", "../last.toml");
+      ("", Filename.concat (Git_fixture.root repo) "way/m.toml");
+    ]
+
+let a_manifest_through_a_link_to_the_root_follows_the_rule () =
+  let repo =
+    repository [ ("sinter.toml", manifest); ("ci/m.toml", manifest) ]
+  in
+  Git_fixture.symlink repo ~target:"m.toml" "ci/l.toml";
+  let alias =
+    Filename.concat (Unix.realpath (Git_fixture.temp_dir ())) "alias"
+  in
+  Unix.symlink (Git_fixture.root repo) alias;
+  Alcotest.(check string)
+    "the manifest of the index" "ci/m.toml"
+    (index_field "manifest"
+       (outcome
+          (scan ~manifest:(Filename.concat alias "ci/m.toml") ~base:"HEAD" repo)));
+  let given = Filename.concat alias "ci/l.toml" in
+  Alcotest.(check string)
+    "the link below the alias"
+    (given
+   ^ " is a symbolic link, and Sinter does not follow links; commit the \
+      manifest as a regular file")
+    (failure (scan ~manifest:given ~base:"HEAD" repo))
+
+let a_manifest_through_a_link_to_a_folder_below_the_root_follows_the_rule () =
+  let repo =
+    repository [ ("sinter.toml", manifest); ("ci/m.toml", manifest) ]
+  in
+  Git_fixture.symlink repo
+    ~target:(Filename.concat (secret_folder ()) "secret.env")
+    "ci/l.toml";
+  let alias =
+    Filename.concat (Unix.realpath (Git_fixture.temp_dir ())) "alias"
+  in
+  Unix.symlink (Filename.concat (Git_fixture.root repo) "ci") alias;
+  Alcotest.(check string)
+    "the manifest of the index" "ci/m.toml"
+    (index_field "manifest"
+       (outcome
+          (scan ~manifest:(Filename.concat alias "m.toml") ~base:"HEAD" repo)));
+  let given = Filename.concat alias "l.toml" in
+  Alcotest.(check string)
+    "the link below the alias"
+    (given
+   ^ " is a symbolic link, and Sinter does not follow links; commit the \
+      manifest as a regular file")
+    (failure (scan ~manifest:given ~base:"HEAD" repo))
+
+let a_path_that_ends_as_a_folder_names_no_manifest () =
+  let repo =
+    repository [ ("sinter.toml", manifest); ("ci/m.toml", manifest) ]
+  in
+  List.iter
+    (fun given ->
+      match scan ~manifest:given ~base:"HEAD" repo with
+      | Error (Scan.Missing_manifest path) ->
+          Alcotest.(check string) "the path" given path
+      | _ -> Alcotest.failf "%s is not Missing_manifest" given)
+    [ "sinter.toml/"; "sinter.toml/."; "ci/m.toml/"; "ci/" ]
+
+let an_outside_path_that_ends_as_a_folder_names_no_manifest () =
+  let repo = repository [ ("sinter.toml", manifest) ] in
+  let folder = Unix.realpath (Git_fixture.temp_dir ()) in
+  let path = Filename.concat folder "m.toml" in
+  Out_channel.with_open_bin path (fun channel ->
+      Out_channel.output_string channel manifest);
+  let given = path ^ "/" in
+  match scan ~manifest:given ~base:"HEAD" repo with
+  | Error (Scan.Missing_manifest shown) ->
+      Alcotest.(check string) "the path" given shown
+  | _ -> Alcotest.fail "the path is not Missing_manifest"
+
+let a_manifest_inside_that_is_not_regular_is_an_error () =
+  let repo = repository [ ("conf.toml", manifest); ("ci/m.toml", manifest) ] in
+  Unix.mkfifo (Filename.concat (Git_fixture.root repo) "pipe.toml") 0o644;
+  Alcotest.(check (list string))
+    "the folder, and the pipe"
+    [
+      "ci is not a regular file, and Sinter reads only regular files; commit \
+       the manifest as a regular file";
+      "pipe.toml is not a regular file, and Sinter reads only regular files; \
+       commit the manifest as a regular file";
+    ]
+    (List.map
+       (fun given -> failure (scan ~manifest:given ~base:"HEAD" repo))
+       [ "ci"; "pipe.toml" ])
+
+let a_root_manifest_that_is_not_regular_is_an_error () =
+  let repo = repository [ ("a.md", "# A\n") ] in
+  Unix.mkdir (Filename.concat (Git_fixture.root repo) "sinter.toml") 0o755;
+  Alcotest.(check string)
+    "the folder"
+    "sinter.toml is not a regular file, and Sinter reads only regular files; \
+     commit the manifest as a regular file"
+    (failure (scan ~base:"HEAD" repo))
+
+let nothing_at_the_path_of_a_manifest_keeps_its_errors () =
+  let repo = repository [ ("a.md", "# A\n") ] in
+  (match scan ~base:"HEAD" repo with
+  | Error Scan.No_manifest -> ()
+  | _ -> Alcotest.fail "no manifest at the root is No_manifest");
+  List.iter
+    (fun given ->
+      match scan ~manifest:given ~base:"HEAD" repo with
+      | Error (Scan.Missing_manifest path) ->
+          Alcotest.(check string) "the path" given path
+      | _ -> Alcotest.failf "%s is not Missing_manifest" given)
+    [ "ci/m.toml"; "a.md/m.toml" ]
+
+let a_manifest_inside_that_does_not_open_is_an_error () =
+  let repo = repository [ ("a.md", "# A\n"); ("m.toml", manifest) ] in
+  let path = Filename.concat (Git_fixture.root repo) "m.toml" in
+  match
+    Unreadable.with_unreadable path (fun () ->
+        scan ~manifest:"m.toml" ~base:"HEAD" repo)
+  with
+  | None ->
+      print_endline "skipped: this user reads a file that has no permissions";
+      Alcotest.skip ()
+  | Some result ->
+      Alcotest.(check string)
+        "the message"
+        ("cannot read the manifest m.toml: "
+        ^ Unix.error_message Unix.EACCES
+        ^ "; name a manifest that is a file that you can read")
+        (failure result)
+
+let a_manifest_inside_with_an_error_shows_it () =
+  let repo = repository [ ("a.md", "# A\n"); ("m.toml", "[scan\n") ] in
+  match scan ~manifest:"m.toml" ~base:"HEAD" repo with
+  | Error (Scan.Invalid_manifest { path; text; _ }) ->
+      Alcotest.(check (pair string string))
+        "the path and the text" ("m.toml", "[scan\n") (path, text)
+  | _ -> Alcotest.fail "the manifest is not invalid"
+
+let a_named_manifest_inside_has_the_path_from_the_root () =
+  let repo = repository [ ("a.md", "# A\n"); ("ci/m.toml", manifest) ] in
+  Alcotest.(check (list string))
+    "the manifest of each scan"
+    [ "ci/m.toml"; "ci/m.toml"; "ci/m.toml"; "ci/m.toml" ]
+    (List.map
+       (fun (dir, given) ->
+         index_field "manifest"
+           (outcome (scan ~dir ~manifest:given ~base:"HEAD" repo)))
+       [
+         ("", "ci/m.toml");
+         ("ci", "m.toml");
+         ("ci", "./../ci/m.toml");
+         ("", Filename.concat (Git_fixture.root repo) "ci/m.toml");
+       ])
+
+let a_path_out_by_the_text_does_not_go_through_a_link () =
+  let repo = repository [ ("a.md", "# A\n"); ("ci/m.toml", manifest) ] in
+  let parent = Filename.dirname (Git_fixture.root repo) in
+  Out_channel.with_open_bin (Filename.concat parent "out.toml") (fun channel ->
+      Out_channel.output_string channel manifest);
+  let far = secret_folder () in
+  Unix.mkdir (Filename.concat far "a") 0o755;
+  Unix.mkdir (Filename.concat far "a/b") 0o755;
+  Unix.mkdir (Filename.concat far "a/b/c") 0o755;
+  Out_channel.with_open_bin (Filename.concat far "out.toml") (fun channel ->
+      Out_channel.output_string channel "not a manifest\n");
+  Git_fixture.symlink repo ~target:(Filename.concat far "a/b/c") "ci/link";
+  Alcotest.(check string)
+    "the manifest by the text of the path"
+    (Filename.concat (Unix.realpath parent) "out.toml")
+    (index_field "manifest"
+       (outcome (scan ~manifest:"ci/link/../../../out.toml" ~base:"HEAD" repo)))
 
 let tests =
   [
@@ -1333,8 +1596,36 @@ let tests =
       a_file_gone_after_the_listing_is_an_error;
     case "a manifest whose path is not UTF-8 is an error"
       a_manifest_whose_path_is_not_utf_8_is_an_error;
-    case "a manifest link to a path that is not UTF-8 is an error"
-      a_manifest_link_to_a_path_that_is_not_utf_8_is_an_error;
+    case "an outside link to a path that is not UTF-8 is an error"
+      an_outside_link_to_a_path_that_is_not_utf_8_is_an_error;
+    case "a manifest that links out of the repository is not read"
+      a_manifest_that_links_out_of_the_repository_is_not_read;
+    case "a link to a manifest in the repository is an error"
+      a_link_to_a_manifest_in_the_repository_is_an_error;
+    case "a named manifest behind a link in the repository is an error"
+      a_named_manifest_behind_a_link_in_the_repository_is_an_error;
+    case "a manifest through a link to the root follows the rule"
+      a_manifest_through_a_link_to_the_root_follows_the_rule;
+    case "a manifest through a link to a folder below the root follows the rule"
+      a_manifest_through_a_link_to_a_folder_below_the_root_follows_the_rule;
+    case "a path that ends as a folder names no manifest"
+      a_path_that_ends_as_a_folder_names_no_manifest;
+    case "an outside path that ends as a folder names no manifest"
+      an_outside_path_that_ends_as_a_folder_names_no_manifest;
+    case "a manifest inside that is not regular is an error"
+      a_manifest_inside_that_is_not_regular_is_an_error;
+    case "a root manifest that is not regular is an error"
+      a_root_manifest_that_is_not_regular_is_an_error;
+    case "nothing at the path of a manifest keeps its errors"
+      nothing_at_the_path_of_a_manifest_keeps_its_errors;
+    case "a manifest inside that does not open is an error"
+      a_manifest_inside_that_does_not_open_is_an_error;
+    case "a manifest inside with an error shows it"
+      a_manifest_inside_with_an_error_shows_it;
+    case "a named manifest inside has the path from the root"
+      a_named_manifest_inside_has_the_path_from_the_root;
+    case "a path out by the text does not go through a link"
+      a_path_out_by_the_text_does_not_go_through_a_link;
     case "the base reads the manifest only when the diff changes it"
       the_base_reads_the_manifest_only_when_the_diff_changes_it;
     case "a manifest that the base does not hold is absent"
