@@ -69,12 +69,6 @@ val explain : error -> Error_text.t list
     {!Manifest.explain} gives it with the lines of the text of the manifest, and
     one error with no place otherwise. *)
 
-val escape_path : string -> string
-(** [escape_path path] is [path] with each byte that is not part of a valid
-    UTF-8 character written as [\x] and two lowercase hexadecimal digits, for
-    example [docs/caf\xe9.md]. A path that is valid UTF-8 comes back as it is.
-*)
-
 (** {1 The tree} *)
 
 (** The base commit, and the revision or the ref that gave it. *)
@@ -116,9 +110,9 @@ type tree = private {
   warnings : string list;
       (** the text of one warning, without the word [warning:], for each file of
           the file set whose path is not UTF-8, in the order of the paths, with
-          the path as {!Display.clean} gives {!escape_path} of it. After
-          {!load_with_base}, the file set of the base counts too, and a path of
-          both file sets has one warning. *)
+          the path as {!Display.clean} gives {!Sinter_bridge.Utf_8.escaped} of
+          it. After {!load_with_base}, the file set of the base counts too, and
+          a path of both file sets has one warning. *)
   deliveries : Delivery_line.found list;
       (** the delivery lines of the change: each line that starts with
           {!Delivery_line.prefix} of the message of each commit of

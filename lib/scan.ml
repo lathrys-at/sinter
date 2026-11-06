@@ -29,19 +29,6 @@ type error =
   | Ledger of Ledger.error
 
 let ( let* ) = Result.bind
-
-let escape_path path =
-  let rec pieces rest =
-    match Sinter_bridge.Utf_8.first_invalid rest with
-    | None -> [ rest ]
-    | Some offset ->
-        String.sub rest 0 offset
-        :: Printf.sprintf "\\x%02x" (Char.code rest.[offset])
-        :: pieces
-             (String.sub rest (offset + 1) (String.length rest - offset - 1))
-  in
-  String.concat "" (pieces path)
-
 let bug = Error_text.fault_of_sinter
 let plain (fault, help) = { Error_text.fault; help; place = None }
 
@@ -81,7 +68,7 @@ let explain = function
       [
         plain
           ( Printf.sprintf "the path of the manifest %s is not UTF-8"
-              (Display.clean (escape_path path)),
+              (Display.clean (Sinter_bridge.Utf_8.escaped path)),
             "move the manifest to a path that is UTF-8" );
       ]
   | Invalid_manifest { path; text; errors } ->
@@ -436,7 +423,7 @@ let prepare ~env ~dir ~manifest ~base =
 
 let not_utf_8_warning path =
   Printf.sprintf "the path %s is not UTF-8, so sinter does not read the file"
-    (Display.clean (escape_path path))
+    (Display.clean (Sinter_bridge.Utf_8.escaped path))
 
 type base_manifest = Outside | Absent | Unchanged | Changed of string
 

@@ -50,7 +50,11 @@ let escaped_writes_each_byte_that_is_not_utf_8 () =
   Alcotest.(check string)
     "a sequence that is cut short gives each of its bytes" "a\\xe2\\x82b"
     (Utf_8.escaped "a\xe2\x82b");
-  Alcotest.(check string) "the empty text" "" (Utf_8.escaped "")
+  Alcotest.(check string) "the empty text" "" (Utf_8.escaped "");
+  Alcotest.(check (list string))
+    "the paths"
+    [ "docs/caf\\xe9.md"; "caf\xc3\xa9.md"; "\\xff\\xfe" ]
+    (List.map Utf_8.escaped [ "docs/caf\xe9.md"; "caf\xc3\xa9.md"; "\xff\xfe" ])
 
 let escaped_gives_valid_text_back =
   property ~name:"escaped gives valid text back" ~print:String.escaped

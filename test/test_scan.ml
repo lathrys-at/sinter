@@ -466,24 +466,32 @@ let a_file_gone_after_the_listing_is_an_error () =
     (unreadable_outcome
        (scan_after repo ~before:(Printf.sprintf "rm -f %s" path)))
 
-let a_byte_outside_utf_8_shows_as_hex () =
-  Alcotest.(check (list string))
-    "the shown paths"
-    [ "docs/caf\\xe9.md"; "a\\xe2\\x82b"; "caf\xc3\xa9.md"; "\\xff\\xfe"; "" ]
-    (List.map Scan.escape_path
-       [ "docs/caf\xe9.md"; "a\xe2\x82b"; "caf\xc3\xa9.md"; "\xff\xfe"; "" ])
-
-let a_shown_path_is_utf_8 =
-  QCheck_alcotest.to_alcotest ~speed_level:`Quick
-    (QCheck2.Test.make ~count:500 ~name:"a shown path is valid UTF-8"
-       ~print:QCheck2.Print.string
-       QCheck2.Gen.(
-         oneof [ Generators.not_utf_8_string; Generators.utf_8_string ])
-       (fun path ->
-         let shown = Scan.escape_path path in
-         Sinter_bridge.Utf_8.is_valid shown
-         && ((not (Sinter_bridge.Utf_8.is_valid path))
-            || String.equal shown path)))
+let a_long_name_in_the_base_allocates_in_proportion_to_its_length () =
+  let repo = repository [ ("sinter.toml", manifest); ("a.md", "# A\n") ] in
+  let length = 40_000 in
+  let base = Git_fixture.commit_with_a_name repo (String.make length '\xff') in
+  let before = Gc.allocated_bytes () in
+  let loaded =
+    Scan.load_with_base ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+      ~manifest:None ~base:(Some base) ()
+  in
+  let allocated = Gc.allocated_bytes () -. before in
+  (match loaded with
+  | Ok (tree, _) ->
+      Alcotest.(check (list int))
+        "the length of the warning"
+        [
+          String.length
+            "the path  is not UTF-8, so sinter does not read the file"
+          + (4 * length);
+        ]
+        (List.map String.length
+           (List.filter (contains "is not UTF-8") tree.warnings))
+  | Error error -> Alcotest.fail (String.concat "; " (messages error)));
+  Alcotest.(check bool)
+    (Printf.sprintf "%.0f bytes allocated, under %d" allocated (5_000 * length))
+    true
+    (allocated < float_of_int (5_000 * length))
 
 let a_plan_file_needs_the_pack_markdown_when_it_names_none () =
   let repo, _, _ = Lazy.force shared in
@@ -1336,7 +1344,8 @@ let an_outside_link_to_a_path_that_is_not_utf_8_is_an_error () =
     "the error names the path that the link names"
     [
       Printf.sprintf "the path of the manifest %s is not UTF-8; %s"
-        (Scan.escape_path target) not_utf_8_help;
+        (Sinter_bridge.Utf_8.escaped target)
+        not_utf_8_help;
     ]
     (match scan ~manifest:link ~base:"HEAD" repo with
     | Error error -> messages error
@@ -1594,6 +1603,8 @@ let tests =
       a_folder_that_becomes_a_link_after_the_listing_is_an_error;
     case "a file gone after the listing is an error"
       a_file_gone_after_the_listing_is_an_error;
+    case "a long name in the base allocates in proportion to its length"
+      a_long_name_in_the_base_allocates_in_proportion_to_its_length;
     case "a manifest whose path is not UTF-8 is an error"
       a_manifest_whose_path_is_not_utf_8_is_an_error;
     case "an outside link to a path that is not UTF-8 is an error"
@@ -1680,8 +1691,6 @@ let tests =
       a_shallow_clone_with_no_merge_base_is_an_error;
     case "a file that does not read is an error"
       a_file_that_does_not_read_is_an_error;
-    case "a byte outside UTF-8 shows as hex" a_byte_outside_utf_8_shows_as_hex;
-    a_shown_path_is_utf_8;
     case "a plan file needs the pack markdown when it names none"
       a_plan_file_needs_the_pack_markdown_when_it_names_none;
     case "a scan that cannot write its output says so"
