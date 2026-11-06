@@ -310,6 +310,35 @@ let import repo commands =
 
 let checkout repo = ignore (git repo [ "reset"; "-q"; "--hard" ])
 
+let raw_id hex =
+  String.init
+    (String.length hex / 2)
+    (fun index ->
+      Char.chr (int_of_string ("0x" ^ String.sub hex (index * 2) 2)))
+
+let commit_with_a_name repo name =
+  let git_id arguments = String.trim (git repo arguments) in
+  let blob = git_id [ "rev-parse"; "HEAD:a.md" ] in
+  let entries =
+    List.sort compare
+      [
+        (name, blob);
+        ("a.md", blob);
+        ("sinter.toml", git_id [ "rev-parse"; "HEAD:sinter.toml" ]);
+      ]
+  in
+  let tree =
+    String.trim
+      (git_input repo
+         [ "hash-object"; "-t"; "tree"; "--literally"; "-w"; "--stdin" ]
+         (String.concat ""
+            (List.map
+               (fun (name, blob) ->
+                 Printf.sprintf "100644 %s\000%s" name (raw_id blob))
+               entries)))
+  in
+  git_id [ "commit-tree"; tree; "-m"; "crafted" ]
+
 let fake_git script =
   let dir = temp_dir () in
   let bin = Filename.concat dir "bin" in

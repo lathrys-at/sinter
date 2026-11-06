@@ -456,6 +456,11 @@ that tree.
 - In both trees, Sinter does not read inside a submodule. It leaves
   each symbolic link out of the file set, and it does not follow a
   symbolic link.
+- In the working tree, Sinter opens a file with no symbolic link
+  followed on the whole path below the repository root. A file that
+  becomes a symbolic link after Sinter lists the file set, or that a new
+  symbolic link now hides, is an error: the command stops with exit
+  code 3.
 - In both trees, a file whose path is not valid UTF-8 is not in the
   file set. The command prints one warning to stderr for each such
   path. The warning gives the path with each byte that is not part of

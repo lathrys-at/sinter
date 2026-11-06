@@ -387,6 +387,85 @@ let a_file_that_does_not_read_is_an_error () =
          set holds only regular files, so no file of the scan can fail to read";
       Alcotest.skip ()
 
+let git_that_runs_before_the_read repo ~before =
+  let dir = Git_fixture.temp_dir () in
+  let env = Array.to_list (Git_fixture.env repo) in
+  let real =
+    List.find_map
+      (fun entry ->
+        if String.starts_with ~prefix:"PATH=" entry then
+          Some (String.sub entry 5 (String.length entry - 5))
+        else None)
+      env
+    |> Option.value ~default:""
+  in
+  let git = Filename.concat dir "git" in
+  Out_channel.with_open_bin git (fun channel ->
+      Printf.fprintf channel
+        "#!/bin/sh\n\
+         case \" $* \" in\n\
+         *\" rev-list \"*) %s ;;\n\
+         esac\n\
+         PATH=%s exec git \"$@\"\n"
+        before (Filename.quote real));
+  Unix.chmod git 0o755;
+  Array.of_list
+    (("PATH=" ^ dir ^ ":" ^ real)
+    :: List.filter
+         (fun entry -> not (String.starts_with ~prefix:"PATH=" entry))
+         env)
+
+let scan_after repo ~before =
+  Scan.run
+    ~env:(git_that_runs_before_the_read repo ~before)
+    ~dir:(Git_fixture.root repo) ~manifest:None ~base:(Some "HEAD") ~tool:"v1"
+    ()
+
+let unreadable_outcome = function
+  | Error (Scan.Unreadable_file { file; error }) ->
+      (file, Repo_file.message file error)
+  | Ok _ -> Alcotest.fail "the scan gives an outcome"
+  | Error error -> Alcotest.fail (String.concat "\n" (messages error))
+
+let a_file_that_becomes_a_link_after_the_listing_is_an_error () =
+  let outside = Filename.concat (Git_fixture.temp_dir ()) "secret.md" in
+  Out_channel.with_open_bin outside (fun channel ->
+      Out_channel.output_string channel "@req hidden-value\n");
+  let repo = repository [ ("sinter.toml", manifest); ("a.md", "# A\n") ] in
+  let path = Filename.quote (Filename.concat (Git_fixture.root repo) "a.md") in
+  Alcotest.(check (pair string string))
+    "the file and the message"
+    ("a.md", "a.md is a symbolic link, and Sinter does not follow links")
+    (unreadable_outcome
+       (scan_after repo
+          ~before:
+            (Printf.sprintf "rm -f %s; ln -s %s %s" path
+               (Filename.quote outside) path)))
+
+let a_folder_that_becomes_a_link_after_the_listing_is_an_error () =
+  let outside = Git_fixture.temp_dir () in
+  Out_channel.with_open_bin (Filename.concat outside "a.md") (fun channel ->
+      Out_channel.output_string channel "@req hidden-value\n");
+  let repo = repository [ ("sinter.toml", manifest); ("d/a.md", "# A\n") ] in
+  let folder = Filename.quote (Filename.concat (Git_fixture.root repo) "d") in
+  Alcotest.(check (pair string string))
+    "the file and the message"
+    ("d/a.md", "d/a.md is a symbolic link, and Sinter does not follow links")
+    (unreadable_outcome
+       (scan_after repo
+          ~before:
+            (Printf.sprintf "rm -rf %s; ln -s %s %s" folder
+               (Filename.quote outside) folder)))
+
+let a_file_gone_after_the_listing_is_an_error () =
+  let repo = repository [ ("sinter.toml", manifest); ("a.md", "# A\n") ] in
+  let path = Filename.quote (Filename.concat (Git_fixture.root repo) "a.md") in
+  Alcotest.(check (pair string string))
+    "the file and the message"
+    ("a.md", "a.md: no file is at this path")
+    (unreadable_outcome
+       (scan_after repo ~before:(Printf.sprintf "rm -f %s" path)))
+
 let a_byte_outside_utf_8_shows_as_hex () =
   Alcotest.(check (list string))
     "the shown paths"
@@ -495,14 +574,15 @@ let a_check_that_cannot_write_its_output_says_so () =
 let text { Error_text.fault; help; _ } = (fault, help)
 let tree_errors = Sinter_bridge.Tree.[ Did_not_finish; Too_long ]
 
-let text_file_errors =
-  Text_file.
+let repo_file_errors =
+  Repo_file.
     [
-      Is_a_directory;
-      Cannot_open "a.md: the file does not open";
+      Not_a_repository_path;
+      Nothing_at_path;
+      Symbolic_link;
+      Not_regular;
+      Cannot_open "the file does not open";
       Cannot_read "no read";
-      Shorter_than_its_length;
-      Not_utf_8 3;
     ]
 
 let every_error =
@@ -539,7 +619,7 @@ let every_error =
   ]
   @ List.map
       (fun error -> Scan.Unreadable_file { file = "a.md"; error })
-      text_file_errors
+      repo_file_errors
   @ List.map
       (fun error -> Scan.Unparsed_file { file = "a.md"; error })
       tree_errors
@@ -580,12 +660,13 @@ let constructor = function
   | Scan.No_head -> "No_head"
   | Scan.Unreadable_file { error; _ } -> (
       match error with
-      | Text_file.Is_a_directory -> "Unreadable_file Is_a_directory"
-      | Text_file.Cannot_open _ -> "Unreadable_file Cannot_open"
-      | Text_file.Cannot_read _ -> "Unreadable_file Cannot_read"
-      | Text_file.Shorter_than_its_length ->
-          "Unreadable_file Shorter_than_its_length"
-      | Text_file.Not_utf_8 _ -> "Unreadable_file Not_utf_8")
+      | Repo_file.Not_a_repository_path ->
+          "Unreadable_file Not_a_repository_path"
+      | Repo_file.Nothing_at_path -> "Unreadable_file Nothing_at_path"
+      | Repo_file.Symbolic_link -> "Unreadable_file Symbolic_link"
+      | Repo_file.Not_regular -> "Unreadable_file Not_regular"
+      | Repo_file.Cannot_open _ -> "Unreadable_file Cannot_open"
+      | Repo_file.Cannot_read _ -> "Unreadable_file Cannot_read")
   | Scan.Unparsed_file { error; _ } -> (
       match error with
       | Sinter_bridge.Tree.Did_not_finish -> "Unparsed_file Did_not_finish"
@@ -600,8 +681,8 @@ let constructor = function
 
 let every_error_has_a_fault_and_a_help () =
   Alcotest.(check int)
-    "the examples are of 33 distinct cases, the cases that [constructor] names"
-    33
+    "the examples are of 34 distinct cases, the cases that [constructor] names"
+    34
     (List.length
        (List.sort_uniq String.compare (List.map constructor every_error)));
   List.iter
@@ -770,7 +851,7 @@ let each_error_says_what_is_wrong_and_what_to_do () =
          Scan.Unreadable_file
            {
              file = "a.md";
-             error = Text_file.Cannot_open "a.md: the file does not open";
+             error = Repo_file.Cannot_open "the file does not open";
            };
          Scan.Unparsed_file
            { file = "a.md"; error = Sinter_bridge.Tree.Did_not_finish };
@@ -1244,6 +1325,12 @@ let a_manifest_link_to_a_path_that_is_not_utf_8_is_an_error () =
 
 let tests =
   [
+    case "a file that becomes a link after the listing is an error"
+      a_file_that_becomes_a_link_after_the_listing_is_an_error;
+    case "a folder that becomes a link after the listing is an error"
+      a_folder_that_becomes_a_link_after_the_listing_is_an_error;
+    case "a file gone after the listing is an error"
+      a_file_gone_after_the_listing_is_an_error;
     case "a manifest whose path is not UTF-8 is an error"
       a_manifest_whose_path_is_not_utf_8_is_an_error;
     case "a manifest link to a path that is not UTF-8 is an error"

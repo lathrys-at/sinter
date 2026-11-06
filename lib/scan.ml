@@ -20,7 +20,7 @@ type error =
   | No_merge_base of string
   | Shallow_clone of string
   | No_head
-  | Unreadable_file of { file : string; error : Text_file.error }
+  | Unreadable_file of { file : string; error : Repo_file.error }
   | Unparsed_file of { file : string; error : Sinter_bridge.Tree.error }
   | Unparsed_base_file of { file : string; error : Sinter_bridge.Tree.error }
   | Reader of Markdown.load_error
@@ -136,7 +136,7 @@ let explain = function
   | Unreadable_file { file; error } ->
       [
         plain
-          ( Text_file.message file error,
+          ( Repo_file.message file error,
             "make the file readable, or leave it out of the files of the pack \
              markdown with a '!' glob" );
       ]
@@ -296,8 +296,7 @@ let documents ?phases reader ~root files =
     (fun found file ->
       let* documents, not_text = found in
       match
-        Allocation.measure phases "read" (fun () ->
-            Text_file.read (Filename.concat root file))
+        Allocation.measure phases "read" (fun () -> Repo_file.read ~root file)
       with
       | Error error -> Error (Unreadable_file { file; error })
       | Ok content -> (

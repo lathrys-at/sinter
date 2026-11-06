@@ -39,8 +39,10 @@ type error =
       (** the repository is a shallow clone, and it holds no default branch of
           this name or no merge base of [HEAD] and that branch *)
   | No_head  (** [HEAD] names no commit *)
-  | Unreadable_file of { file : string; error : Text_file.error }
-      (** a file of the pack [markdown] does not read *)
+  | Unreadable_file of { file : string; error : Repo_file.error }
+      (** a file of the pack [markdown] does not read. It can be gone since the
+          listing of the file set, or a symbolic link in its path can be new
+          since then. *)
   | Unparsed_file of { file : string; error : Sinter_bridge.Tree.error }
       (** the parse of a file of the pack [markdown] gives no tree *)
   | Unparsed_base_file of { file : string; error : Sinter_bridge.Tree.error }
