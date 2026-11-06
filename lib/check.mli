@@ -119,7 +119,7 @@ val messages : report -> string list
     line feeds. In the forms [Full] and [Brief]: the {!summary} of the entries,
     with the number of documents of the tree, unless the check is quiet; then
     [warning: ] and the text of each warning: those of the tree, and then
-    {!Scan.ledger_warning} of the facts of the working tree when there is one;
+    {!Scan.ledger_warnings} of the ledger and the facts of the working tree;
     then, unless the check is quiet, [note: ] and {!fold_note} of the items of
     {!fold} when there is one; then, when the check is verbose and not quiet,
     [note: ] and {!Scan.base_note} of the base. In the forms [Json],
@@ -178,11 +178,14 @@ val run :
     {!Porcelain.add_header}: [porcelain] and [1], and then each header of
     {!Porcelain.headers} that [names] holds, in that order and once each, with
     its {!Porcelain.header_name} and its value. The value is: for [Base], the
-    {!Scan.base_commit} of the base; for [Ledger], {!Scan.ledger_commit} of the
-    working tree, or [none]; for [Gate], the {!Finding_class.gate_name} of
-    [gate], or [none]; for [Mode], the {!Mode.name} of [mode]; for [Tool],
-    [tool]. The ledger ref is read only when [names] holds [Ledger], and an
-    error of {!Scan.ledger_commit} is the error of the check.
+    {!Scan.base_commit} of the base; for [Ledger], {!Ledger.tip} of the ledger,
+    or [none]; for [Gate], the {!Finding_class.gate_name} of [gate], or [none];
+    for [Mode], the {!Mode.name} of [mode]; for [Tool], [tool].
+
+    The check reads the ledger with {!Scan.ledger}: the whole history at the
+    gate [Merged], and the tip at every other gate and with no gate. An error of
+    the read is the error of the check. The facts of the working tree and of the
+    base take the entries of the ledger.
 
     In the mode [Tree], the findings are those of the working tree. In the mode
     [Diff], they are the findings of the working tree less the findings of the

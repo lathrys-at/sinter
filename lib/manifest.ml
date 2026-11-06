@@ -120,7 +120,7 @@ type problem =
       gate : Finding_class.gate;
     }
   | Never_blocks
-  | No_tier_at_any_gate
+  | No_tier_at_any_gate of Finding_class.t
   | Plan_location
   | Markdown_version
   | Markdown_runners
@@ -265,7 +265,10 @@ let problem_text = function
   | Never_blocks ->
       ( "'config-changed' takes no tier; it always reports and never blocks",
         remove )
-  | No_tier_at_any_gate -> ("'pack-mismatch' takes no tier at any gate", remove)
+  | No_tier_at_any_gate finding_class ->
+      ( Printf.sprintf "%s takes no tier at any gate"
+          (Toml.quote (Finding_class.name finding_class)),
+        remove )
   | Plan_location ->
       ("'plan' takes no location; plan files always live under .plans/", remove)
   | Markdown_version ->
@@ -583,7 +586,12 @@ let tier_place reading gate =
     (fun key ->
       match Finding_class.of_name key.name with
       | Some Finding_class.Config_changed -> Error Never_blocks
-      | Some Finding_class.Pack_mismatch -> Error No_tier_at_any_gate
+      | Some finding_class
+        when List.for_all
+               (fun gate ->
+                 Finding_class.builtin_tier finding_class gate = None)
+               Finding_class.gates ->
+          Error (No_tier_at_any_gate finding_class)
       | Some finding_class -> (
           match Finding_class.builtin_tier finding_class gate with
           | None -> Error (No_tier_at_gate { finding_class; gate })

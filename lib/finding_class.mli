@@ -98,7 +98,7 @@ val of_name : string -> t option
 val builtin_tier : t -> gate -> tier option
 (** [builtin_tier finding_class gate] is the tier that the class has at the gate
     when nothing sets another. It is [None] when the class takes no tier at that
-    gate. [Pack_mismatch] takes no tier at any gate. *)
+    gate. [Pack_mismatch] and [Ledger_broken] take no tier at any gate. *)
 
 val summary : t -> string
 (** [summary finding_class] is one sentence for a person that says what a

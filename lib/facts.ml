@@ -182,6 +182,7 @@ end)
 
 type t = {
   manifest : Manifest.t;
+  ledger : Ledger.entry list;
   files : (string * Markdown.t) list;
   declarations : declaration array;
   inforce : bool array;
@@ -634,7 +635,7 @@ let lookups (declarations : declaration array) edges targets plans =
            edges);
   }
 
-let make manifest files =
+let make manifest ~ledger files =
   let ordinary, plans =
     List.partition_map
       (fun (path, document) ->
@@ -666,6 +667,7 @@ let make manifest files =
   let acks = List.rev acks in
   {
     manifest;
+    ledger;
     files;
     declarations;
     inforce = in_force ~retirers declarations edges targets;
@@ -742,51 +744,32 @@ let optional name = function None -> [] | Some value -> [ (name, value) ]
 let text_unless_empty name text =
   if String.equal text "" then [] else [ (name, Jsonl.string text) ]
 
-let canonical_bytes value =
-  match Json.to_string value with
-  | Ok text -> text
-  | Error _ -> invalid_arg "Sinter_core.Facts: a glob or a slug is not UTF-8"
-
-let globs_json globs =
-  Json.Array (List.map (fun glob -> Json.String glob) globs)
-
 let canonical globs = List.sort_uniq String.compare globs
 
 let effective_scope plan (step : step) =
   Option.value step.own_scope ~default:plan.scope
 
 let commitment_hash plan =
-  let promises =
-    List.concat_map
-      (fun (step : step) ->
-        let scope = globs_json (canonical (effective_scope plan step)) in
-        List.map
-          (fun (promise : promise) ->
-            (promise.word, promise.target, canonical_bytes scope, scope))
-          step.promises)
-      plan.steps
-  in
-  let objects =
+  let pairs (step : step) =
     List.map
-      (fun (word, target, _, scope) ->
-        Json.Object
-          [
-            ("scope", scope);
-            ("target", Json.String target);
-            ("word", Json.String word);
-          ])
-      (List.sort
-         (fun (w1, t1, s1, _) (w2, t2, s2, _) ->
-           compare (w1, t1, s1) (w2, t2, s2))
-         promises)
+      (fun (promise : promise) -> (promise.word, promise.target))
+      step.promises
   in
-  Sha256.hex
-    (canonical_bytes
-       (Json.Object
-          [
-            ("promises", Json.Array objects);
-            ("scope", globs_json (canonical plan.scope));
-          ]))
+  Commitment_set.hash ~scope:plan.scope
+    ({
+       Commitment_set.scope = plan.scope;
+       promises =
+         List.concat_map
+           (fun (step : step) ->
+             if Option.is_none step.own_scope then pairs step else [])
+           plan.steps;
+     }
+    :: List.filter_map
+         (fun (step : step) ->
+           Option.map
+             (fun scope -> { Commitment_set.scope; promises = pairs step })
+             step.own_scope)
+         plan.steps)
 
 let needs_approval manifest kind =
   Manifest.approval manifest kind = Manifest.Approval
@@ -1203,6 +1186,7 @@ let identities facts =
   List.rev !found
 
 let manifest facts = facts.manifest
+let ledger facts = facts.ledger
 let files facts = facts.files
 let declarations facts = Array.to_list facts.declarations
 let is_in_force facts index = facts.inforce.(index)
@@ -1328,7 +1312,7 @@ let covered facts paths =
     (fun (id, scope) -> if held.(scope) then Some id else None)
     (Array.to_list steps)
 
-let index ~tree ~base ~default_branch ~manifest ~tool ~mode =
+let index ~tree ~base ~default_branch ~manifest ~ledger ~tool ~mode =
   [
     ("v", Jsonl.int 1);
     ("kind", Jsonl.string "index");
@@ -1336,8 +1320,13 @@ let index ~tree ~base ~default_branch ~manifest ~tool ~mode =
     ("base", Jsonl.string base);
     ("default_branch", Jsonl.string default_branch);
     ("manifest", Jsonl.string manifest);
-    ("evidence", Jsonl.bool false);
-    ("packs", Jsonl.strings []);
-    ("tool", Jsonl.string tool);
-    ("mode", Jsonl.string (Mode.name mode));
   ]
+  @ (match ledger with
+    | Some commit -> [ ("ledger", Jsonl.string commit) ]
+    | None -> [])
+  @ [
+      ("evidence", Jsonl.bool false);
+      ("packs", Jsonl.strings []);
+      ("tool", Jsonl.string tool);
+      ("mode", Jsonl.string (Mode.name mode));
+    ]

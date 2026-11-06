@@ -135,9 +135,9 @@ conformance fixtures ship their own ledger and evidence.
 | `status` | string | `deprecated`, `rejected`, or `deferred`; omitted when none |
 | `inforce` | bool | *derived* |
 | `approved` | bool | *derived* |
-| `approval` | string | *derived*: the id of the `approval` entry of the ledger that approves the declaration; omitted when none |
+| `approval` | string | *derived*: the id of the `approval` entry of the ledger that counts for the declaration ([ledger.md](ledger.md) section 5.2); omitted when none |
 | `approval_required` | bool | whether the kind needs approval: its key `proof.<kind>` is `"approval"` ([manifest.md](manifest.md) section 10.1) |
-| `declined` | bool | *derived*: a live decline exists for `(slug, xh)` |
+| `declined` | bool | *derived*: a live decline exists for the declaration ([ledger.md](ledger.md) section 7.2) |
 
 Sinter makes the field `desc` in three steps:
 
@@ -165,11 +165,11 @@ Example:
 | `title` | string | the heading text of the section that holds the `@plan` tag ([vocabulary.md](vocabulary.md) section 10.3); omitted for the section of level 0 |
 | `scope` | array of string | plan-level globs |
 | `approved` | bool | *derived*: the plan is approved ([algebra.md](algebra.md) section 6.5) |
-| `approval` | string | *derived* |
+| `approval` | string | *derived*: the id of the latest `approval` entry of the plan that has its set ([ledger.md](ledger.md) section 6); omitted when none |
 | `active` | bool | *derived* from the session; `false` when there is no session |
 | `open` | bool | *derived*: the plan is open — the ledger holds no `completed` entry and no `abandoned` entry for its full form ([ledger.md](ledger.md) section 10) |
 | `csh` | string | the commitment-set hash, as the text after this table gives it |
-| `declined` | bool | *derived* |
+| `declined` | bool | *derived*: a live decline exists for the plan ([ledger.md](ledger.md) section 7.2) |
 
 The **commitment-set hash** (`csh`) is SHA-256 over canonical bytes
 that hold the plan's commitment set ([vocabulary.md](vocabulary.md)
@@ -233,7 +233,7 @@ Example: this plan file gives the canonical bytes below it.
 | `delivered` | bool | *derived*: the step is delivered ([vocabulary.md](vocabulary.md) section 10.8) |
 | `delivery` | string | the delivery line of the step ([vocabulary.md](vocabulary.md) section 10.8), for example `Delivers: sinter-v0.1@097ce8/check-a-tree 05ef56`; omitted when the slug of the step is empty |
 | `approved` | bool | *derived*: the step is approved ([algebra.md](algebra.md) section 6.5) |
-| `approval` | string | *derived*: the id of the `approval` entry of the ledger that approves the step ([ledger.md](ledger.md) section 5.1); omitted when none |
+| `approval` | string | *derived*: the id of the `approval` entry of the ledger that counts for the step ([ledger.md](ledger.md) section 5.2); omitted when none |
 | `active` | bool | *derived* from the session; `false` when there is no session |
 
 The **step hash** (`csh` of a step) is SHA-256 over canonical bytes
@@ -402,20 +402,22 @@ into the evidence directory, never into the tree.
 ledger ([ledger.md](ledger.md) section 10.2). It emits one record for
 each plan that meets all three conditions:
 
-- The ledger holds an approval of the plan.
+- The ledger holds an approval of the plan with its set
+  ([ledger.md](ledger.md) section 6).
 - The plan is open ([ledger.md](ledger.md) section 10).
 - The current tree holds no plan with the full form of the plan.
 
 | field | type | meaning |
 |---|---|---|
 | `plan` | string | the full form of the plan ([vocabulary.md](vocabulary.md) section 4.3) |
-| `approval` | string | the id of the latest `approval` entry whose subject is the plan |
-| `scope` | array of string | union of the approved step scopes |
-| `declares` | array of string | slugs the claim promises to declare |
-| `ts` | string | RFC 3339 timestamp of the approval |
+| `approval` | string | the id of the latest `approval` entry of the plan that has its set |
+| `scope` | array of string | the union of the effective scopes ([ledger.md](ledger.md) section 6) of the steps that the set of that approval names, in `scopes` or in `promises`; each glob once, in byte order |
+| `declares` | array of string | the slugs that the promises of that set promise to declare |
+| `ts` | string | the `ts` of that approval, as information only ([ledger.md](ledger.md) section 3.4) |
 
 **`decline`** — unlocated. Sinter projects decline records from the
-ledger. It emits live entries only.
+ledger. It emits live declines only ([ledger.md](ledger.md) section
+7.2).
 
 | field | type | meaning |
 |---|---|---|
@@ -663,6 +665,7 @@ path can contain `@`.
 | a line | `line:<path>@L<line>` | `typo-tag` and `ignored-tag`, at the tag line; `duplicate` of a step, at the line of the step's heading |
 | a tag | `tag:<path>@L<line>C<column>`, from the position of the `@` of the tag | `invalid-target`; `misplaced-plan`; `duplicate` of a declaration or a plan |
 | a line of a commit message | `message:<commit>@L<line>`, where `<commit>` is the object id of the commit and `<line>` the number of the line in its message, from 1 | `stale-delivery` |
+| a commit of the ledger | `ledger:<commit>`, where `<commit>` is the object id of the commit that holds the fault, or the object id that the ledger ref names when that object is no commit ([ledger.md](ledger.md) section 13.5) | `ledger-broken` |
 
 The mark and the related places of a finding never enter its id.
 

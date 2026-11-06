@@ -10,6 +10,7 @@ type subject =
   | Line of { path : string; line : int }
   | Tag of { path : string; position : Markdown.position }
   | Message_line of { commit : string; line : int }
+  | Ledger_commit of string
 
 let subject_id = function
   | Fact { id; _ } -> id
@@ -20,10 +21,12 @@ let subject_id = function
   | Tag { path; position } ->
       Printf.sprintf "tag:%s@L%dC%d" path position.line position.column
   | Message_line { commit; line } -> Printf.sprintf "message:%s@L%d" commit line
+  | Ledger_commit commit -> "ledger:" ^ commit
 
 let ack_subject = function
   | Fact { ack_name; _ } -> ack_name
-  | (File _ | Error_node _ | Line _ | Tag _ | Message_line _) as subject ->
+  | (File _ | Error_node _ | Line _ | Tag _ | Message_line _ | Ledger_commit _)
+    as subject ->
       subject_id subject
 
 type mark = { start : int; stop : int; label : string }

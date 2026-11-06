@@ -47,6 +47,10 @@ type error =
       (** the parse of the content that the base holds for a file of the pack
           [markdown] gives no tree *)
   | Reader of Markdown.load_error  (** the built-in grammar does not load *)
+  | Ledger of Ledger.error
+      (** the ledger does not read: git fails, the ledger is broken, an entry
+          has a version above {!Ledger.version}, or the clone lacks an object of
+          the ledger *)
 
 val explain : error -> Error_text.t list
 (** [explain error] says what is wrong and what to do, for the person who runs
@@ -191,28 +195,45 @@ val load_with_base :
 
     @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
 
-val ledger_commit : tree -> (string option, error) result
-(** [ledger_commit tree] is the object id of the commit that the ref
-    [refs/sinter/ledger] of the repository of [tree] names; [None] when the ref
-    names no commit ({!Git.commit_of} gives [Bad_revision]). The error is
-    [Repository] with any other error of {!Git.commit_of}. *)
+val ledger :
+  ?phases:Allocation.t ->
+  tree ->
+  Ledger.depth ->
+  (Ledger.t option, error) result
+(** [ledger tree depth] is the ledger of the repository of [tree], as
+    {!Ledger.read} reads and checks it to [depth]; [None] when the repository
+    has no ledger ref. The error is [Ledger] with the error of {!Ledger.read}.
+    With [phases], it counts the words of the read in the phase [repository].
 
-val ledger_warning : tree -> Facts.t -> string option
-(** [ledger_warning tree facts] is the text of the warning
-    [no ledger found, so every plan counts as open] when [facts] hold at least
-    one plan and {!ledger_commit} of [tree] is [None]; [None] otherwise. It runs
-    git only when [facts] hold a plan. *)
+    @raise Sinter_bridge.Error if the bridge stops on an internal fault. *)
 
-val index : ?mode:Mode.t -> tree -> tool:string -> (Jsonl.record, error) result
-(** [index tree ~tool] is the index record of [tree]. [tool] is the version of
-    the tool. [mode] is the mode of the run; the default is [Tree]. *)
+val ledger_warnings : Ledger.t option -> Facts.t -> string list
+(** [ledger_warnings ledger facts] is the text of each warning about the ledger:
+    {!Ledger.warning} of [ledger] when it has one; and when [ledger] is [None]
+    and [facts] hold at least one plan,
+    [no ledger found, so every plan counts as open]. *)
+
+val entries : Ledger.t option -> Ledger.entry list
+(** [entries ledger] is {!Ledger.entries} of [ledger], and the empty list for
+    [None]. *)
+
+val index :
+  ?mode:Mode.t ->
+  tree ->
+  ledger:Ledger.t option ->
+  tool:string ->
+  (Jsonl.record, error) result
+(** [index tree ~ledger ~tool] is the index record of [tree]. Its field [ledger]
+    is {!Ledger.tip} of [ledger], and it has no such field for [None]. [tool] is
+    the version of the tool. [mode] is the mode of the run; the default is
+    [Tree]. *)
 
 (** {1 The scan} *)
 
 type outcome = {
   warnings : string list;
-      (** the warnings of the {!tree}, and then the {!ledger_warning} of its
-          facts when there is one *)
+      (** the warnings of the {!tree}, and then the {!ledger_warnings} of the
+          ledger and the facts *)
   records : Jsonl.record list;
       (** the index record, and then the records of the facts in their order *)
 }

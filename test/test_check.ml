@@ -907,6 +907,16 @@ let sarif_writes_one_log_at_the_gate () =
               ignore (run None))
       | lines -> Alcotest.failf "%d lines" (List.length lines))
 
+let a_sarif_check_with_no_gate_raises_before_it_reads () =
+  let dir = "/" in
+  Alcotest.check_raises "no gate, outside a repository"
+    (Invalid_argument "Sinter_core.Check.run: the form Sarif needs a gate")
+    (fun () ->
+      ignore
+        (Check.run ~env:(Unix.environment ()) ~dir ~manifest:None ~base:None
+           ~mode:Mode.Tree ~gate:None ~strict:false ~form:Check.Sarif
+           ~verbose:false ~quiet:false ~tool:"v1" ()))
+
 let notices_write_the_warning_and_the_note_in_their_styles () =
   let repo = Git_fixture.init () in
   Git_fixture.write repo "sinter.toml" packs;
@@ -1209,13 +1219,17 @@ let each_header_prints_alone_after_the_version () =
 let the_headers_print_once_each_in_their_order () =
   let repo = porcelain_repo () in
   let head = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]) in
-  ignore (Git_fixture.git repo [ "update-ref"; "refs/sinter/ledger"; "HEAD" ]);
+  let empty = String.trim (Git_fixture.git_input repo [ "mktree" ] "") in
+  let ledger =
+    String.trim (Git_fixture.git repo [ "commit-tree"; empty; "-m"; "l" ])
+  in
+  ignore (Git_fixture.git repo [ "update-ref"; "refs/sinter/ledger"; ledger ]);
   Alcotest.(check (list string))
     "all five, in a mixed order with a repeat, in diff mode at a gate"
     [
       "# porcelain 1";
       "# base " ^ head;
-      "# ledger " ^ head;
+      "# ledger " ^ ledger;
       "# gate merged";
       "# mode diff";
       "# tool v9.9.9-dev+abc";
@@ -1237,11 +1251,38 @@ let the_headers_print_once_each_in_their_order () =
     (header_lines (porcelain_report Porcelain.No_headers repo)
     @ header_lines (porcelain_report (Porcelain.Headers []) repo))
 
+let a_broken_history_stops_only_the_gate_merged () =
+  let repo = porcelain_repo () in
+  let entries = List.init 3 Sinter_bench.Generated_ledger.entry in
+  let commands =
+    List.mapi
+      (fun index lines ->
+        Git_fixture.commit ~ref:"refs/sinter/ledger" ~mark:(index + 1)
+          ~message:"l"
+          (List.map
+             (fun (path, content) -> Git_fixture.File (path, content))
+             (Sinter_bench.Generated_ledger.chunks lines)))
+      [ entries; [ List.hd entries ] ]
+  in
+  Git_fixture.import repo commands;
+  let stops gate =
+    match porcelain_check ?gate Porcelain.No_headers repo with
+    | Error (Scan.Ledger (Ledger.Broken _)) -> true
+    | Ok _ | Error _ -> false
+  in
+  Alcotest.(check (list bool))
+    "no gate, turn, review, merged"
+    [ false; false; false; true ]
+    [
+      stops None;
+      stops (Some Finding_class.Turn);
+      stops (Some Finding_class.Review);
+      stops (Some Finding_class.Merged);
+    ]
+
 let a_failed_lookup_of_the_ledger_is_an_error () =
   let repo = porcelain_repo () in
-  let tree =
-    String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD^{tree}" ])
-  in
+  let tree = String.trim (Git_fixture.git_input repo [ "mktree" ] "") in
   let commit =
     String.trim (Git_fixture.git repo [ "commit-tree"; "-m"; "l"; tree ])
   in
@@ -1255,18 +1296,18 @@ let a_failed_lookup_of_the_ledger_is_an_error () =
   Out_channel.with_open_bin file (fun channel ->
       Out_channel.output_string channel "xx");
   Alcotest.(check (pair bool bool))
-    "the header ledger fails, and a run that does not name it does not"
+    "a run with the header ledger fails, and so does a run without it"
     (true, true)
     ( (match porcelain_check (Porcelain.Headers [ Porcelain.Ledger ]) repo with
-      | Error (Scan.Repository _) -> true
+      | Error (Scan.Ledger (Ledger.Missing_object _)) -> true
       | Ok _ | Error _ -> false),
       match
         porcelain_check
           (Porcelain.Headers [ Porcelain.Base; Porcelain.Gate ])
           repo
       with
-      | Ok _ -> true
-      | Error _ -> false )
+      | Error (Scan.Ledger (Ledger.Missing_object _)) -> true
+      | Ok _ | Error _ -> false )
 
 let a_tool_header_that_needs_quotes_is_refused () =
   let repo = porcelain_repo () in
@@ -1428,6 +1469,10 @@ let tests =
       each_header_prints_alone_after_the_version;
     case "the headers print once each in their order"
       the_headers_print_once_each_in_their_order;
+    case "a SARIF check with no gate raises before it reads"
+      a_sarif_check_with_no_gate_raises_before_it_reads;
+    case "a broken history stops only the gate merged"
+      a_broken_history_stops_only_the_gate_merged;
     case "a failed lookup of the ledger is an error"
       a_failed_lookup_of_the_ledger_is_an_error;
     case "a tool header that needs quotes is refused"

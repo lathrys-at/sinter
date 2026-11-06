@@ -542,20 +542,23 @@ allocates, and the instruction count of `sinter scan` and
 `sinter check`. It runs each command on Sinter's own checkout and on
 generated trees: git repositories of a given number of declarations,
 made from a fixed seed. The same seed and the same number give the
-same tree on every run. From the repository root:
+same tree on every run. It also measures `sinter ledger log` and
+`sinter ledger verify` on generated ledgers of 10, 1,000, and 100,000
+entries, with one commit for each entry. From the repository root:
 
 ```
 dune build @bench
 dune build @bench-large
 ```
 
-`@bench` measures Sinter itself and the trees of 1,000 and 10,000
-declarations. `@bench-large` adds the tree of 100,000 declarations,
-which takes several minutes. `dune test` runs neither. The trees go to
-a temporary folder outside `_build`, and the run removes them at its
-end. Each command runs once to warm up and then five times, three for
-`@bench-large`. The run prints a JSON object and a table of the
-medians and their spread, and checks the budgets.
+`@bench` measures Sinter itself, the trees of 1,000 and 10,000
+declarations, and the three ledgers. `@bench-large` adds the tree of
+100,000 declarations, which takes several minutes. `dune test` runs
+neither. The trees go to a temporary folder outside `_build`, and the
+run removes them at its end. Each command runs once to warm up and
+then five times, three for `@bench-large`. The run prints a JSON
+object and a table of the medians and their spread, and checks the
+budgets.
 
 The executables are `bench/run.exe` and `bench/generate.exe`, and
 `--help` gives the options and the output of each. To compare two
@@ -585,7 +588,9 @@ bytes on a 64-bit machine): `repository`, `read`, `parse`, `facts`,
 `records` (scan) or `findings` (check), and `output`. `check` also has
 `base-read`, which reads the base. `check --diff` also has
 `base-facts` and `base-findings`, which make the facts and the
-findings of the whole base. The runner sets
+findings of the whole base. `sinter ledger log` and
+`sinter ledger verify` write the phases `repository`, `ledger` (the
+read and the check of the ledger), and `output`. The runner sets
 the variable for each run. The count is the
 same on every run of one input at one path. The counts of `repository`
 and `read` also grow with the length of the path of the tree.
@@ -593,7 +598,9 @@ and `read` also grow with the length of the path of the tree.
 `bench/budgets.toml` holds one budget for each command, the growth
 limit (`docs/decisions/performance-budgets.md`). The growth of a phase
 is the words on the tree of 10,000 declarations, divided by the words
-on the tree of 1,000 declarations. A step whose cost grows faster than
+on the tree of 1,000 declarations. For the commands of the ledger, it
+is the words on the ledger of 100,000 entries, divided by the words on
+the ledger of 1,000 entries. A step whose cost grows faster than
 the tree raises the growth of its phase. The limit applies to each
 phase, on every platform. A command can give one phase a limit of its
 own, under `phases`: the findings phase of `sinter check` has the limit

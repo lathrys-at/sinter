@@ -414,7 +414,7 @@ let configuration (tree : Scan.tree) (compared : Scan.compared) ~base facts =
   | Scan.Absent -> read None
   | Scan.Changed text -> read (Some text)
 
-let compare_with_base ?phases ~mode ~gate (tree : Scan.tree)
+let compare_with_base ?phases ~mode ~gate ~ledger (tree : Scan.tree)
     (compared : Scan.compared) facts findings =
   let held = Paths.of_list tree.documents
   and earlier = Paths.of_list compared.base_documents in
@@ -427,10 +427,10 @@ let compare_with_base ?phases ~mode ~gate (tree : Scan.tree)
     match mode with
     | Mode.Diff ->
         Allocation.measure phases "base-facts" (fun () ->
-            Facts.make tree.manifest compared.base_documents)
+            Facts.make tree.manifest ~ledger compared.base_documents)
     | Mode.Tree ->
         Allocation.measure phases "findings" (fun () ->
-            Facts.make tree.manifest
+            Facts.make tree.manifest ~ledger
               (List.filter
                  (fun (path, _) -> not (same path))
                  compared.base_documents))
@@ -462,7 +462,7 @@ let compare_with_base ?phases ~mode ~gate (tree : Scan.tree)
              (match mode with
              | Mode.Diff -> lazy base
              | Mode.Tree ->
-                 lazy (Facts.make tree.manifest compared.base_documents))
+                 lazy (Facts.make tree.manifest ~ledger compared.base_documents))
            ~wanted:(reports tree.manifest gate)
            ~base facts
            (findings
@@ -486,9 +486,16 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
   let* tree, compared =
     Scan.load_with_base ?phases ~env ~dir ~manifest ~base ()
   in
+  let* ledger =
+    Scan.ledger ?phases tree
+      (match gate with
+      | Some Finding_class.Merged -> Ledger.History
+      | Some (Finding_class.Turn | Finding_class.Review) | None -> Ledger.Tip)
+  in
+  let entries = Scan.entries ledger in
   let facts =
     Allocation.measure phases "facts" (fun () ->
-        Facts.make tree.manifest tree.documents)
+        Facts.make tree.manifest ~ledger:entries tree.documents)
   in
   let findings =
     Allocation.measure phases "findings" (fun () ->
@@ -497,7 +504,8 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
           ~not_text:tree.not_text)
   in
   let findings =
-    compare_with_base ?phases ~mode ~gate tree compared facts findings
+    compare_with_base ?phases ~mode ~gate ~ledger:entries tree compared facts
+      findings
   in
   let entries =
     Allocation.measure phases "findings" (fun () ->
@@ -510,7 +518,7 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
   let warnings =
     List.map
       (fun warning -> Warning warning)
-      (tree.warnings @ Option.to_list (Scan.ledger_warning tree facts))
+      (tree.warnings @ Scan.ledger_warnings ledger facts)
   in
   let text output =
     let items = fold ~strict ~verbose entries in
@@ -535,7 +543,7 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
   | Json ->
       let* index =
         Allocation.measure phases "repository" (fun () ->
-            Scan.index ~mode tree ~tool)
+            Scan.index ~mode tree ~ledger ~tool)
       in
       Ok (report warnings (Records (index, entries)))
   | Sarif ->
@@ -557,9 +565,7 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
                 let value = function
                   | Porcelain.Base -> Ok (Scan.base_commit tree.base)
                   | Porcelain.Ledger ->
-                      Result.map
-                        (Option.value ~default:"none")
-                        (Scan.ledger_commit tree)
+                      Ok (Option.fold ~none:"none" ~some:Ledger.tip ledger)
                   | Porcelain.Gate ->
                       Ok
                         (Option.fold ~none:"none" ~some:Finding_class.gate_name

@@ -54,29 +54,35 @@ let max_int_value = 9007199254740991
 let min_int_value = -9007199254740991
 
 (* @cites json-handling *)
+let escape buffer = function
+  | '"' -> Buffer.add_string buffer "\\\""
+  | '\\' -> Buffer.add_string buffer "\\\\"
+  | '\b' -> Buffer.add_string buffer "\\b"
+  | '\012' -> Buffer.add_string buffer "\\f"
+  | '\n' -> Buffer.add_string buffer "\\n"
+  | '\r' -> Buffer.add_string buffer "\\r"
+  | '\t' -> Buffer.add_string buffer "\\t"
+  | c -> Buffer.add_string buffer (Printf.sprintf "\\u%04x" (Char.code c))
+
 let add_string buffer s =
   Buffer.add_char buffer '"';
   let n = String.length s in
-  let i = ref 0 in
-  while !i < n do
-    let decoded = String.get_utf_8_uchar s !i in
-    if not (Uchar.utf_decode_is_valid decoded) then
-      raise (Refused (Not_utf_8 { path = []; text = s }));
-    let length = Uchar.utf_decode_length decoded in
-    let point = Uchar.to_int (Uchar.utf_decode_uchar decoded) in
-    (match point with
-    | 0x22 -> Buffer.add_string buffer "\\\""
-    | 0x5C -> Buffer.add_string buffer "\\\\"
-    | 0x08 -> Buffer.add_string buffer "\\b"
-    | 0x0C -> Buffer.add_string buffer "\\f"
-    | 0x0A -> Buffer.add_string buffer "\\n"
-    | 0x0D -> Buffer.add_string buffer "\\r"
-    | 0x09 -> Buffer.add_string buffer "\\t"
-    | point when point < 0x20 ->
-        Buffer.add_string buffer (Printf.sprintf "\\u%04x" point)
-    | _ -> Buffer.add_substring buffer s !i length);
-    i := !i + length
-  done;
+  let rec go start i =
+    if i >= n then Buffer.add_substring buffer s start (i - start)
+    else
+      match s.[i] with
+      | ('"' | '\\' | '\000' .. '\031') as c ->
+          Buffer.add_substring buffer s start (i - start);
+          escape buffer c;
+          go (i + 1) (i + 1)
+      | '\128' .. '\255' ->
+          let decoded = String.get_utf_8_uchar s i in
+          if not (Uchar.utf_decode_is_valid decoded) then
+            raise (Refused (Not_utf_8 { path = []; text = s }));
+          go start (i + Uchar.utf_decode_length decoded)
+      | _ -> go start (i + 1)
+  in
+  go 0 0;
   Buffer.add_char buffer '"'
 
 let rec check_unique = function

@@ -451,7 +451,8 @@ let check_cmd =
          the git ref $(b,refs/sinter/ledger). When the repository has no such \
          ref and the tree holds a plan, a warning says that every plan counts \
          as open. To fetch the ledger from the remote $(b,origin), run:";
-      `Pre "  git fetch origin refs/sinter/ledger:refs/sinter/ledger";
+      `Pre
+        "  git fetch --no-filter origin refs/sinter/ledger:refs/sinter/ledger";
       `P
         "With $(b,--diff), the command reports only the findings that the \
          changes since the base add. It checks the base with the same \
@@ -729,6 +730,173 @@ let check_cmd =
         (const run $ color $ manifest $ base $ diff $ gate $ strict $ output
        $ nul $ headers $ no_headers $ verbose $ quiet))
 
+let ledger_exits =
+  [
+    Cmd.Exit.info ~doc:"on success." clean;
+    usage_exit;
+    Cmd.Exit.info
+      ~doc:
+        "when the command cannot run in this environment, when the ledger is \
+         broken, and when the ledger does not read."
+      environment_error;
+  ]
+
+let ledger_form default =
+  let doc =
+    "The form of the output: $(b,brief), one line for each item, or $(b,json), \
+     JSON lines for a program to read."
+  in
+  Arg.(
+    value
+    & opt (enum [ ("brief", `Brief); ("json", `Json) ]) default
+    & info [ "o"; "output" ] ~docv:"FORM" ~doc)
+
+let with_ledger color depth run =
+  with_phases color @@ fun phases ->
+  in_current_folder color @@ fun dir ->
+  let errors =
+    Sinter_core.Style.formatter stderr ~color:(colored color Unix.stderr)
+  in
+  let warn text =
+    Sinter_core.Render.warning errors text;
+    Format.pp_print_flush errors ()
+  in
+  match
+    Sinter_core.Allocation.measure phases "repository" (fun () ->
+        Sinter_core.Git.open_repo ~env:(Unix.environment ()) dir)
+  with
+  | Error error ->
+      report color [ Sinter_core.Error_text.of_git error ];
+      environment_error
+  | Ok repo -> (
+      match
+        Sinter_core.Allocation.measure phases "ledger" (fun () ->
+            Sinter_core.Ledger.read repo depth)
+      with
+      | Ok None ->
+          warn "no ledger found";
+          clean
+      | Ok (Some ledger) ->
+          Option.iter warn (Sinter_core.Ledger.warning ledger);
+          Sinter_core.Allocation.measure phases "output" (fun () ->
+              run ~errors (Ok ledger);
+              flush stdout);
+          clean
+      | Error error ->
+          Sinter_core.Allocation.measure phases "output" (fun () ->
+              run ~errors (Error error);
+              flush stdout);
+          report color [ Sinter_core.Ledger.explain error ];
+          environment_error)
+
+let ledger_verify_cmd =
+  let doc = "Verify the whole history of the ledger" in
+  let man =
+    [
+      `S Manpage.s_description;
+      `P
+        "Read the ledger ref $(b,refs/sinter/ledger), and check every commit \
+         of its history, from the tip back to the first commit: each line of \
+         each file of the ledger, and that each commit holds every entry of \
+         its parent with the same bytes. The command reads the raw commit \
+         objects, so the grafts and the replacement objects of the clone do \
+         not change what it checks. It writes nothing.";
+      `P
+        "When the ledger passes, the command writes a line on standard error \
+         that says how many entries and commits it checked, and exits with \
+         code 0. When the ledger is broken, the error names the first fault, \
+         the commit that holds it, and the entry at fault, and the command \
+         exits with code 3. With $(b,-o json), the command also writes the \
+         fault on standard output as one finding record of the class \
+         $(b,ledger-broken), in the form of $(b,sinter check -o json).";
+      `P
+        "When the clone does not hold an object of the ledger, as in a shallow \
+         or a partial clone, the error says how to fetch it, and the command \
+         exits with code 3. When the repository has no ledger ref, a warning \
+         says so, and the command exits with code 0.";
+    ]
+  in
+  let info =
+    Cmd.info "verify" ~doc ~man:(man @ environment) ~envs ~exits:ledger_exits
+  in
+  let run color form =
+    with_ledger color Sinter_core.Ledger.History (fun ~errors result ->
+        match (result, form) with
+        | Ok ledger, `Brief ->
+            Fmt.string errors (Sinter_core.Ledger.summary ledger);
+            Format.pp_force_newline errors ();
+            Format.pp_print_flush errors ()
+        | Ok _, `Json -> ()
+        | Error (Sinter_core.Ledger.Broken broken), `Json ->
+            Sinter_core.Jsonl.output stdout
+              (Sinter_core.Check.record ~mode:Sinter_core.Mode.Tree
+                 {
+                   Sinter_core.Check.finding = Sinter_core.Ledger.finding broken;
+                   tier = None;
+                 })
+        | Error _, (`Brief | `Json) -> ())
+  in
+  Cmd.v info Term.(const run $ color $ ledger_form `Brief)
+
+let ledger_log_cmd =
+  let doc = "Print the entries of the ledger" in
+  let man =
+    [
+      `S Manpage.s_description;
+      `P
+        "Read the tip of the ledger ref $(b,refs/sinter/ledger), check it, and \
+         print each entry, in the order of the field $(b,seq), which is the \
+         order in which the entries were written. The command writes nothing \
+         to the ledger.";
+      `P "By default, each entry prints as one line:";
+      `Pre "  SEQ TS ID KIND SUBJECT BY";
+      `P
+        "SUBJECT is the subject of the entry. An entry of the kind \
+         $(b,commitment-set) has its hash $(b,csh) in its place, and an entry \
+         of the kind $(b,void) the id of the entry that it replaces. With \
+         $(b,-o json), each entry prints as its line of the ledger.";
+      `P
+        "An entry of a kind that this version of sinter does not know does not \
+         print, and a warning gives their number. When the ledger is broken or \
+         does not read, the command prints no entry and exits with code 3. \
+         When the repository has no ledger ref, a warning says so, and the \
+         command exits with code 0.";
+    ]
+  in
+  let info =
+    Cmd.info "log" ~doc ~man:(man @ environment) ~envs ~exits:ledger_exits
+  in
+  let run color form =
+    with_ledger color Sinter_core.Ledger.Tip (fun ~errors:_ result ->
+        match result with
+        | Ok ledger ->
+            List.iter
+              (fun (entry : Sinter_core.Ledger.entry) ->
+                print_string
+                  (match form with
+                  | `Brief -> Sinter_core.Ledger.log_line entry
+                  | `Json -> entry.line);
+                print_char '\n')
+              (Sinter_core.Ledger.entries ledger)
+        | Error _ -> ())
+  in
+  Cmd.v info Term.(const run $ color $ ledger_form `Brief)
+
+let ledger_cmd =
+  let doc = "Read the ledger of approvals and closed plans" in
+  let man =
+    [
+      `S Manpage.s_description;
+      `P
+        "Sinter keeps the approvals, the declines, and the closed plans in a \
+         ledger, on the git ref $(b,refs/sinter/ledger). These commands read \
+         it, and write nothing.";
+    ]
+  in
+  Cmd.group
+    (Cmd.info "ledger" ~doc ~man:(man @ environment) ~envs ~exits:ledger_exits)
+    [ ledger_log_cmd; ledger_verify_cmd ]
+
 let cmd =
   let doc = "a linter for keeping your specs, plans, and code in sync" in
   let man =
@@ -762,7 +930,7 @@ let cmd =
   in
   Cmd.group info
     ~default:Term.(ret (const (`Help (`Pager, None))))
-    [ check_cmd; parse_cmd; scan_cmd; serve_cmd ]
+    [ check_cmd; ledger_cmd; parse_cmd; scan_cmd; serve_cmd ]
 
 let reserve fd flags =
   match Unix.fstat fd with

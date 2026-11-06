@@ -775,8 +775,9 @@ and every `@verifies` edge in its scope is at an allowed rung. The
 first condition is one of these:
 
 - `"delivered"`, the default: the step is delivered (section 10.8).
-- `"approval"`: the ledger holds an approval of the step that matches
-  its current step hash ([ledger.md](ledger.md) section 5.1).
+- `"approval"`: an approval of the step that matches its current step
+  hash counts for the step: no later decline of the same text ends it
+  ([ledger.md](ledger.md) section 5.2).
 - `"promises"`: the condition never holds. A refactor step is never
   done, and each refactor step of an open plan is the finding
   `step-without-promises` ([algebra.md](algebra.md) section 9).

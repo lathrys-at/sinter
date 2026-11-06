@@ -19,7 +19,7 @@ let manifest =
   | Error _ -> failwith "the manifest has errors"
 
 let facts files =
-  Facts.make manifest
+  Facts.make ~ledger:[] manifest
     (List.map (fun (path, text) -> (path, Edits.document text)) files)
 
 let findings ~base files =

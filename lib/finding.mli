@@ -26,12 +26,16 @@ type subject =
   | Message_line of { commit : string; line : int }
       (** a line of the message of a commit: the object id of the commit, and
           the number of the line in the message, from 1 *)
+  | Ledger_commit of string
+      (** a commit of the ledger, by its object id, or the object that the
+          ledger ref names when that object is no commit *)
 
 val subject_id : subject -> string
 (** [subject_id subject] is the id of the fact, or the positional subject id:
     [file:<path>] for a file, [file:<path>@L<line>C<column>] for an error node,
     [line:<path>@L<line>] for a line, [tag:<path>@L<line>C<column>] for a tag,
-    and [message:<commit>@L<line>] for a line of a commit message. *)
+    [message:<commit>@L<line>] for a line of a commit message, and
+    [ledger:<commit>] for a commit of the ledger. *)
 
 val ack_subject : subject -> string
 (** [ack_subject subject] is the subject in the form that an [@ack] names it:

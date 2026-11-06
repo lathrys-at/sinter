@@ -12,3 +12,9 @@ phases.findings = 16.0
 allocation-growth = 12.0
 phases.findings = 16.0
 phases.base-findings = 16.0
+
+[ledger-log]
+allocation-growth = 120.0
+
+[ledger-verify]
+allocation-growth = 160.0

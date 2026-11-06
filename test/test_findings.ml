@@ -864,7 +864,7 @@ let the_findings_of_a_plan_grow_in_proportion_to_its_steps () =
   let manifest = manifest "" in
   Counted_work.check_growth ~margin:1.5 ~sizes:(100, 1_600)
     ~input:(fun count ->
-      Facts.make manifest
+      Facts.make ~ledger:[] manifest
         [
           ( ".plans/p.md",
             document
@@ -1283,7 +1283,7 @@ let nearest_word_is_a_word_of_the_vocabulary_within_two_edits =
 
 let declared_spelling_names_the_spelling_that_the_fix_of_dangling_writes () =
   let facts =
-    Facts.make (manifest "")
+    Facts.make ~ledger:[] (manifest "")
       [
         ( "docs/a.md",
           document
@@ -1317,7 +1317,7 @@ let declared_spelling_gives_the_fix_of_each_dangling_finding =
               (oneof_list [ "a"; "A"; "b-c"; "B-C"; "b-C"; "d" ])))
        (fun lines ->
          let facts =
-           Facts.make (manifest "")
+           Facts.make ~ledger:[] (manifest "")
              [
                ( "docs/a.md",
                  document
@@ -1363,7 +1363,7 @@ let of_facts_gives_the_findings_of_tree () =
       ]
   in
   let m = manifest "" in
-  let facts = Facts.make m files in
+  let facts = Facts.make ~ledger:[] m files in
   Alcotest.(check bool)
     "the manifest of the facts" true
     (Facts.manifest facts == m);
@@ -1890,7 +1890,7 @@ let marks_and_related_places_hold_on_any_tree =
           (Gen.triple generated_tree generated_tree Gen.bool))
        (fun (base, tree) ->
          let facts files =
-           Facts.make (manifest "")
+           Facts.make ~ledger:[] (manifest "")
              (List.map (fun (path, text) -> (path, document text)) files)
          in
          let tree_facts = facts tree in

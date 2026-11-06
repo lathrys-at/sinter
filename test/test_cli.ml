@@ -659,8 +659,8 @@ let usage_errors =
        'json', 'porcelain' or 'sarif'",
       "sinter check [--help] [OPTION]\xe2\x80\xa6" );
     ( "nope",
-      "unknown command 'nope'. Must be one of 'check', 'parse', 'scan' or \
-       'serve'",
+      "unknown command 'nope'. Must be one of 'check', 'ledger', 'parse', \
+       'scan' or 'serve'",
       "sinter [--help] [COMMAND] \xe2\x80\xa6" );
     ( "check extra",
       "too many arguments, don't know what to do with 'extra'",
@@ -761,24 +761,25 @@ let a_failed_read_of_the_ledger_exits_with_3 () =
          (Filename.quote (Filename.concat (Sys.getcwd ()) sinter))
          headers)
   in
-  let status, text = run "--headers=ledger" in
-  let fault =
-    "error: git -C " ^ Git_fixture.root repo
-    ^ " rev-parse --verify --quiet refs/sinter/ledger^{commit} failed: "
-  in
-  Alcotest.(check (triple int bool (list string)))
-    "the exit code, the fault without the text of git, and the help"
+  let expected =
     ( 3,
-      true,
       [
-        "  = help: run the same git command in the repository to see the whole \
-         message";
+        Printf.sprintf
+          "error: the clone does not hold the object %s of the ledger, in the \
+           commit %s"
+          commit commit;
+        "  = help: fetch every object of the ledger with git fetch --refetch \
+         --no-filter origin refs/sinter/ledger";
       ] )
-    (match lines text with
-    | first :: rest -> (status, String.starts_with ~prefix:fault first, rest)
-    | [] -> (status, false, []));
-  Alcotest.(check (pair int string))
-    "a run that does not name the ledger" (0, "# porcelain 1\n") (run "")
+  in
+  let read headers =
+    let status, text = run headers in
+    (status, lines text)
+  in
+  Alcotest.(check (pair int (list string)))
+    "a run that names the ledger" expected (read "--headers=ledger");
+  Alcotest.(check (pair int (list string)))
+    "a run that does not name the ledger" expected (read "")
 
 let a_usage_error_is_the_same_with_term_set () =
   List.iter
@@ -860,7 +861,8 @@ let the_help_of_check_says_how_to_fetch_the_ledger () =
   code "the exit code is 0" 0 status;
   Alcotest.(check bool)
     "the help holds the command" true
-    (contains "git fetch origin refs/sinter/ledger:refs/sinter/ledger" text)
+    (contains
+       "git fetch --no-filter origin refs/sinter/ledger:refs/sinter/ledger" text)
 
 let tests =
   [

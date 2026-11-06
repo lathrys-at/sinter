@@ -18,9 +18,9 @@ type t
 
 val variable : string
 (** The environment variable [SINTER_PHASE_WORDS]. When it is set and not empty,
-    [sinter scan] and [sinter check] count the words of each phase and write
-    {!to_string} of the counts to the file that it names, at the end of the
-    command. *)
+    [sinter scan], [sinter check], [sinter ledger log], and
+    [sinter ledger verify] count the words of each phase and write {!to_string}
+    of the counts to the file that it names, at the end of the command. *)
 
 val create : unit -> t
 (** [create ()] is a value with no phase. *)

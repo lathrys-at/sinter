@@ -394,6 +394,54 @@ let check_judges_the_budgets_of_check_diff () =
               (("n10000", "check-diff"), [ ("facts", 11.); ("base-facts", 13.) ]);
             ]))
 
+let budgets_of_the_ledger_are_optional () =
+  let both =
+    budgets
+      (budgets_text
+     ^ "\n\
+        [ledger-log]\n\
+        allocation-growth = 120\n\n\
+        [ledger-verify]\n\
+        allocation-growth = 150.5\n")
+  in
+  Alcotest.(check (list (option (float 0.))))
+    "with and without the tables"
+    [ Some 120.; Some 150.5; None; None ]
+    [
+      Budgets.growth both "ledger-log";
+      Budgets.growth both "ledger-verify";
+      Budgets.growth (budgets budgets_text) "ledger-log";
+      Budgets.growth (budgets budgets_text) "ledger-verify";
+    ]
+
+let check_judges_the_ledger_on_its_own_trees () =
+  Alcotest.(check (list string))
+    "outcomes of the ledger"
+    [
+      "ledger-log ledger 120 pass 100";
+      "ledger-verify ledger 150 fail 160";
+      "ledger-verify output 150 skipped: the tree l1000 counts no word in the \
+       phase";
+    ]
+    (List.filter
+       (fun line -> String.starts_with ~prefix:"ledger" line)
+       (outcomes
+          (budgets
+             (budgets_text
+            ^ "[ledger-log]\n\
+               allocation-growth = 120\n\
+               [ledger-verify]\n\
+               allocation-growth = 150\n"))
+          ~words:
+            [
+              (("l1000", "ledger-log"), [ ("ledger", 2.) ]);
+              (("l100000", "ledger-log"), [ ("ledger", 200.) ]);
+              (("n10000", "ledger-log"), [ ("ledger", 9999.) ]);
+              (("l1000", "ledger-verify"), [ ("ledger", 1.) ]);
+              ( ("l100000", "ledger-verify"),
+                [ ("ledger", 160.); ("output", 1.) ] );
+            ]))
+
 let check_skips_what_the_run_did_not_measure () =
   Alcotest.(check (list string))
     "outcomes"
@@ -893,6 +941,19 @@ let run ?time arguments =
     ~finally:(fun () -> List.iter Sys.remove [ output; errors ])
     (fun () -> (code, read output, read errors))
 
+let run_program program arguments =
+  let output = Filename.temp_file "sinter-run" ".out" in
+  let errors = Filename.temp_file "sinter-run" ".err" in
+  let code =
+    Sys.command
+      (Printf.sprintf "%s %s >%s 2>%s" (Filename.quote program)
+         (String.concat " " (List.map Filename.quote arguments))
+         (Filename.quote output) (Filename.quote errors))
+  in
+  Fun.protect
+    ~finally:(fun () -> List.iter Sys.remove [ output; errors ])
+    (fun () -> (code, read output, read errors))
+
 let sinter = Unix.realpath "../bin/main.exe"
 let generator = Unix.realpath "../bench/generate.exe"
 
@@ -937,6 +998,42 @@ let json_of output =
   | exception Yojson.Json_error message -> Alcotest.failf "no JSON: %s" message
 
 let member name json = Yojson.Basic.Util.member name json
+
+let run_measures_the_commands_of_a_ledger () =
+  let code, output, errors =
+    measure
+      ~extra:[ "--sizes="; "--ledgers"; "3" ]
+      "[scan]\nallocation-growth = 1\n\n[check]\nallocation-growth = 1\n"
+  in
+  Alcotest.(check int) ("exit, with: " ^ errors) 0 code;
+  Alcotest.(check (list (triple string string (list string))))
+    "the tree, the command, and the phases of each result"
+    [
+      ("l3", "ledger-log", [ "repository"; "ledger"; "output" ]);
+      ("l3", "ledger-verify", [ "repository"; "ledger"; "output" ]);
+    ]
+    (List.map
+       (fun result ->
+         Yojson.Basic.Util.
+           ( to_string (member "tree" result),
+             to_string (member "command" result),
+             List.map
+               (fun phase -> to_string (member "phase" phase))
+               (to_list (member "phase_words" result)) ))
+       (Yojson.Basic.Util.to_list (member "results" (json_of output))))
+
+let generate_makes_a_ledger () =
+  let dir = Filename.concat (Git_fixture.temp_dir ()) "ledger" in
+  let code, output, _ = run_program generator [ "--ledger"; "4"; dir ] in
+  Alcotest.(check int) "the exit" 0 code;
+  Alcotest.(check bool)
+    "the line names the entries and the commits" true
+    (String.ends_with ~suffix:": ledger entries 4, commits 5\n" output);
+  let code, _, errors = run_program generator [ "--ledger"; "0"; dir ^ "2" ] in
+  Alcotest.(check (pair int string))
+    "no entry"
+    (1, "generate: N is 0, and it must be 1 or more\n")
+    (code, errors)
 
 let run_skips_every_budget_that_it_cannot_check () =
   let code, output, errors =
@@ -1461,7 +1558,7 @@ let run_stops_with_exit_2 () =
         Printf.sprintf "run: %s: [scan]: unknown key peak-memory-kib\n" memory
       );
       ( [ "--sinter"; sinter; "--sizes"; "20" ],
-        "run: --generator is missing, and --sizes names trees\n" );
+        "run: --generator is missing, and --sizes or --ledgers names trees\n" );
       ([], "run: either --sinter or --results is required\n");
       ( [ "--sinter"; sinter; "--results"; missing ],
         "run: --results and --sinter exclude each other\n" );
@@ -1504,6 +1601,13 @@ let tests =
       check_refuses_a_phase_that_the_run_does_not_have;
     case "check judges the budgets of check-diff"
       check_judges_the_budgets_of_check_diff;
+    case "run measures the commands of a ledger"
+      run_measures_the_commands_of_a_ledger;
+    case "generate makes a ledger" generate_makes_a_ledger;
+    case "the budgets of the ledger are optional"
+      budgets_of_the_ledger_are_optional;
+    case "check judges the ledger on its own trees"
+      check_judges_the_ledger_on_its_own_trees;
     case "gnu time reads the last line" gnu_time_reads_the_last_line;
     case "gnu time refuses text that is not a number"
       gnu_time_refuses_text_that_is_not_a_number;

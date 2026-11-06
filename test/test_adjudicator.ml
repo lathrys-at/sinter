@@ -35,7 +35,7 @@ let manifest =
   | Error _ -> failwith "the manifest has errors"
 
 let facts files =
-  Facts.make manifest
+  Facts.make ~ledger:[] manifest
     (List.map (fun (path, text) -> (path, document text)) files)
 
 let show (finding : Finding.t) =
@@ -572,18 +572,18 @@ let a_base_without_the_same_files_gives_the_same_classes =
           [ ("docs/a.md", a); ("docs/b.md", b); (".plans/p.md", p) ]
       in
       let tree =
-        Facts.make manifest
+        Facts.make ~ledger:[] manifest
           (List.filter_map
              (fun (path, _, t, _) -> Option.map (fun t -> (path, t)) t)
              files)
       in
       let full =
-        Facts.make manifest
+        Facts.make ~ledger:[] manifest
           (List.filter_map
              (fun (path, b, _, _) -> Option.map (fun b -> (path, b)) b)
              files)
       and part =
-        Facts.make manifest
+        Facts.make ~ledger:[] manifest
           (List.filter_map
              (fun (path, b, _, same) ->
                if same then None else Option.map (fun b -> (path, b)) b)
@@ -643,8 +643,8 @@ let renamed_to_holds_for_the_edges_that_renamed_reports =
               | Tree_only t -> if at_base then None else Some t))
           [ ("docs/a.md", a); ("docs/b.md", b); (".plans/p.md", p) ]
       in
-      let base = Facts.make manifest (side true)
-      and tree = Facts.make manifest (side false) in
+      let base = Facts.make ~ledger:[] manifest (side true)
+      and tree = Facts.make ~ledger:[] manifest (side false) in
       let reported =
         List.filter_map
           (fun (finding : Finding.t) ->

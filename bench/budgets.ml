@@ -4,9 +4,16 @@
 open Sinter_core
 
 type limits = { all : float; phases : (string * float) list }
-type t = { scan : limits; check : limits; check_diff : limits option }
 
-let commands = [ "scan"; "check"; "check-diff" ]
+type t = {
+  scan : limits;
+  check : limits;
+  check_diff : limits option;
+  ledger_log : limits option;
+  ledger_verify : limits option;
+}
+
+let commands = [ "scan"; "check"; "check-diff"; "ledger-log"; "ledger-verify" ]
 let keys = [ "allocation-growth"; "phases" ]
 
 let unknown ~where names allowed =
@@ -86,21 +93,30 @@ let of_string text =
       in
       let* scan = limit table "scan" in
       let* check = limit table "check" in
-      let* check_diff =
-        match find table "check-diff" with
+      let optional command =
+        match find table command with
         | None -> Ok None
-        | Some _ -> Result.map Option.some (limit table "check-diff")
+        | Some _ -> Result.map Option.some (limit table command)
       in
-      Ok { scan; check; check_diff }
+      let* check_diff = optional "check-diff" in
+      let* ledger_log = optional "ledger-log" in
+      let* ledger_verify = optional "ledger-verify" in
+      Ok { scan; check; check_diff; ledger_log; ledger_verify }
 
 let limits budgets = function
   | "scan" -> Some budgets.scan
   | "check" -> Some budgets.check
   | "check-diff" -> budgets.check_diff
+  | "ledger-log" -> budgets.ledger_log
+  | "ledger-verify" -> budgets.ledger_verify
   | _ -> None
 
 let growth budgets command =
   Option.map (fun limits -> limits.all) (limits budgets command)
+
+let trees = function
+  | "ledger-log" | "ledger-verify" -> ("l1000", "l100000")
+  | _ -> ("n1000", "n10000")
 
 type verdict = Pass of float | Fail of float | Skipped of string
 
@@ -126,14 +142,19 @@ let commas = function
 let check budgets ~words =
   let commands =
     [ ("scan", budgets.scan); ("check", budgets.check) ]
-    @ Option.fold ~none:[]
-        ~some:(fun limit -> [ ("check-diff", limit) ])
-        budgets.check_diff
+    @ List.filter_map
+        (fun (command, limits) ->
+          Option.map (fun limits -> (command, limits)) limits)
+        [
+          ("check-diff", budgets.check_diff);
+          ("ledger-log", budgets.ledger_log);
+          ("ledger-verify", budgets.ledger_verify);
+        ]
   in
   let unknown =
     List.find_map
       (fun (command, limits) ->
-        match List.map fst (words ~tree:"n10000" ~command) with
+        match List.map fst (words ~tree:(snd (trees command)) ~command) with
         | [] -> None
         | phases ->
             List.find_map
@@ -163,14 +184,17 @@ let check budgets ~words =
              let outcome phase verdict =
                { command; phase; limit = limit phase; verdict }
              in
-             let small = words ~tree:"n1000" ~command in
-             match words ~tree:"n10000" ~command with
+             let small_tree, large_tree = trees command in
+             let small = words ~tree:small_tree ~command in
+             match words ~tree:large_tree ~command with
              | [] ->
                  [
                    outcome None
                      (Skipped
-                        "the run counted no phase on the tree n1000 or on the \
-                         tree n10000");
+                        (Printf.sprintf
+                           "the run counted no phase on the tree %s or on the \
+                            tree %s"
+                           small_tree large_tree));
                  ]
              | large ->
                  List.map
@@ -180,6 +204,9 @@ let check budgets ~words =
                        | Some base when base > 0. ->
                            judge (limit (Some phase)) (words /. base)
                        | Some _ | None ->
-                           Skipped "the tree n1000 counts no word in the phase"))
+                           Skipped
+                             (Printf.sprintf
+                                "the tree %s counts no word in the phase"
+                                small_tree)))
                    large)
            commands)

@@ -36,7 +36,8 @@ val is_name : string -> bool
 type approval =
   | Declaration  (** the item counts as approved *)
   | Approval
-      (** the item is approved only when the ledger holds an approval of it *)
+      (** the item is approved only when an approval of it in the ledger counts:
+          the latest judgment on its current text is an approval *)
 
 val approval_name : approval -> string
 (** [approval_name approval] is the word that [proof.<kind>] writes for
@@ -58,8 +59,8 @@ val verifies_name : verifies -> string
 type step =
   | Delivered  (** when a branch delivers the step: ["delivered"] *)
   | Step_approval
-      (** when the ledger holds an approval of the step that matches its step
-          hash: ["approval"] *)
+      (** when an approval of the step that matches its step hash counts: the
+          latest judgment on that hash is an approval; ["approval"] *)
   | Promises
       (** never; each step needs promises, and a step without promises is a
           finding: ["promises"] *)
@@ -123,7 +124,9 @@ type problem =
       gate : Finding_class.gate;
     }  (** the class takes no tier at the gate *)
   | Never_blocks  (** a tier for [config-changed] *)
-  | No_tier_at_any_gate  (** a tier for [pack-mismatch] *)
+  | No_tier_at_any_gate of Finding_class.t
+      (** a tier for a class that takes no tier at any gate: [pack-mismatch] or
+          [ledger-broken] *)
   | Plan_location  (** [paths.plan] *)
   | Markdown_version  (** a version for the built-in pack [markdown] *)
   | Markdown_runners  (** runners for the built-in pack [markdown] *)
