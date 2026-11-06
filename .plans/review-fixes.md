@@ -60,3 +60,19 @@ Split the pass over all mutants into four jobs that run at the same
 time and give one score, and run each mutant under two seeds that
 each job draws at random, so that the pass ends within the time limit
 of a GitHub job.
+
+## Kill the surviving mutants of the readers and the findings
+@scope lib/**, test/**, CONTRIBUTING.md
+Write a test for each mutant that the full pass on `main` at b52bcb2
+left alive in the readers of files and of git, in the facts, and in
+the findings; mark only a mutant that no input can tell from the
+original; show for each mutant there that ran to the time limit that
+it never ends; and say in `CONTRIBUTING.md` what the count of such
+mutants means.
+
+## Kill the surviving mutants of the commands and the output
+@scope lib/**, bin/**, test/**
+Write a test for each mutant that the full pass on `main` at b52bcb2
+left alive in the commands, the fixes, and the output; mark only a
+mutant that no input can tell from the original; and show for each
+mutant there that ran to the time limit that it never ends.

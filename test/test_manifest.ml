@@ -1890,6 +1890,31 @@ let property ?(count = 200) ~name ~print generator check =
   QCheck_alcotest.to_alcotest ~speed_level:`Quick
     (QCheck2.Test.make ~count ~name ~print generator check)
 
+let an_error_gives_the_line_of_its_span_when_the_lines_hold_it =
+  property
+    ~name:
+      "an error at a place gives the line of its span when the lines hold it"
+    ~print:QCheck2.Print.(pair (list string) int)
+    Gen.(
+      pair
+        (list_size (int_range 1 4)
+           (string_size ~gen:(char_range 'a' 'c') (int_bound 3)))
+        (int_range (-1) 6))
+    (fun (contents, number) ->
+      let lines = Line_index.make (String.concat "\n" contents ^ "\n") in
+      let expected =
+        if number >= 1 && number <= List.length contents then
+          Some (List.nth contents (number - 1))
+        else None
+      in
+      match
+        (Manifest.explain ~path:"sinter.toml" ~lines
+           (Manifest.At (at number 1, Manifest.Never_blocks)))
+          .place
+      with
+      | Some { line; _ } -> line = expected
+      | None -> false)
+
 let line =
   Gen.oneof_list
     [
@@ -3048,6 +3073,7 @@ let tests =
     a_tier_reads_where_its_class_takes_a_tier_at_the_gate;
     of_string_answers_any_text;
     every_form_and_order_reads_the_same;
+    an_error_gives_the_line_of_its_span_when_the_lines_hold_it;
     a_manifest_in_the_canonical_form_reads_back_its_values;
     runners_read_as_written;
     one_fault_gives_its_one_error;

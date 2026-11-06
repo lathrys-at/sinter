@@ -988,7 +988,13 @@ let delivery plan (step : step) =
     ~hash:(short_hash step)
 
 let named facts =
-  let table = Hashtbl.create 16 in
+  let table =
+    Hashtbl.create
+      (16
+      [@mutaml.skip
+        "the size is only the first size of a table that grows as it needs, \
+         and mem and find_opt give the same answer at any size"])
+  in
   List.iter
     (fun plan ->
       List.iter

@@ -5,8 +5,11 @@ name: licensing
 
 on:
   pull_request:
-  push:
-    branches: [main]
+
+# @cites ci-main-runs
+concurrency:
+  group: licensing-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   dco:
@@ -19,13 +22,7 @@ jobs:
       - name: Check every commit for a Signed-off-by line
         run: |
           set -eu
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            range="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
-          elif [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
-            range="${{ github.sha }}"
-          else
-            range="${{ github.event.before }}..${{ github.sha }}"
-          fi
+          range="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
           bad=0
           for commit in $(git rev-list --no-merges "$range"); do
             if ! git show -s --format=%B "$commit" | grep -q '^Signed-off-by: '; then

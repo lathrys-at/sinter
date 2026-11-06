@@ -296,7 +296,11 @@ let written_tier = function
 let rank = function
   | Finding_class.Off -> 0
   | Finding_class.Warn -> 1
-  | Finding_class.Block -> 2
+  | Finding_class.Block ->
+      (2
+      [@mutaml.skip
+        "rank is read only by the comparisons < and > of two ranks, so any \
+         number above 1 gives the same order"])
 
 let direction rule form =
   let grows = function Added _ -> true | Removed _ | Changed _ -> false in
@@ -305,7 +309,12 @@ let direction rule form =
         let plain =
           match value with
           | String glob -> not (String.starts_with ~prefix:"!" glob)
-          | Boolean _ -> true
+          | Boolean _ ->
+              true
+              [@mutaml.skip
+                "member reads only the entries of the rules Reads and Spares, \
+                 which only members makes, always with a String value, so this \
+                 branch never runs"]
         in
         if more = plain then Strengthens else Weakens
   in

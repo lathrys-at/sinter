@@ -1351,6 +1351,13 @@ let the_text_of_a_section_leaves_out_its_heading_and_its_tag_lines () =
   Alcotest.(check (option string))
     "the text of the last section" (Some "X\n") (section_text text "two")
 
+let the_text_of_level_0_starts_at_line_1_and_of_level_1_after_its_heading () =
+  let text = "Intro.\n\n# P\n\nBody.\n" in
+  Alcotest.(check (option string))
+    "the text of level 0" (Some "Intro.\n") (section_text text "");
+  Alcotest.(check (option string))
+    "the text of level 1" (Some "Body.\n") (section_text text "p")
+
 let a_section_of_tag_lines_alone_has_an_empty_text () =
   Alcotest.(check (option string))
     "the text" (Some "")
@@ -1404,6 +1411,10 @@ let tests =
     Alcotest.test_case
       "the text of a section leaves out its heading and its tag lines" `Quick
       the_text_of_a_section_leaves_out_its_heading_and_its_tag_lines;
+    Alcotest.test_case
+      "the text of level 0 starts at line 1 and of level 1 after its heading"
+      `Quick
+      the_text_of_level_0_starts_at_line_1_and_of_level_1_after_its_heading;
     Alcotest.test_case "a section of tag lines alone has an empty text" `Quick
       a_section_of_tag_lines_alone_has_an_empty_text;
     Alcotest.test_case "the text of a section ends each line with one LF" `Quick

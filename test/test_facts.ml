@@ -1172,6 +1172,64 @@ let every_record_is_canonical =
         (fun record -> String.length (Jsonl.to_string record) > 0)
         (records files))
 
+let identity_text (identity : Facts.identity) =
+  match identity.place with
+  | Some (path, span) ->
+      Printf.sprintf "%s %s %s:%d" identity.kind identity.id path
+        span.start.line
+  | None -> Printf.sprintf "%s %s -" identity.kind identity.id
+
+let identities_name_each_fact_in_the_order_of_their_kinds () =
+  let facts =
+    facts
+      [
+        ( "docs/a.md",
+          "# A\n\n\
+           @req a\n\
+           @cites gh/7\n\
+           @ack retired 00000000\n\n\
+           ## B\n\n\
+           @cites a\n" );
+        (".plans/p.md", "# P\n\n@plan p\n\n## Do\n\n@scope docs/**\n@req a\n");
+        ("docs/s.md", "# S\n\n@cites a\n");
+      ]
+  in
+  Alcotest.(check (list string))
+    "the identities"
+    [
+      "req req:a docs/a.md:3";
+      "cites cites:req:a->gh/7 docs/a.md:4";
+      "cites cites:req:a->a docs/a.md:9";
+      "cites cites:site:docs/s.md#s->a docs/s.md:3";
+      "site site:docs/s.md#s docs/s.md:3";
+      "ack ack:req:a:retired docs/a.md:5";
+      "plan plan:p .plans/p.md:3";
+      "step step:p/do .plans/p.md:5";
+      "promise promise:step:p/do:req:a .plans/p.md:8";
+      "external external:gh/7 -";
+    ]
+    (List.map identity_text (Facts.identities facts))
+
+let identities_hold_the_id_of_each_record =
+  property "the identities hold the id of each record and no other id"
+    (fun files ->
+      let facts = facts files in
+      List.sort_uniq String.compare
+        (List.map
+           (fun (identity : Facts.identity) -> identity.id)
+           (Facts.identities facts))
+      = List.sort_uniq String.compare (ids (Facts.records facts)))
+
+let iter_identities_calls_f_on_each_identity_in_order =
+  property
+    "iter_identities calls f on each identity, in the order of identities"
+    (fun files ->
+      let facts = facts files in
+      let called = ref [] in
+      Facts.iter_identities facts (fun identity ->
+          called := identity :: !called);
+      List.rev !called = Facts.identities facts)
+
 let span_text (span : Markdown.span) =
   Printf.sprintf "%d:%d-%d:%d" span.start.line span.start.column span.stop.line
     span.stop.column
@@ -2614,6 +2672,10 @@ let tests =
     records_come_in_their_order;
     every_reference_names_a_record;
     every_record_is_canonical;
+    case "identities name each fact in the order of their kinds"
+      identities_name_each_fact_in_the_order_of_their_kinds;
+    identities_hold_the_id_of_each_record;
+    iter_identities_calls_f_on_each_identity_in_order;
     resolve_gives_the_target_of_each_edge;
     case "resolve names what a tag target would resolve to"
       resolve_names_what_a_tag_target_would_resolve_to;

@@ -305,8 +305,13 @@ and walk_section walk ~parent ~holder section =
         in
         let marks, level, text, offset = heading_text content in
         let cut = Section_number.length text in
-        if cut > 0 then
-          Dynarray.add_last walk.numbers (line, node.start + offset, cut);
+        if
+          (cut > 0)
+          [@mutaml.skip
+            "Section_number.length is 0 or at least 3, and an entry with a cut \
+             of 0 removes no byte, so each text and each hash is the same with \
+             it or without it"]
+        then Dynarray.add_last walk.numbers (line, node.start + offset, cut);
         let text = String.sub text cut (String.length text - cut) in
         let slug = Slug.of_heading text in
         ( level,
@@ -412,7 +417,11 @@ let read_paragraph lines tags blocks paragraph =
                   first_block_line = line;
                   last_block_line = line;
                   last_tag_line = line;
-                  last_at = start + at;
+                  last_at =
+                    (start + at)
+                    [@mutaml.skip
+                      "the update of current right after this one sets last_at \
+                       to start + at again, so no code reads this value"];
                 });
         let in_block = Dynarray.length blocks in
         let parts = Tag_line.parts tag_line.rest in
@@ -585,7 +594,28 @@ let new_line lines ~line ~at =
     else if text.[offset] = '\t' then None
     else
       width (offset + 1)
-        (if Char.code text.[offset] land 0xC0 <> 0x80 then count + 1 else count)
+        (if
+           Char.code
+             (text.[offset]
+              [@mutaml.skip
+                "the bytes of a line before the @ of a tag line are blanks, \
+                 list markers, and task boxes, all ASCII, and the @ is ASCII \
+                 too, so offset + 1 also reads a byte that starts a character; \
+                 the mark also takes out offset - 1, which counts the byte \
+                 before each byte"])
+           land (0xC0
+                [@mutaml.skip
+                  "the bytes of a line before the @ of a tag line are blanks, \
+                   list markers, and task boxes, all ASCII; an ASCII byte has \
+                   its top bit clear, so no mask gives 0x80, and each byte \
+                   counts as one character either way"])
+           <> (0x80
+              [@mutaml.skip
+                "the bytes of a line before the @ of a tag line are blanks, \
+                 list markers, and task boxes, all ASCII, so each byte counts \
+                 as one character either way"])
+         then count + 1
+         else count)
   in
   match width first 0 with
   | Some count when count <= widest_shared_indent ->

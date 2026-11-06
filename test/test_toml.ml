@@ -933,6 +933,45 @@ let read_message_needs_the_key_for_a_cause_that_names_it () =
       "cannot extend value of type inline table with a dotted key";
     ]
 
+let dotted_key_prefix = "cannot extend value of type "
+and dotted_key_suffix = " with a dotted key"
+
+let read_message_needs_the_whole_prefix_and_suffix_of_a_dotted_key =
+  property
+    ~name:
+      "read_message reads no cause when one byte of the prefix or the suffix \
+       of a dotted-key message differs"
+    ~print:(Printf.sprintf "%S")
+    QCheck2.Gen.(
+      let* name =
+        oneof_list
+          [
+            "string";
+            "integer";
+            "float";
+            "boolean";
+            "datetime";
+            "array";
+            "inline table";
+          ]
+      in
+      let message = dotted_key_prefix ^ name ^ dotted_key_suffix in
+      let prefix = String.length dotted_key_prefix
+      and suffix = String.length dotted_key_suffix in
+      let* at =
+        oneof
+          [
+            int_bound (prefix - 1);
+            map
+              (fun index -> String.length message - suffix + index)
+              (int_bound (suffix - 1));
+          ]
+      in
+      let+ byte = char_range 'a' 'z' in
+      let byte = if byte = message.[at] then '_' else byte in
+      String.mapi (fun index old -> if index = at then byte else old) message)
+    (fun message -> Toml.read_message ~path:(Some [ "k" ]) message = None)
+
 let read_message_refuses_an_unknown_form () =
   List.iter
     (fun message ->
@@ -1742,6 +1781,7 @@ let tests =
       `Quick read_message_needs_the_key_for_a_cause_that_names_it;
     Alcotest.test_case "read_message refuses an unknown form" `Quick
       read_message_refuses_an_unknown_form;
+    read_message_needs_the_whole_prefix_and_suffix_of_a_dotted_key;
     Alcotest.test_case "error_message names every construct" `Quick
       error_message_names_every_construct;
     Alcotest.test_case "error_message names every expected form" `Quick

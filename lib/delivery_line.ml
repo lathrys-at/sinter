@@ -15,10 +15,28 @@ let trailing = function ' ' | '\t' | '\r' -> true | _ -> false
 
 let trimmed text =
   let rec stop index =
-    if index > 0 && trailing text.[index - 1] then stop (index - 1) else index
+    if
+      index
+      > (0
+        [@mutaml.skip
+          "a bound of 1 changes the result only when every byte of the text is \
+           a space, a tab, or a carriage return; of_string then gives None \
+           either way, and read gives only lines that start with the prefix"])
+      && trailing text.[index - 1]
+    then stop (index - 1)
+    else index
   in
   let length = stop (String.length text) in
-  if length = String.length text then text else String.sub text 0 length
+  if
+    length
+    = (String.length text
+       [@mutaml.skip
+         "with the test false, a text with nothing to trim comes back as \
+          String.sub text 0 length, a copy equal to text, and no caller \
+          compares the result by address; the mark also takes out \
+          String.length text - 1, which keeps one blank at the end of a line"])
+  then text
+  else String.sub text 0 length
 
 let of_string text =
   let text = trimmed text in

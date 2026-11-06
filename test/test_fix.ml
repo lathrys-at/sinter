@@ -201,20 +201,42 @@ let an_ack_needs_a_block () =
       Fix.ack document ~block:(-1) ~target:"a")
 
 let remove_acks_needs_acks_right_after_tag_lines () =
-  let document = document "# A\n@cites a\n@ack retired a 1\n\n@cites b\n" in
-  refuses "a tag that is no @ack" (fun () ->
-      Fix.remove_acks document [ (document.tags.(1), document.tags.(0)) ]);
-  refuses "a tag two lines before" (fun () ->
-      Fix.remove_acks document [ (document.tags.(0), document.tags.(2)) ]);
-  refuses "a tag after the @ack" (fun () ->
-      Fix.remove_acks document [ (document.tags.(2), document.tags.(1)) ]);
-  refuses "no @ack" (fun () -> Fix.remove_acks document []);
-  refuses "one @ack twice" (fun () ->
-      Fix.remove_acks document
-        [
-          (document.tags.(0), document.tags.(1));
-          (document.tags.(0), document.tags.(1));
-        ])
+  let refused name (document : Markdown.t) pairs reason =
+    Alcotest.check_raises name
+      (Invalid_argument ("Fix: " ^ reason))
+      (fun () ->
+        ignore
+          (Fix.remove_acks document
+             (List.map
+                (fun (previous, ack) ->
+                  (document.tags.(previous), document.tags.(ack)))
+                pairs)
+            : Fix.t))
+  in
+  let after = document "# A\n@cites a\n@ack retired a 1\n@cites b\n" in
+  refused "a tag that is no @ack" after [ (1, 0) ] "the tag is no @ack";
+  refused "a tag line that is no @ack, right after a tag line"
+    (document "# A\n@cites a\n@cites b\n")
+    [ (0, 1) ]
+    "the tag is no @ack";
+  refused "a tag two lines before"
+    (document "# A\n@cites a\n@cites b\n@ack retired b 1\n")
+    [ (0, 2) ]
+    "the tag is not on the line before the @ack";
+  refused "a tag after the @ack" after
+    [ (2, 1) ]
+    "the tag is not on the line before the @ack";
+  refused "no @ack" after [] "no @ack to remove";
+  refused "one @ack twice" after [ (0, 1); (0, 1) ] "an @ack comes twice"
+
+let the_text_of_a_removal_leaves_out_the_blanks_of_a_bare_ack () =
+  List.iter
+    (fun text ->
+      let document = document text in
+      check_text
+        (Fix.remove_acks document [ (document.tags.(0), document.tags.(1)) ])
+        "remove @ack")
+    [ "# A\n@cites a\n@ack\n"; "# A\n@cites a\n@ack\t \n" ]
 
 let fixes text =
   let document = document text in
@@ -462,6 +484,9 @@ let tests =
       `Quick remove_acks_removes_each_line_in_the_order_of_the_lines;
     Alcotest.test_case "Remove_acks needs acks right after tag lines" `Quick
       remove_acks_needs_acks_right_after_tag_lines;
+    Alcotest.test_case
+      "the text of a removal leaves out the blanks of a bare @ack" `Quick
+      the_text_of_a_removal_leaves_out_the_blanks_of_a_bare_ack;
     Alcotest.test_case "a fix needs a target" `Quick a_fix_needs_a_target;
     Alcotest.test_case "a fix changes the revision" `Quick
       a_fix_changes_the_revision;

@@ -5,6 +5,12 @@ let binary = Filename.concat (Sys.getcwd ()) "../bin/main.exe"
 let () = Unix.putenv "RUST_BACKTRACE" "full"
 
 let () =
+  List.iter
+    (fun name -> Unix.putenv name "")
+    [ "NO_COLOR"; "FORCE_COLOR"; "CLICOLOR" ];
+  Unix.putenv "CLICOLOR_FORCE" "0"
+
+let () =
   let mode =
     match
       Fixture.mode_of_environment

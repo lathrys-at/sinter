@@ -403,6 +403,32 @@ let names_an_offset_kind_it_does_not_know () =
     "the bridge returned a malformed buffer: the offset kind is 2"
     (error_message (fun () -> decode (with_u32 (datetime_buffer a_date) 77 2)))
 
+let names_a_number_that_the_buffer_cuts_short () =
+  List.iter
+    (fun (name, value) ->
+      let buffer =
+        fst
+          (document_bytes
+             [
+               {
+                 Raw.name = "a";
+                 key_start = 0;
+                 key_end = 1;
+                 item = { value; start_byte = 4; end_byte = 8 };
+               };
+             ])
+      in
+      List.iter
+        (fun cut ->
+          Alcotest.(check string)
+            (Printf.sprintf "%s without its last %d bytes" name cut)
+            "the bridge returned a malformed buffer: a record runs past the \
+             end of the buffer"
+            (error_message (fun () ->
+                 decode (String.sub buffer 0 (String.length buffer - cut)))))
+        [ 1; 2; 7; 8 ])
+    [ ("an integer", Raw.Integer 1L); ("a float", Raw.Float 1.5) ]
+
 let reads_a_negative_offset () =
   let datetime =
     {
@@ -620,6 +646,8 @@ let tests =
       names_the_parts_of_a_datetime_it_does_not_know;
     Alcotest.test_case "names an offset kind it does not know" `Quick
       names_an_offset_kind_it_does_not_know;
+    Alcotest.test_case "names a number that the buffer cuts short" `Quick
+      names_a_number_that_the_buffer_cuts_short;
     Alcotest.test_case "reads a negative offset" `Quick reads_a_negative_offset;
     Alcotest.test_case "names an error form it does not know" `Quick
       names_an_error_form_it_does_not_know;

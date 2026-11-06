@@ -41,6 +41,16 @@ let every_other_escape_code_is_left_out () =
            sinter: required argument \027[04mFILE\027[m is \
            \027[31mmissing\027[m\027[m \027cx\027["))
 
+let a_name_of_one_character_gives_the_fault_and_the_help () =
+  Alcotest.check error_text "the message and the usage"
+    ("message", "usage: a", true)
+    (text (Usage.error "Usage: a\nx: message\n"))
+
+let an_escape_code_at_the_end_is_left_out () =
+  Alcotest.check error_text "a message that ends with the escape byte"
+    ("x", "usage: a", true)
+    (text (Usage.error "Usage: a\nsinter: x\027\n"))
+
 let a_text_of_another_shape_is_one_line_with_no_help () =
   List.iter
     (fun (name, input, expected) ->
@@ -65,6 +75,15 @@ let a_text_of_another_shape_is_one_line_with_no_help () =
       ( "an empty name",
         "Usage: a\n: message\n",
         ("Usage: a : message", "", true) );
+      ( "a name that starts with a space",
+        "Usage: a\n sinter: message\n",
+        ("Usage: a sinter: message", "", true) );
+      ( "a name that ends with a space",
+        "Usage: a\nsome : message\n",
+        ("Usage: a some : message", "", true) );
+      ( "a line that ends with the colon",
+        "Usage: a\nsinter:\n",
+        ("Usage: a sinter:", "", true) );
       ( "a usage line that does not start the text",
         "sinter: message\nUsage: a\n",
         ("sinter: message Usage: a", "", true) );
@@ -131,6 +150,10 @@ let tests =
       a_bold_part_of_the_message_gets_quotes;
     case "every other escape code is left out"
       every_other_escape_code_is_left_out;
+    case "a name of one character gives the fault and the help"
+      a_name_of_one_character_gives_the_fault_and_the_help;
+    case "an escape code at the end is left out"
+      an_escape_code_at_the_end_is_left_out;
     case "a text of another shape is one line with no help"
       a_text_of_another_shape_is_one_line_with_no_help;
     the_message_of_a_two_line_text_stays_as_it_is;

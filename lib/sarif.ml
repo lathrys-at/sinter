@@ -11,7 +11,14 @@ let unreserved = function
   | _ -> false
 
 let uri path =
-  let buffer = Buffer.create (String.length path) in
+  let buffer =
+    Buffer.create
+      (String.length path
+       [@mutaml.skip
+         "Buffer.create takes any size and raises a size below 1 to 1; the \
+          size is only the first room of a buffer that grows as it needs, and \
+          no output reads it"])
+  in
   String.iter
     (fun byte ->
       if unreserved byte then Buffer.add_char buffer byte
@@ -20,7 +27,14 @@ let uri path =
   Buffer.contents buffer
 
 let message_text text =
-  let buffer = Buffer.create (String.length text) in
+  let buffer =
+    Buffer.create
+      (String.length text
+       [@mutaml.skip
+         "Buffer.create takes any size and raises a size below 1 to 1; the \
+          size is only the first room of a buffer that grows as it needs, and \
+          no output reads it"])
+  in
   String.iter
     (function
       | '{' -> Buffer.add_string buffer "{{"
@@ -30,7 +44,14 @@ let message_text text =
   Buffer.contents buffer
 
 let link_text text =
-  let buffer = Buffer.create (String.length text) in
+  let buffer =
+    Buffer.create
+      (String.length text
+       [@mutaml.skip
+         "Buffer.create takes any size and raises a size below 1 to 1; the \
+          size is only the first room of a buffer that grows as it needs, and \
+          no output reads it"])
+  in
   String.iter
     (function
       | ('\\' | '[' | ']') as byte ->

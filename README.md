@@ -71,7 +71,7 @@ plugin holds two skills:
 To install the plugin, run these two commands inside Claude Code:
 
 ```
-/plugin marketplace add lathrys-at/sinter
+/plugin marketplace add sinterworks/sinter
 /plugin install sinter@sinter
 ```
 

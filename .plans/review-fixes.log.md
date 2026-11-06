@@ -221,3 +221,92 @@
   (lathrys-at/mutaml issue 10) would balance by mutant across files.
   The joined score was 97.4 percent: 4,740 mutants, 4,546 killed, 70
   timed out, 124 survived.
+
+## Kill the surviving mutants of the commands and the output
+
+- `lib/` and `test/` did not change between b52bcb2 and the base of
+  this branch, so the 82 survivors and the 8 timeouts of run
+  41912076553 are those of the base.
+- `test/test_check.ml` defined two tests that its list `tests` left
+  out. One of them kills the mutant of `Check.reports`. Both are now
+  in the list.
+- The test of the refusals of `Fix.remove_acks` accepted any
+  `Invalid_argument`. Two of its pairs index past the tags of their
+  document, because a tag line after an empty line of a section is no
+  tag, so those pairs never reached the checks. The test now checks
+  the message of each refusal, with a pair that only that check
+  refuses.
+- mutaml makes the off-by-one mutants of an argument at the call that
+  takes the argument. A mark on the argument alone takes out no
+  mutant, and the `.muts` file lists that place with no operator. A
+  mark must name the whole call. A mark on the result of a call, such
+  as `String.length text`, takes out the two mutants of that result.
+- A mark changes the names of other mutants: the ordinals of a name
+  move when a mark takes out a mutant of the same name in the same
+  binding, and the digest of a mutant holds the text of a mark inside
+  it. A run of old names after a mark must map them by their text.
+- Two marks in `lib/usage.ml` also take out mutants that the tests
+  kill, because no smaller expression holds the equivalent one. The
+  mark in `escape_end` also takes out the length plus 1, which the
+  test "an escape code at the end is left out" kills. The mark on
+  `String.sub line 0 colon` also takes out `colon - 1`, which the case
+  "a name that ends with a space" kills; 1 in place of 0 and `0 + 1`,
+  which the case "a name that starts with a space" kills; and
+  `0 - 1`, which makes `String.sub` raise in the test "a usage and a
+  message give the fault and the help".
+- `trim` in `lib/render.ml` lost its branch, which had an equivalent
+  mutant. The output phase of `@bench` allocates the same words before
+  and after, on each tree.
+- The eight branches of `bin/main.ml` that report an error and give
+  the exit code 3 call one function, so the branch that no test
+  reaches holds no sequence of its own. No test reaches the branch
+  where the parser bridge does not start: no option reaches it, and
+  `ulimit -v` does not limit memory on macOS. A test under `ulimit -v`
+  on Linux is left for later.
+- The test of `Exit_code.refused` is in `test/test_cli.ml`: no code of
+  `lib/` or `bin/` uses the value.
+
+## Kill the surviving mutants of the readers and the findings
+
+- A mark on an argument does not take out the mutants "argument off
+  by one" of that argument: the call makes them, outside the marked
+  expression. A mark for such a mutant sits on the call.
+- `Findings.hash_mark` counts the characters before the hash in place,
+  with `Line_index.characters`, and no longer counts a copy. A mark on
+  the call `String.sub` would also have taken out six mutants that the
+  tests kill. The results do not change; the findings phase of
+  `@bench` allocates 98 words less on the tree of 1,000 declarations
+  and 979 words less on the tree of 10,000.
+- The test "an entry with both flags is compared by its content" set
+  its flags with one command, `git update-index --assume-unchanged
+  --skip-worktree`, which sets only the first flag. Two commands now
+  set the two flags.
+- The tests of the view put a script named `git` first on `PATH`. The
+  script runs the real git and records the input of the commands of
+  the view, so that a test reads which paths each command gets. The
+  test of the store sets the umask to 0, so that the mode does not
+  depend on the machine.
+- A mark changes the name of each other mutant whose text holds the
+  marked expression, because the name holds a digest of that text.
+  The connective 261dd9fa of `Toml.between` is now b59bbcb2.
+- The reason of a mark names each other mutant that the mark takes
+  out and what that mutant changes, and names no test. Four marks take
+  out a mutant that the tests kill:
+  - `String.length text` in `Delivery_line.trimmed` takes out
+    `String.length text - 1`, which "reads a line of the pattern"
+    kills.
+  - The two lengths in `Toml.find_marker` take out
+    `String.length text + 1` and `String.length marker - 1`, which make
+    `String.sub` raise; the suite stops at its start on them, and
+    "read_message reads each description of the reader" kills them.
+  - `text.[offset]` in `Markdown.new_line` takes out `offset - 1`,
+    which "the new line follows the last tag line" kills.
+- A mark on the condition of an `if` does not take out the mutant
+  that negates the condition: that mutant sits on the `if`. The
+  mutants `not (cut > 0)` of `Markdown.walk_section` and
+  `not (at > last)` of `Toml.find_marker` stay, and the tests kill
+  them. Their names change with the text of the reason.
+- Each of the 60 mutants that ran to the time limit hangs the suite
+  of its module past 60 seconds, except the if-condition 51431a0a of
+  `Facts.trim`: the suite of the facts kills it with a failure, and in
+  the full suite the suite of the adjudicator hangs on it first.
