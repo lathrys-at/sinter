@@ -10,6 +10,11 @@ on:
   schedule:
     - cron: "17 6 * * *"
 
+# @cites ci-main-runs
+concurrency:
+  group: build-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   OCAML_VERSION: "5.5.2"
   # @cites mutation-testing
@@ -126,6 +131,7 @@ jobs:
 
   format:
     name: Check formatting
+    if: github.event_name != 'push'
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -164,7 +170,7 @@ jobs:
 
   plugin:
     name: Check the plugin manifests
-    if: github.event_name != 'schedule'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -180,6 +186,7 @@ jobs:
 
   rust:
     name: Check the bridge crate
+    if: github.event_name != 'push'
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -225,6 +232,7 @@ jobs:
 
   coverage:
     name: Measure coverage
+    if: github.event_name != 'push'
     runs-on: ubuntu-26.04
     env:
       # @cites instrumented-tooling
@@ -307,6 +315,7 @@ jobs:
 
   mutation:
     name: Measure the mutation score (part ${{ matrix.part }} of ${{ strategy.job-total }})
+    if: github.event_name != 'push'
     runs-on: ubuntu-26.04
     # @cites mutation-job-scope
     strategy:
@@ -327,7 +336,7 @@ jobs:
           set -eu
           if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
             echo "mode=full" >>"$GITHUB_OUTPUT"
-            echo "Every mutant: this is a run on main."
+            echo "Every mutant: this is the daily run on main."
             exit 0
           fi
           base=$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)
@@ -449,7 +458,7 @@ jobs:
   mutation-report:
     name: Report the mutation score
     needs: mutation
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && github.event_name != 'push' }}
     runs-on: ubuntu-26.04
     env:
       # @cites mutation-gate
