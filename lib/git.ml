@@ -906,13 +906,30 @@ type entry = { path : string; tracked : bool }
 let symbolic_link_mode = 0o120000
 let submodule_mode = 0o160000
 
-let is_regular_file t path =
+let has_kind t path kind =
   let full = Filename.concat t.root path in
   match Unix.lstat full with
-  | { Unix.st_kind = Unix.S_REG; _ } -> Ok true
-  | _ -> Ok false
+  | { Unix.st_kind; _ } -> Ok (st_kind = kind)
   | exception Unix.Unix_error ((Unix.ENOENT | Unix.ENOTDIR), _, _) -> Ok false
   | exception Unix.Unix_error (error, _, _) -> Error (file_error full error)
+
+let rec is_real_folder t known folder =
+  let above = Filename.dirname folder in
+  if String.equal above folder then Ok true
+  else
+    match Hashtbl.find_opt known folder with
+    | Some real -> Ok real
+    | None ->
+        let* real_above = is_real_folder t known above in
+        let* real =
+          if real_above then has_kind t folder Unix.S_DIR else Ok false
+        in
+        Hashtbl.add known folder real;
+        Ok real
+
+let is_regular_file t known path =
+  let* real = is_real_folder t known (Filename.dirname path) in
+  if real then has_kind t path Unix.S_REG else Ok false
 
 let view_options =
   [ "-c"; "core.fsmonitor=false"; "-c"; "core.splitIndex=false" ]
@@ -946,11 +963,18 @@ let read_entries t =
       staged
     @ List.map (fun path -> { path; tracked = false }) others
   in
+  let known =
+    Hashtbl.create
+      (64
+      [@mutaml.skip
+        "the number is only the first size of a table that grows as it needs, \
+         and the code reads the table only by its keys, never in its order"])
+  in
   let* kept =
     List.fold_left
       (fun kept entry ->
         let* kept = kept in
-        let* regular = is_regular_file t entry.path in
+        let* regular = is_regular_file t known entry.path in
         Ok (if regular then entry :: kept else kept))
       (Ok []) candidates
   in

@@ -480,8 +480,8 @@ that tree.
 - In the base tree, the file set is the set of files in the tree of the
   base commit.
 - In both trees, Sinter does not read inside a submodule. It leaves
-  each symbolic link out of the file set, and it does not follow a
-  symbolic link.
+  each symbolic link out of the file set, with each file behind a
+  symbolic link to a folder, and it does not follow a symbolic link.
 - In the working tree, Sinter opens a file with no symbolic link
   followed on the whole path below the repository root. A file that
   becomes a symbolic link after Sinter lists the file set, or that a new

@@ -112,14 +112,16 @@ type file_set
 val files : t -> (file_set, error) result
 (** [files repo] is the set of files of the working tree, as it is on disk. A
     path is in the set when git tracks it, or when git does not track it and
-    does not ignore it, and when [lstat] shows a regular file at the path. A
-    tracked file stays in the set when [.gitignore] matches it.
+    does not ignore it, and when [lstat] shows a regular file at the path and a
+    real folder at each part before it. A tracked file stays in the set when
+    [.gitignore] matches it.
 
     The set leaves out:
 
     - a path with nothing on disk, such as a tracked file that was deleted
     - a path that is a symbolic link, a directory, or another file that is not
       regular
+    - a path with a symbolic link in a folder on the way to the file
     - a path whose index entry records a submodule or a symbolic link, also when
       a regular file is now on disk at that path. [git add -A], and so
       {!tree_key}, records that file as a regular file.
