@@ -460,9 +460,10 @@ Such a mutant is a gap in the tests.
    with no mutant, which it makes before any worker starts, on an idle
    machine. On a machine whose every core is busy, a later run can pass
    the limit through waiting alone, and the run then counts as a kill.
-   One mutant of the current tree hangs the suite, so the column
-   "timed out" of the report counts 1. A larger number on a pass that
-   changed no source means that the machine was too busy.
+   The mutants that hang the suite are the same on every pass of one
+   tree, so the column "timed out" of the report gives the same count
+   on every pass of one tree. A larger count on another pass of the
+   same tree means that the machine was too busy.
 6. Keep the suite safe to run in parallel, or set `-j` to 1. Three
    facts make it safe: the test command is a script and not `dune`,
    which locks the build folder; every file that the suite writes has

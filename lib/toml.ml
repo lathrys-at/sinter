@@ -538,21 +538,51 @@ let between ~prefix ~suffix text =
     String.length text - String.length prefix - String.length suffix
   in
   if
-    inside >= 0
+    (inside >= 0)
+    [@mutaml.skip
+      "the bound matters only when text is the prefix and the suffix with \
+       nothing between them; extension then looks up the empty name, which is \
+       no kind and not inline table, and gives None either way"]
     && String.starts_with ~prefix text
     && String.ends_with ~suffix text
   then Some (String.sub text (String.length prefix) inside)
   else None
 
 let find_marker marker text =
-  let last = String.length text - String.length marker in
+  let last =
+    (String.length text
+     [@mutaml.skip
+       "the change matters only when text holds the marker once, at its end; \
+        read_message then gives None either way, as no description or expected \
+        word is empty or ends with the marker; the mark also takes out \
+        String.length text + 1, which makes String.sub raise on a text without \
+        the marker"])
+    - (String.length marker
+       [@mutaml.skip
+         "the change matters only when text holds the marker once, at its end; \
+          read_message then gives None either way, as no description or \
+          expected word is empty or ends with the marker; the mark also takes \
+          out String.length marker - 1, which makes String.sub raise on a text \
+          without the marker"])
+  in
   let rec find at =
-    if at > last then None
+    if
+      (at > last)
+      [@mutaml.skip
+        "the change matters only when text holds the marker once, at its end; \
+         read_message then gives None either way, as no description or \
+         expected word is empty or ends with the marker"]
+    then None
     else if String.equal (String.sub text at (String.length marker)) marker then
       Some at
     else find (at + 1)
   in
-  find 0
+  find
+    (0
+    [@mutaml.skip
+      "the change matters only when text starts with the marker; read_message \
+       then gives None either way, as no description or expected word is empty \
+       or starts with a comma"])
 
 let rec split_list text =
   match find_marker ", " text with

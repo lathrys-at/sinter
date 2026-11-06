@@ -987,15 +987,21 @@ let characters text = Line_index.characters text 0 (String.length text)
 let hash_mark (tag : Markdown.tag) hash =
   let rest = tag.rest in
   let rec stop index =
-    if index > 0 && (rest.[index - 1] = ' ' || rest.[index - 1] = '\t') then
-      stop (index - 1)
+    if
+      (index > 0)
+      [@mutaml.skip
+        "Facts.ack_parts reads an ack only when its trimmed rest holds a \
+         token, a blank, and the hash, so the scan stops at the end of the \
+         hash, at offset 3 or later, before it reaches offset 1"]
+      && (rest.[index - 1] = ' ' || rest.[index - 1] = '\t')
+    then stop (index - 1)
     else index
   in
   let stop = stop (String.length rest) in
   let start =
     tag.span.start.column
     + characters ("@" ^ tag.word)
-    + characters (String.sub rest 0 (stop - String.length hash))
+    + Line_index.characters rest 0 (stop - String.length hash)
   in
   {
     Finding.start;
@@ -1062,7 +1068,13 @@ let stale_ack facts documents ((ack : Facts.ack), void) others =
     ()
 
 let stale_acks facts retired =
-  let ackable = Hashtbl.create 16 in
+  let ackable =
+    Hashtbl.create
+      (16
+      [@mutaml.skip
+        "the size is only the first size of a table that grows as it needs, \
+         and find_all gives the same bindings in the same order at any size"])
+  in
   List.iter
     (fun ((edge : Facts.edge), (finding : Finding.t)) ->
       if finding.ackable then
