@@ -812,7 +812,9 @@ let find_git env =
     match path with
     | None -> []
     | Some path ->
-        List.filter (fun dir -> dir <> "") (String.split_on_char ':' path)
+        List.filter
+          (fun dir -> not (Filename.is_relative dir))
+          (String.split_on_char ':' path)
   in
   match
     List.find_opt is_executable_file

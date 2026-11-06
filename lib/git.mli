@@ -72,7 +72,8 @@ val open_repo : env:string array -> string -> (t, error) result
     The function finds the [git] executable through the variable [PATH] of
     [env], and through no other place. It takes the first directory of [PATH]
     that holds an executable regular file named [git]. It skips an empty entry
-    of [PATH], so it never looks in the current directory.
+    of [PATH] and a relative entry, so it never looks in the current directory
+    or below it.
 
     Every git child process gets [env] with these changes:
 
