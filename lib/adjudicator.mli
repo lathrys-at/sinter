@@ -91,7 +91,8 @@ val classes :
       does not hold for that step. Its subject is the line of the message, and
       it has no place. When the step exists, its related place is the heading of
       the step, and the detail ends with the text of {!Facts.delivery} of the
-      step. The detail shows the line as {!Delivery_line.shown} gives it.
+      step. The detail shows the line as {!Sinter_bridge.Utf_8.escaped} gives
+      it.
 
     - [delivery-without-change]: a step of a plan of the working tree for which
       a line of [deliveries] counts, when no path of [changed] is in the

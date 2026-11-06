@@ -43,8 +43,80 @@ let is_valid_agrees_with_first_invalid =
     (fun text ->
       Utf_8.is_valid text = Option.is_none (Utf_8.first_invalid text))
 
+let escaped_writes_each_byte_that_is_not_utf_8 () =
+  Alcotest.(check string)
+    "the text" "Delivers: caf\\xe9/s \\xff\\xfe \xc3\xa9"
+    (Utf_8.escaped "Delivers: caf\xe9/s \xff\xfe \xc3\xa9");
+  Alcotest.(check string)
+    "a sequence that is cut short gives each of its bytes" "a\\xe2\\x82b"
+    (Utf_8.escaped "a\xe2\x82b");
+  Alcotest.(check string) "the empty text" "" (Utf_8.escaped "")
+
+let escaped_gives_valid_text_back =
+  property ~name:"escaped gives valid text back" ~print:String.escaped
+    Generators.utf_8_string (fun text -> String.equal (Utf_8.escaped text) text)
+
+let rec escaped_one_piece_at_a_time rest =
+  match Utf_8.first_invalid rest with
+  | None -> rest
+  | Some offset ->
+      String.sub rest 0 offset
+      ^ Printf.sprintf "\\x%02x" (Char.code rest.[offset])
+      ^ escaped_one_piece_at_a_time
+          (String.sub rest (offset + 1) (String.length rest - offset - 1))
+
+let escaped_is_each_piece_up_to_the_next_bad_byte =
+  property
+    ~name:"escaped writes one byte at each first offset that is not UTF-8"
+    ~print:String.escaped
+    QCheck2.Gen.(string_size ~gen:char (int_bound 64))
+    (fun text ->
+      String.equal (Utf_8.escaped text) (escaped_one_piece_at_a_time text))
+
+let escaped_gives_valid_text_for_any_bytes =
+  property ~name:"escaped gives valid text for any bytes" ~print:String.escaped
+    QCheck2.Gen.(string_size ~gen:char (int_bound 64))
+    (fun text -> Utf_8.is_valid (Utf_8.escaped text))
+
+let allocated_by_escaped text =
+  let before = Gc.allocated_bytes () in
+  let result = Utf_8.escaped text in
+  (Gc.allocated_bytes () -. before, String.length result)
+
+let escaped_allocates_in_proportion_to_the_length_of_its_text () =
+  let length = 20_000 in
+  let text = "Delivers: " ^ String.make length '\xff' in
+  let allocated, size = allocated_by_escaped text in
+  Alcotest.(check int) "the length of the result" (10 + (4 * length)) size;
+  Alcotest.(check bool)
+    (Printf.sprintf
+       "%d bytes that are not UTF-8 shown with %.0f bytes allocated, under %d"
+       length allocated (500 * length))
+    true
+    (allocated < float_of_int (500 * length))
+
+let doubling_the_text_about_doubles_the_allocation () =
+  let measured length =
+    fst (allocated_by_escaped (String.make length '\xff'))
+  in
+  let one = measured 20_000 and two = measured 40_000 in
+  Alcotest.(check bool)
+    (Printf.sprintf "%.0f bytes, then %.0f bytes" one two)
+    true
+    (two < 2.5 *. one)
+
 let tests =
   [
+    Alcotest.test_case "escaped writes each byte that is not UTF-8" `Quick
+      escaped_writes_each_byte_that_is_not_utf_8;
+    escaped_gives_valid_text_back;
+    escaped_is_each_piece_up_to_the_next_bad_byte;
+    escaped_gives_valid_text_for_any_bytes;
+    Alcotest.test_case
+      "escaped allocates in proportion to the length of its text" `Quick
+      escaped_allocates_in_proportion_to_the_length_of_its_text;
+    Alcotest.test_case "doubling the text about doubles the allocation" `Quick
+      doubling_the_text_about_doubles_the_allocation;
     Alcotest.test_case "accepts one code point of each length" `Quick
       accepts_one_code_point_of_each_length;
     Alcotest.test_case "refuses a lone continuation byte" `Quick

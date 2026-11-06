@@ -68,15 +68,3 @@ let read ~commit message =
            [ { commit; number = index + 1; text; line = of_string text } ]
          else [])
        (String.split_on_char '\n' message))
-
-let shown text =
-  let rec pieces rest =
-    match Sinter_bridge.Utf_8.first_invalid rest with
-    | None -> [ rest ]
-    | Some offset ->
-        String.sub rest 0 offset
-        :: Printf.sprintf "\\x%02x" (Char.code rest.[offset])
-        :: pieces
-             (String.sub rest (offset + 1) (String.length rest - offset - 1))
-  in
-  String.concat "" (pieces text)

@@ -411,7 +411,7 @@ let short commit = String.sub commit 0 (min 7 (String.length commit))
 
 let quoted (found : Delivery_line.found) =
   Printf.sprintf "the line \"%s\" of commit %s"
-    (Delivery_line.shown found.text)
+    (Sinter_bridge.Utf_8.escaped found.text)
     (short found.commit)
 
 let stale_deliveries ~deliveries facts =
