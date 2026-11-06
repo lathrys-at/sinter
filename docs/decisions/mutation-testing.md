@@ -2,7 +2,7 @@
 <!-- Copyright 2026 The Sinter Authors -->
 
 # Measure the tests with mutation testing, through a fork of mutaml
-@decision mutation-testing
+@decision mutation-testing v2
 @cites test-rigor
 @cites gh/25
 @cites gh/27
@@ -26,7 +26,7 @@ for the choices below.
 
 ## Decision
 
-- Sinter maintains a fork of `mutaml` at `lathrys-at/mutaml`. The fork
+- Sinter maintains a fork of `mutaml` at `sinterworks/mutaml`. The fork
   keeps upstream's layout, names, and test style, so that a change can
   go upstream. Changes that upstream would take are offered there.
 - A mutant that makes the suite exceed its time limit counts as
