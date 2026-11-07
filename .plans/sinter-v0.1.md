@@ -197,6 +197,16 @@ parse that gives no tree, the comparison of a release with the release
 before it, and the command `sinter pack verify`, and bring
 docs/licensing-setup.md to the specification.
 
+## Read tags in HTML comments
+@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, CONTRIBUTING.md
+Read tags in an HTML comment at the start of a section or a list item
+in markdown, so that a published page does not show its tags.
+
+## Move our tags into HTML comments
+@scope spec/**, docs/**, .plans/**, plugins/**, .claude-plugin/**, CLAUDE.md, CONTRIBUTING.md, README.md
+Move the tags of this repository's markdown files into HTML comments,
+with no change to any extent hash or commitment-set hash.
+
 ## Fetch language packs
 @scope spec/**, lib/**, bin/**, bridge/**, test/**, bench/**, docs/**, THIRD_PARTY.md, CONTRIBUTING.md
 Fetch a pack, with its grammars, queries, and runner adapters, from
