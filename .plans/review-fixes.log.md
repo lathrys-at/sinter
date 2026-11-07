@@ -310,3 +310,51 @@
   of its module past 60 seconds, except the if-condition 51431a0a of
   `Facts.trim`: the suite of the facts kills it with a failure, and in
   the full suite the suite of the adjudicator hangs on it first.
+
+## Close the security gaps
+
+- `Source` reads only the manifest location and the paths of the file
+  set, and it opens no absolute path. A review found that a name in the
+  tree of the base reached any file: `/etc/hosts` by its absolute name,
+  `.git/config` and an ignored `.env` by a relative name. A branch that
+  deletes a tracked `.env` and then ignores it reached the same read with
+  no crafted tree. An outside manifest has no finding with a place in it,
+  so no absolute path needs a read, and a manifest pipe is read once.
+- A path of `--manifest` outside the repository is read by its resolved
+  text. Read by the path that the person gave, `ci/link/../../../m.toml`
+  lets a committed link choose the file.
+- A folder counts as inside when its real path is the root or a folder
+  below it. The first form of the check took only the root, and a link
+  of the person's own to `repo/ci` then followed a committed link in
+  `ci`.
+- A path that ends in `/`, `/.`, or `/..` keeps a final `/` through
+  `Repo_file.place`, so `sinter.toml/` stays the error of a missing
+  manifest. Without the `/`, the text form read the file.
+- `Utf_8.escaped` replaces both `Delivery_line.shown` and
+  `Scan.escape_path`, which held the same code. A name of 40 KB in the
+  tree of a base commit used 933 MB through `Scan.escape_path`.
+- Through the binary, no other cost on the road of a delivery line grows
+  faster than the line. The shapes measured to 1.6 MB: plain text,
+  spaces, tabs, control characters, bidirectional characters, combining
+  marks, wide characters, long plan and step names, and many lines.
+- A test of a file set with a link to itself on the way expected the
+  error `ELOOP`. A link on the way now leaves the file out, so the test
+  changed.
+- The first mutation pass left four survivors. The close after a failed
+  `fstat` went away, because `read_handle` now has one close for each
+  refusal. The mode of `openfile` has a mark. `Ok false` in
+  `is_real_folder` showed that the link in the tests had no file behind
+  it; the tests now put one there. The removal of `Hashtbl.add` in
+  `is_real_folder` falls to "the cost of the file set does not grow with
+  the depth of each file".
+- Left open: a link that the person makes outside the repository is
+  followed when no folder of the path leads below the root: a link at the
+  last part, or a link to a committed link to a folder. A committed path
+  that changes between the `realpath` of a folder and the read can also
+  change the place that the check gives.
+- Left for later: the tree of a base can hold a name that git never
+  checks out, such as `/etc/hosts`, and a finding still names it as a
+  place. No file opens for it.
+- Left for later: `--manifest CI/m.toml` on a disk that ignores case
+  keeps the case of the text in its location, so the lookup in the base
+  misses, and the check gives `config-changed`.
