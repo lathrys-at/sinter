@@ -4,6 +4,7 @@ _opam/
 *.install
 .sinter/
 bridge/target/
+docs/book/book/
 
 # What a pass of the mutation tester writes at the root of the
 # project: mutaml-runner's working directory, which also holds the

@@ -410,6 +410,47 @@ let with_repository ?message ~base ~tree f =
       in
       Ok (f repository))
 
+let with_new_repository ?caller ?tree f =
+  with_temporary_folder (fun temporary ->
+      let* repository =
+        guarded (fun () ->
+            let workspace = prepare ?caller temporary in
+            match tree with
+            | Some tree -> build_committed workspace ~tree
+            | None -> initialize workspace)
+      in
+      Ok (f repository))
+
+let shell ?(bound = 10.) ?first_on_path repository command =
+  let { root; environment; scratch } = repository.workspace in
+  let front folder binding =
+    match String.starts_with ~prefix:"PATH=" binding with
+    | true ->
+        "PATH=" ^ folder ^ ":" ^ String.sub binding 5 (String.length binding - 5)
+    | false -> binding
+  in
+  let environment =
+    let kept =
+      List.filter
+        (fun binding -> not (String.starts_with ~prefix:"LC_ALL=" binding))
+        (Array.to_list environment)
+    in
+    Array.of_list
+      ((match first_on_path with
+         | Some folder -> List.map (front folder) kept
+         | None -> kept)
+      @ [ "LC_ALL=C" ])
+  in
+  let output = Filename.concat scratch "shell-output"
+  and errors = Filename.concat scratch "shell-errors" in
+  guarded (fun () ->
+      let* code =
+        execute ~environment ~folder:root ~input:"/dev/null" ~output ~errors
+          ~bound "/bin/sh"
+          [ "-c"; "exec 2>&1\n" ^ command ]
+      in
+      Ok (code, read_file errors ^ read_file output))
+
 type layout = {
   args : string;
   env : string option;

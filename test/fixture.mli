@@ -191,6 +191,28 @@ val with_repository :
     {!with_temporary_folder} when the temporary folder cannot be made or
     removed. *)
 
+val with_new_repository :
+  ?caller:string array ->
+  ?tree:string ->
+  (repository -> 'a) ->
+  ('a, error) result
+(** [with_new_repository ~tree f] builds a repository under the temporary folder
+    and calls [f] with it. The repository is on the branch [main]. With [tree],
+    the path of a folder, its one commit holds the files of that folder, without
+    each file named [.gitkeep], and the working tree holds the same files.
+    Without [tree], it has no commit and its working tree is empty. Each git
+    command runs with the fixed configuration, home folder, author, committer,
+    and date of {!with_repository}, and the commit of [tree] has a fixed
+    message, so that commit has the same id on every machine. [caller] is the
+    environment that those fixed variables replace parts of; its default is
+    [Unix.environment ()], and {!run} says which variables it loses. The
+    repository is removed when [f] returns or raises. The rule of {!run} on the
+    working folder of the process holds here too.
+
+    An exception that [f] raises passes through. It raises the exceptions of
+    {!with_temporary_folder} when the temporary folder cannot be made or
+    removed. *)
+
 val root : repository -> string
 (** The real path of the root of the repository. *)
 
@@ -199,3 +221,22 @@ val git : repository -> string list -> (string, error) result
     same environment as the builder, and returns what git wrote to standard
     output. The rule of {!run} on the working folder of the process holds here
     too. *)
+
+val shell :
+  ?bound:float ->
+  ?first_on_path:string ->
+  repository ->
+  string ->
+  (int * string, error) result
+(** [shell repository command] runs [command] with [/bin/sh -c] in the root of
+    [repository], with empty standard input, and returns its exit code and its
+    output. The output is the standard output and the standard error of the
+    command as one stream, in the order the command wrote them. A non-zero exit
+    code is no error.
+
+    The command gets the environment of the builder of [repository] and
+    [LC_ALL=C]. With [first_on_path], the name of a folder, that folder comes
+    first on [PATH]. The command is killed after [bound] seconds, which is
+    {!Did_not_end}; the default is 10. A signal that ends the command is
+    {!Ended_by_signal}. The rule of {!run} on the working folder of the process
+    holds here too. *)

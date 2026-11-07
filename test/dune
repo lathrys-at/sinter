@@ -13,6 +13,8 @@
   (glob_files_rec fixtures/*)
   (glob_files ../spec/*.md)
   (source_tree cases)
+  (source_tree ../docs/book/src)
+  (source_tree ../docs/book/listings)
   (env_var SINTER_PROMOTE))
  (libraries
   sinter_core

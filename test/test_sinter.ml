@@ -22,6 +22,17 @@ let () =
         prerr_endline reason;
         exit 2
   in
+  let book_mode =
+    match
+      Book.mode_of_environment
+        ~promote:(Sys.getenv_opt "SINTER_PROMOTE")
+        ~source_root:(Sys.getenv_opt "DUNE_SOURCEROOT")
+    with
+    | Ok mode -> mode
+    | Error reason ->
+        prerr_endline reason;
+        exit 2
+  in
   let written = ref [] in
   (match mode with
   | Fixture.Compare -> ()
@@ -116,6 +127,11 @@ let () =
       ("scan", Test_scan.tests);
       ("check", Test_check.tests);
       ("jj", Test_jj.tests);
+      ("book rules", Test_book.tests);
+      ( "book",
+        Book.tests ~binary book_mode
+          ~on_write:(fun path -> written := path :: !written)
+          "../docs/book" );
       ( "cases",
         Fixture.tests ~binary mode
           ~on_write:(fun path -> written := path :: !written)
