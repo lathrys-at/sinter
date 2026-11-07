@@ -198,10 +198,12 @@ before it, and the command `sinter pack verify`, and bring
 docs/licensing-setup.md to the specification.
 
 ## Fetch language packs
-@scope lib/**, bin/**, bridge/**, test/**, docs/**, THIRD_PARTY.md
+@scope spec/**, lib/**, bin/**, bridge/**, test/**, bench/**, docs/**, THIRD_PARTY.md, CONTRIBUTING.md
 Fetch a pack, with its grammars, queries, and runner adapters, from
 the packs repository with `sinter pack add`, record it in
-`sinter.lock`, and keep it in a user cache keyed by its hash.
+`sinter.lock`, and keep it in a user cache keyed by its hash. Check a
+pack with `sinter pack verify`, and measure the check of the pack hash
+on each load.
 
 ## Read JavaScript, OCaml, Rust, and TypeScript
 @scope lib/**, test/**, THIRD_PARTY.md, REUSE.toml
