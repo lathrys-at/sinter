@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Copyright 2026 The Sinter Authors
+
+[book]
+title = "Using Sinter"
+language = "en"
+
+[build]
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/sinterworks/sinter"
