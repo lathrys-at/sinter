@@ -186,6 +186,34 @@ done
 A directory with no `checkout` file predates the file; remove it by
 hand, and the next build writes a new one.
 
+### The book
+
+The user manual, "Using Sinter", is a book in `docs/book/`
+(`docs/decisions/user-manual.md`). [mdBook](https://rust-lang.github.io/mdBook/)
+builds it. CI uses version 0.5.4. From the repository root:
+
+```
+mdbook build docs/book
+```
+
+The output goes to `docs/book/book/`, which git ignores. CI builds the
+book on each pull request, and publishes nothing.
+
+`dune test` runs the examples of each page, and checks the links and
+the notes. `test/book.mli` states the rules and the labels of the
+blocks. When the output of Sinter changes, run the command below. It
+writes the new output into the pages. Read the diff before you commit
+it.
+
+```
+SINTER_PROMOTE=1 dune test
+```
+
+A change that adds or changes a feature also updates the book. When
+the feature exists, the change removes the note on that feature, and it
+changes each block labeled `console,planned` under that note to
+`console,run`.
+
 ### Coverage
 
 `bisect_ppx` measures how much of `lib/` and `bin/` the tests run. No
