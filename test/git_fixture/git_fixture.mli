@@ -153,6 +153,12 @@ val checkout : t -> unit
 
 (** {1 Fake executables} *)
 
+val commit_with_a_name : t -> string -> string
+(** [commit_with_a_name repo name] is the object id of a new commit whose tree
+    holds the blobs [a.md] and [sinter.toml] of [HEAD], and a third entry with
+    the name [name], whatever bytes it holds. The commit is on no branch. It
+    raises [Failure] when [HEAD] does not hold those two files. *)
+
 val fake_git : string -> string array * string
 (** [fake_git script] is an environment and the path of a file that holds the
     shell script [script]. The [PATH] of the environment holds one directory,

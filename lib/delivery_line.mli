@@ -48,8 +48,3 @@ val read : commit:string -> string -> found list
     in the order of the lines. A line ends at a line feed, or at the end of
     [message]. Each paragraph counts: the subject, the body, and the trailers.
     [commit] is the object id of the commit of [message]. *)
-
-val shown : string -> string
-(** [shown text] is [text] with each byte that is not part of a valid UTF-8
-    character written as [\x] and two lowercase hexadecimal digits. Text that is
-    valid UTF-8 comes back as it is. *)

@@ -387,24 +387,111 @@ let a_file_that_does_not_read_is_an_error () =
          set holds only regular files, so no file of the scan can fail to read";
       Alcotest.skip ()
 
-let a_byte_outside_utf_8_shows_as_hex () =
-  Alcotest.(check (list string))
-    "the shown paths"
-    [ "docs/caf\\xe9.md"; "a\\xe2\\x82b"; "caf\xc3\xa9.md"; "\\xff\\xfe"; "" ]
-    (List.map Scan.escape_path
-       [ "docs/caf\xe9.md"; "a\xe2\x82b"; "caf\xc3\xa9.md"; "\xff\xfe"; "" ])
+let git_that_runs_before_the_read repo ~before =
+  let dir = Git_fixture.temp_dir () in
+  let env = Array.to_list (Git_fixture.env repo) in
+  let real =
+    List.find_map
+      (fun entry ->
+        if String.starts_with ~prefix:"PATH=" entry then
+          Some (String.sub entry 5 (String.length entry - 5))
+        else None)
+      env
+    |> Option.value ~default:""
+  in
+  let git = Filename.concat dir "git" in
+  Out_channel.with_open_bin git (fun channel ->
+      Printf.fprintf channel
+        "#!/bin/sh\n\
+         case \" $* \" in\n\
+         *\" rev-list \"*) %s ;;\n\
+         esac\n\
+         PATH=%s exec git \"$@\"\n"
+        before (Filename.quote real));
+  Unix.chmod git 0o755;
+  Array.of_list
+    (("PATH=" ^ dir ^ ":" ^ real)
+    :: List.filter
+         (fun entry -> not (String.starts_with ~prefix:"PATH=" entry))
+         env)
 
-let a_shown_path_is_utf_8 =
-  QCheck_alcotest.to_alcotest ~speed_level:`Quick
-    (QCheck2.Test.make ~count:500 ~name:"a shown path is valid UTF-8"
-       ~print:QCheck2.Print.string
-       QCheck2.Gen.(
-         oneof [ Generators.not_utf_8_string; Generators.utf_8_string ])
-       (fun path ->
-         let shown = Scan.escape_path path in
-         Sinter_bridge.Utf_8.is_valid shown
-         && ((not (Sinter_bridge.Utf_8.is_valid path))
-            || String.equal shown path)))
+let scan_after repo ~before =
+  Scan.run
+    ~env:(git_that_runs_before_the_read repo ~before)
+    ~dir:(Git_fixture.root repo) ~manifest:None ~base:(Some "HEAD") ~tool:"v1"
+    ()
+
+let unreadable_outcome = function
+  | Error (Scan.Unreadable_file { file; error }) ->
+      (file, Repo_file.message file error)
+  | Ok _ -> Alcotest.fail "the scan gives an outcome"
+  | Error error -> Alcotest.fail (String.concat "\n" (messages error))
+
+let a_file_that_becomes_a_link_after_the_listing_is_an_error () =
+  let outside = Filename.concat (Git_fixture.temp_dir ()) "secret.md" in
+  Out_channel.with_open_bin outside (fun channel ->
+      Out_channel.output_string channel "@req hidden-value\n");
+  let repo = repository [ ("sinter.toml", manifest); ("a.md", "# A\n") ] in
+  let path = Filename.quote (Filename.concat (Git_fixture.root repo) "a.md") in
+  Alcotest.(check (pair string string))
+    "the file and the message"
+    ("a.md", "a.md is a symbolic link, and Sinter does not follow links")
+    (unreadable_outcome
+       (scan_after repo
+          ~before:
+            (Printf.sprintf "rm -f %s; ln -s %s %s" path
+               (Filename.quote outside) path)))
+
+let a_folder_that_becomes_a_link_after_the_listing_is_an_error () =
+  let outside = Git_fixture.temp_dir () in
+  Out_channel.with_open_bin (Filename.concat outside "a.md") (fun channel ->
+      Out_channel.output_string channel "@req hidden-value\n");
+  let repo = repository [ ("sinter.toml", manifest); ("d/a.md", "# A\n") ] in
+  let folder = Filename.quote (Filename.concat (Git_fixture.root repo) "d") in
+  Alcotest.(check (pair string string))
+    "the file and the message"
+    ("d/a.md", "d/a.md is a symbolic link, and Sinter does not follow links")
+    (unreadable_outcome
+       (scan_after repo
+          ~before:
+            (Printf.sprintf "rm -rf %s; ln -s %s %s" folder
+               (Filename.quote outside) folder)))
+
+let a_file_gone_after_the_listing_is_an_error () =
+  let repo = repository [ ("sinter.toml", manifest); ("a.md", "# A\n") ] in
+  let path = Filename.quote (Filename.concat (Git_fixture.root repo) "a.md") in
+  Alcotest.(check (pair string string))
+    "the file and the message"
+    ("a.md", "a.md: no file is at this path")
+    (unreadable_outcome
+       (scan_after repo ~before:(Printf.sprintf "rm -f %s" path)))
+
+let a_long_name_in_the_base_allocates_in_proportion_to_its_length () =
+  let repo = repository [ ("sinter.toml", manifest); ("a.md", "# A\n") ] in
+  let length = 40_000 in
+  let base = Git_fixture.commit_with_a_name repo (String.make length '\xff') in
+  let before = Gc.allocated_bytes () in
+  let loaded =
+    Scan.load_with_base ~env:(Git_fixture.env repo) ~dir:(Git_fixture.root repo)
+      ~manifest:None ~base:(Some base) ()
+  in
+  let allocated = Gc.allocated_bytes () -. before in
+  (match loaded with
+  | Ok (tree, _) ->
+      Alcotest.(check (list int))
+        "the length of the warning"
+        [
+          String.length
+            "the path  is not UTF-8, so sinter does not read the file"
+          + (4 * length);
+        ]
+        (List.map String.length
+           (List.filter (contains "is not UTF-8") tree.warnings))
+  | Error error -> Alcotest.fail (String.concat "; " (messages error)));
+  Alcotest.(check bool)
+    (Printf.sprintf "%.0f bytes allocated, under %d" allocated (5_000 * length))
+    true
+    (allocated < float_of_int (5_000 * length))
 
 let a_plan_file_needs_the_pack_markdown_when_it_names_none () =
   let repo, _, _ = Lazy.force shared in
@@ -495,14 +582,15 @@ let a_check_that_cannot_write_its_output_says_so () =
 let text { Error_text.fault; help; _ } = (fault, help)
 let tree_errors = Sinter_bridge.Tree.[ Did_not_finish; Too_long ]
 
-let text_file_errors =
-  Text_file.
+let repo_file_errors =
+  Repo_file.
     [
-      Is_a_directory;
-      Cannot_open "a.md: the file does not open";
+      Not_a_repository_path;
+      Nothing_at_path;
+      Symbolic_link;
+      Not_regular;
+      Cannot_open "the file does not open";
       Cannot_read "no read";
-      Shorter_than_its_length;
-      Not_utf_8 3;
     ]
 
 let every_error =
@@ -525,6 +613,8 @@ let every_error =
     Scan.No_manifest;
     Scan.Missing_manifest "m.toml";
     Scan.Unreadable_manifest { path = "m.toml"; reason = "Is a directory" };
+    Scan.Manifest_is_a_link "ci/m.toml";
+    Scan.Manifest_not_regular "ci/m.toml";
     Scan.Manifest_not_utf_8 "m\xff.toml";
     Scan.Invalid_manifest
       { path = "m.toml"; text = "[scan]\n"; errors = [ Manifest.No_pack ] };
@@ -539,7 +629,7 @@ let every_error =
   ]
   @ List.map
       (fun error -> Scan.Unreadable_file { file = "a.md"; error })
-      text_file_errors
+      repo_file_errors
   @ List.map
       (fun error -> Scan.Unparsed_file { file = "a.md"; error })
       tree_errors
@@ -568,6 +658,8 @@ let constructor = function
   | Scan.No_manifest -> "No_manifest"
   | Scan.Missing_manifest _ -> "Missing_manifest"
   | Scan.Unreadable_manifest _ -> "Unreadable_manifest"
+  | Scan.Manifest_is_a_link _ -> "Manifest_is_a_link"
+  | Scan.Manifest_not_regular _ -> "Manifest_not_regular"
   | Scan.Manifest_not_utf_8 _ -> "Manifest_not_utf_8"
   | Scan.Invalid_manifest _ -> "Invalid_manifest"
   | Scan.Two_packs _ -> "Two_packs"
@@ -580,12 +672,13 @@ let constructor = function
   | Scan.No_head -> "No_head"
   | Scan.Unreadable_file { error; _ } -> (
       match error with
-      | Text_file.Is_a_directory -> "Unreadable_file Is_a_directory"
-      | Text_file.Cannot_open _ -> "Unreadable_file Cannot_open"
-      | Text_file.Cannot_read _ -> "Unreadable_file Cannot_read"
-      | Text_file.Shorter_than_its_length ->
-          "Unreadable_file Shorter_than_its_length"
-      | Text_file.Not_utf_8 _ -> "Unreadable_file Not_utf_8")
+      | Repo_file.Not_a_repository_path ->
+          "Unreadable_file Not_a_repository_path"
+      | Repo_file.Nothing_at_path -> "Unreadable_file Nothing_at_path"
+      | Repo_file.Symbolic_link -> "Unreadable_file Symbolic_link"
+      | Repo_file.Not_regular -> "Unreadable_file Not_regular"
+      | Repo_file.Cannot_open _ -> "Unreadable_file Cannot_open"
+      | Repo_file.Cannot_read _ -> "Unreadable_file Cannot_read")
   | Scan.Unparsed_file { error; _ } -> (
       match error with
       | Sinter_bridge.Tree.Did_not_finish -> "Unparsed_file Did_not_finish"
@@ -600,8 +693,8 @@ let constructor = function
 
 let every_error_has_a_fault_and_a_help () =
   Alcotest.(check int)
-    "the examples are of 33 distinct cases, the cases that [constructor] names"
-    33
+    "the examples are of 36 distinct cases, the cases that [constructor] names"
+    36
     (List.length
        (List.sort_uniq String.compare (List.map constructor every_error)));
   List.iter
@@ -664,6 +757,14 @@ let each_error_says_what_is_wrong_and_what_to_do () =
       [
         ( "cannot read the manifest m.toml: Is a directory",
           "name a manifest that is a file that you can read" );
+      ];
+      [
+        ( "ci/m.toml is a symbolic link, and Sinter does not follow links",
+          "commit the manifest as a regular file" );
+      ];
+      [
+        ( "ci/m.toml is not a regular file, and Sinter reads only regular files",
+          "commit the manifest as a regular file" );
       ];
       [
         ( "the path of the manifest d/m\\xff\\xfe.toml is not UTF-8",
@@ -756,6 +857,8 @@ let each_error_says_what_is_wrong_and_what_to_do () =
          Scan.No_manifest;
          Scan.Missing_manifest "m.toml";
          Scan.Unreadable_manifest { path = "m.toml"; reason = "Is a directory" };
+         Scan.Manifest_is_a_link "ci/m.toml";
+         Scan.Manifest_not_regular "ci/m.toml";
          Scan.Manifest_not_utf_8 "d/m\xff\xfe.toml";
          Scan.Invalid_manifest
            { path = "m.toml"; text = "[scan]\n"; errors = manifest_error };
@@ -770,7 +873,7 @@ let each_error_says_what_is_wrong_and_what_to_do () =
          Scan.Unreadable_file
            {
              file = "a.md";
-             error = Text_file.Cannot_open "a.md: the file does not open";
+             error = Repo_file.Cannot_open "the file does not open";
            };
          Scan.Unparsed_file
            { file = "a.md"; error = Sinter_bridge.Tree.Did_not_finish };
@@ -1225,29 +1328,315 @@ let a_manifest_whose_path_is_not_utf_8_is_an_error () =
     | Error error -> messages error
     | Ok _ -> [ "the scan gives records" ])
 
-let a_manifest_link_to_a_path_that_is_not_utf_8_is_an_error () =
-  let help = not_utf_8_help in
-  let repo = Git_fixture.init () in
-  (match Git_fixture.write repo "conf\xff.toml" manifest with
+let an_outside_link_to_a_path_that_is_not_utf_8_is_an_error () =
+  let repo = repository [ ("a.md", "# A\n") ] in
+  let folder = Unix.realpath (Git_fixture.temp_dir ()) in
+  let target = Filename.concat folder "conf\xff.toml" in
+  (match
+     Out_channel.with_open_bin target (fun channel ->
+         Out_channel.output_string channel manifest)
+   with
   | () -> ()
   | exception Sys_error _ -> Alcotest.skip ());
-  Git_fixture.write repo "a.md" "# A\n";
-  Git_fixture.symlink repo ~target:"conf\xff.toml" "sinter.toml";
-  ignore (Git_fixture.git repo [ "add"; "-A" ]);
-  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  let link = Filename.concat folder "link.toml" in
+  Unix.symlink target link;
   Alcotest.(check (list string))
     "the error names the path that the link names"
-    [ "the path of the manifest conf\\xff.toml is not UTF-8; " ^ help ]
+    [
+      Printf.sprintf "the path of the manifest %s is not UTF-8; %s"
+        (Sinter_bridge.Utf_8.escaped target)
+        not_utf_8_help;
+    ]
+    (match scan ~manifest:link ~base:"HEAD" repo with
+    | Error error -> messages error
+    | Ok _ -> [ "the scan gives records" ])
+
+let error_texts error =
+  List.concat_map
+    (fun { Error_text.fault; help; place } ->
+      let line = Option.bind place (fun { Error_text.line; _ } -> line) in
+      fault :: help :: Option.to_list line)
+    (Scan.explain error)
+
+let secret_folder () =
+  let folder = Unix.realpath (Git_fixture.temp_dir ()) in
+  Out_channel.with_open_bin (Filename.concat folder "secret.env")
+    (fun channel -> Out_channel.output_string channel "TOKEN=hidden-value\n");
+  folder
+
+let a_manifest_that_links_out_of_the_repository_is_not_read () =
+  let secret = Filename.concat (secret_folder ()) "secret.env" in
+  let repo = Git_fixture.init () in
+  Git_fixture.write repo "a.md" "# A\n";
+  Git_fixture.symlink repo ~target:secret "sinter.toml";
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "c" ]);
+  match scan ~base:"HEAD" repo with
+  | Error (Scan.Manifest_is_a_link path as error) ->
+      Alcotest.(check string) "the path" "sinter.toml" path;
+      Alcotest.(check (list string))
+        "the texts of the outcome that hold the text of the target" []
+        (List.filter
+           (fun text -> contains "hidden-value" text || contains "secret" text)
+           (error_texts error))
+  | Ok _ -> Alcotest.fail "the scan reads the target as its manifest"
+  | Error error -> Alcotest.fail (String.concat "\n" (messages error))
+
+let a_link_to_a_manifest_in_the_repository_is_an_error () =
+  let repo = repository [ ("conf.toml", manifest); ("a.md", "# A\n") ] in
+  Git_fixture.symlink repo ~target:"conf.toml" "sinter.toml";
+  Alcotest.(check (list string))
+    "the error"
+    [
+      "sinter.toml is a symbolic link, and Sinter does not follow links; \
+       commit the manifest as a regular file";
+    ]
     (match scan ~base:"HEAD" repo with
     | Error error -> messages error
     | Ok _ -> [ "the scan gives records" ])
 
+let a_named_manifest_behind_a_link_in_the_repository_is_an_error () =
+  let repo =
+    repository
+      [
+        ("sinter.toml", manifest); ("real/m.toml", manifest); ("a.md", "# A\n");
+      ]
+  in
+  Git_fixture.symlink repo ~target:"real/m.toml" "last.toml";
+  Git_fixture.symlink repo ~target:"real" "way";
+  Git_fixture.symlink repo ~target:(secret_folder ()) "out";
+  Git_fixture.symlink repo ~target:"nowhere" "dangling";
+  List.iter
+    (fun (dir, given) ->
+      Alcotest.(check (list string))
+        given
+        [
+          given
+          ^ " is a symbolic link, and Sinter does not follow links; commit the \
+             manifest as a regular file";
+        ]
+        (match scan ~dir ~manifest:given ~base:"HEAD" repo with
+        | Error error -> messages error
+        | Ok _ -> [ "the scan gives records" ]))
+    [
+      ("", "last.toml");
+      ("", "way/m.toml");
+      ("", "out/secret.env");
+      ("", "dangling");
+      ("", "dangling/m.toml");
+      ("real", "../last.toml");
+      ("", Filename.concat (Git_fixture.root repo) "way/m.toml");
+    ]
+
+let a_manifest_through_a_link_to_the_root_follows_the_rule () =
+  let repo =
+    repository [ ("sinter.toml", manifest); ("ci/m.toml", manifest) ]
+  in
+  Git_fixture.symlink repo ~target:"m.toml" "ci/l.toml";
+  let alias =
+    Filename.concat (Unix.realpath (Git_fixture.temp_dir ())) "alias"
+  in
+  Unix.symlink (Git_fixture.root repo) alias;
+  Alcotest.(check string)
+    "the manifest of the index" "ci/m.toml"
+    (index_field "manifest"
+       (outcome
+          (scan ~manifest:(Filename.concat alias "ci/m.toml") ~base:"HEAD" repo)));
+  let given = Filename.concat alias "ci/l.toml" in
+  Alcotest.(check string)
+    "the link below the alias"
+    (given
+   ^ " is a symbolic link, and Sinter does not follow links; commit the \
+      manifest as a regular file")
+    (failure (scan ~manifest:given ~base:"HEAD" repo))
+
+let a_manifest_through_a_link_to_a_folder_below_the_root_follows_the_rule () =
+  let repo =
+    repository [ ("sinter.toml", manifest); ("ci/m.toml", manifest) ]
+  in
+  Git_fixture.symlink repo
+    ~target:(Filename.concat (secret_folder ()) "secret.env")
+    "ci/l.toml";
+  let alias =
+    Filename.concat (Unix.realpath (Git_fixture.temp_dir ())) "alias"
+  in
+  Unix.symlink (Filename.concat (Git_fixture.root repo) "ci") alias;
+  Alcotest.(check string)
+    "the manifest of the index" "ci/m.toml"
+    (index_field "manifest"
+       (outcome
+          (scan ~manifest:(Filename.concat alias "m.toml") ~base:"HEAD" repo)));
+  let given = Filename.concat alias "l.toml" in
+  Alcotest.(check string)
+    "the link below the alias"
+    (given
+   ^ " is a symbolic link, and Sinter does not follow links; commit the \
+      manifest as a regular file")
+    (failure (scan ~manifest:given ~base:"HEAD" repo))
+
+let a_path_that_ends_as_a_folder_names_no_manifest () =
+  let repo =
+    repository [ ("sinter.toml", manifest); ("ci/m.toml", manifest) ]
+  in
+  List.iter
+    (fun given ->
+      match scan ~manifest:given ~base:"HEAD" repo with
+      | Error (Scan.Missing_manifest path) ->
+          Alcotest.(check string) "the path" given path
+      | _ -> Alcotest.failf "%s is not Missing_manifest" given)
+    [ "sinter.toml/"; "sinter.toml/."; "ci/m.toml/"; "ci/" ]
+
+let an_outside_path_that_ends_as_a_folder_names_no_manifest () =
+  let repo = repository [ ("sinter.toml", manifest) ] in
+  let folder = Unix.realpath (Git_fixture.temp_dir ()) in
+  let path = Filename.concat folder "m.toml" in
+  Out_channel.with_open_bin path (fun channel ->
+      Out_channel.output_string channel manifest);
+  let given = path ^ "/" in
+  match scan ~manifest:given ~base:"HEAD" repo with
+  | Error (Scan.Missing_manifest shown) ->
+      Alcotest.(check string) "the path" given shown
+  | _ -> Alcotest.fail "the path is not Missing_manifest"
+
+let a_manifest_inside_that_is_not_regular_is_an_error () =
+  let repo = repository [ ("conf.toml", manifest); ("ci/m.toml", manifest) ] in
+  Unix.mkfifo (Filename.concat (Git_fixture.root repo) "pipe.toml") 0o644;
+  Alcotest.(check (list string))
+    "the folder, and the pipe"
+    [
+      "ci is not a regular file, and Sinter reads only regular files; commit \
+       the manifest as a regular file";
+      "pipe.toml is not a regular file, and Sinter reads only regular files; \
+       commit the manifest as a regular file";
+    ]
+    (List.map
+       (fun given -> failure (scan ~manifest:given ~base:"HEAD" repo))
+       [ "ci"; "pipe.toml" ])
+
+let a_root_manifest_that_is_not_regular_is_an_error () =
+  let repo = repository [ ("a.md", "# A\n") ] in
+  Unix.mkdir (Filename.concat (Git_fixture.root repo) "sinter.toml") 0o755;
+  Alcotest.(check string)
+    "the folder"
+    "sinter.toml is not a regular file, and Sinter reads only regular files; \
+     commit the manifest as a regular file"
+    (failure (scan ~base:"HEAD" repo))
+
+let nothing_at_the_path_of_a_manifest_keeps_its_errors () =
+  let repo = repository [ ("a.md", "# A\n") ] in
+  (match scan ~base:"HEAD" repo with
+  | Error Scan.No_manifest -> ()
+  | _ -> Alcotest.fail "no manifest at the root is No_manifest");
+  List.iter
+    (fun given ->
+      match scan ~manifest:given ~base:"HEAD" repo with
+      | Error (Scan.Missing_manifest path) ->
+          Alcotest.(check string) "the path" given path
+      | _ -> Alcotest.failf "%s is not Missing_manifest" given)
+    [ "ci/m.toml"; "a.md/m.toml" ]
+
+let a_manifest_inside_that_does_not_open_is_an_error () =
+  let repo = repository [ ("a.md", "# A\n"); ("m.toml", manifest) ] in
+  let path = Filename.concat (Git_fixture.root repo) "m.toml" in
+  match
+    Unreadable.with_unreadable path (fun () ->
+        scan ~manifest:"m.toml" ~base:"HEAD" repo)
+  with
+  | None ->
+      print_endline "skipped: this user reads a file that has no permissions";
+      Alcotest.skip ()
+  | Some result ->
+      Alcotest.(check string)
+        "the message"
+        ("cannot read the manifest m.toml: "
+        ^ Unix.error_message Unix.EACCES
+        ^ "; name a manifest that is a file that you can read")
+        (failure result)
+
+let a_manifest_inside_with_an_error_shows_it () =
+  let repo = repository [ ("a.md", "# A\n"); ("m.toml", "[scan\n") ] in
+  match scan ~manifest:"m.toml" ~base:"HEAD" repo with
+  | Error (Scan.Invalid_manifest { path; text; _ }) ->
+      Alcotest.(check (pair string string))
+        "the path and the text" ("m.toml", "[scan\n") (path, text)
+  | _ -> Alcotest.fail "the manifest is not invalid"
+
+let a_named_manifest_inside_has_the_path_from_the_root () =
+  let repo = repository [ ("a.md", "# A\n"); ("ci/m.toml", manifest) ] in
+  Alcotest.(check (list string))
+    "the manifest of each scan"
+    [ "ci/m.toml"; "ci/m.toml"; "ci/m.toml"; "ci/m.toml" ]
+    (List.map
+       (fun (dir, given) ->
+         index_field "manifest"
+           (outcome (scan ~dir ~manifest:given ~base:"HEAD" repo)))
+       [
+         ("", "ci/m.toml");
+         ("ci", "m.toml");
+         ("ci", "./../ci/m.toml");
+         ("", Filename.concat (Git_fixture.root repo) "ci/m.toml");
+       ])
+
+let a_path_out_by_the_text_does_not_go_through_a_link () =
+  let repo = repository [ ("a.md", "# A\n"); ("ci/m.toml", manifest) ] in
+  let parent = Filename.dirname (Git_fixture.root repo) in
+  Out_channel.with_open_bin (Filename.concat parent "out.toml") (fun channel ->
+      Out_channel.output_string channel manifest);
+  let far = secret_folder () in
+  Unix.mkdir (Filename.concat far "a") 0o755;
+  Unix.mkdir (Filename.concat far "a/b") 0o755;
+  Unix.mkdir (Filename.concat far "a/b/c") 0o755;
+  Out_channel.with_open_bin (Filename.concat far "out.toml") (fun channel ->
+      Out_channel.output_string channel "not a manifest\n");
+  Git_fixture.symlink repo ~target:(Filename.concat far "a/b/c") "ci/link";
+  Alcotest.(check string)
+    "the manifest by the text of the path"
+    (Filename.concat (Unix.realpath parent) "out.toml")
+    (index_field "manifest"
+       (outcome (scan ~manifest:"ci/link/../../../out.toml" ~base:"HEAD" repo)))
+
 let tests =
   [
+    case "a file that becomes a link after the listing is an error"
+      a_file_that_becomes_a_link_after_the_listing_is_an_error;
+    case "a folder that becomes a link after the listing is an error"
+      a_folder_that_becomes_a_link_after_the_listing_is_an_error;
+    case "a file gone after the listing is an error"
+      a_file_gone_after_the_listing_is_an_error;
+    case "a long name in the base allocates in proportion to its length"
+      a_long_name_in_the_base_allocates_in_proportion_to_its_length;
     case "a manifest whose path is not UTF-8 is an error"
       a_manifest_whose_path_is_not_utf_8_is_an_error;
-    case "a manifest link to a path that is not UTF-8 is an error"
-      a_manifest_link_to_a_path_that_is_not_utf_8_is_an_error;
+    case "an outside link to a path that is not UTF-8 is an error"
+      an_outside_link_to_a_path_that_is_not_utf_8_is_an_error;
+    case "a manifest that links out of the repository is not read"
+      a_manifest_that_links_out_of_the_repository_is_not_read;
+    case "a link to a manifest in the repository is an error"
+      a_link_to_a_manifest_in_the_repository_is_an_error;
+    case "a named manifest behind a link in the repository is an error"
+      a_named_manifest_behind_a_link_in_the_repository_is_an_error;
+    case "a manifest through a link to the root follows the rule"
+      a_manifest_through_a_link_to_the_root_follows_the_rule;
+    case "a manifest through a link to a folder below the root follows the rule"
+      a_manifest_through_a_link_to_a_folder_below_the_root_follows_the_rule;
+    case "a path that ends as a folder names no manifest"
+      a_path_that_ends_as_a_folder_names_no_manifest;
+    case "an outside path that ends as a folder names no manifest"
+      an_outside_path_that_ends_as_a_folder_names_no_manifest;
+    case "a manifest inside that is not regular is an error"
+      a_manifest_inside_that_is_not_regular_is_an_error;
+    case "a root manifest that is not regular is an error"
+      a_root_manifest_that_is_not_regular_is_an_error;
+    case "nothing at the path of a manifest keeps its errors"
+      nothing_at_the_path_of_a_manifest_keeps_its_errors;
+    case "a manifest inside that does not open is an error"
+      a_manifest_inside_that_does_not_open_is_an_error;
+    case "a manifest inside with an error shows it"
+      a_manifest_inside_with_an_error_shows_it;
+    case "a named manifest inside has the path from the root"
+      a_named_manifest_inside_has_the_path_from_the_root;
+    case "a path out by the text does not go through a link"
+      a_path_out_by_the_text_does_not_go_through_a_link;
     case "the base reads the manifest only when the diff changes it"
       the_base_reads_the_manifest_only_when_the_diff_changes_it;
     case "a manifest that the base does not hold is absent"
@@ -1302,8 +1691,6 @@ let tests =
       a_shallow_clone_with_no_merge_base_is_an_error;
     case "a file that does not read is an error"
       a_file_that_does_not_read_is_an_error;
-    case "a byte outside UTF-8 shows as hex" a_byte_outside_utf_8_shows_as_hex;
-    a_shown_path_is_utf_8;
     case "a plan file needs the pack markdown when it names none"
       a_plan_file_needs_the_pack_markdown_when_it_names_none;
     case "a scan that cannot write its output says so"

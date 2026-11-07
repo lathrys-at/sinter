@@ -460,6 +460,165 @@ let a_manifest_whose_path_is_not_utf_8_exits_with_3 () =
       \  = help: move the manifest to a path that is UTF-8\n" )
     (run_in repo "\"$2\" scan --manifest \"$(printf 'm\\377.toml')\" >/dev/null")
 
+let a_manifest_behind_a_link_exits_with_3 () =
+  let repo =
+    committed [ ("a.md", "# A\n"); ("real/m.toml", markdown_manifest) ]
+  in
+  let secret = Filename.temp_file "sinter-secret" ".env" in
+  write secret "TOKEN=hidden-value\n";
+  let root = Git_fixture.root repo in
+  Unix.symlink secret (Filename.concat root "sinter.toml");
+  Unix.symlink "real" (Filename.concat root "way");
+  Fun.protect
+    ~finally:(fun () -> Sys.remove secret)
+    (fun () ->
+      List.iter
+        (fun (arguments, shown) ->
+          Alcotest.(check (pair string string))
+            shown
+            ( "exited 3",
+              "error: " ^ shown
+              ^ " is a symbolic link, and Sinter does not follow links\n\
+                \  = help: commit the manifest as a regular file\n" )
+            (run_in repo ("\"$2\" " ^ arguments ^ " >/dev/null")))
+        [
+          ("scan", "sinter.toml");
+          ("check", "sinter.toml");
+          ("scan --manifest way/m.toml", "way/m.toml");
+          ("check --manifest way/m.toml", "way/m.toml");
+        ])
+
+let a_manifest_that_is_not_regular_exits_with_3 () =
+  let repo =
+    committed [ ("a.md", "# A\n"); ("ci/m.toml", markdown_manifest) ]
+  in
+  Unix.mkdir (Filename.concat (Git_fixture.root repo) "sinter.toml") 0o755;
+  List.iter
+    (fun (arguments, shown) ->
+      Alcotest.(check (pair string string))
+        shown
+        ( "exited 3",
+          "error: " ^ shown
+          ^ " is not a regular file, and Sinter reads only regular files\n\
+            \  = help: commit the manifest as a regular file\n" )
+        (run_in repo ("\"$2\" " ^ arguments ^ " >/dev/null")))
+    [ ("scan", "sinter.toml"); ("scan --manifest ci", "ci") ]
+
+let a_file_that_becomes_a_link_exits_with_3 () =
+  let repo =
+    committed [ ("sinter.toml", markdown_manifest); ("a.md", "# A\n") ]
+  in
+  let outside = Filename.temp_file "sinter-secret" ".md" in
+  write outside "hidden-value\n";
+  let bin = Git_fixture.temp_dir () in
+  write
+    (Filename.concat bin "git")
+    (Printf.sprintf
+       "#!/bin/sh\n\
+        case \" $* \" in\n\
+        *\" rev-list \"*) rm -f a.md; ln -s %s a.md ;;\n\
+        esac\n\
+        PATH=\"$REAL_PATH\" exec git \"$@\"\n"
+       (Filename.quote outside));
+  Unix.chmod (Filename.concat bin "git") 0o755;
+  Fun.protect
+    ~finally:(fun () -> Sys.remove outside)
+    (fun () ->
+      Alcotest.(check (pair string string))
+        "the exit code and standard error"
+        ( "exited 3",
+          "error: a.md is a symbolic link, and Sinter does not follow links\n\
+          \  = help: make the file readable, or leave it out of the files of \
+           the pack markdown with a '!' glob\n" )
+        (run_in repo
+           (Printf.sprintf
+              "REAL_PATH=\"$PATH\" PATH=%s:\"$PATH\" \"$2\" scan >/dev/null"
+              (Filename.quote bin))))
+
+let check_output repo base =
+  let output = Filename.temp_file "sinter-out" ".txt" in
+  Fun.protect
+    ~finally:(fun () -> Sys.remove output)
+    (fun () ->
+      let _, errors =
+        run_in repo
+          (Printf.sprintf "\"$2\" check --base %s >%s" base
+             (Filename.quote output))
+      in
+      contents output ^ errors)
+
+let names_and_hides name secret shown =
+  Alcotest.(check (pair bool bool))
+    "the output names the path, and holds no line of the file" (true, false)
+    (contains name shown, contains secret shown)
+
+let an_absolute_name_in_the_base_shows_no_line_of_that_file () =
+  let repo =
+    committed [ ("sinter.toml", markdown_manifest); ("a.md", "# A\n") ]
+  in
+  let secret = Filename.temp_file "sinter-secret" ".env" in
+  write secret "TOKEN=hidden-value\n";
+  Fun.protect
+    ~finally:(fun () -> Sys.remove secret)
+    (fun () ->
+      names_and_hides secret "hidden-value"
+        (check_output repo (Git_fixture.commit_with_a_name repo secret)))
+
+let a_name_equal_to_a_manifest_pipe_reads_the_pipe_once () =
+  let repo =
+    committed [ ("sinter.toml", markdown_manifest); ("a.md", "# A\n") ]
+  in
+  let folder = Git_fixture.temp_dir () in
+  let pipe = Filename.concat (Unix.realpath folder) "m.toml" in
+  Unix.mkfifo pipe 0o644;
+  let base = Git_fixture.commit_with_a_name repo pipe in
+  let quoted = Filename.quote pipe in
+  let outcome, _ =
+    run_in repo
+      (Printf.sprintf
+         "(cat sinter.toml >%s &) ; \"$2\" check --manifest %s --base %s \
+          >/dev/null"
+         quoted quoted base)
+  in
+  Alcotest.(check string) "the exit code" "exited 0" outcome
+
+let a_name_in_the_git_folder_shows_no_line_of_that_file () =
+  let repo =
+    committed [ ("sinter.toml", markdown_manifest); ("a.md", "# A\n") ]
+  in
+  names_and_hides ".git/config" "[core]"
+    (check_output repo (Git_fixture.commit_with_a_name repo ".git/config"))
+
+let an_ignored_name_in_the_base_shows_no_line_of_that_file () =
+  let repo =
+    committed
+      [
+        ("sinter.toml", markdown_manifest);
+        ("a.md", "# A\n");
+        (".gitignore", ".env\n");
+      ]
+  in
+  Git_fixture.write repo ".env" "API_KEY=local-secret\n";
+  names_and_hides ".env" "local-secret"
+    (check_output repo (Git_fixture.commit_with_a_name repo ".env"))
+
+let a_file_that_the_branch_deleted_and_ignored_shows_no_line () =
+  let repo =
+    committed
+      [
+        ("sinter.toml", markdown_manifest);
+        ("a.md", "# A\n");
+        (".env", "tracked\n");
+      ]
+  in
+  let base = String.trim (Git_fixture.git repo [ "rev-parse"; "HEAD" ]) in
+  ignore (Git_fixture.git repo [ "rm"; "-q"; "--cached"; ".env" ]);
+  Git_fixture.write repo ".gitignore" ".env\n";
+  ignore (Git_fixture.git repo [ "add"; "-A" ]);
+  ignore (Git_fixture.git repo [ "commit"; "-q"; "-m"; "delete" ]);
+  Git_fixture.write repo ".env" "API_KEY=local-secret\n";
+  names_and_hides ".env" "local-secret" (check_output repo base)
+
 let a_full_standard_output_ends_scan_and_check_with_3 () =
   if not (Sys.file_exists "/dev/full") then Alcotest.skip ();
   let repo =
@@ -483,14 +642,13 @@ let a_manifest_that_a_pipe_gives_is_read () =
   let repo =
     committed [ ("sinter.toml", markdown_manifest); ("a.md", "# A\n") ]
   in
-  Unix.symlink "/dev" (Filename.concat (Git_fixture.root repo) "dev");
   let output = Filename.temp_file "sinter-pipe" ".out" in
   Fun.protect
     ~finally:(fun () -> Sys.remove output)
     (fun () ->
       let outcome =
         run_in repo
-          ("cat sinter.toml | \"$2\" scan --manifest dev/stdin >"
+          ("cat sinter.toml | \"$2\" scan --manifest /dev/stdin >"
          ^ Filename.quote output)
       in
       let index =
@@ -922,6 +1080,23 @@ let tests =
       `Quick a_current_folder_that_is_gone_is_an_environment_error;
     Alcotest.test_case "a manifest that a pipe gives is read" `Quick
       a_manifest_that_a_pipe_gives_is_read;
+    Alcotest.test_case "an absolute name in the base shows no line of that file"
+      `Quick an_absolute_name_in_the_base_shows_no_line_of_that_file;
+    Alcotest.test_case "a name equal to a manifest pipe reads the pipe once"
+      `Quick a_name_equal_to_a_manifest_pipe_reads_the_pipe_once;
+    Alcotest.test_case "a name in the git folder shows no line of that file"
+      `Quick a_name_in_the_git_folder_shows_no_line_of_that_file;
+    Alcotest.test_case "an ignored name in the base shows no line of that file"
+      `Quick an_ignored_name_in_the_base_shows_no_line_of_that_file;
+    Alcotest.test_case
+      "a file that the branch deleted and ignored shows no line" `Quick
+      a_file_that_the_branch_deleted_and_ignored_shows_no_line;
+    Alcotest.test_case "a manifest behind a link exits with 3" `Quick
+      a_manifest_behind_a_link_exits_with_3;
+    Alcotest.test_case "a manifest that is not regular exits with 3" `Quick
+      a_manifest_that_is_not_regular_exits_with_3;
+    Alcotest.test_case "a file that becomes a link exits with 3" `Quick
+      a_file_that_becomes_a_link_exits_with_3;
     Alcotest.test_case "a manifest whose path is not UTF-8 exits with 3" `Quick
       a_manifest_whose_path_is_not_utf_8_exits_with_3;
     Alcotest.test_case "a closed standard input reads as no request" `Quick

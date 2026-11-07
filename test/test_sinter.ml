@@ -39,6 +39,7 @@ let () =
       ("jsonl", Test_jsonl.tests);
       ("utf-8", Test_utf_8.tests);
       ("text file", Test_text_file.tests);
+      ("repo file", Test_repo_file.tests);
       ("grammar name", Test_grammar_name.tests);
       ("parse record", Test_parse_record.tests);
       ("grammar", Test_grammar.tests);

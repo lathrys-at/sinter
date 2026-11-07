@@ -1,11 +1,20 @@
 (* SPDX-License-Identifier: Apache-2.0 *)
 (* Copyright 2026 The Sinter Authors *)
 
-type t = { root : string; files : (string, Line_index.t option) Hashtbl.t }
+module Paths = Set.Make (String)
 
-let create ~root =
+type t = {
+  root : string;
+  manifest : string;
+  readable : Paths.t;
+  files : (string, Line_index.t option) Hashtbl.t;
+}
+
+let create ~root ~manifest ~files =
   {
     root;
+    manifest;
+    readable = Paths.of_list files;
     files =
       Hashtbl.create
         (64
@@ -15,11 +24,18 @@ let create ~root =
            order"]);
   }
 
+let read_text source path =
+  Option.bind
+    (Result.to_option (Repo_file.read ~root:source.root path))
+    (fun content ->
+      if Sinter_bridge.Utf_8.is_valid content then Some content else None)
+
 let read source path =
-  let full =
-    if Filename.is_relative path then Filename.concat source.root path else path
-  in
-  Result.to_option (Result.map Line_index.make (Text_file.read_text full))
+  if
+    Filename.is_relative path
+    && (String.equal path source.manifest || Paths.mem path source.readable)
+  then Option.map Line_index.make (read_text source path)
+  else None
 
 let file source path =
   match Hashtbl.find_opt source.files path with

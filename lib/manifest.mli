@@ -235,7 +235,9 @@ type load_error =
 
 val load : string -> (t, load_error) result
 (** [load path] reads the file at [path] and then its text, as {!of_string}
-    does. The file is closed on every path.
+    does. The file is closed on every path. The function follows each symbolic
+    link of [path], so a caller gives it no path inside a repository: those go
+    to {!Repo_file.read}.
 
     @raise Sinter_bridge.Error on the conditions of {!of_string}. *)
 

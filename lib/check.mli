@@ -112,7 +112,8 @@ type form =
 type report
 (** What a check gives: the lines for standard error, the exit code, and the
     findings to write. The value holds the path of the root of the working tree,
-    so that {!write} can read the files of the findings. *)
+    the path of the manifest, and the paths of the file set, so that {!write}
+    can read the files of the findings. *)
 
 val messages : report -> string list
 (** [messages report] is the lines for the person who runs the tool, without
