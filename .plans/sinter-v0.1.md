@@ -220,6 +220,18 @@ on each load.
 Read the packs for JavaScript, OCaml, Rust, and TypeScript, and
 capture the tests that each one declares.
 
+## Set up a repository with sinter init
+@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, CONTRIBUTING.md
+Add `sinter init`. A first version writes the local setup: `sinter.toml`
+with `warn-only = true`, the line in `.gitignore`, and the folder
+`.plans/`, and it writes only what is missing.
+
+## Report the state of the work with sinter status
+@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, CONTRIBUTING.md
+Add `sinter status`. A first version prints each open plan and step
+with its state and unmet promises, the counts of findings, and the
+health lines, and `--done` gives an exit code for a script.
+
 ## Import test evidence
 @scope lib/**, bin/**, test/**, dune-project, sinter.opam, sinter.opam.locked, THIRD_PARTY.md, docs/decisions/**
 Read test reports with `sinter evidence import` through the runner
