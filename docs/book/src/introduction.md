@@ -21,6 +21,20 @@ out of date.
 Each of these lines is a *tag*. A tag is a line of text in your own
 file. It is not a git tag, which is a name that git gives to a commit.
 
+## How Sinter fits your work
+
+In many projects, coding agents now write much of the code. A *coding
+agent* is a program that writes and changes code from your
+instructions. When agents write the code, your own work changes. You
+decide what the software must do, and you write it down. You give the
+work to agents. Then you check that the result still matches what you
+decided.
+
+Sinter is built for this way of work. Your requirements, your
+decisions, and your plans are text in your repository. Sinter reports
+where the work no longer agrees with them. An agent can say that its
+work is done, but Sinter counts only what your repository shows.
+
 ## An example
 
 For this example, you need git and Sinter. The section "Build" of the
@@ -122,9 +136,8 @@ untraced: nothing satisfies req:session-length, and nothing verifies it
 2 findings in 2 files; 1 has a fix
 ```
 
-Each problem that Sinter reports is a *finding*. Sinter writes the
-requirement as `req:session-length`: the word of its tag without the
-`@`, then its name.
+Each problem that Sinter reports is a *finding*. A finding names the
+requirement as `req:session-length`, where `req` means a requirement.
 
 The finding `suspect` says that the guide names revision 1 of the
 requirement. The requirement is now at revision 2. Sinter cannot read
