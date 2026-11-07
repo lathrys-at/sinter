@@ -693,6 +693,92 @@ let a_diff_case_commits_base_and_leaves_tree_uncommitted () =
         "the commit has a fixed id" "b56f0ae3aaed63f1debb346e4a8955635c4d2aa4\n"
         (git repository [ "rev-parse"; "HEAD" ]))
 
+let with_new ?tree f =
+  match Fixture.with_new_repository ?tree f with
+  | Ok () -> ()
+  | Error error -> Alcotest.fail (Fixture.message ~case:"new" error)
+
+let shell_outcome = Alcotest.(result (pair int string) error)
+
+let a_new_repository_has_no_commit_and_no_file () =
+  with_new (fun repository ->
+      Alcotest.(check string)
+        "the branch is main" "refs/heads/main\n"
+        (git repository [ "symbolic-ref"; "HEAD" ]);
+      Alcotest.(check string)
+        "no commit" ""
+        (git repository [ "rev-list"; "--all" ]);
+      Alcotest.(check (list string))
+        "only .git" [ ".git" ]
+        (Array.to_list (Sys.readdir (Fixture.root repository))))
+
+let a_new_repository_with_a_tree_commits_it () =
+  Fixture.with_temporary_folder (fun folder ->
+      write_files folder [ ("tree/kept", "x\n"); ("tree/.gitkeep", "") ];
+      with_new ~tree:(Filename.concat folder "tree") (fun repository ->
+          Alcotest.(check string)
+            "the commit holds the file, without .gitkeep" "kept\n"
+            (git repository [ "ls-tree"; "-r"; "--name-only"; "HEAD" ]);
+          Alcotest.(check string)
+            "the working tree is clean" ""
+            (git repository [ "status"; "--porcelain" ])))
+
+let a_new_repository_with_a_missing_tree_is_an_error () =
+  match Fixture.with_new_repository ~tree:"/no/such/folder" (fun _ -> ()) with
+  | Error (Fixture.System _) -> ()
+  | _ -> Alcotest.fail "a missing tree gave no system error"
+
+let a_new_repository_is_removed_after_the_call () =
+  let kept = ref "" in
+  with_new (fun repository -> kept := Fixture.root repository);
+  Alcotest.(check bool) "the folder is gone" false (Sys.file_exists !kept)
+
+let shell_gives_the_code_and_both_streams_in_order () =
+  with_new (fun repository ->
+      Alcotest.check shell_outcome "one stream, and the code"
+        (Ok (3, "a\nb\nc\n"))
+        (Fixture.shell repository "echo a; echo b >&2; echo c; exit 3"))
+
+let shell_runs_at_the_root_with_empty_input () =
+  with_new (fun repository ->
+      Alcotest.check shell_outcome "the root, and no input"
+        (Ok (0, Fixture.root repository ^ "\n0\n"))
+        (Fixture.shell repository "pwd -P; wc -c | tr -d ' '"))
+
+let shell_sets_the_locale () =
+  with_new (fun repository ->
+      Alcotest.check shell_outcome "LC_ALL is C"
+        (Ok (0, "C\n"))
+        (Fixture.shell repository "echo $LC_ALL"))
+
+let shell_puts_a_folder_first_on_the_path () =
+  Fixture.with_temporary_folder (fun tools ->
+      let tool = Filename.concat tools "ls" in
+      write_files tools [ ("ls", "#!/bin/sh\necho mine\n") ];
+      Unix.chmod tool 0o755;
+      with_new (fun repository ->
+          Alcotest.check shell_outcome "the folder wins"
+            (Ok (0, "mine\n"))
+            (Fixture.shell ~first_on_path:tools repository "ls");
+          Alcotest.check shell_outcome "the rest of the path stays"
+            (Ok (0, "x\n"))
+            (Fixture.shell ~first_on_path:tools repository "printf 'x\\n' | cat");
+          Alcotest.check shell_outcome "without it, the folder is not there"
+            (Ok (0, ".git\n"))
+            (Fixture.shell repository "ls -A")))
+
+let shell_kills_a_command_past_its_bound () =
+  with_new (fun repository ->
+      Alcotest.check shell_outcome "the command is killed"
+        (Error (Fixture.Did_not_end 0.05))
+        (Fixture.shell ~bound:0.05 repository "exec sleep 5"))
+
+let shell_reports_a_signal () =
+  with_new (fun repository ->
+      Alcotest.check shell_outcome "the signal ends it"
+        (Error (Fixture.Ended_by_signal Sys.sigkill))
+        (Fixture.shell repository "kill -KILL $$"))
+
 let a_diff_case_runs_at_the_root_of_the_repository () =
   check_run "the run starts beside .git, in the files of tree" (Ok [])
     (base @ tree
@@ -763,6 +849,24 @@ let tests =
       a_run_that_a_signal_ends_fails_the_case;
     Alcotest.test_case "a case with repository runs in a commit of the tree"
       `Quick a_case_with_repository_runs_in_a_commit_of_the_tree;
+    Alcotest.test_case "a new repository has no commit and no file" `Quick
+      a_new_repository_has_no_commit_and_no_file;
+    Alcotest.test_case "a new repository with a tree commits it" `Quick
+      a_new_repository_with_a_tree_commits_it;
+    Alcotest.test_case "a new repository with a missing tree is an error" `Quick
+      a_new_repository_with_a_missing_tree_is_an_error;
+    Alcotest.test_case "a new repository is removed after the call" `Quick
+      a_new_repository_is_removed_after_the_call;
+    Alcotest.test_case "shell gives the code and both streams in order" `Quick
+      shell_gives_the_code_and_both_streams_in_order;
+    Alcotest.test_case "shell runs at the root with empty input" `Quick
+      shell_runs_at_the_root_with_empty_input;
+    Alcotest.test_case "shell sets the locale" `Quick shell_sets_the_locale;
+    Alcotest.test_case "shell puts a folder first on the path" `Quick
+      shell_puts_a_folder_first_on_the_path;
+    Alcotest.test_case "shell kills a command past its bound" `Quick
+      shell_kills_a_command_past_its_bound;
+    Alcotest.test_case "shell reports a signal" `Quick shell_reports_a_signal;
     Alcotest.test_case
       "a case with message runs in a commit of the tree on base" `Quick
       a_case_with_message_runs_in_a_commit_of_the_tree_on_base;
