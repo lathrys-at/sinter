@@ -13,7 +13,7 @@ canonical bytes and its id, verify the history entry by entry, report
 `ledger-broken`, and add `sinter ledger verify` and `sinter ledger log`.
 
 ## Check approvals
-@scope spec/**, docs/**, lib/**, bin/**, test/**
+@scope spec/**, docs/**, lib/**, bin/**, test/**, bench/**, CONTRIBUTING.md
 Give the checks the approvals, the declines, the closings, and the
 `delivered` entries: the classes `unapproved-req`,
 `unapproved-design`, `awaiting-approval`, `unapproved-plan`, and
