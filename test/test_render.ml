@@ -56,7 +56,8 @@ let strip styled =
 let in_files files f =
   Fixture.with_temporary_folder (fun root ->
       List.iter (fun (name, content) -> write root name content) files;
-      f (Source.create ~root))
+      f
+        (Source.create ~root ~manifest:"sinter.toml" ~files:(List.map fst files)))
 
 let full ?renderer ?(files = [ ("a.md", "") ]) ?tier finding =
   in_files files (fun source ->

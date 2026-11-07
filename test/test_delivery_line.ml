@@ -125,15 +125,6 @@ let read_of_a_message_with_no_line_is_empty () =
     "the empty message" 0
     (List.length (Delivery_line.read ~commit ""))
 
-let shown_writes_each_byte_that_is_not_utf_8 () =
-  Alcotest.(check string)
-    "the text" "Delivers: caf\\xe9/s \\xff\\xfe é"
-    (Delivery_line.shown "Delivers: caf\xe9/s \xff\xfe \xc3\xa9");
-  let valid = "Delivers: p/s 0a1b2c" in
-  Alcotest.(check bool)
-    "valid text is the same value" true
-    (Delivery_line.shown valid == valid)
-
 let letter_or_digit =
   Gen.oneof_list (String.to_seq "abcdefxyz0129ABZ" |> List.of_seq)
 
@@ -246,8 +237,6 @@ let tests =
       read_gives_each_line_that_starts_with_the_prefix;
     case "read of a message with no line is empty"
       read_of_a_message_with_no_line_is_empty;
-    case "shown writes each byte that is not UTF-8"
-      shown_writes_each_byte_that_is_not_utf_8;
     a_line_reads_back_from_its_text;
     a_line_in_any_paragraph_is_read;
     read_takes_any_bytes;

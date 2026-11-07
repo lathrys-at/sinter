@@ -6,6 +6,9 @@
  (public_name sinter.core)
  (modes native)
  (libraries sinter_bridge unix yojson fmt uucp)
+ (foreign_stubs
+  (language c)
+  (names repo_file_stubs))
  (instrumentation
   (backend bisect_ppx))
  (instrumentation

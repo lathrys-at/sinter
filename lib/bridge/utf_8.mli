@@ -10,3 +10,9 @@ val is_valid : string -> bool
 val first_invalid : string -> int option
 (** [first_invalid text] is the byte offset of the first sequence of [text] that
     is not well-formed UTF-8, or [None] when [text] is valid. *)
+
+val escaped : string -> string
+(** [escaped text] is [text] with each byte that is not part of a well-formed
+    UTF-8 sequence written as [\x] and two lowercase hexadecimal digits. Text
+    that is valid UTF-8 comes back with the same bytes. The time and the memory
+    of the call are in proportion to the length of [text]. *)

@@ -14,9 +14,18 @@ type error =
       (** nothing is at the path of the manifest that the caller named *)
   | Unreadable_manifest of { path : string; reason : string }
       (** the manifest does not open or read *)
+  | Manifest_is_a_link of string
+      (** a part of the path of a manifest inside the repository is a symbolic
+          link. The string is the path as the person gave it, or [sinter.toml].
+      *)
+  | Manifest_not_regular of string
+      (** the manifest inside the repository is a folder, a pipe, or another
+          file that is not regular. The string is the path as the person gave
+          it, or [sinter.toml]. *)
   | Manifest_not_utf_8 of string
-      (** the path of the manifest is not UTF-8. For a manifest that is a
-          symbolic link, the path is that of the file that the link names. *)
+      (** the path of the manifest is not UTF-8. For a manifest outside the
+          repository that is a symbolic link, the path is that of the file that
+          the link names. *)
   | Invalid_manifest of {
       path : string;
       text : string;  (** the text of the manifest *)
@@ -39,8 +48,10 @@ type error =
       (** the repository is a shallow clone, and it holds no default branch of
           this name or no merge base of [HEAD] and that branch *)
   | No_head  (** [HEAD] names no commit *)
-  | Unreadable_file of { file : string; error : Text_file.error }
-      (** a file of the pack [markdown] does not read *)
+  | Unreadable_file of { file : string; error : Repo_file.error }
+      (** a file of the pack [markdown] does not read. It can be gone since the
+          listing of the file set, or a symbolic link in its path can be new
+          since then. *)
   | Unparsed_file of { file : string; error : Sinter_bridge.Tree.error }
       (** the parse of a file of the pack [markdown] gives no tree *)
   | Unparsed_base_file of { file : string; error : Sinter_bridge.Tree.error }
@@ -57,12 +68,6 @@ val explain : error -> Error_text.t list
     the tool: one error for each error of an invalid manifest, as
     {!Manifest.explain} gives it with the lines of the text of the manifest, and
     one error with no place otherwise. *)
-
-val escape_path : string -> string
-(** [escape_path path] is [path] with each byte that is not part of a valid
-    UTF-8 character written as [\x] and two lowercase hexadecimal digits, for
-    example [docs/caf\xe9.md]. A path that is valid UTF-8 comes back as it is.
-*)
 
 (** {1 The tree} *)
 
@@ -105,9 +110,9 @@ type tree = private {
   warnings : string list;
       (** the text of one warning, without the word [warning:], for each file of
           the file set whose path is not UTF-8, in the order of the paths, with
-          the path as {!Display.clean} gives {!escape_path} of it. After
-          {!load_with_base}, the file set of the base counts too, and a path of
-          both file sets has one warning. *)
+          the path as {!Display.clean} gives {!Sinter_bridge.Utf_8.escaped} of
+          it. After {!load_with_base}, the file set of the base counts too, and
+          a path of both file sets has one warning. *)
   deliveries : Delivery_line.found list;
       (** the delivery lines of the change: each line that starts with
           {!Delivery_line.prefix} of the message of each commit of

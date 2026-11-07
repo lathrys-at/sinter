@@ -567,6 +567,54 @@ let open_repo_takes_the_first_executable_git_on_path () =
   Alcotest.(check string)
     "the root that the fake git printed" script (Git.root t)
 
+let open_repo_never_runs_a_git_of_the_current_directory () =
+  let repo = Lazy.force shared in
+  let here = Repo.temp_dir () in
+  let fake = Filename.concat here "git" in
+  Out_channel.with_open_bin fake (fun channel ->
+      Out_channel.output_string channel "#!/bin/sh\nexit 3\n");
+  Unix.chmod fake 0o755;
+  Unix.mkdir (Filename.concat here "bin") 0o755;
+  Unix.symlink fake (Filename.concat here "bin/git");
+  List.iter
+    (fun entry ->
+      let env =
+        Array.append
+          (without_path (Repo.env repo))
+          [| "PATH=" ^ entry ^ ":" ^ path_of (Repo.env repo) |]
+      in
+      let previous = Sys.getcwd () in
+      match
+        Fun.protect
+          ~finally:(fun () -> Sys.chdir previous)
+          (fun () ->
+            Sys.chdir here;
+            Git.open_repo ~env (Repo.root repo))
+      with
+      | Ok _ -> ()
+      | Error other -> Alcotest.fail (print_error other))
+    [ "."; ""; "bin"; "./bin"; "../" ^ Filename.basename here ]
+
+let open_repo_with_only_relative_entries_finds_no_git () =
+  let repo = Lazy.force shared in
+  let here = Repo.temp_dir () in
+  let fake = Filename.concat here "git" in
+  Out_channel.with_open_bin fake (fun channel ->
+      Out_channel.output_string channel "#!/bin/sh\nexit 3\n");
+  Unix.chmod fake 0o755;
+  let env = Array.append (without_path (Repo.env repo)) [| "PATH=.:" |] in
+  let previous = Sys.getcwd () in
+  match
+    Fun.protect
+      ~finally:(fun () -> Sys.chdir previous)
+      (fun () ->
+        Sys.chdir here;
+        Git.open_repo ~env (Repo.root repo))
+  with
+  | Error (Git_not_found _) -> ()
+  | Ok _ -> Alcotest.fail "the relative entry gives a git"
+  | Error other -> Alcotest.fail (print_error other)
+
 let open_repo_reports_output_it_cannot_read () =
   let env, script = Repo.fake_git "printf 'sha1\\n'\n" in
   match error (Git.open_repo ~env script) with
@@ -649,28 +697,31 @@ let files_names_a_conflicted_path_once () =
     (List.length (List.filter (String.equal "conflict.txt") files))
 
 let files_reports_a_path_whose_type_it_cannot_read () =
-  let reports result cause =
-    match (error result : Git.error) with
-    | File_error detail ->
-        holds
-          ("the error names the file and the cause: " ^ detail)
-          (String.ends_with
-             ~suffix:("src/main.ml: " ^ Unix.error_message cause)
-             detail)
-    | other -> Alcotest.fail (print_error other)
-  in
-  let looped = Repo.copy (Lazy.force shared) in
-  Repo.remove looped "src";
-  Repo.symlink looped ~target:"src" "src";
-  reports
-    (file_paths (ok (Git.open_repo ~env:(Repo.env looped) (Repo.root looped))))
-    Unix.ELOOP;
   let repo, t = Lazy.force conflicted in
   Option.iter
-    (fun result -> reports result Unix.EACCES)
+    (fun result ->
+      match (error result : Git.error) with
+      | File_error detail ->
+          holds
+            ("the error names the file and the cause: " ^ detail)
+            (String.ends_with
+               ~suffix:("src/main.ml: " ^ Unix.error_message Unix.EACCES)
+               detail)
+      | other -> Alcotest.fail (print_error other))
     (Unreadable.with_unreadable
        (Filename.concat (Repo.root repo) "src")
        (fun () -> file_paths t))
+
+let files_leaves_out_a_path_behind_a_link_to_itself () =
+  let looped = Repo.copy (Lazy.force shared) in
+  Repo.remove looped "src";
+  Repo.symlink looped ~target:"src" "src";
+  holds "the file set holds no path under the link"
+    (not
+       (List.mem "src/main.ml"
+          (ok
+             (file_paths
+                (ok (Git.open_repo ~env:(Repo.env looped) (Repo.root looped)))))))
 
 let files_reports_output_it_cannot_read () =
   match error (Git.files (Lazy.force faked)) with
@@ -1435,6 +1486,10 @@ let tests =
         child_environment_keeps_the_other_variables;
       quick "open_repo takes the first executable git on PATH"
         open_repo_takes_the_first_executable_git_on_path;
+      quick "open_repo never runs a git of the current directory"
+        open_repo_never_runs_a_git_of_the_current_directory;
+      quick "open_repo with only relative entries finds no git"
+        open_repo_with_only_relative_entries_finds_no_git;
       quick "open_repo reports output it cannot read"
         open_repo_reports_output_it_cannot_read;
       quick "open_repo gives what git wrote when it fails"
@@ -1466,6 +1521,8 @@ let tests =
         files_names_a_conflicted_path_once;
       quick "files reports a path whose type it cannot read"
         files_reports_a_path_whose_type_it_cannot_read;
+      quick "files leaves out a path behind a link to itself"
+        files_leaves_out_a_path_behind_a_link_to_itself;
       quick "files reports output it cannot read"
         files_reports_output_it_cannot_read;
       quick "read_base holds the files of the commit"

@@ -627,6 +627,134 @@ let the_view_refuses_a_flag_entry_it_cannot_read () =
           Alcotest.failf "the entry %S gives no error of its output" entry)
     [ "h "; "abc"; "a" ]
 
+let a_file_behind_a_symbolic_link_is_not_in_the_file_set () =
+  let repo = with_base [ ("d/x", "in\n") ] in
+  let outside = Repo.temp_dir () in
+  Out_channel.with_open_bin (Filename.concat outside "x") (fun channel ->
+      Out_channel.output_string channel "outside\n");
+  Repo.remove repo "d";
+  Repo.symlink repo ~target:outside "d";
+  match Git.files (opened repo) with
+  | Error _ -> Alcotest.fail "the file set fails"
+  | Ok files -> Alcotest.check strings "no path" [] (Git.paths files)
+
+let a_real_folder_keeps_its_files_beside_a_linked_folder () =
+  let repo =
+    with_base
+      [
+        ("top", "1\n");
+        ("a/b/c/x", "1\n");
+        ("a/b/c/y", "1\n");
+        ("a/b/z", "1\n");
+        ("a/l/x", "1\n");
+        ("a/l/m/y", "1\n");
+        ("a/b/m/y", "1\n");
+        ("real/x", "1\n");
+      ]
+  in
+  Repo.remove repo "a/l";
+  Repo.symlink repo ~target:"b" "a/l";
+  match Git.files (opened repo) with
+  | Error _ -> Alcotest.fail "the file set fails"
+  | Ok files ->
+      Alcotest.check strings "the paths"
+        [ "a/b/c/x"; "a/b/c/y"; "a/b/m/y"; "a/b/z"; "real/x"; "top" ]
+        (Git.paths files)
+
+let a_file_in_the_place_of_a_folder_leaves_its_paths_out () =
+  let repo = with_base [ ("d/x", "1\n"); ("d/e/y", "1\n"); ("f", "1\n") ] in
+  Repo.remove repo "d";
+  Repo.write repo "d" "now a file\n";
+  match Git.files (opened repo) with
+  | Error _ -> Alcotest.fail "the file set fails"
+  | Ok files ->
+      Alcotest.check strings "the paths" [ "d"; "f" ] (Git.paths files)
+
+let each_folder_of_a_path_can_be_the_link =
+  QCheck_alcotest.to_alcotest ~speed_level:`Quick
+    (QCheck2.Test.make ~count:20
+       ~name:"a link at any folder of a path leaves the file out"
+       ~print:(fun (depth, at) ->
+         Printf.sprintf "depth %d, link at %d" depth at)
+       QCheck2.Gen.(
+         let* depth = int_range 1 5 in
+         let* at = int_bound (depth - 1) in
+         return (depth, at))
+       (fun (depth, at) ->
+         let folder count =
+           String.concat "/"
+             (List.init count (fun index -> Printf.sprintf "p%d" index))
+         in
+         let path = folder depth ^ "/x" in
+         let repo = with_base [ (path, "1\n"); ("keep", "1\n") ] in
+         let link = folder (at + 1) in
+         let outside = Repo.temp_dir () in
+         let target =
+           List.fold_left
+             (fun above index ->
+               let below = Filename.concat above (Printf.sprintf "p%d" index) in
+               Unix.mkdir below 0o755;
+               below)
+             outside
+             (List.init (depth - at - 1) (fun index -> at + 1 + index))
+         in
+         Out_channel.with_open_bin (Filename.concat target "x") (fun channel ->
+             Out_channel.output_string channel "outside\n");
+         Repo.remove repo link;
+         Repo.symlink repo ~target:outside link;
+         match Git.files (opened repo) with
+         | Error _ -> false
+         | Ok files -> Git.paths files = [ "keep" ]))
+
+let allocated_by_the_file_set ~depth ~count =
+  let folder =
+    String.concat "/"
+      (List.init depth (fun index -> Printf.sprintf "p%d" index))
+  in
+  let repo =
+    with_base
+      (List.init count (fun index ->
+           (Printf.sprintf "%s/f%d" folder index, "1\n")))
+  in
+  let t = opened repo in
+  let before = Gc.allocated_bytes () in
+  ignore (Git.files t);
+  Gc.allocated_bytes () -. before
+
+let the_cost_of_the_file_set_does_not_grow_with_the_depth_of_each_file () =
+  let shallow = allocated_by_the_file_set ~depth:1 ~count:400 in
+  let deep = allocated_by_the_file_set ~depth:40 ~count:400 in
+  Alcotest.(check bool)
+    (Printf.sprintf "%.0f bytes at depth 1, %.0f bytes at depth 40" shallow deep)
+    true
+    (deep < 4. *. shallow)
+
+let a_path_that_lstat_refuses_is_an_error () =
+  let repo = with_base [ ("keep", "1\n") ] in
+  let blob = String.trim (Repo.git repo [ "rev-parse"; "HEAD:keep" ]) in
+  let long = String.make 300 'n' in
+  let check path =
+    ignore
+      (Repo.git repo
+         [
+           "update-index";
+           "--add";
+           "--cacheinfo";
+           Printf.sprintf "100644,%s,%s" blob path;
+         ]);
+    match Git.files (opened repo) with
+    | Error (Git.File_error detail) ->
+        Alcotest.(check bool)
+          "the error gives the reason" true
+          (String.ends_with
+             ~suffix:(Unix.error_message Unix.ENAMETOOLONG)
+             detail)
+    | _ -> Alcotest.failf "the file set of %s is not a file error" path
+  in
+  check long;
+  ignore (Repo.git repo [ "rm"; "-q"; "--cached"; long ]);
+  check (long ^ "/x")
+
 let case name f = Alcotest.test_case name `Quick f
 
 let tests =
@@ -674,4 +802,15 @@ let tests =
       the_object_store_of_the_view_is_private;
     case "the view refuses a flag entry it cannot read"
       the_view_refuses_a_flag_entry_it_cannot_read;
+    case "a file behind a symbolic link is not in the file set"
+      a_file_behind_a_symbolic_link_is_not_in_the_file_set;
+    case "a real folder keeps its files beside a linked folder"
+      a_real_folder_keeps_its_files_beside_a_linked_folder;
+    case "a file in the place of a folder leaves its paths out"
+      a_file_in_the_place_of_a_folder_leaves_its_paths_out;
+    each_folder_of_a_path_can_be_the_link;
+    case "the cost of the file set does not grow with the depth of each file"
+      the_cost_of_the_file_set_does_not_grow_with_the_depth_of_each_file;
+    case "a path that lstat refuses is an error"
+      a_path_that_lstat_refuses_is_an_error;
   ]

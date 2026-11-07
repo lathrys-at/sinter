@@ -1,2 +1,2 @@
-error: cannot read the manifest docs: Is a directory
-  = help: name a manifest that is a file that you can read
+error: docs is not a regular file, and Sinter reads only regular files
+  = help: commit the manifest as a regular file

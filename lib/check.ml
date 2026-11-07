@@ -305,6 +305,8 @@ type report = {
   code : int;
   output : output;
   root : string;
+  manifest : string;
+  files : string list;
   mode : Mode.t;
 }
 
@@ -335,7 +337,10 @@ let write ?phases ppf report =
   Allocation.measure phases "output" (fun () ->
       (match report.output with
       | Blocks items ->
-          let source = Source.create ~root:report.root in
+          let source =
+            Source.create ~root:report.root ~manifest:report.manifest
+              ~files:report.files
+          in
           List.iteri
             (fun index item ->
               if index > 0 then Format.pp_force_newline ppf ();
@@ -513,7 +518,15 @@ let run ?phases ~env ~dir ~manifest ~base ~mode ~gate ~strict ~form ~verbose
   in
   let code = exit_code ~strict entries in
   let report notices output =
-    { notices; code; output; root = Git.root tree.repo; mode }
+    {
+      notices;
+      code;
+      output;
+      root = Git.root tree.repo;
+      manifest = tree.location;
+      files = Git.paths tree.file_set;
+      mode;
+    }
   in
   let warnings =
     List.map
